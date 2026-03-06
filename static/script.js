@@ -1330,6 +1330,11 @@ async function loadPainelGraficos() {
 
 // Carregar BASE da Planilha (todas as colunas, com filtros)
 async function loadBasePlanilha() {
+    const thead = document.getElementById('thead-base');
+    const tbody = document.getElementById('tbody-base');
+    if (thead && tbody) {
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">Carregando...</td></tr>';
+    }
     const codigo = document.getElementById('filtro-base-codigo')?.value?.trim() || '';
     const descricao = document.getElementById('filtro-base-descricao')?.value?.trim() || '';
     const params = new URLSearchParams();
@@ -1338,8 +1343,6 @@ async function loadBasePlanilha() {
     const url = '/base-planilha' + (params.toString() ? '?' + params.toString() : '');
     const data = await fetchAPI(url);
     
-    const thead = document.getElementById('thead-base');
-    const tbody = document.getElementById('tbody-base');
     if (!thead || !tbody) return;
     
     if (data && data.headers && Array.isArray(data.headers)) {
@@ -2861,6 +2864,12 @@ async function loadExtrato() {
 
 // Carregar Romaneio da Planilha (todas as colunas, com filtros por id_viagem, id_roteiro, codigo_cliente, codigo_produto, endereco, cidade)
 async function loadRomaneio() {
+    const thead = document.getElementById('thead-romaneio');
+    const tbody = document.getElementById('tbody-romaneio');
+    if (thead && tbody) {
+        thead.innerHTML = '<tr><th>Carregando...</th></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando...</td></tr>';
+    }
     const idViagem = document.getElementById('romaneio-filtro-id-viagem') && document.getElementById('romaneio-filtro-id-viagem').value.trim();
     const idRoteiro = document.getElementById('romaneio-filtro-id-roteiro') && document.getElementById('romaneio-filtro-id-roteiro').value.trim();
     const codigoCliente = document.getElementById('romaneio-filtro-codigo-cliente') && document.getElementById('romaneio-filtro-codigo-cliente').value.trim();
@@ -2876,8 +2885,7 @@ async function loadRomaneio() {
     if (cidade) params.set('cidade', cidade);
     const url = '/romaneio' + (params.toString() ? '?' + params.toString() : '');
     const resp = await fetchAPI(url);
-    const thead = document.getElementById('thead-romaneio');
-    const tbody = document.getElementById('tbody-romaneio');
+    if (!thead || !tbody) return;
     if (!resp || resp.erro) {
         thead.innerHTML = '<tr><th>Erro</th></tr>';
         tbody.innerHTML = '<tr><td colspan="10" class="loading">' + (resp && resp.erro ? resp.erro : 'Erro ao carregar. Configure DATABASE_URL para usar as tabelas.') + '</td></tr>';

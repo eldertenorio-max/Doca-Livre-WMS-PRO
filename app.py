@@ -789,10 +789,34 @@ def get_base_planilha():
             filtro_codigo = request.args.get('codigo_barras', '').strip()
             filtro_descricao = request.args.get('descricao', '').strip()
             if getattr(conn, 'kind', None) == 'pg':
-                rows_raw = conn.execute(
-                    """SELECT data FROM base_codigo_barras WHERE dataset_id = ? ORDER BY row_index""",
-                    (str(ds),),
-                ).fetchall()
+                # Filtros no SQL quando a tabela tem colunas ean, dun, descricao (mais rápido)
+                try:
+                    sql = """SELECT data FROM base_codigo_barras WHERE dataset_id = ?"""
+                    params = [str(ds)]
+                    if filtro_codigo:
+                        sql += """ AND (ean ILIKE ? OR dun ILIKE ? OR COALESCE(codigo_interno::text, '') ILIKE ?)"""
+                        pct = '%' + filtro_codigo.replace('%', '\\%').replace('_', '\\_') + '%'
+                        params.extend([pct, pct, pct])
+                    if filtro_descricao:
+                        sql += """ AND COALESCE(descricao, '') ILIKE ?"""
+                        params.append('%' + filtro_descricao.replace('%', '\\%').replace('_', '\\_') + '%')
+                    sql += """ ORDER BY row_index LIMIT 2000"""
+                    rows_raw = conn.execute(sql, params).fetchall()
+                except Exception:
+                    rows_raw = conn.execute(
+                        """SELECT data FROM base_codigo_barras WHERE dataset_id = ? ORDER BY row_index LIMIT 2000""",
+                        (str(ds),),
+                    ).fetchall()
+                    if filtro_codigo or filtro_descricao:
+                        filtro_c, filtro_d = (filtro_codigo or '').upper(), (filtro_descricao or '').upper()
+                        out = []
+                        for r in rows_raw:
+                            data = r.get('data') if isinstance(r.get('data'), dict) else (json.loads(r['data']) if isinstance(r.get('data'), str) else {})
+                            if not data: continue
+                            if filtro_c and not any(filtro_c in str(v or '').upper() for k, v in data.items() if k and ('ean' in k.lower() or 'dun' in k.lower() or 'codigo' in k.lower())): continue
+                            if filtro_d and filtro_d not in str(data.get('Descricao') or data.get('descricao') or '').upper(): continue
+                            out.append(r)
+                        rows_raw = out
             else:
                 conn.close()
                 return jsonify({'headers': [], 'rows': []})
@@ -802,10 +826,6 @@ def get_base_planilha():
             for r in rows_raw:
                 data = r.get('data') if isinstance(r.get('data'), dict) else (json.loads(r['data']) if isinstance(r.get('data'), str) else {})
                 if not data:
-                    continue
-                if filtro_codigo and not any(filtro_codigo.upper() in str(v or '').upper() for k, v in data.items() if k and ('ean' in k.lower() or 'dun' in k.lower() or 'codigo' in k.lower() or 'barras' in k.lower())):
-                    continue
-                if filtro_descricao and filtro_descricao.upper() not in str(data.get('Descricao') or data.get('descricao') or '').upper():
                     continue
                 if not headers:
                     headers = [str(k) for k in data.keys()]
@@ -2790,7 +2810,16 @@ def get_romaneio():
             if filtro_codigo_produto:
                 sql += " AND codigo_produto ILIKE ?"
                 params.append('%' + filtro_codigo_produto + '%')
-            sql += " ORDER BY row_index"
+            if filtro_codigo_cliente:
+                sql += " AND COALESCE(codigo_cliente, '') ILIKE ?"
+                params.append('%' + filtro_codigo_cliente + '%')
+            if filtro_endereco:
+                sql += " AND COALESCE(endereco, '') ILIKE ?"
+                params.append('%' + filtro_endereco + '%')
+            if filtro_cidade:
+                sql += " AND COALESCE(cidade, '') ILIKE ?"
+                params.append('%' + filtro_cidade + '%')
+            sql += " ORDER BY row_index LIMIT 2000"
             rows_raw = conn.execute(sql, params).fetchall()
             conn.close()
             headers = []
@@ -2798,12 +2827,6 @@ def get_romaneio():
             for r in rows_raw:
                 data = r.get('data') if isinstance(r.get('data'), dict) else (json.loads(r['data']) if isinstance(r.get('data'), str) else {})
                 if not data:
-                    continue
-                if filtro_codigo_cliente and filtro_codigo_cliente.upper() not in str(data.get('codigo_cliente') or data.get('Codigo Cliente') or '').upper():
-                    continue
-                if filtro_endereco and filtro_endereco.upper() not in str(data.get('endereco') or data.get('Endereco') or '').upper():
-                    continue
-                if filtro_cidade and filtro_cidade.upper() not in str(data.get('cidade') or data.get('Cidade') or '').upper():
                     continue
                 if not headers:
                     headers = [str(k) for k in data.keys()]
