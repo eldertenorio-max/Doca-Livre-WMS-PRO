@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CONTROLE DE CARREGAMENTO ULTRAPÃO</title>
+    <link rel="stylesheet" href="../static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+      // Configure antes do deploy (Render Static):
+      // localStorage.setItem('api_base', 'https://seu-backend.onrender.com/api')
+      window.API_BASE = window.API_BASE || localStorage.getItem('api_base') || '/api';
+    </script>
+</head>
+<body>
+    <div class="container">
+        <!-- Cabeçalho -->
+        <header class="header">
+            <h1>CONTROLE DE CARREGAMENTO ULTRAPÃO</h1>
+            <button type="button" class="btn-atualizar-aba" id="btn-atualizar-aba" title="Atualizar apenas os dados da aba atual">🔄 Atualizar aba</button>
+            <div class="header-perfil">
+                <span class="perfil-label">Logado como:</span>
+                <span class="perfil-usuario" id="perfil-usuario">—</span>
+            </div>
+            <button type="button" class="btn-sair" id="btn-sair" title="Sair">Sair</button>
+        </header>
+
+        <!-- Navegação por Abas -->
+        <nav class="tabs">
+            <button class="tab-button active" data-tab="painel">PAINEL</button>
+            <button class="tab-button" data-tab="base">BASE</button>
+            <button class="tab-button" data-tab="conferencia">CONFERÊNCIA</button>
+            <button class="tab-button" data-tab="extrato">EXTRATO</button>
+            <button class="tab-button" data-tab="romaneio">ROMANEIO POR ITEM</button>
+            <button class="tab-button" data-tab="relatorios">RELATÓRIOS</button>
+            <button class="tab-button" id="tab-btn-divergencias" data-tab="divergencias">DIVERGÊNCIAS</button>
+        </nav>
+
+        <!-- Conteúdo das Abas -->
+        <main class="content">
+            <!-- ABA PAINEL -->
+            <div id="painel" class="tab-content active">
+                <div class="painel-titulo">
+                    <span class="painel-titulo-icon">📊</span>
+                    <h2 class="painel-titulo-texto">Resumo Geral</h2>
+                    <p class="painel-titulo-sub">Visão geral da bipagem e do carregamento</p>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Total de Itens Bipados (registros)</h3>
+                        <p class="stat-number" id="stat-bipados">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Soma das Quantidades Bipadas</h3>
+                        <p class="stat-number" id="stat-soma-quantidades">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total de Itens Carregados</h3>
+                        <p class="stat-number" id="stat-carregados">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Itens Únicos (códigos)</h3>
+                        <p class="stat-number" id="stat-unicos">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total de Viagens</h3>
+                        <p class="stat-number" id="stat-viagens">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total de Divergências</h3>
+                        <p class="stat-number" id="stat-divergencias">0</p>
+                    </div>
+                </div>
+
+                <h2 style="margin-top: 30px;">DADOS DA ABA ROMANEIO POR ITEM</h2>
+                <p class="info-text" style="margin-bottom: 16px;">Resumo com base na planilha Excel (aba ROMANEIO POR ITEM) — somente <strong>Unidade CD Guarulhos Ultrapão (Distribuidora)</strong>.</p>
+                <div class="stats-grid" id="romaneio-stats-grid">
+                    <div class="stat-card">
+                        <h3>Quantidade de Roteiros</h3>
+                        <p class="stat-number" id="stat-romaneio-roteiros">—</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Quantidade de Veículos</h3>
+                        <p class="stat-number" id="stat-romaneio-veiculos">—</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Quantidade Total de Itens (soma)</h3>
+                        <p class="stat-number" id="stat-romaneio-qtd-itens">—</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Peso Total (todos os roteiros) kg</h3>
+                        <p class="stat-number" id="stat-romaneio-peso-total">—</p>
+                    </div>
+                </div>
+                <div class="table-container table-container-base" style="margin-top: 16px; margin-bottom: 24px;">
+                    <h3 style="margin-bottom: 10px;">Quantidade por item (código do produto)</h3>
+                    <table class="data-table" id="tabela-romaneio-itens">
+                        <thead>
+                            <tr>
+                                <th>Código do produto</th>
+                                <th>Descrição do produto</th>
+                                <th>Quantidade total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-romaneio-itens">
+                            <tr><td colspan="3" class="loading">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="table-container table-container-base" style="margin-bottom: 24px;">
+                    <h3 style="margin-bottom: 10px;">Peso por carro (veículo)</h3>
+                    <table class="data-table" id="tabela-romaneio-peso-carro">
+                        <thead>
+                            <tr>
+                                <th>Placa / Veículo</th>
+                                <th>Peso total (kg)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-romaneio-peso-carro">
+                            <tr><td colspan="2" class="loading">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3 style="margin-top: 28px; margin-bottom: 16px;">Gráficos – Romaneio por item</h3>
+                <p class="info-text" style="margin-bottom: 16px;">Dados da aba ROMANEIO POR ITEM (CD Guarulhos).</p>
+                <div class="romaneio-charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-bottom: 24px;">
+                    <div class="chart-container-romaneio" style="background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); min-height: 260px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #366092;">Roteiros e Veículos</h4>
+                        <canvas id="chart-romaneio-roteiros-veiculos" height="220"></canvas>
+                    </div>
+                    <div class="chart-container-romaneio" style="background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); min-height: 260px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #366092;">Quantidade por item (código)</h4>
+                        <canvas id="chart-romaneio-qtd-itens" height="220"></canvas>
+                    </div>
+                    <div class="chart-container-romaneio" style="background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); min-height: 260px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #366092;">Peso por carro (kg)</h4>
+                        <canvas id="chart-romaneio-peso-carro" height="220"></canvas>
+                    </div>
+                    <div class="chart-container-romaneio" style="background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); min-height: 260px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #366092;">Peso total (todos os roteiros) kg</h4>
+                        <canvas id="chart-romaneio-peso-total" height="220"></canvas>
+                    </div>
+                </div>
+
+                <h2 style="margin-top: 30px;">DADOS DETALHADOS POR VIAGEM</h2>
+                <div class="table-container" style="margin-bottom: 24px;">
+                    <table class="data-table" id="tabela-painel-viagens">
+                        <thead>
+                            <tr>
+                                <th>ID Roteiro</th>
+                                <th>Início carregamento</th>
+                                <th>Fim carregamento</th>
+                                <th>Duração (min)</th>
+                                <th>Itens bipados</th>
+                                <th>Faltas</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-painel-viagens">
+                            <tr><td colspan="6" class="loading">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h2 style="margin-top: 30px;">GRÁFICOS</h2>
+                <div class="painel-charts">
+                    <div class="chart-box">
+                        <h3>Tempo de carregamento por viagem (minutos)</h3>
+                        <canvas id="chart-tempo-carregamento" height="220"></canvas>
+                    </div>
+                    <div class="chart-box">
+                        <h3>Tempo de carregamento por placa (minutos)</h3>
+                        <canvas id="chart-tempo-por-placa" height="220"></canvas>
+                    </div>
+                    <div class="chart-box">
+                        <h3>Quantidade de itens bipados por viagem</h3>
+                        <canvas id="chart-itens-bipados" height="220"></canvas>
+                    </div>
+                    <div class="chart-box">
+                        <h3>Quantidade de faltas por viagem</h3>
+                        <canvas id="chart-faltas" height="220"></canvas>
+                    </div>
+                    <div class="chart-box">
+                        <h3>Itens mais bipados (top 15)</h3>
+                        <canvas id="chart-itens-mais-bipados" height="220"></canvas>
+                    </div>
+                    <div class="chart-box">
+                        <h3>Carros carregados com mais itens</h3>
+                        <canvas id="chart-carros-itens" height="220"></canvas>
+                    </div>
+                    <div class="chart-box">
+                        <h3>Carros carregados com mais peso</h3>
+                        <canvas id="chart-carros-peso" height="220"></canvas>
+                    </div>
+                </div>
+
+                <h2 style="margin-top: 30px;">ESTATÍSTICAS POR VEÍCULO</h2>
+                <div class="veiculos-grid" id="veiculos-stats">
+                    <!-- Preenchido via JavaScript -->
+                </div>
+
+                <h2 style="margin-top: 30px;">IMPORTAR PLANILHA EXCEL</h2>
+                <div class="import-section">
+                    <p class="info-text">Importe os dados da planilha Excel para sincronizar com o sistema.</p>
+                    <div class="import-buttons">
+                        <button class="btn btn-primary" onclick="importarPlanilhaLocal()">
+                            📥 Importar Planilha do Diretório
+                        </button>
+                        <label for="file-input" class="btn btn-secondary" style="cursor: pointer; display: inline-block;">
+                            📤 Enviar Planilha
+                            <input type="file" id="file-input" accept=".xlsx,.xls" style="display: none;" onchange="importarPlanilhaUpload(event)">
+                        </label>
+                    </div>
+                    <div id="import-result" style="margin-top: 15px;"></div>
+                </div>
+            </div>
+
+            <!-- ABA BASE -->
+            <div id="base" class="tab-content">
+                <h2>BASE - DADOS DA PLANILHA</h2>
+                <p class="info-text">Dados exatos da aba BASE da planilha Excel (todas as colunas)</p>
+                
+                <div class="form-container" style="margin-bottom: 1rem;">
+                    <label>Código de barras:</label>
+                    <input type="text" id="filtro-base-codigo" placeholder="Filtrar por código de barras" style="max-width: 220px;">
+                    <label style="margin-left: 1rem;">Descrição:</label>
+                    <input type="text" id="filtro-base-descricao" placeholder="Filtrar por descrição" style="max-width: 220px;">
+                    <button type="button" class="btn-primary" id="btn-filtrar-base">Filtrar</button>
+                    <button type="button" class="btn-secondary" id="btn-limpar-filtros-base">Limpar</button>
+                </div>
+                
+                <div class="table-container table-container-base">
+                    <table id="tabela-base" class="data-table">
+                        <thead id="thead-base">
+                            <!-- Cabeçalhos preenchidos via JavaScript -->
+                        </thead>
+                        <tbody id="tbody-base">
+                            <!-- Preenchido via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ABA CONFERÊNCIA -->
+            <div id="conferencia" class="tab-content">
+                <h2>CONFERÊNCIA - CONTROLE DE BIPAGEM POR VIAGEM</h2>
+                
+                <div class="conferencia-blocos-grid">
+                    <!-- 1. SELECIONE O ROTEIRO -->
+                    <div class="conferencia-bloco form-container" style="background: #e3f2fd; border-left: 4px solid #2196F3;">
+                        <h3 style="margin-top: 0; color: #1976D2;">1. SELECIONE O ROTEIRO</h3>
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1;">
+                                <label for="id-viagem">ID Roteiro *</label>
+                                <div class="input-com-lupa">
+                                    <input type="text" id="id-viagem" placeholder="Digite o ID do roteiro e pressione Enter ou clique na lupa" style="font-size: 16px; font-weight: bold;">
+                                    <span class="input-lupa" onclick="buscarItensViagem()" title="Buscar itens do roteiro">🔍</span>
+                                </div>
+                                <small style="color: #666; font-size: 12px;">O sistema buscará os itens do romaneio por este Id roteiro</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2 e 3: sempre visíveis; bloqueados até selecionar roteiro -->
+                    <form id="form-produto" class="product-form conferencia-form-grid">
+                    <div id="form-bipagem-container" class="conferencia-form-wrapper conferencia-blocos-bloqueado">
+                        <div class="conferencia-blocos-overlay" id="conferencia-blocos-overlay">
+                            <span>Digite o ID do roteiro acima, pressione Enter ou clique na lupa para habilitar.</span>
+                        </div>
+                            <!-- 2. DADOS DA ROTA -->
+                            <div class="conferencia-bloco conferencia-bloco-2 form-container" style="background: #e8f5e9; border-left: 4px solid #388E3C;">
+                                <input type="hidden" id="id-viagem-hidden">
+                                <h3 style="margin-top: 0; color: #388E3C;">2. DADOS DA ROTA</h3>
+                                <div class="form-row bloco2-linha-topo">
+                                    <div class="form-group">
+                                        <label for="viagem-placa">Placa</label>
+                                        <input type="text" id="viagem-placa" list="datalist-placas" placeholder="Placa" style="font-weight: bold; color: #333; max-width: 140px;" onchange="salvarPlacaViagem()" onblur="salvarPlacaViagem()">
+                                        <datalist id="datalist-placas"></datalist>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="viagem-motorista">Motorista</label>
+                                        <input type="text" id="viagem-motorista" list="datalist-motoristas" placeholder="Motorista" style="font-weight: bold; color: #333; max-width: 100%;" onchange="salvarMotoristaViagem()" onblur="salvarMotoristaViagem()">
+                                        <datalist id="datalist-motoristas"></datalist>
+                                    </div>
+                                </div>
+                                <div class="form-row bloco2-linha-identificador">
+                                    <div class="form-group identificador-rota-group" style="flex: 1; min-width: 100%;">
+                                        <label>Identificador da rota</label>
+                                        <div id="viagem-identificador-rota" class="identificador-rota-destaque">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 3. DADOS DO CARREGAMENTO (ocupa o espaço do antigo bloco 4) -->
+                            <div class="conferencia-bloco conferencia-bloco-3 form-container" style="background: #fff8e1; border-left: 4px solid #1976D2;">
+                                <h3 style="margin-top: 0; color: #1976D2;">3. DADOS DO CARREGAMENTO</h3>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="doca">Doca *</label>
+                                        <select id="doca" required>
+                                            <option value="">Selecione a doca</option>
+                                            <option value="1">Doca 1</option>
+                                            <option value="2">Doca 2</option>
+                                            <option value="3">Doca 3</option>
+                                            <option value="4">Doca 4</option>
+                                        </select>
+                                        <label class="doca-fixar-label" style="display: inline-flex; align-items: center; margin-left: 4px; font-weight: normal; font-size: 12px;">
+                                            <input type="checkbox" id="doca-fixar" title="Fixar esta doca neste dispositivo"> Fixar doca
+                                        </label>
+                                        <div id="doca-badge" class="doca-badge" style="display: none; margin-top: 4px; padding: 6px 10px; border-radius: 6px; font-weight: bold; font-size: 14px; text-align: center;"></div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="viagem-coordenador">Coordenador</label>
+                                        <input type="text" id="viagem-coordenador" placeholder="Coordenador" style="font-weight: bold; color: #333; max-width: 100%;" onchange="salvarResponsaveisViagem()" onblur="salvarResponsaveisViagem()">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="viagem-conferente">Conferente</label>
+                                        <input type="text" id="viagem-conferente" placeholder="Conferente" style="font-weight: bold; color: #333; max-width: 100%;" onchange="salvarResponsaveisViagem()" onblur="salvarResponsaveisViagem()">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="viagem-ajudante1">Aux. 1</label>
+                                        <input type="text" id="viagem-ajudante1" placeholder="Ajudante 1" style="font-weight: bold; color: #333; max-width: 100%;" onchange="salvarResponsaveisViagem()" onblur="salvarResponsaveisViagem()">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="viagem-ajudante2">Aux. 2</label>
+                                        <input type="text" id="viagem-ajudante2" placeholder="Ajudante 2" style="font-weight: bold; color: #333; max-width: 100%;" onchange="salvarResponsaveisViagem()" onblur="salvarResponsaveisViagem()">
+                                    </div>
+                                </div>
+                                <div id="periodo-carregamento-box" style="display: none; margin-top: 12px; padding: 10px; background: #fff3e0; border-radius: 6px;">
+                                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                                        <div><label style="color: #666;">Data expedição</label><div id="data-expedicao" style="font-weight: bold;">-</div></div>
+                                        <div><label style="color: #666;">Início carreg.</label><div id="periodo-inicio-carregamento" style="font-weight: bold;">-</div></div>
+                                        <div><label style="color: #666;">Fim carreg.</label><div id="periodo-fim-carregamento" style="font-weight: bold;">-</div></div>
+                                    </div>
+                                </div>
+                            </div>
+                    </div>
+                    <!-- 4. CONFERÊNCIA: ocupa toda a linha; habilitado após selecionar roteiro -->
+                    <div id="conferencia-bloco-4-wrapper" class="conferencia-bloco-4-wrapper conferencia-blocos-bloqueado">
+                        <div class="conferencia-blocos-overlay">
+                            <span>Digite o ID do roteiro acima, pressione Enter ou clique na lupa para habilitar.</span>
+                        </div>
+                        <div class="conferencia-bloco conferencia-bloco-4 form-container">
+                            <h3 class="conferencia-bloco-4-titulo">4. CONFERÊNCIA</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="codigo-barras">Código de Barras *</label>
+                                    <input type="text" id="codigo-barras" required autofocus placeholder="Digite ou escaneie">
+                                </div>
+                                <div class="form-group">
+                                    <label for="codigo-produto">Código produto</label>
+                                    <input type="text" id="codigo-produto" placeholder="Código produto">
+                                </div>
+                                <div class="form-group">
+                                    <label for="produto-nome">Produto</label>
+                                    <input type="text" id="produto-nome" readonly>
+                                </div>
+                                <div class="form-group">
+                                    <label for="quantidade">Qtd. bipada</label>
+                                    <input type="number" id="quantidade" value="1" min="1" max="99999" step="1" title="Quantidade a bipar (volta a 1 após cada bip)">
+                                </div>
+                            </div>
+                            <div id="aviso-produto-fora-relacao" style="display: none; margin-bottom: 8px; padding: 8px; background: #fff3e0; border: 1px solid #ff9800; border-radius: 6px; color: #e65100; font-size: 12px;">
+                                <strong>⚠️ Produto não está na relação desta viagem.</strong> Deseja cadastrar ao bipar?
+                            </div>
+                            <div class="form-row conferencia-bloco4-acoes-row">
+                                <div class="form-group">
+                                    <label for="veiculo">Veículo</label>
+                                    <input type="text" id="veiculo">
+                                </div>
+                                <div class="form-group">
+                                    <label for="status">Status</label>
+                                    <select id="status">
+                                        <option value="PENDENTE">PENDENTE</option>
+                                        <option value="CARREGADO">CARREGADO</option>
+                                    </select>
+                                </div>
+                                <div class="conferencia-btns-grupo">
+                                    <button type="submit" class="btn btn-primary btn-bloco4 btn-bloco4-bipar">✅ Bipar</button>
+                                    <button type="button" class="btn btn-secondary btn-bloco4" onclick="limparCamposConferencia()" title="Limpar campos">🧹 Limpar campos</button>
+                                    <button type="button" class="btn btn-danger btn-bloco4 btn-bloco4-zerar" id="btn-voltar-bipar" onclick="abrirModalZerarItens()" style="display: none;" title="Zerar todos os itens bipados">🗑️ Zerar todos os itens</button>
+                                </div>
+                                <div class="conferencia-resumo-group">
+                                    <div class="conferencia-resumo-rapido">
+                                        <div id="conferencia-totais-bloco" class="conferencia-totais-bloco">
+                                            <span id="conferencia-total-itens">Total: 0</span>
+                                            <span id="conferencia-total-bipado">Bipado: 0</span>
+                                        </div>
+                                        <span id="conferencia-resumo-status" class="conferencia-resumo-status status-sem-itens">Sem itens</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    </form>
+                </div>
+
+                <!-- Lista de Itens da Viagem -->
+                <div id="titulo-lista-wrapper" style="display: none; margin-top: 0; margin-bottom: 6px; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <h3 id="titulo-lista" style="margin: 0;">ITENS DA VIAGEM - STATUS DE BIPAGEM</h3>
+                </div>
+                <div class="table-container" id="tabela-conferencia-container" style="display: none;">
+                    <table id="tabela-conferencia" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Motivo</th>
+                                <th>Código de Barras</th>
+                                <th>Código do Produto</th>
+                                <th>Produto</th>
+                                <th>Quantidade do Produto</th>
+                                <th>Unidade</th>
+                                <th>Peso Bruto</th>
+                                <th>Aviso</th>
+                                <th>Qtd. Bipada</th>
+                                <th>Qtd. Falta</th>
+                                <th>Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-conferencia">
+                            <!-- Preenchido via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Aparece quando todos os itens estão COMPLETO -->
+                <div id="conferencia-completa-box" style="display: none; margin-top: 24px; padding: 20px; background: #e8f5e9; border: 2px solid #4caf50; border-radius: 8px;">
+                    <p style="margin: 0 0 12px 0; font-size: 16px;"><strong>✅ Todos os itens desta viagem foram conferidos!</strong></p>
+                    <button type="button" class="btn btn-primary" onclick="gerarComprovanteCarregamento()" style="font-size: 16px;">
+                        📄 Gerar comprovante de carregamento
+                    </button>
+                </div>
+                
+                <!-- Aparece quando há itens pendentes/falta (comprovante divergente) -->
+                <div id="conferencia-divergente-box" style="display: none; margin-top: 24px; padding: 20px; background: #fff3e0; border: 2px solid #ff9800; border-radius: 8px;">
+                    <p style="margin: 0 0 12px 0; font-size: 16px;"><strong>⚠️ Ainda há itens não bipados nesta viagem.</strong></p>
+                    <p style="margin: 0 0 16px 0; font-size: 14px; color: #666;">Se precisar gerar o comprovante mesmo assim (comprovante divergente), use o botão abaixo.</p>
+                    <button type="button" class="btn btn-secondary" id="btn-comprovante-divergente" onclick="abrirModalComprovanteDivergente()" style="font-size: 15px; border-color: #e65100; color: #e65100;">
+                        📄 Gerar comprovante divergente
+                    </button>
+                </div>
+            </div>
+
+            <!-- ABA EXTRATO -->
+            <div id="extrato" class="tab-content">
+                <h2>EXTRATO - INFORMAÇÕES DA CARGA</h2>
+                <p class="info-text">Relação completa de tudo que foi bipado na carga</p>
+                
+                <!-- Busca por ID da viagem + Imprimir -->
+                <div class="form-container extrato-busca-bar" style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 20px;">
+                    <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
+                        <label for="extrato-id-viagem">Buscar por ID do roteiro (reimprimir extrato)</label>
+                        <input type="text" id="extrato-id-viagem" placeholder="Digite o ID do roteiro e clique em Buscar">
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="buscarExtratoPorViagem()">🔍 Buscar</button>
+                    <button type="button" class="btn btn-secondary" onclick="imprimirExtrato()">🖨️ Imprimir</button>
+                    <button type="button" class="btn btn-secondary" id="btn-excluir-extrato" onclick="excluirExtratoViagem()" style="display: none; color: #c62828;" title="Excluir todos os itens bipados desta viagem (extrato será apagado)">🗑️ Excluir este extrato</button>
+                </div>
+                
+                <!-- Área para impressão (resumo + tabela + assinaturas) -->
+                <div id="extrato-para-imprimir">
+                <h2 class="extrato-titulo-impressao">EXTRATO - INFORMAÇÕES DA CARGA</h2>
+                <!-- Resumo da carga -->
+                <div id="extrato-resumo" class="form-container extrato-resumo-box" style="margin-bottom: 20px; display: none;">
+                    <h3 class="extrato-resumo-titulo" style="margin-top: 0; margin-bottom: 16px;">Resumo da carga</h3>
+                    <div class="extrato-resumo-grid">
+                        <section class="extrato-resumo-grupo">
+                            <h4 class="extrato-resumo-grupo-titulo">Identificação</h4>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">ID Roteiro:</span> <span id="extrato-id-viagem-display">-</span></div>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Identificador da rota:</span> <span id="extrato-identificador-rota">-</span></div>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Data de expedição:</span> <span id="extrato-data-expedicao">-</span></div>
+                        </section>
+                        <section class="extrato-resumo-grupo">
+                            <h4 class="extrato-resumo-grupo-titulo">Veículo</h4>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Placa:</span> <span id="extrato-placa">-</span></div>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Motorista:</span> <span id="extrato-motorista">-</span></div>
+                        </section>
+                        <section class="extrato-resumo-grupo">
+                            <h4 class="extrato-resumo-grupo-titulo">Totais</h4>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Total de itens:</span> <span id="extrato-total-itens">0</span></div>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Total quantidade:</span> <span id="extrato-total-qtd">0</span></div>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Peso total:</span> <span id="extrato-peso-total">-</span></div>
+                        </section>
+                        <section class="extrato-resumo-grupo">
+                            <h4 class="extrato-resumo-grupo-titulo">Período do carregamento</h4>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Início:</span> <span id="extrato-inicio-carregamento">-</span></div>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Fim:</span> <span id="extrato-fim-carregamento">-</span></div>
+                        </section>
+                        <section class="extrato-resumo-grupo">
+                            <h4 class="extrato-resumo-grupo-titulo">Responsáveis</h4>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Coordenador:</span> <span id="extrato-coordenador">-</span></div>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Conferente:</span> <span id="extrato-conferente">-</span></div>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Auxiliar de Carregamento 1:</span> <span id="extrato-ajudante1">-</span></div>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Auxiliar de Carregamento 2:</span> <span id="extrato-ajudante2">-</span></div>
+                        </section>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table id="tabela-extrato" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Motivo</th>
+                                <th>Código de Barras</th>
+                                <th>Código do Produto</th>
+                                <th>Produto</th>
+                                <th>Quantidade do Produto</th>
+                                <th>Unidade</th>
+                                <th>Peso Bruto</th>
+                                <th>Aviso</th>
+                                <th>Qtd. Bipada</th>
+                                <th>Qtd. Falta</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-extrato">
+                            <!-- Preenchido via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Rodapé impressão: aviso + assinaturas lado a lado -->
+                <div class="extrato-rodape-impressao">
+                <!-- Aviso comprovante divergente (exibido quando há faltas na carga) -->
+                <div id="extrato-aviso-divergente" style="display: none; margin-top: 24px; padding: 20px; background: #ffebee; border: 2px solid #c62828; border-radius: 8px;">
+                    <p style="margin: 0; font-size: 16px; font-weight: bold; color: #b71c1c;">⚠️ COMPROVANTE DIVERGENTE</p>
+                    <p style="margin: 8px 0 0 0; font-size: 14px; color: #666;">Esta carga apresenta itens não bipados ou quantidades divergentes em relação ao romaneio.</p>
+                </div>
+                
+                <!-- Assinaturas (nomes preenchidos automaticamente da viagem) -->
+                <div class="assinaturas-extrato" style="margin-top: 48px; padding-top: 32px; border-top: 2px solid #333;">
+                    <p style="margin-bottom: 24px; color: #666;">Documento conferido e carregado. Assinaturas:</p>
+                    <div class="assinaturas-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; max-width: 100%;">
+                        <div>
+                            <label style="display: block; font-weight: bold; margin-bottom: 8px;">Motorista</label>
+                            <div id="assinatura-nome-motorista" style="padding: 8px 0; border-bottom: 2px solid #333; font-size: 14px; min-height: 24px;">-</div>
+                            <div class="linha-assinatura" style="margin-top: 24px; border-bottom: 1px solid #333; width: 100%; height: 40px;"></div>
+                            <small style="color: #666;">Assinatura</small>
+                        </div>
+                        <div>
+                            <label style="display: block; font-weight: bold; margin-bottom: 8px;">Conferente</label>
+                            <div id="assinatura-nome-conferente" style="padding: 8px 0; border-bottom: 2px solid #333; font-size: 14px; min-height: 24px;">-</div>
+                            <div class="linha-assinatura" style="margin-top: 24px; border-bottom: 1px solid #333; width: 100%; height: 40px;"></div>
+                            <small style="color: #666;">Assinatura</small>
+                        </div>
+                        <div>
+                            <label style="display: block; font-weight: bold; margin-bottom: 8px;">Auxiliar de Carregamento 1</label>
+                            <div id="assinatura-nome-ajudante1" style="padding: 8px 0; border-bottom: 2px solid #333; font-size: 14px; min-height: 24px;">-</div>
+                            <div class="linha-assinatura" style="margin-top: 24px; border-bottom: 1px solid #333; width: 100%; height: 40px;"></div>
+                            <small style="color: #666;">Assinatura</small>
+                        </div>
+                        <div>
+                            <label style="display: block; font-weight: bold; margin-bottom: 8px;">Auxiliar de Carregamento 2</label>
+                            <div id="assinatura-nome-ajudante2" style="padding: 8px 0; border-bottom: 2px solid #333; font-size: 14px; min-height: 24px;">-</div>
+                            <div class="linha-assinatura" style="margin-top: 24px; border-bottom: 1px solid #333; width: 100%; height: 40px;"></div>
+                            <small style="color: #666;">Assinatura</small>
+                        </div>
+                    </div>
+                </div>
+                </div>
+                <!-- fim extrato-rodape-impressao -->
+                </div>
+                <!-- fim extrato-para-imprimir -->
+            </div>
+
+            <!-- ABA ROMANEIO POR ITEM -->
+            <div id="romaneio" class="tab-content">
+                <h2>ROMANEIO POR ITEM - DADOS DA PLANILHA</h2>
+                <p class="info-text">Dados da aba ROMANEIO POR ITEM. Filtre por ID Viagem, ID Roteiro, Código Cliente, Código do Produto, Endereço ou Cidade e visualize todas as colunas.</p>
+                
+                <div class="form-container" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="romaneio-filtro-id-viagem">ID Viagem</label>
+                        <input type="text" id="romaneio-filtro-id-viagem" placeholder="ID Viagem">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="romaneio-filtro-id-roteiro">ID Roteiro</label>
+                        <input type="text" id="romaneio-filtro-id-roteiro" placeholder="ID Roteiro">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="romaneio-filtro-codigo-cliente">Código Cliente</label>
+                        <input type="text" id="romaneio-filtro-codigo-cliente" placeholder="Código cliente">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="romaneio-filtro-codigo-produto">Código do Produto</label>
+                        <input type="text" id="romaneio-filtro-codigo-produto" placeholder="Código produto">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="romaneio-filtro-endereco">Endereço</label>
+                        <input type="text" id="romaneio-filtro-endereco" placeholder="Endereço">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="romaneio-filtro-cidade">Cidade</label>
+                        <input type="text" id="romaneio-filtro-cidade" placeholder="Cidade">
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="loadRomaneio()">🔍 Filtrar</button>
+                    <button type="button" class="btn btn-secondary" onclick="limparFiltrosRomaneio()">Limpar filtros</button>
+                </div>
+                
+                <div class="table-container table-container-base" style="overflow-x: auto;">
+                    <table id="tabela-romaneio" class="data-table">
+                        <thead id="thead-romaneio">
+                            <tr><th>Carregando...</th></tr>
+                        </thead>
+                        <tbody id="tbody-romaneio">
+                            <!-- Preenchido via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ABA RELATÓRIOS -->
+            <div id="relatorios" class="tab-content">
+                <h2>RELATÓRIOS</h2>
+                <p class="info-text">Gere relatórios em Excel para análise e backup dos dados.</p>
+
+                <div class="form-container relatorios-secao" style="background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                    <h3 style="margin-top: 0; color: #1565c0;">Filtro por data de expedição (opcional)</h3>
+                    <p class="info-text" style="margin-bottom: 12px;">Quando preenchido, todos os relatórios abaixo consideram apenas roteiros cuja <strong>data de expedição</strong> está no intervalo.</p>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label for="relatorio-data-expedicao-inicio">De:</label>
+                        <input type="date" id="relatorio-data-expedicao-inicio" title="Data de expedição inicial">
+                        <label for="relatorio-data-expedicao-fim">Até:</label>
+                        <input type="date" id="relatorio-data-expedicao-fim" title="Data de expedição final">
+                    </div>
+                </div>
+
+                <div class="form-container relatorios-secao">
+                    <h3 style="margin-top: 0; color: #366092;">Extrato</h3>
+                    <div class="relatorios-lista">
+                        <div class="relatorio-item">
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <label for="relatorio-extrato-id-viagem">ID do roteiro:</label>
+                                <input type="text" id="relatorio-extrato-id-viagem" placeholder="Ex.: 12345" style="width: 140px;">
+                                <button type="button" class="btn btn-primary" onclick="exportarExtratoExcel()">📥 Exportar extrato em Excel</button>
+                            </div>
+                            <span>Planilha com o extrato (comprovante) da carga do roteiro: itens, quantidades, status e avisos.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-container relatorios-secao">
+                    <h3 style="margin-top: 0; color: #366092;">Bipagem</h3>
+                    <div class="relatorios-lista">
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-primary" onclick="gerarRelatorioBipados()">📥 Tudo que foi bipado</button>
+                            <span>Planilha com todos os registros bipados.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-container relatorios-secao">
+                    <h3 style="margin-top: 0; color: #366092;">Resumo por roteiro e tempo</h3>
+                    <div class="relatorios-lista">
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-primary" onclick="gerarRelatorioResumoRoteiro()">📥 Resumo por roteiro</button>
+                            <span>Uma linha por viagem: placa, motorista, período, duração, itens, faltas, responsáveis.</span>
+                        </div>
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-primary" onclick="gerarRelatorioTempoPlaca()">📥 Tempo de carregamento por placa</button>
+                            <span>Total de minutos e quantidade de viagens por placa.</span>
+                        </div>
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-primary" onclick="gerarRelatorioItensPorRoteiro()">📥 Itens bipados por roteiro</button>
+                            <span>Resumo: por roteiro e produto, quantidade bipada.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-container relatorios-secao">
+                    <h3 style="margin-top: 0; color: #366092;">Produtos</h3>
+                    <div class="relatorios-lista">
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-primary" onclick="gerarRelatorioItensMaisBipados()">📥 Itens mais bipados</button>
+                            <span>Ranking de produtos por quantidade total bipada.</span>
+                        </div>
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-primary" onclick="gerarRelatorioResumoProduto()">📥 Resumo por produto</button>
+                            <span>Por produto: total bipado, em quantas viagens, primeira e última data.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-container relatorios-secao">
+                    <h3 style="margin-top: 0; color: #366092;">Divergências</h3>
+                    <div class="relatorios-lista">
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-secondary" onclick="exportarDivergenciasExcel('itens')">📥 Itens divergentes</button>
+                            <span>Planilha só com os itens divergentes.</span>
+                        </div>
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-secondary" onclick="exportarDivergenciasExcel('roteiros')">📥 Dados dos roteiros (divergências)</button>
+                            <span>Dados dos roteiros com divergência (placa, motorista, responsáveis).</span>
+                        </div>
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-secondary" onclick="exportarDivergenciasExcel('completo')">📥 Página completa (divergências)</button>
+                            <span>Roteiros + itens divergentes em formato completo.</span>
+                        </div>
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-primary" onclick="gerarRelatorioRoteirosDivergencia()">📥 Roteiros com divergência</button>
+                            <span>Lista de roteiros que têm falta/sobra com totais.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-container relatorios-secao">
+                    <h3 style="margin-top: 0; color: #366092;">Veículos e peso</h3>
+                    <div class="relatorios-lista">
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-primary" onclick="gerarRelatorioCarregamentoVeiculo()">📥 Carregamento por veículo</button>
+                            <span>Total de itens e quantidade de viagens por veículo.</span>
+                        </div>
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-primary" onclick="gerarRelatorioPesoViagemPlaca()">📥 Peso por viagem e placa</button>
+                            <span>Peso carregado por roteiro e por placa (usa planilha para peso unitário).</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-container relatorios-secao">
+                    <h3 style="margin-top: 0; color: #366092;">Equipe</h3>
+                    <div class="relatorios-lista">
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-primary" onclick="gerarRelatorioResponsaveisViagem()">📥 Responsáveis por viagem</button>
+                            <span>Coordenador, conferente e auxiliares por roteiro.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-container relatorios-secao">
+                    <h3 style="margin-top: 0; color: #366092;">Romaneio CD Guarulhos</h3>
+                    <div class="relatorios-lista">
+                        <div class="relatorio-item">
+                            <button type="button" class="btn btn-primary" onclick="gerarRelatorioRomaneioGuarulhos()">📥 Romaneio CD Guarulhos (Resumo, Quantidade por item, Peso por carro)</button>
+                            <span>Planilha com abas: Resumo (roteiros, veículos, itens, peso total), Quantidade por item e Peso por carro.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ABA DIVERGÊNCIAS (visível somente quando houver falta ou sobra na conferência) -->
+            <div id="divergencias" class="tab-content">
+                <h2>DIVERGÊNCIAS</h2>
+                <p class="info-text">Itens que faltam bipar ou que foram bipados a mais em relação ao romaneio. Exibe divergências de <strong>todos os roteiros</strong>. <span id="divergencias-contagem"></span></p>
+                <div style="margin-bottom: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+                    <button type="button" class="btn btn-primary" onclick="loadDivergencias(true)">🔄 Atualizar divergências</button>
+                    <button type="button" class="btn btn-secondary" onclick="imprimirDivergencias()">🖨️ Imprimir divergências</button>
+                    <span style="margin-left: 8px; color: #666; font-size: 13px;">Exportar para Excel:</span>
+                    <button type="button" class="btn btn-secondary" onclick="exportarDivergenciasExcel('itens')" title="Planilha só com os itens divergentes">📥 Itens divergentes</button>
+                    <button type="button" class="btn btn-secondary" onclick="exportarDivergenciasExcel('roteiros')" title="Planilha só com dados dos roteiros (placa, motorista, responsáveis, etc.)">📥 Dados dos roteiros</button>
+                    <button type="button" class="btn btn-secondary" onclick="exportarDivergenciasExcel('completo')" title="Planilha com aba de roteiros e aba de itens (página completa)">📥 Página completa</button>
+                </div>
+
+                <!-- Conteúdo: para cada roteiro com divergência = Dados do Roteiro + Tabela de itens -->
+                <div id="divergencias-para-imprimir">
+                <h3 class="divergencias-titulo-impressao" style="display: none; margin-bottom: 12px;">DIVERGÊNCIAS - Todos os roteiros</h3>
+                <div id="divergencias-conteudo">
+                    <!-- Preenchido via JavaScript: blocos "Dados do Roteiro" + "Itens divergentes" por roteiro -->
+                </div>
+                </div>
+                <!-- fim divergencias-para-imprimir -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal de aceite para zerar todos os itens -->
+    <!-- Modal confirmar comprovante divergente -->
+    <div id="modal-comprovante-divergente" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 440px;">
+            <h3 style="margin-top: 0; color: #e65100;">Gerar comprovante divergente</h3>
+            <p style="margin: 16px 0;">Você <strong>não bipou todos os itens</strong> desta viagem. Deseja mesmo gerar o comprovante divergente?</p>
+            <p style="margin: 8px 0 20px 0; font-size: 14px; color: #666;">O extrato será gerado com aviso de comprovante divergente.</p>
+            <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalComprovanteDivergente()">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-confirmar-comprovante-divergente" onclick="confirmarGerarComprovanteDivergente()" style="background: #e65100;">Sim, gerar comprovante divergente</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal produto não cadastrado na conferência -->
+    <div id="modal-produto-nao-cadastrado" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 440px;">
+            <h3 style="margin-top: 0; color: #e65100;">Produto não cadastrado</h3>
+            <p style="margin: 16px 0;" id="modal-produto-nao-cadastrado-msg">Este produto não está na lista da conferência desta viagem. Deseja adicionar mesmo assim?</p>
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalProdutoNaoCadastrado()">Não</button>
+                <button type="button" class="btn btn-primary" id="btn-confirmar-adicionar-nao-cadastrado" onclick="confirmarAdicionarProdutoNaoCadastrado()" style="background: #e65100;">Sim, adicionar na conferência</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal cadastro do item (preenchido antes de adicionar à lista) -->
+    <div id="modal-cadastro-item" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 480px;">
+            <h3 style="margin-top: 0; color: #366092;">Cadastro do item</h3>
+            <p style="margin: 0 0 16px 0; font-size: 14px; color: #666;">Preencha os dados do item para adicioná-lo à conferência.</p>
+            <input type="hidden" id="cadastro-item-id-viagem">
+            <input type="hidden" id="cadastro-item-status">
+            <div class="form-group">
+                <label for="cadastro-item-descricao">Descrição do produto *</label>
+                <input type="text" id="cadastro-item-descricao" placeholder="Descrição do produto" required>
+            </div>
+            <div class="form-group">
+                <label for="cadastro-item-codigo-interno">Código interno</label>
+                <input type="text" id="cadastro-item-codigo-interno" placeholder="Código interno">
+            </div>
+            <div class="form-group">
+                <label for="cadastro-item-codigo-ean">Código EAN</label>
+                <input type="text" id="cadastro-item-codigo-ean" placeholder="Código EAN (código de barras)">
+            </div>
+            <div class="form-group">
+                <label for="cadastro-item-codigo-dun">Código DUN</label>
+                <input type="text" id="cadastro-item-codigo-dun" placeholder="Código DUN">
+            </div>
+            <div class="form-group">
+                <label for="cadastro-item-unidade">Unidade de medida</label>
+                <select id="cadastro-item-unidade">
+                    <option value="">Selecione</option>
+                    <option value="PACOTE" selected>Pacote</option>
+                    <option value="CAIXA">Caixa</option>
+                    <option value="UN">UN</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="cadastro-item-peso">Peso</label>
+                <input type="text" id="cadastro-item-peso" placeholder="Ex: 5,7 ou 10 kg">
+            </div>
+            <div class="form-group">
+                <label for="cadastro-item-quantidade">Quantidade *</label>
+                <input type="number" id="cadastro-item-quantidade" min="1" value="1" required>
+            </div>
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalCadastroItem()">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-cadastro-item-confirmar" onclick="confirmarCadastroItem()">Confirmar e adicionar na lista</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal excluir item da conferência -->
+    <div id="modal-excluir-item" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 440px;">
+            <h3 style="margin-top: 0; color: #c62828;">Excluir item da conferência</h3>
+            <p style="margin: 16px 0;">Deseja excluir este item da conferência? Todas as unidades bipadas deste produto nesta viagem serão removidas.</p>
+            <p style="margin: 8px 0 20px 0; font-size: 14px; color: #666;"><strong id="modal-excluir-item-nome">-</strong></p>
+            <input type="hidden" id="modal-excluir-item-codigo" value="">
+            <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalExcluirItem()">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-confirmar-excluir-item" onclick="confirmarExcluirItem()" style="background: #c62828;">Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-zerar-itens" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 420px;">
+            <h3 style="margin-top: 0; color: #c62828;">Zerar todos os itens</h3>
+            <p style="margin: 16px 0;">Isso irá <strong>apagar todos os itens bipados</strong> desta viagem. Você poderá bipar novamente do zero.</p>
+            <label style="display: flex; align-items: center; gap: 10px; margin: 20px 0; cursor: pointer;">
+                <input type="checkbox" id="aceite-zerar-itens">
+                <span>Aceito zerar todos os itens desta viagem</span>
+            </label>
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalZerarItens()">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-confirmar-zerar" disabled style="background: #c62828;">Confirmar e zerar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Edição -->
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Editar Produto</h2>
+            <form id="edit-form">
+                <input type="hidden" id="edit-id">
+                <div class="form-group">
+                    <label for="edit-produto">Produto</label>
+                    <input type="text" id="edit-produto" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-quantidade">Quantidade</label>
+                    <input type="number" id="edit-quantidade" required min="1">
+                </div>
+                <div class="form-group">
+                    <label for="edit-veiculo">Veículo</label>
+                    <input type="text" id="edit-veiculo">
+                </div>
+                <div class="form-group">
+                    <label for="edit-status">Status</label>
+                    <select id="edit-status">
+                        <option value="PENDENTE">PENDENTE</option>
+                        <option value="CARREGADO">CARREGADO</option>
+                        <option value="CANCELADO">CANCELADO</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Salvar</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="../static/script.js"></script>
+</body>
+</html>

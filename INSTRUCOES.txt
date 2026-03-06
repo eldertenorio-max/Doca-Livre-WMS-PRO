@@ -1,0 +1,81 @@
+================================================================================
+CONTROLE DE CARREGAMENTO ULTRAPÃO - INSTRUÇÕES DE USO
+================================================================================
+
+ABAS DA PLANILHA:
+-----------------
+
+1. PAINEL (CONTROLE DE CARREGAMENTO ULTRAPÃO)
+   - Painel principal com resumo e estatísticas
+   - Acesso rápido às outras abas
+   - Instruções de uso
+
+2. BASE
+   - Cadastro de todos os produtos bipados
+   - Colunas: Código de Barras, Produto, Quantidade, Data/Hora, Veículo, Status
+   - IMPORTANTE: Preencha o STATUS como "CARREGADO" para itens que foram carregados no veículo
+
+3. CONFERENCIA
+   - Consolida automaticamente os itens da BASE sem repetir códigos de barras
+   - Mostra quantidade total por código de barras
+   - As fórmulas são automáticas
+
+4. EXTRATO
+   - Mostra apenas os itens com STATUS = "CARREGADO"
+   - Relação completa de tudo que foi bipado e carregado no veículo
+   - As fórmulas são automáticas
+
+5. ROMANEIO POR ITEM
+   - Compara a quantidade bipada com a quantidade do romaneio
+   - Coluna D: Insira manualmente a quantidade do romaneio
+   - A diferença e o status são calculados automaticamente
+
+6. DIVERGÊNCIAS
+   - Mostra automaticamente todas as divergências encontradas
+   - Filtra apenas itens com diferença diferente de zero
+   - Tipo: OK, SOBRA ou FALTA
+
+================================================================================
+COMO USAR:
+================================================================================
+
+1. REGISTRAR PRODUTOS BIPADOS:
+   - Vá para a aba BASE
+   - Preencha cada linha com:
+     * Código de Barras
+     * Nome do Produto
+     * Quantidade
+     * Data/Hora (formato: DD/MM/AAAA HH:MM)
+     * Veículo
+     * Status (digite "CARREGADO" para itens carregados)
+
+2. CONFERIR ITENS ÚNICOS:
+   - A aba CONFERENCIA mostra automaticamente todos os códigos únicos
+   - A quantidade total é somada automaticamente
+
+3. VER ITENS CARREGADOS:
+   - A aba EXTRATO mostra apenas itens com status "CARREGADO"
+
+4. CONFERIR COM ROMANEIO:
+   - Vá para a aba ROMANEIO POR ITEM
+   - Insira manualmente a quantidade do romaneio na coluna D
+   - A diferença e o status são calculados automaticamente
+
+5. VER DIVERGÊNCIAS:
+   - A aba DIVERGÊNCIAS mostra automaticamente todas as diferenças
+   - Filtra apenas itens com problema (SOBRA ou FALTA)
+
+================================================================================
+OBSERVAÇÕES IMPORTANTES:
+================================================================================
+
+- Algumas fórmulas são fórmulas de array. Se não funcionarem automaticamente,
+  você pode precisar pressionar Ctrl+Shift+Enter ao editá-las.
+
+- Para melhor performance, evite deixar muitas linhas vazias na BASE.
+
+- Sempre preencha o STATUS na aba BASE para que o EXTRATO funcione corretamente.
+
+- Na aba ROMANEIO POR ITEM, preencha apenas a coluna D (Quantidade Romaneio).
+
+================================================================================

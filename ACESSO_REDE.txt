@@ -1,0 +1,40 @@
+========================================
+  COMO ABRIR O SISTEMA (MESMO PC E REDE)
+========================================
+
+--- NA MESMA MAQUINA (onde o programa esta rodando) ---
+
+  * Abra uma nova aba do navegador.
+  * Digite exatamente um dos enderecos abaixo (nao use "IP-DO-SERVIDOR"):
+
+    http://127.0.0.1:5000
+
+    ou
+
+    http://localhost:5000
+
+  * A janela do programa precisa estar aberta (servidor rodando).
+  * Se nao abrir: feche outras coisas que usem a porta 5000 e inicie de novo.
+
+
+--- EM OUTRA MAQUINA NA REDE (celular, outro PC) ---
+
+  1. Na maquina onde o programa roda, execute UMA VEZ como Administrador:
+     - Clique com o botao direito em: liberar_firewall.bat
+     - Escolha "Executar como administrador"
+     - Confirme a liberacao da porta 5000.
+
+  2. Descubra o IP do PC onde o programa esta rodando:
+     - Na janela preta do programa, ao iniciar, aparece algo como:
+       "Em outra maquina na rede:  http://192.168.1.100:5000"
+     - Ou: Windows - Configuracoes - Rede - Propriedades do Wi-Fi/Ethernet - IPv4.
+
+  3. Na outra maquina (mesma rede Wi-Fi/LAN), no navegador digite:
+     http://SEU_IP:5000
+     (troque SEU_IP pelo numero que apareceu, ex.: http://192.168.1.100:5000)
+
+
+--- SE AINDA NAO ABRIR ---
+
+  * Firewall/antivirus pode estar bloqueando: permita Python ou a porta 5000.
+  * Todas as maquinas devem estar na MESMA rede (mesmo Wi-Fi ou mesma rede cabada).

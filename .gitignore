@@ -1,0 +1,59 @@
+# Variáveis de ambiente
+.env
+.env.local
+
+# Config com senhas (use config_usuarios.example.py como modelo)
+config_usuarios.py
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.so
+
+# Banco de dados local
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Uploads / temporários
+uploads/
+*.tmp
+*.temp
+
+# Logs
+*.log
+logs/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Planilhas grandes (opcional: descomente se quiser versioná-las)
+# *.xlsx
+# *.xls
+
+# Arquivos de build do instalador
+dist/
+build/
+*.spec

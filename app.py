@@ -1,0 +1,4324 @@
+from flask import Flask, render_template, request, jsonify, send_file, Response, redirect, url_for, session
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+import sqlite3
+import os
+import sys
+import time
+import threading
+import queue
+import json
+import importlib.util
+import openpyxl
+from openpyxl.styles import Font
+from io import BytesIO
+from werkzeug.utils import secure_filename
+
+try:
+    from dotenv import load_dotenv  # type: ignore
+except Exception:
+    load_dotenv = None
+
+try:
+    import psycopg  # type: ignore
+    from psycopg.rows import dict_row  # type: ignore
+except Exception:
+    psycopg = None
+    dict_row = None
+
+# Quando instalado (PyInstaller): dados em AppData; planilha pode ficar na pasta do exe
+if getattr(sys, 'frozen', False):
+    _BASE_DIR = os.path.join(os.environ.get('APPDATA', ''), 'ControleCarregamentoUltrapao')
+    _EXE_DIR = os.path.dirname(sys.executable)
+else:
+    _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    _EXE_DIR = _BASE_DIR
+os.makedirs(_BASE_DIR, exist_ok=True)
+
+if load_dotenv:
+    try:
+        load_dotenv()
+    except Exception:
+        pass
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = (os.environ.get('SECRET_KEY') or 'ultrapao-secret-key-2024')
+
+# Atualização em tempo real: quando alguém bipa, todos os clientes (127.0.0.1 e 192.168.x.x) recebem e atualizam
+_sse_queues = []
+_sse_lock = threading.Lock()
+
+def _broadcast_atualizar():
+    """Notifica todos os clientes e envia totais para atualização imediata (sem esperar novo GET)."""
+    try:
+        conn = get_db()
+        row = conn.execute(
+            'SELECT COUNT(*) as c, COALESCE(SUM(quantidade), 0) as s FROM produtos_bipados'
+        ).fetchone()
+        conn.close()
+        payload = json.dumps({
+            't': 'atualizar',
+            'total_bipados': row['c'] if row else 0,
+            'soma_quantidades': int(row['s']) if row else 0
+        })
+    except Exception:
+        payload = 'atualizar'
+    with _sse_lock:
+        for q in _sse_queues:
+            try:
+                q.put_nowait(payload)
+            except Exception:
+                pass
+
+# Configuração do banco de dados e upload (pasta gravável)
+DB_NAME = os.path.join(_BASE_DIR, 'controle_carregamento.db')
+UPLOAD_FOLDER = os.path.join(_BASE_DIR, 'uploads')
+ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+def init_db():
+    """Inicializa o banco de dados"""
+    conn = get_db()
+    try:
+        if getattr(conn, 'kind', 'sqlite') == 'pg':
+            # Postgres (Supabase) — schema simplificado (completo está em supabase/schema.sql)
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.usuarios (
+                    id BIGSERIAL PRIMARY KEY,
+                    usuario TEXT NOT NULL UNIQUE,
+                    senha_hash TEXT NOT NULL,
+                    ativo BOOLEAN NOT NULL DEFAULT TRUE,
+                    criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )'''
+            )
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.colaboradores (
+                    id BIGSERIAL PRIMARY KEY,
+                    nome TEXT NOT NULL,
+                    funcao TEXT,
+                    centro_custo TEXT,
+                    tipo TEXT,
+                    cpf TEXT,
+                    telefone TEXT,
+                    email TEXT,
+                    ativo BOOLEAN NOT NULL DEFAULT TRUE,
+                    observacoes TEXT,
+                    criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    criado_por TEXT,
+                    atualizado_por TEXT
+                )'''
+            )
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_colaboradores_nome ON public.colaboradores (nome) WHERE ativo = TRUE')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_colaboradores_tipo ON public.colaboradores (tipo) WHERE ativo = TRUE AND tipo IS NOT NULL')
+            conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_colaboradores_cpf ON public.colaboradores (cpf) WHERE cpf IS NOT NULL AND cpf != \'\'')
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.motoristas (
+                    id BIGSERIAL PRIMARY KEY,
+                    nome TEXT NOT NULL UNIQUE,
+                    cpf TEXT,
+                    cnh TEXT,
+                    categoria_cnh TEXT,
+                    validade_cnh DATE,
+                    telefone TEXT,
+                    email TEXT,
+                    centro_custo TEXT,
+                    ativo BOOLEAN NOT NULL DEFAULT TRUE,
+                    observacoes TEXT,
+                    criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    criado_por TEXT,
+                    atualizado_por TEXT
+                )'''
+            )
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_motoristas_nome ON public.motoristas (nome) WHERE ativo = TRUE')
+            conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_motoristas_cpf ON public.motoristas (cpf) WHERE cpf IS NOT NULL AND cpf != \'\'')
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.placas (
+                    id BIGSERIAL PRIMARY KEY,
+                    placa TEXT NOT NULL UNIQUE,
+                    descricao TEXT,
+                    tipo_veiculo TEXT,
+                    capacidade_kg NUMERIC(10,2),
+                    ano INTEGER,
+                    marca TEXT,
+                    modelo TEXT,
+                    ativo BOOLEAN NOT NULL DEFAULT TRUE,
+                    observacoes TEXT,
+                    criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    criado_por TEXT,
+                    atualizado_por TEXT
+                )'''
+            )
+            conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_placas_placa ON public.placas (placa)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_placas_ativo ON public.placas (ativo) WHERE ativo = TRUE')
+
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.produtos_bipados (
+                    id BIGSERIAL PRIMARY KEY,
+                    codigo_barras TEXT NOT NULL,
+                    codigo_interno TEXT,
+                    codigo_dun TEXT,
+                    produto TEXT NOT NULL,
+                    quantidade INTEGER NOT NULL CHECK (quantidade >= 1),
+                    unidade TEXT,
+                    peso TEXT,
+                    id_viagem TEXT NOT NULL,
+                    doca TEXT CHECK (doca IN ('1', '2', '3', '4')),
+                    veiculo TEXT,
+                    status TEXT NOT NULL DEFAULT 'PENDENTE' CHECK (status IN ('PENDENTE', 'CARREGADO', 'CANCELADO')),
+                    data_hora TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    usuario_bipagem TEXT,
+                    criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )'''
+            )
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.viagem_placa (
+                    id_viagem TEXT PRIMARY KEY,
+                    placa TEXT NOT NULL,
+                    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    atualizado_por TEXT
+                )'''
+            )
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.viagem_motorista (
+                    id_viagem TEXT PRIMARY KEY,
+                    motorista TEXT NOT NULL,
+                    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    atualizado_por TEXT
+                )'''
+            )
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.romaneio (
+                    id BIGSERIAL PRIMARY KEY,
+                    codigo_barras TEXT NOT NULL UNIQUE,
+                    quantidade_romaneio INTEGER NOT NULL DEFAULT 0,
+                    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )'''
+            )
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.viagem_responsaveis (
+                    id_viagem TEXT PRIMARY KEY,
+                    coordenador TEXT NOT NULL DEFAULT 'ASTROGILDO RODRIGUES DOS SANTOS',
+                    conferente TEXT,
+                    ajudante1 TEXT,
+                    ajudante2 TEXT,
+                    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    atualizado_por TEXT
+                )'''
+            )
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.divergencia_motivo (
+                    id_viagem TEXT NOT NULL,
+                    codigo_produto TEXT NOT NULL,
+                    motivo TEXT,
+                    registrado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    registrado_por TEXT,
+                    PRIMARY KEY (id_viagem, codigo_produto)
+                )'''
+            )
+            # Índices
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_id_viagem ON public.produtos_bipados(id_viagem)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_codigo ON public.produtos_bipados(codigo_barras)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_viagem_codigo ON public.produtos_bipados(id_viagem, codigo_barras)')
+            conn.commit()
+            return
+
+        # SQLite (local)
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS produtos_bipados (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                codigo_barras TEXT NOT NULL,
+                produto TEXT NOT NULL,
+                quantidade INTEGER NOT NULL,
+                data_hora TEXT NOT NULL,
+                veiculo TEXT,
+                status TEXT DEFAULT 'PENDENTE',
+                id_viagem TEXT
+            )'''
+        )
+        # Migrações SQLite (ADD COLUMN se não existir)
+        for col_sql in (
+            'ALTER TABLE produtos_bipados ADD COLUMN doca TEXT',
+            'ALTER TABLE produtos_bipados ADD COLUMN codigo_interno TEXT',
+            'ALTER TABLE produtos_bipados ADD COLUMN codigo_dun TEXT',
+            'ALTER TABLE produtos_bipados ADD COLUMN unidade TEXT',
+            'ALTER TABLE produtos_bipados ADD COLUMN peso TEXT',
+            'ALTER TABLE produtos_bipados ADD COLUMN usuario_bipagem TEXT',
+        ):
+            try:
+                conn.execute(col_sql)
+                conn.commit()
+            except Exception:
+                pass
+
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS romaneio (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                codigo_barras TEXT NOT NULL UNIQUE,
+                quantidade_romaneio INTEGER NOT NULL DEFAULT 0
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS viagem_placa (
+                id_viagem TEXT PRIMARY KEY,
+                placa TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS viagem_motorista (
+                id_viagem TEXT PRIMARY KEY,
+                motorista TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS viagem_responsaveis (
+                id_viagem TEXT PRIMARY KEY,
+                coordenador TEXT NOT NULL,
+                conferente TEXT NOT NULL,
+                ajudante1 TEXT NOT NULL,
+                ajudante2 TEXT NOT NULL
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS divergencia_motivo (
+                id_viagem TEXT NOT NULL,
+                codigo_produto TEXT NOT NULL,
+                motivo TEXT,
+                PRIMARY KEY (id_viagem, codigo_produto)
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS usuarios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario TEXT NOT NULL UNIQUE,
+                senha_hash TEXT NOT NULL,
+                criado_em TEXT
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS colaboradores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT NOT NULL,
+                funcao TEXT,
+                centro_custo TEXT,
+                tipo TEXT,
+                cpf TEXT UNIQUE,
+                telefone TEXT,
+                email TEXT,
+                ativo INTEGER NOT NULL DEFAULT 1,
+                observacoes TEXT,
+                criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                atualizado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS motoristas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT NOT NULL UNIQUE,
+                cpf TEXT UNIQUE,
+                cnh TEXT,
+                categoria_cnh TEXT,
+                validade_cnh TEXT,
+                telefone TEXT,
+                email TEXT,
+                centro_custo TEXT,
+                ativo INTEGER NOT NULL DEFAULT 1,
+                observacoes TEXT,
+                criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                atualizado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS placas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                placa TEXT NOT NULL UNIQUE,
+                descricao TEXT,
+                tipo_veiculo TEXT,
+                capacidade_kg REAL,
+                ano INTEGER,
+                marca TEXT,
+                modelo TEXT,
+                ativo INTEGER NOT NULL DEFAULT 1,
+                observacoes TEXT,
+                criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                atualizado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )'''
+        )
+        conn.commit()
+
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_id_viagem ON produtos_bipados(id_viagem)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_colaboradores_nome ON colaboradores(nome) WHERE ativo = 1')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_colaboradores_tipo ON colaboradores(tipo) WHERE ativo = 1 AND tipo IS NOT NULL')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_motoristas_nome ON motoristas(nome) WHERE ativo = 1')
+        conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_placas_placa ON placas(placa)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_codigo ON produtos_bipados(codigo_barras)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_viagem_codigo ON produtos_bipados(id_viagem, codigo_barras)')
+        conn.commit()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def sync_usuarios_from_config():
+    """
+    Sincroniza a tabela 'usuarios' com o arquivo config_usuarios.py.
+    - Usuários listados no arquivo: inseridos ou atualizados (senha em hash).
+    - Usuários que não estão no arquivo: removidos do banco.
+    Se o arquivo não existir, é criado com o usuário admin/admin.
+    """
+    config_path = os.path.join(_EXE_DIR, 'config_usuarios.py')
+    default_content = '''# -*- coding: utf-8 -*-
+# Controle de usuários. Edite a lista USUARIOS e reinicie o app.
+# Formato: {"usuario": "nome", "senha": "senha_em_texto"}
+USUARIOS = [
+    {"usuario": "admin", "senha": "admin"},
+]
+'''
+    if not os.path.isfile(config_path):
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                f.write(default_content)
+        except Exception:
+            pass
+    lista = []
+    if os.path.isfile(config_path):
+        try:
+            spec = importlib.util.spec_from_file_location('config_usuarios', config_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            lista = getattr(mod, 'USUARIOS', [])
+            if not isinstance(lista, list):
+                lista = []
+        except Exception:
+            lista = []
+    if not lista:
+        lista = [{'usuario': 'admin', 'senha': 'admin'}]
+    conn = get_db()
+    try:
+        usuarios_do_arquivo = set()
+        for item in lista:
+            if not isinstance(item, dict):
+                continue
+            usuario = (item.get('usuario') or '').strip()
+            senha = item.get('senha') or ''
+            if not usuario:
+                continue
+            usuarios_do_arquivo.add(usuario)
+            senha_hash = generate_password_hash(senha, method='pbkdf2:sha256')
+            conn.execute(
+                '''INSERT INTO usuarios (usuario, senha_hash, criado_em) VALUES (?, ?, ?)
+                   ON CONFLICT(usuario) DO UPDATE SET senha_hash = excluded.senha_hash''',
+                (usuario, senha_hash, datetime.now().isoformat())
+            )
+        conn.commit()
+        # Remove do banco usuários que não estão mais no arquivo (excluídos no config = não podem mais logar)
+        remover = [row['usuario'] for row in conn.execute('SELECT usuario FROM usuarios') if row['usuario'] not in usuarios_do_arquivo]
+        for u in remover:
+            conn.execute('DELETE FROM usuarios WHERE usuario = ?', (u,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def adicionar_usuario_ao_config(usuario, senha):
+    """
+    Adiciona um novo usuário/senha ao arquivo config_usuarios.py (atualiza o arquivo
+    quando alguém se cadastra pela tela de Cadastrar).
+    """
+    config_path = os.path.join(_EXE_DIR, 'config_usuarios.py')
+    if not os.path.isfile(config_path):
+        return
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        # Evitar duplicata: se o usuário já está no arquivo, não adicionar de novo
+        for line in lines:
+            if '"usuario"' in line and json.dumps(usuario) in line:
+                return
+        insert_at = -1
+        in_list = False
+        for i, line in enumerate(lines):
+            if 'USUARIOS' in line and '=' in line and '[' in line:
+                in_list = True
+                continue
+            if in_list and line.strip() == ']':
+                insert_at = i
+                break
+        if insert_at < 0:
+            return
+        # Garantir vírgula na linha anterior
+        prev = insert_at - 1
+        while prev >= 0 and not lines[prev].strip():
+            prev -= 1
+        if prev >= 0 and lines[prev].rstrip() and not lines[prev].rstrip().endswith(','):
+            lines[prev] = lines[prev].rstrip()
+            if not lines[prev].endswith('\n'):
+                lines[prev] += '\n'
+            lines[prev] = lines[prev].rstrip().rstrip(',') + ',\n'
+        nova_linha = '    {"usuario": %s, "senha": %s},\n' % (json.dumps(usuario), json.dumps(senha))
+        lines.insert(insert_at, nova_linha)
+        with open(config_path, 'w', encoding='utf-8') as f:
+            f.writelines(lines)
+    except Exception:
+        pass
+
+
+def get_db():
+    """Retorna conexão com o banco de dados. Timeout para suportar 4 docas bipando ao mesmo tempo."""
+    db_url = (os.environ.get('DATABASE_URL') or '').strip()
+    if db_url:
+        if psycopg is None:
+            raise RuntimeError('psycopg não instalado. Instale as dependências do requirements.txt.')
+        # Supabase Postgres normalmente exige SSL
+        return CompatConn(
+            psycopg.connect(
+                db_url,
+                sslmode=os.environ.get('PGSSLMODE', 'require'),
+                connect_timeout=15,
+                row_factory=dict_row,
+            ),
+            kind='pg',
+        )
+    conn = sqlite3.connect(DB_NAME, timeout=15.0)
+    conn.row_factory = sqlite3.Row
+    return CompatConn(conn, kind='sqlite')
+
+
+class CompatConn:
+    """
+    Compatibilidade SQLite/Postgres:
+    - SQLite usa '?' como placeholder
+    - Postgres (psycopg) usa '%s'
+    Este wrapper permite manter as queries atuais.
+    """
+
+    def __init__(self, conn, *, kind: str):
+        self._conn = conn
+        self._kind = kind
+    
+    @property
+    def kind(self) -> str:
+        return self._kind
+
+    def execute(self, sql, params=()):
+        if self._kind == 'pg' and sql and '?' in sql:
+            sql = sql.replace('?', '%s')
+        return self._conn.execute(sql, params or ())
+
+    def commit(self):
+        return self._conn.commit()
+
+    def close(self):
+        return self._conn.close()
+
+
+def _usa_banco_para_dados():
+    """True quando DATABASE_URL está definido: app usa apenas o banco (dados subidos por código), não a planilha."""
+    return bool((os.environ.get('DATABASE_URL') or '').strip())
+
+
+def _get_latest_dataset_id(conn):
+    """Retorna o dataset_id ativo (base_codigo_barras) ou None."""
+    if getattr(conn, 'kind', None) != 'pg':
+        return None
+    try:
+        row = conn.execute(
+            "SELECT dataset_id FROM excel_datasets WHERE ativo = ? LIMIT 1",
+            (True,),
+        ).fetchone()
+        return row.get('dataset_id') if row else None
+    except Exception:
+        return None
+
+
+def _requer_login():
+    """Retorna True se a rota atual requer login (e o usuário não está logado)."""
+    if request.endpoint in (None, 'login', 'static'):
+        return False
+    if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
+        return False
+    return 'usuario' not in session
+
+
+def _usuario_ainda_existe(usuario):
+    """Verifica se o usuário ainda existe no banco (não foi excluído do config)."""
+    if not usuario:
+        return False
+    conn = get_db()
+    try:
+        row = conn.execute('SELECT 1 FROM usuarios WHERE usuario = ?', (usuario,)).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+@app.before_request
+def proteger_rotas():
+    """Redireciona para /login se o usuário não estiver autenticado. Invalida sessão se o usuário foi excluído."""
+    # Rotas que não exigem autenticação
+    if request.endpoint in (None, 'login', 'static'):
+        return None
+    if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
+        return None
+    # Se está logado, verificar se o usuário ainda existe no banco (não foi removido do config)
+    if session.get('usuario'):
+        if not _usuario_ainda_existe(session.get('usuario')):
+            session.pop('usuario', None)
+            session.pop('usuario_id', None)
+            if request.path.startswith('/api/'):
+                return jsonify({'ok': False, 'erro': 'Sessão encerrada. Usuário foi removido.'}), 401
+            return redirect(url_for('login'))
+    # Exige login
+    if _requer_login():
+        if request.path.startswith('/api/'):
+            return jsonify({'ok': False, 'erro': 'Não autorizado'}), 401
+        return redirect(url_for('login'))
+
+
+@app.route('/login', methods=['GET'])
+def login():
+    """Página de login."""
+    if session.get('usuario'):
+        return redirect(url_for('index'))
+    return render_template('login.html')
+
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    """Autentica usuário e inicia sessão."""
+    data = request.get_json() or {}
+    usuario = (data.get('usuario') or '').strip()
+    senha = data.get('senha') or ''
+    if not usuario or not senha:
+        return jsonify({'ok': False, 'erro': 'Informe usuário e senha.'})
+    conn = get_db()
+    row = conn.execute('SELECT id, senha_hash FROM usuarios WHERE usuario = ?', (usuario,)).fetchone()
+    conn.close()
+    if not row or not check_password_hash(row['senha_hash'], senha):
+        return jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})
+    session['usuario'] = usuario
+    session['usuario_id'] = row['id']
+    return jsonify({'ok': True, 'redirect': url_for('index')})
+
+
+@app.route('/api/cadastrar', methods=['POST'])
+def api_cadastrar():
+    """Cadastra novo usuário."""
+    data = request.get_json() or {}
+    usuario = (data.get('usuario') or '').strip()
+    senha = data.get('senha') or ''
+    confirmar = data.get('confirmar_senha') or ''
+    if not usuario or not senha:
+        return jsonify({'ok': False, 'erro': 'Informe usuário e senha.'})
+    if len(usuario) < 2:
+        return jsonify({'ok': False, 'erro': 'Usuário deve ter pelo menos 2 caracteres.'})
+    if len(senha) < 4:
+        return jsonify({'ok': False, 'erro': 'Senha deve ter pelo menos 4 caracteres.'})
+    if senha != confirmar:
+        return jsonify({'ok': False, 'erro': 'As senhas não coincidem.'})
+    conn = get_db()
+    try:
+        conn.execute(
+            'INSERT INTO usuarios (usuario, senha_hash, criado_em) VALUES (?, ?, ?)',
+            (usuario, generate_password_hash(senha, method='pbkdf2:sha256'), datetime.now().isoformat())
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({'ok': False, 'erro': 'Este usuário já existe.'})
+    conn.close()
+    adicionar_usuario_ao_config(usuario, senha)
+    return jsonify({'ok': True, 'mensagem': 'Cadastro realizado. Faça login.'})
+
+
+@app.route('/api/logout', methods=['POST'])
+def api_logout():
+    """Encerra a sessão."""
+    session.pop('usuario', None)
+    session.pop('usuario_id', None)
+    return jsonify({'ok': True, 'redirect': url_for('login')})
+
+
+@app.route('/api/usuarios', methods=['GET'])
+def api_listar_usuarios():
+    """Lista todos os usuários cadastrados (apenas nomes; senhas não são exibidas)."""
+    conn = get_db()
+    rows = conn.execute('SELECT usuario, criado_em FROM usuarios ORDER BY usuario').fetchall()
+    conn.close()
+    return jsonify([{'usuario': row['usuario'], 'criado_em': row['criado_em'] or ''} for row in rows])
+
+
+@app.route('/')
+def index():
+    """Página principal - Painel"""
+    return render_template('index.html', usuario=session.get('usuario', ''))
+
+
+@app.route('/api/eventos-stream')
+def eventos_stream():
+    """Server-Sent Events: envia 'atualizar' quando alguém bipa (ou remove). Assim todas as abas/dispositivos atualizam em tempo real."""
+    def gerar():
+        client_queue = queue.Queue()
+        with _sse_lock:
+            _sse_queues.append(client_queue)
+        try:
+            while True:
+                try:
+                    msg = client_queue.get(timeout=25)
+                    yield f"data: {msg}\n\n"
+                except queue.Empty:
+                    yield ": heartbeat\n\n"
+        finally:
+            with _sse_lock:
+                if client_queue in _sse_queues:
+                    _sse_queues.remove(client_queue)
+    return Response(
+        gerar(),
+        mimetype='text/event-stream',
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no', 'Connection': 'keep-alive'}
+    )
+
+
+@app.route('/api/produtos', methods=['GET'])
+def get_produtos():
+    """Retorna todos os produtos bipados cadastrados no sistema"""
+    conn = get_db()
+    produtos = conn.execute('SELECT * FROM produtos_bipados ORDER BY data_hora DESC').fetchall()
+    conn.close()
+    return jsonify([dict(row) for row in produtos])
+
+def _coluna_base_eh_codigo_barras(header_str):
+    """Coluna que contém código de barras (EAN, DUN ou Código de Barras)."""
+    if not header_str:
+        return False
+    h = header_str.upper().strip()
+    if ('CODIGO' in h or 'CÓDIGO' in h) and 'BARRAS' in h:
+        return True
+    if 'EAN' in h or 'DUN' in h:
+        return True
+    if h == 'CODIGO BARRAS' or h == 'CÓDIGO BARRAS':
+        return True
+    return False
+
+
+def _coluna_base_eh_ean(header_str):
+    """Coluna Cod. EAN-13."""
+    if not header_str:
+        return False
+    h = header_str.upper().strip()
+    return 'EAN' in h and '13' in h
+
+
+def _coluna_base_eh_dun(header_str):
+    """Coluna Cod. DUN-14."""
+    if not header_str:
+        return False
+    h = header_str.upper().strip()
+    return 'DUN' in h and '14' in h
+
+
+def _coluna_base_eh_codigo_interno(header_str):
+    """Coluna Codigo (código do produto, sem ser barras/EAN/DUN)."""
+    if not header_str:
+        return False
+    h = header_str.upper().strip()
+    if h == 'CODIGO' or h == 'CÓDIGO':
+        return True
+    if 'INTERNO' in h and ('CODIGO' in h or 'CÓDIGO' in h):
+        return True
+    if 'PRODUTO' in h and ('CODIGO' in h or 'CÓDIGO' in h) and 'BARRAS' not in h and 'EAN' not in h and 'DUN' not in h:
+        return True
+    return False
+
+
+def _coluna_base_eh_descricao(header_str):
+    if not header_str:
+        return False
+    h = header_str.upper().strip()
+    if 'DESCRI' in h or 'DESCRIÇÃO' in h:
+        return True
+    if h == 'PRODUTO' or h == 'NOME' or h == 'NOME DO PRODUTO':
+        return True
+    return False
+
+
+@app.route('/api/base-planilha', methods=['GET'])
+def get_base_planilha():
+    """Retorna dados da aba BASE: do banco (base_codigo_barras) quando DATABASE_URL está definido; senão da planilha."""
+    if _usa_banco_para_dados():
+        conn = get_db()
+        try:
+            ds = _get_latest_dataset_id(conn)
+            if not ds:
+                return jsonify({'headers': [], 'rows': []})
+            filtro_codigo = request.args.get('codigo_barras', '').strip()
+            filtro_descricao = request.args.get('descricao', '').strip()
+            if getattr(conn, 'kind', None) == 'pg':
+                rows_raw = conn.execute(
+                    """SELECT data FROM base_codigo_barras WHERE dataset_id = ? ORDER BY row_index""",
+                    (str(ds),),
+                ).fetchall()
+            else:
+                conn.close()
+                return jsonify({'headers': [], 'rows': []})
+            conn.close()
+            rows = []
+            headers = []
+            for r in rows_raw:
+                data = r.get('data') if isinstance(r.get('data'), dict) else (json.loads(r['data']) if isinstance(r.get('data'), str) else {})
+                if not data:
+                    continue
+                if filtro_codigo and not any(filtro_codigo.upper() in str(v or '').upper() for k, v in data.items() if k and ('ean' in k.lower() or 'dun' in k.lower() or 'codigo' in k.lower() or 'barras' in k.lower())):
+                    continue
+                if filtro_descricao and filtro_descricao.upper() not in str(data.get('Descricao') or data.get('descricao') or '').upper():
+                    continue
+                if not headers:
+                    headers = [str(k) for k in data.keys()]
+                row_dict = {str(k): (v.strftime('%Y-%m-%d %H:%M:%S') if isinstance(v, datetime) else v) for k, v in data.items()}
+                rows.append(row_dict)
+            return jsonify({'headers': headers or ['Codigo', 'Descricao', 'Unidade'], 'rows': rows})
+        except Exception as e:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return jsonify({'erro': str(e)}), 500
+
+    # Sem planilha: dados vêm apenas do banco (DATABASE_URL)
+    return jsonify({'headers': [], 'rows': [], 'erro': 'Configure DATABASE_URL. Base de produtos vem apenas do banco.'})
+
+
+def _normalizar_codigo_barras(codigo):
+    """Se o leitor ler dois códigos grudados (um na frente do outro), usa só o primeiro."""
+    if not codigo or len(codigo) < 4:
+        return codigo
+    s = str(codigo).strip()
+    n = len(s)
+    if n % 2 != 0:
+        return s
+    metade = n // 2
+    if s[:metade] == s[metade:]:
+        return s[:metade]
+    return s
+
+
+@app.route('/api/produtos', methods=['POST'])
+def add_produto():
+    """Adiciona um novo produto bipado. Se não estiver cadastrado na conferência, retorna produto_nao_cadastrado para o frontend perguntar se deseja adicionar."""
+    data = request.json or {}
+    forcar_adicionar = data.get('forcar_adicionar', False)
+    conn = get_db()
+    codigo_barras = _normalizar_codigo_barras(data.get('codigo_barras', '') or '')
+    id_viagem = (data.get('id_viagem') or '').strip()
+
+    if id_viagem and not forcar_adicionar:
+        ret = get_conferencia(id_viagem)
+        resp = ret[0] if isinstance(ret, tuple) else ret
+        lista = resp.get_json() if hasattr(resp, 'get_json') else []
+        if isinstance(lista, list):
+            codigos_conferencia = {str(item.get('codigo_barras') or '').strip() for item in lista}
+            if codigo_barras and codigo_barras not in codigos_conferencia:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'produto_nao_cadastrado': True,
+                    'mensagem': 'Este produto não está cadastrado na conferência desta viagem. Deseja adicionar mesmo assim?'
+                })
+
+    doca = (data.get('doca') or '').strip()
+    if doca not in ('1', '2', '3', '4'):
+        return jsonify({'success': False, 'mensagem': 'Selecione a doca (1, 2, 3 ou 4) antes de bipar.'}), 400
+    codigo_interno = (data.get('codigo_interno') or '').strip()
+    codigo_dun = (data.get('codigo_dun') or '').strip()
+    unidade = (data.get('unidade') or data.get('Unidade') or '').strip()
+    peso = (data.get('peso') or '').strip()
+    # EAN = Caixa; DUN = Pacote/Unidade conforme coluna Unidade do Romaneio por Item
+    if not unidade and codigo_barras:
+        info = buscar_produto_na_planilha(codigo_barras)
+        if info and not info.get('erro'):
+            if not codigo_interno and info.get('codigo_produto'):
+                codigo_interno = str(info.get('codigo_produto', '')).strip()
+            tipo = (info.get('tipo_codigo') or '').upper()
+            if tipo == 'EAN':
+                unidade = 'Caixa'
+            elif tipo == 'DUN' and codigo_interno and id_viagem:
+                unidade = get_unidade_romaneio(id_viagem, codigo_interno) or 'Pacote'
+            if not unidade:
+                unidade = get_unidade_romaneio(id_viagem, codigo_interno) if (codigo_interno and id_viagem) else 'Unidade'
+    usuario_logado = session.get('usuario', '') or ''
+    try:
+        qtd_bipar = int(data.get('quantidade', 1))
+    except (TypeError, ValueError):
+        qtd_bipar = 1
+    qtd_bipar = max(1, min(99999, qtd_bipar))
+    conn.execute(
+        '''INSERT INTO produtos_bipados 
+           (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca, codigo_interno, codigo_dun, unidade, peso, usuario_bipagem)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        (
+            codigo_barras,
+            data.get('produto', ''),
+            qtd_bipar,
+            datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+            data.get('veiculo', ''),
+            data.get('status', 'PENDENTE'),
+            id_viagem,
+            doca,
+            codigo_interno,
+            codigo_dun,
+            unidade,
+            peso,
+            usuario_logado
+        )
+    )
+    conn.commit()
+    conn.close()
+    _broadcast_atualizar()
+    return jsonify({'success': True})
+
+@app.route('/api/produtos/<int:produto_id>', methods=['PUT'])
+def update_produto(produto_id):
+    """Atualiza um produto"""
+    data = request.json
+    conn = get_db()
+    
+    conn.execute(
+        '''UPDATE produtos_bipados 
+           SET produto = ?, quantidade = ?, veiculo = ?, status = ?
+           WHERE id = ?''',
+        (
+            data.get('produto', ''),
+            data.get('quantidade', 1),
+            data.get('veiculo', ''),
+            data.get('status', 'PENDENTE'),
+            produto_id
+        )
+    )
+    
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+@app.route('/api/produtos/<int:produto_id>', methods=['DELETE'])
+def delete_produto(produto_id):
+    """Remove um produto"""
+    conn = get_db()
+    conn.execute('DELETE FROM produtos_bipados WHERE id = ?', (produto_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+@app.route('/api/conferencia/<id_viagem>/zerar', methods=['DELETE', 'POST'])
+def zerar_bipagem_viagem(id_viagem):
+    """Remove todos os registros de bipagem da viagem para permitir bipar novamente"""
+    if not id_viagem:
+        return jsonify({'erro': 'ID do roteiro não informado'}), 400
+    conn = get_db()
+    conn.execute('DELETE FROM produtos_bipados WHERE id_viagem = ?', (id_viagem.strip(),))
+    conn.commit()
+    conn.close()
+    _broadcast_atualizar()
+    return jsonify({'success': True, 'mensagem': 'Bipagem zerada. Você pode bipar novamente.'})
+
+
+@app.route('/api/conferencia/remover', methods=['POST'])
+def remover_itens_bipados():
+    """Remove itens bipados (quando bipou errado). Body: id_viagem, codigo_barras, quantidade (ou 'tudo')"""
+    data = request.json or {}
+    id_viagem = (data.get('id_viagem') or '').strip()
+    codigo_barras = (data.get('codigo_barras') or '').strip()
+    quantidade = data.get('quantidade', 1)
+    if not id_viagem or not codigo_barras:
+        return jsonify({'erro': 'id_viagem e codigo_barras são obrigatórios'}), 400
+    conn = get_db()
+    conn.row_factory = sqlite3.Row
+    # Buscar registros do mais recente ao mais antigo
+    rows = conn.execute(
+        'SELECT id, quantidade FROM produtos_bipados WHERE id_viagem = ? AND codigo_barras = ? ORDER BY id DESC',
+        (id_viagem, codigo_barras)
+    ).fetchall()
+    if not rows:
+        conn.close()
+        return jsonify({'success': True, 'mensagem': 'Nenhum item bipado para este produto nesta viagem.', 'removidos': 0})
+    if quantidade == 'tudo' or quantidade == 'all':
+        qtd_remover = sum(r['quantidade'] for r in rows)
+        conn.execute('DELETE FROM produtos_bipados WHERE id_viagem = ? AND codigo_barras = ?', (id_viagem, codigo_barras))
+        conn.commit()
+        conn.close()
+        _broadcast_atualizar()
+        return jsonify({'success': True, 'mensagem': f'{qtd_remover} unidade(s) removida(s).', 'removidos': qtd_remover})
+    try:
+        qtd_remover = int(quantidade)
+    except (TypeError, ValueError):
+        qtd_remover = 1
+    if qtd_remover <= 0:
+        conn.close()
+        return jsonify({'success': True, 'removidos': 0})
+    removidos = 0
+    for row in rows:
+        if removidos >= qtd_remover:
+            break
+        rid, qtd = row['id'], row['quantidade']
+        falta_remover = qtd_remover - removidos
+        if qtd <= falta_remover:
+            conn.execute('DELETE FROM produtos_bipados WHERE id = ?', (rid,))
+            removidos += qtd
+        else:
+            conn.execute('UPDATE produtos_bipados SET quantidade = quantidade - ? WHERE id = ?', (falta_remover, rid))
+            removidos += falta_remover
+    conn.commit()
+    conn.close()
+    _broadcast_atualizar()
+    return jsonify({'success': True, 'mensagem': f'{removidos} unidade(s) removida(s).', 'removidos': removidos})
+
+
+@app.route('/api/viagem/<id_viagem>/periodo', methods=['GET'])
+def get_periodo_viagem(id_viagem):
+    """Retorna início e fim da bipagem/carregamento (data e hora) para a viagem."""
+    if not id_viagem:
+        return jsonify({'erro': 'ID do roteiro não informado'}), 400
+    conn = get_db()
+    row = conn.execute(
+        'SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE id_viagem = ?',
+        (id_viagem.strip(),)
+    ).fetchone()
+    conn.close()
+    inicio = row['inicio'] if row and row['inicio'] else ''
+    fim = row['fim'] if row and row['fim'] else ''
+    return jsonify({
+        'inicio_bipagem': inicio,
+        'fim_bipagem': fim,
+        'inicio_carregamento': inicio,
+        'fim_carregamento': fim
+    })
+
+
+def _normalizar_id_viagem(val):
+    """ID do roteiro (ou viagem) pode vir como número (555555 ou 555555.0) ou texto; retorna string unificada para comparação."""
+    if val is None:
+        return ''
+    if isinstance(val, float):
+        return str(int(val)) if val == int(val) else str(val).strip()
+    if isinstance(val, int):
+        return str(val)
+    return str(val).strip()
+
+
+def _normalizar_codigo_produto(val):
+    """Código do produto pode vir como número (3000, 3000.0) ou texto ('01.06.0001'); retorna string unificada para busca no mapa."""
+    if val is None:
+        return ''
+    s = str(val).strip()
+    if not s or s.startswith('='):
+        return ''
+    try:
+        f = float(s)
+        if f == int(f):
+            return str(int(f))
+    except (ValueError, TypeError):
+        pass
+    return s
+
+
+def _variantes_codigo_produto(codigo):
+    """Retorna lista de variantes do código para busca na BASE (ex.: '01.01.0001' -> ['01.01.0001', '1.1.1'])."""
+    if not codigo or not isinstance(codigo, str):
+        return []
+    s = codigo.strip()
+    if not s:
+        return []
+    variantes = [s]
+    # Formato XX.XX.XXXX: também tentar sem zeros à esquerda (1.1.1)
+    if '.' in s and s.replace('.', '').isdigit():
+        partes = s.split('.')
+        compact = '.'.join(str(int(p)) for p in partes if p.strip())
+        if compact != s:
+            variantes.append(compact)
+    return variantes
+
+
+def _formatar_data_celula(val):
+    """Formata valor de célula como data DD/MM/YYYY quando for data."""
+    if val is None:
+        return ''
+    if hasattr(val, 'strftime'):
+        return val.strftime('%d/%m/%Y')
+    s = str(val).strip()
+    try:
+        if isinstance(val, (int, float)):
+            from datetime import datetime as dt, timedelta
+            base = dt(1899, 12, 30)
+            d = base + timedelta(days=int(float(val)))
+            return d.strftime('%d/%m/%Y')
+        if len(s) >= 8 and ('/' in s or '-' in s):
+            return s
+    except Exception:
+        pass
+    return s
+
+
+def _get_viagem_info_planilha(id_viagem):
+    """Busca data expedição, placa, motorista: do banco. Sem planilha."""
+    id_viagem = (id_viagem or '').strip()
+    result = {'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': ''}
+    if not id_viagem:
+        return result
+    if _usa_banco_para_dados():
+        conn = get_db()
+        try:
+            if getattr(conn, 'kind', None) == 'pg':
+                rp = conn.execute("SELECT placa FROM viagem_placa WHERE id_viagem = ?", (id_viagem,)).fetchone()
+                rm = conn.execute("SELECT motorista FROM viagem_motorista WHERE id_viagem = ?", (id_viagem,)).fetchone()
+                if rp:
+                    result['placa'] = (rp.get('placa') or rp[0] or '').strip()
+                if rm:
+                    result['motorista'] = (rm.get('motorista') or rm[0] or '').strip()
+                ds = _get_latest_dataset_id(conn)
+                if ds:
+                    r = conn.execute(
+                        """SELECT data_expedicao FROM excel_romaneio_por_item WHERE dataset_id = ? AND id_viagem = ? LIMIT 1""",
+                        (str(ds), id_viagem),
+                    ).fetchone()
+                    if r and (r.get('data_expedicao') or (r[0] if hasattr(r, '__getitem__') else None)):
+                        result['data_expedicao'] = str(r.get('data_expedicao') or r[0] or '').strip()
+            conn.close()
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return result
+    return result
+
+def _get_viagem_info_planilha_LEGADO_NAO_USAR(id_viagem):
+    """Legado: lê da planilha (desativado)."""
+    caminho_planilha = encontrar_planilha()
+    if not caminho_planilha:
+        return None
+    id_viagem = (id_viagem or '').strip()
+    if not id_viagem:
+        return None
+    result = {'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': ''}
+    try:
+        try:
+            wb = openpyxl.load_workbook(caminho_planilha, data_only=True)
+        except Exception:
+            wb = openpyxl.load_workbook(caminho_planilha, data_only=False)
+        if 'ROMANEIO POR ITEM' not in wb.sheetnames:
+            wb.close()
+            return result
+        ws = wb['ROMANEIO POR ITEM']
+        max_col = ws.max_column or 50
+
+        def get_cell_value(row_num, col_num):
+            """Valor da célula; se estiver em mesclada, retorna o valor da primeira célula do merge."""
+            cell = ws.cell(row=row_num, column=col_num)
+            try:
+                for merge_range in ws.merged_cells.ranges:
+                    if cell.coordinate in merge_range:
+                        return ws.cell(merge_range.min_row, merge_range.min_col).value
+            except Exception:
+                pass
+            return cell.value
+
+        def build_header_row(row_num):
+            return [get_cell_value(row_num, c) for c in range(1, max_col + 1)]
+
+        def norm(s):
+            if s is None:
+                return ''
+            s = str(s).replace('\r', ' ').replace('\n', ' ').replace('\xa0', ' ')
+            s = s.upper().strip()
+            for old, new in [('Í', 'I'), ('É', 'E'), ('Á', 'A'), ('À', 'A'), ('Ã', 'A'), ('Â', 'A'), ('Ó', 'O'), ('Ô', 'O'), ('Õ', 'O'), ('Ú', 'U'), ('Ç', 'C')]:
+                s = s.replace(old, new)
+            return ' '.join(s.split())
+
+        header_row = None
+        header_row_num = 1
+        for row_num in range(1, min(6, ws.max_row + 1)):
+            row_vals = build_header_row(row_num)
+            for val in row_vals:
+                if val is not None and norm(val) == 'MOTORISTA':
+                    header_row = row_vals
+                    header_row_num = row_num
+                    break
+            if header_row is not None:
+                break
+        if header_row is None:
+            header_row = build_header_row(1)
+        coluna_id_viagem = None
+        coluna_inicio_previsto = None
+        coluna_inicio_previsto_exata = None
+        coluna_placa = None
+        coluna_identificador_rota = None
+        coluna_motorista = None
+
+        for idx, header in enumerate(header_row or []):
+            if header is None:
+                continue
+            h_str = str(header).strip()
+            if not h_str:
+                continue
+            hs = h_str.upper()
+            hs_norm = hs.replace('Í', 'I').replace('É', 'E')
+            hs_norm = ' '.join(hs_norm.split())
+            h_norm = norm(header)
+            if 'ID' in hs and 'VIAGEM' in hs and 'FATURADA' in hs:
+                coluna_id_viagem = idx
+            if hs_norm == 'INICIO PREVISTO':
+                coluna_inicio_previsto_exata = idx
+            elif ('INICIO' in hs_norm or 'INÍCIO' in hs) and 'PREVISTO' in hs_norm:
+                coluna_inicio_previsto = idx
+            # Coluna "Placa" (aba ROMANEIO POR ITEM)
+            if coluna_placa is None:
+                if (h_norm == 'PLACA' or hs_norm == 'PLACA' or
+                    ('PLACA' in h_norm and 'EMPLACA' not in h_norm) or
+                    'LICENSE' in h_norm and 'PLATE' in h_norm):
+                    coluna_placa = idx
+            # Coluna "Identificador de rota" (aba ROMANEIO POR ITEM)
+            if coluna_identificador_rota is None:
+                if (h_norm in ('IDENTIFICADOR DE ROTA', 'IDENTIFICADOR DA ROTA', 'IDENTIFICADOR ROTA') or
+                    hs_norm in ('IDENTIFICADOR DE ROTA', 'IDENTIFICADOR DA ROTA', 'IDENTIFICADOR ROTA') or
+                    ('IDENTIFICADOR' in h_norm and 'ROTA' in h_norm) or
+                    ('ROTA' in h_norm and ('IDENTIFICADOR' in h_norm or 'CODIGO' in h_norm or 'ID ' in h_norm)) or
+                    'ROUTE' in h_norm and ('ID' in h_norm or 'IDENTIFIER' in h_norm or 'CODE' in h_norm)):
+                    coluna_identificador_rota = idx
+            # Coluna "Motorista" (aba ROMANEIO POR ITEM)
+            if coluna_motorista is None and (h_norm == 'MOTORISTA' or hs_norm == 'MOTORISTA'):
+                coluna_motorista = idx
+        # Mapeamento fixo da planilha ROMANEIO POR ITEM (analisada):
+        # A=1 Data cadastro, B=2 Id roteiro, C=3 Identificador da rota, D=4 Id viagem faturada,
+        # E=5 Entrega estimada, F=6 Placa, G=7 Pedido, ... U=21 Início previsto, ... Y=25 Motorista
+        ncol = len(header_row or [])
+        if ncol >= 25:
+            coluna_id_viagem = 3
+            coluna_identificador_rota = 2
+            coluna_placa = 5
+            coluna_inicio_previsto = 20
+            coluna_motorista = 24
+        else:
+            if coluna_identificador_rota is None and ncol > 2:
+                coluna_identificador_rota = 2
+            if coluna_placa is None and ncol > 5:
+                coluna_placa = 5
+            if coluna_inicio_previsto is None and ncol > 20:
+                coluna_inicio_previsto = 20
+            if coluna_motorista is None and ncol > 24:
+                coluna_motorista = 24
+            if coluna_id_viagem is None and ncol > 3:
+                coluna_id_viagem = 3
+        coluna_inicio_previsto = coluna_inicio_previsto_exata if coluna_inicio_previsto_exata is not None else coluna_inicio_previsto
+        if coluna_id_viagem is None:
+            wb.close()
+            return result
+        id_viagem_norm = _normalizar_id_viagem(id_viagem)
+        data_start_row = header_row_num + 1
+        col_d = coluna_id_viagem + 1
+        col_b = 2
+        # Percorrer TODAS as linhas onde D (Id viagem faturada) OU B (Id roteiro) = ID e preencher cada campo
+        for row_num in range(data_start_row, ws.max_row + 1):
+            id_d = _normalizar_id_viagem(get_cell_value(row_num, col_d))
+            id_b = _normalizar_id_viagem(get_cell_value(row_num, col_b))
+            if id_d != id_viagem_norm and id_b != id_viagem_norm:
+                continue
+            if not result['data_expedicao'] and coluna_inicio_previsto is not None:
+                v = get_cell_value(row_num, coluna_inicio_previsto + 1)
+                if v is not None:
+                    result['data_expedicao'] = _formatar_data_celula(v) or ''
+            if not result['placa'] and coluna_placa is not None:
+                v = get_cell_value(row_num, coluna_placa + 1)
+                if v is not None and str(v).strip():
+                    result['placa'] = str(v).strip()
+            if not result['identificador_rota'] and coluna_identificador_rota is not None:
+                v = get_cell_value(row_num, coluna_identificador_rota + 1)
+                if v is not None and str(v).strip():
+                    result['identificador_rota'] = str(v).strip()
+            if not result['motorista'] and coluna_motorista is not None:
+                v = get_cell_value(row_num, coluna_motorista + 1)
+                if v is not None and str(v).strip():
+                    result['motorista'] = str(v).strip()
+        # Identificador da rota: só usa o valor da coluna correspondente; se estiver em branco na planilha, permanece em branco
+        wb.close()
+        return result
+    except Exception:
+        return result
+
+
+def _get_data_expedicao_planilha(id_viagem):
+    """Retorna apenas a data de expedição (compatibilidade)."""
+    info = _get_viagem_info_planilha(id_viagem)
+    return info.get('data_expedicao', '') if info else None
+
+
+def _parse_data_expedicao(val):
+    """Converte string de data (DD/MM/YYYY ou YYYY-MM-DD) para date. Retorna None se inválido."""
+    if not val or not str(val).strip():
+        return None
+    s = str(val).strip()[:10]
+    for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y'):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _get_id_viagens_por_data_expedicao(data_inicio, data_fim):
+    """Retorna set de id_viagem cuja data de expedição está no intervalo [data_inicio, data_fim].
+    data_inicio e data_fim em YYYY-MM-DD. Se ambos vazios, retorna None (sem filtro)."""
+    if not (data_inicio or '').strip() and not (data_fim or '').strip():
+        return None
+    try:
+        d0 = datetime.strptime((data_inicio or '').strip()[:10], '%Y-%m-%d').date() if (data_inicio or '').strip() else None
+        d1 = datetime.strptime((data_fim or '').strip()[:10], '%Y-%m-%d').date() if (data_fim or '').strip() else None
+    except ValueError:
+        return None
+    if d0 is None and d1 is None:
+        return None
+    if d0 is None:
+        d0 = d1
+    if d1 is None:
+        d1 = d0
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT DISTINCT id_viagem FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != ''"
+    ).fetchall()
+    conn.close()
+    ids_ok = set()
+    for r in rows:
+        vid = (r[0] or '').strip()
+        if not vid:
+            continue
+        de = _get_data_expedicao_planilha(vid)
+        dt = _parse_data_expedicao(de)
+        if dt is None:
+            continue
+        if d0 <= dt <= d1:
+            ids_ok.add(vid)
+    return ids_ok
+
+
+COORDENADOR_PADRAO = 'ASTROGILDO RODRIGUES DOS SANTOS'
+
+
+@app.route('/api/viagem/<id_viagem>/info', methods=['GET'])
+def get_viagem_info(id_viagem):
+    """Retorna data expedição, placa, identificador da rota, motorista e responsáveis (override ou planilha)."""
+    if not id_viagem:
+        return jsonify({
+            'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': '',
+            'coordenador': COORDENADOR_PADRAO, 'conferente': '', 'ajudante1': '', 'ajudante2': ''
+        })
+    info = _get_viagem_info_planilha(id_viagem)
+    if not info:
+        info = {'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': ''}
+    info.setdefault('coordenador', COORDENADOR_PADRAO)
+    info.setdefault('conferente', '')
+    info.setdefault('ajudante1', '')
+    info.setdefault('ajudante2', '')
+    id_norm = _normalizar_id_viagem(id_viagem)
+    conn = get_db()
+    row_p = conn.execute(
+        'SELECT placa FROM viagem_placa WHERE id_viagem = ?',
+        (id_norm,)
+    ).fetchone()
+    row_m = conn.execute(
+        'SELECT motorista FROM viagem_motorista WHERE id_viagem = ?',
+        (id_norm,)
+    ).fetchone()
+    row_r = conn.execute(
+        'SELECT coordenador, conferente, ajudante1, ajudante2 FROM viagem_responsaveis WHERE id_viagem = ?',
+        (id_norm,)
+    ).fetchone()
+    conn.close()
+    if row_p and row_p[0]:
+        info['placa'] = row_p[0].strip()
+    if row_m and row_m[0]:
+        info['motorista'] = row_m[0].strip()
+    if row_r:
+        info['coordenador'] = (row_r[0] or '').strip() or COORDENADOR_PADRAO
+        info['conferente'] = (row_r[1] or '').strip()
+        info['ajudante1'] = (row_r[2] or '').strip()
+        info['ajudante2'] = (row_r[3] or '').strip()
+    else:
+        info['coordenador'] = COORDENADOR_PADRAO
+    return jsonify(info)
+
+
+@app.route('/api/viagem/<id_viagem>/motorista', methods=['PUT', 'PATCH'])
+def set_viagem_motorista(id_viagem):
+    """Salva o motorista alterado para a viagem (override)."""
+    if not id_viagem:
+        return jsonify({'erro': 'ID do roteiro não informado'}), 400
+    data = request.get_json(silent=True) or {}
+    motorista = (data.get('motorista') or '').strip()
+    id_norm = _normalizar_id_viagem(id_viagem)
+    usuario = session.get('usuario', '')
+    conn = get_db()
+    if getattr(conn, 'kind', 'sqlite') == 'pg':
+        conn.execute(
+            '''INSERT INTO viagem_motorista (id_viagem, motorista, atualizado_por)
+               VALUES (%s, %s, %s)
+               ON CONFLICT (id_viagem) DO UPDATE SET motorista = EXCLUDED.motorista, atualizado_por = EXCLUDED.atualizado_por''',
+            (id_norm, motorista, usuario)
+        )
+    else:
+        conn.execute(
+            '''INSERT INTO viagem_motorista (id_viagem, motorista) VALUES (?, ?)
+               ON CONFLICT(id_viagem) DO UPDATE SET motorista = excluded.motorista''',
+            (id_norm, motorista)
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'motorista': motorista})
+
+
+@app.route('/api/viagem/<id_viagem>/placa', methods=['PUT', 'PATCH'])
+def set_viagem_placa(id_viagem):
+    """Salva a placa alterada para a viagem (override)."""
+    if not id_viagem:
+        return jsonify({'erro': 'ID do roteiro não informado'}), 400
+    data = request.get_json(silent=True) or {}
+    placa = (data.get('placa') or '').strip()
+    id_norm = _normalizar_id_viagem(id_viagem)
+    usuario = session.get('usuario', '')
+    conn = get_db()
+    if getattr(conn, 'kind', 'sqlite') == 'pg':
+        conn.execute(
+            '''INSERT INTO viagem_placa (id_viagem, placa, atualizado_por)
+               VALUES (%s, %s, %s)
+               ON CONFLICT (id_viagem) DO UPDATE SET placa = EXCLUDED.placa, atualizado_por = EXCLUDED.atualizado_por''',
+            (id_norm, placa, usuario)
+        )
+    else:
+        conn.execute(
+            '''INSERT INTO viagem_placa (id_viagem, placa) VALUES (?, ?)
+               ON CONFLICT(id_viagem) DO UPDATE SET placa = excluded.placa''',
+            (id_norm, placa)
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'placa': placa})
+
+
+@app.route('/api/viagem/<id_viagem>/responsaveis', methods=['PUT', 'PATCH'])
+def set_viagem_responsaveis(id_viagem):
+    """Salva os responsáveis da viagem: coordenador, conferente, ajudante1, ajudante2."""
+    if not id_viagem:
+        return jsonify({'erro': 'ID do roteiro não informado'}), 400
+    data = request.get_json(silent=True) or {}
+    coordenador = (data.get('coordenador') or '').strip() or COORDENADOR_PADRAO
+    conferente = (data.get('conferente') or '').strip()
+    ajudante1 = (data.get('ajudante1') or '').strip()
+    ajudante2 = (data.get('ajudante2') or '').strip()
+    id_norm = _normalizar_id_viagem(id_viagem)
+    usuario = session.get('usuario', '')
+    conn = get_db()
+    if getattr(conn, 'kind', 'sqlite') == 'pg':
+        conn.execute(
+            '''INSERT INTO viagem_responsaveis (id_viagem, coordenador, conferente, ajudante1, ajudante2, atualizado_por)
+               VALUES (%s, %s, %s, %s, %s, %s)
+               ON CONFLICT (id_viagem) DO UPDATE SET
+                 coordenador = EXCLUDED.coordenador,
+                 conferente = EXCLUDED.conferente,
+                 ajudante1 = EXCLUDED.ajudante1,
+                 ajudante2 = EXCLUDED.ajudante2,
+                 atualizado_por = EXCLUDED.atualizado_por''',
+            (id_norm, coordenador, conferente, ajudante1, ajudante2, usuario)
+        )
+    else:
+        conn.execute(
+            '''INSERT INTO viagem_responsaveis (id_viagem, coordenador, conferente, ajudante1, ajudante2)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(id_viagem) DO UPDATE SET
+                 coordenador = excluded.coordenador,
+                 conferente = excluded.conferente,
+                 ajudante1 = excluded.ajudante1,
+                 ajudante2 = excluded.ajudante2''',
+            (id_norm, coordenador, conferente, ajudante1, ajudante2)
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({
+        'ok': True,
+        'coordenador': coordenador,
+        'conferente': conferente,
+        'ajudante1': ajudante1,
+        'ajudante2': ajudante2
+    })
+
+
+@app.route('/api/colaboradores-motoristas', methods=['GET'])
+def get_colaboradores_motoristas():
+    """Lista motoristas: do banco (tabelas motoristas e colaboradores). Sem dependência de planilha."""
+    conn = get_db()
+    try:
+        if getattr(conn, 'kind', None) == 'pg':
+            rows = conn.execute(
+                """SELECT nome FROM motoristas WHERE coalesce(ativo, true) = true ORDER BY nome"""
+            ).fetchall()
+            if rows:
+                nomes = [r.get('nome', r[0]) for r in rows if r.get('nome') or (r[0] if hasattr(r, '__getitem__') else None)]
+                conn.close()
+                return jsonify({'nomes': nomes})
+            rows = conn.execute(
+                """SELECT nome FROM colaboradores WHERE coalesce(ativo, true) = true
+                   AND (upper(coalesce(tipo,'')) LIKE 'MOTORISTA%%' OR upper(coalesce(centro_custo,'')) LIKE '%%TRANSPORTE%%')
+                   ORDER BY nome"""
+            ).fetchall()
+            nomes = [r.get('nome', r[0]) for r in rows if r.get('nome') or (r[0] if hasattr(r, '__getitem__') else None)]
+            conn.close()
+        else:
+            rows = conn.execute(
+                '''SELECT nome FROM colaboradores WHERE ativo = ? AND (tipo = ? OR UPPER(centro_custo) LIKE ? OR UPPER(centro_custo) LIKE ?) ORDER BY nome''',
+                (1, 'MOTORISTA', '%TRANSPORTE GRU%', '%TRANSPORTE PPY%')
+            ).fetchall()
+            nomes = [row[0] for row in rows if row[0]] if rows else []
+        conn.close()
+        return jsonify({'nomes': nomes})
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'nomes': []})
+
+
+@app.route('/api/placas', methods=['GET'])
+def get_placas():
+    """Lista placas do banco (tabela placas). Sem dependência de planilha."""
+    conn = get_db()
+    try:
+        if getattr(conn, 'kind', None) == 'pg':
+            rows = conn.execute(
+                """SELECT placa FROM placas WHERE coalesce(ativo, true) = true AND placa IS NOT NULL AND placa <> '' ORDER BY placa"""
+            ).fetchall()
+        else:
+            # SQLite pode não ter tabela placas; tenta viagem_placa ou retorna vazio
+            try:
+                rows = conn.execute("""SELECT placa FROM placas WHERE ativo = 1 AND placa IS NOT NULL AND placa <> '' ORDER BY placa""").fetchall()
+            except Exception:
+                rows = []
+        lista = [r.get('placa', r[0]) for r in rows if r.get('placa') or (r[0] if hasattr(r, '__getitem__') else None)] if rows else []
+        conn.close()
+        return jsonify({'placas': lista})
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'placas': []})
+
+
+@app.route('/api/colaboradores', methods=['GET'])
+def get_colaboradores():
+    """Lista colaboradores ativos (ou todos se incluir_inativos=true)."""
+    incluir_inativos = request.args.get('incluir_inativos', 'false').lower() == 'true'
+    tipo = request.args.get('tipo', '').strip().upper()
+    conn = get_db()
+    sql = 'SELECT id, nome, funcao, centro_custo, tipo, cpf, telefone, email, ativo, observacoes FROM colaboradores'
+    filtros = []
+    params = []
+    if not incluir_inativos:
+        filtros.append('ativo = ?')
+        params.append(1 if getattr(conn, 'kind', 'sqlite') == 'sqlite' else True)
+    if tipo:
+        filtros.append('UPPER(tipo) = ?')
+        params.append(tipo)
+    if filtros:
+        sql += ' WHERE ' + ' AND '.join(filtros)
+    sql += ' ORDER BY nome'
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    colaboradores = [dict(row) for row in rows]
+    return jsonify({'colaboradores': colaboradores})
+
+
+@app.route('/api/colaboradores', methods=['POST'])
+def add_colaborador():
+    """Adiciona um novo colaborador."""
+    data = request.get_json() or {}
+    nome = (data.get('nome') or '').strip()
+    if not nome:
+        return jsonify({'success': False, 'erro': 'Nome é obrigatório'}), 400
+    funcao = (data.get('funcao') or '').strip()
+    centro_custo = (data.get('centro_custo') or '').strip()
+    tipo = (data.get('tipo') or '').strip().upper()
+    cpf = (data.get('cpf') or '').strip()
+    telefone = (data.get('telefone') or '').strip()
+    email = (data.get('email') or '').strip()
+    observacoes = (data.get('observacoes') or '').strip()
+    usuario = session.get('usuario', '')
+    conn = get_db()
+    try:
+        if getattr(conn, 'kind', 'sqlite') == 'pg':
+            conn.execute(
+                '''INSERT INTO colaboradores (nome, funcao, centro_custo, tipo, cpf, telefone, email, observacoes, criado_por)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)''',
+                (nome, funcao, centro_custo, tipo, cpf or None, telefone, email, observacoes, usuario)
+            )
+        else:
+            conn.execute(
+                '''INSERT INTO colaboradores (nome, funcao, centro_custo, tipo, cpf, telefone, email, observacoes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                (nome, funcao, centro_custo, tipo, cpf or None, telefone, email, observacoes)
+            )
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'mensagem': 'Colaborador adicionado com sucesso'})
+    except Exception as e:
+        conn.close()
+        return jsonify({'success': False, 'erro': f'Erro ao adicionar: {str(e)}'}), 500
+
+
+@app.route('/api/colaboradores/<int:colaborador_id>', methods=['PUT'])
+def update_colaborador(colaborador_id):
+    """Atualiza dados de um colaborador."""
+    data = request.get_json() or {}
+    nome = (data.get('nome') or '').strip()
+    if not nome:
+        return jsonify({'success': False, 'erro': 'Nome é obrigatório'}), 400
+    funcao = (data.get('funcao') or '').strip()
+    centro_custo = (data.get('centro_custo') or '').strip()
+    tipo = (data.get('tipo') or '').strip().upper()
+    cpf = (data.get('cpf') or '').strip()
+    telefone = (data.get('telefone') or '').strip()
+    email = (data.get('email') or '').strip()
+    observacoes = (data.get('observacoes') or '').strip()
+    usuario = session.get('usuario', '')
+    conn = get_db()
+    try:
+        if getattr(conn, 'kind', 'sqlite') == 'pg':
+            conn.execute(
+                '''UPDATE colaboradores SET
+                   nome = %s, funcao = %s, centro_custo = %s, tipo = %s,
+                   cpf = %s, telefone = %s, email = %s, observacoes = %s, atualizado_por = %s
+                   WHERE id = %s''',
+                (nome, funcao, centro_custo, tipo, cpf or None, telefone, email, observacoes, usuario, colaborador_id)
+            )
+        else:
+            conn.execute(
+                '''UPDATE colaboradores SET
+                   nome = ?, funcao = ?, centro_custo = ?, tipo = ?,
+                   cpf = ?, telefone = ?, email = ?, observacoes = ?
+                   WHERE id = ?''',
+                (nome, funcao, centro_custo, tipo, cpf or None, telefone, email, observacoes, colaborador_id)
+            )
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'mensagem': 'Colaborador atualizado'})
+    except Exception as e:
+        conn.close()
+        return jsonify({'success': False, 'erro': f'Erro ao atualizar: {str(e)}'}), 500
+
+
+@app.route('/api/colaboradores/<int:colaborador_id>', methods=['DELETE'])
+def delete_colaborador(colaborador_id):
+    """Desativa um colaborador (soft delete: ativo = false)."""
+    conn = get_db()
+    try:
+        if getattr(conn, 'kind', 'sqlite') == 'pg':
+            conn.execute('UPDATE colaboradores SET ativo = FALSE WHERE id = %s', (colaborador_id,))
+        else:
+            conn.execute('UPDATE colaboradores SET ativo = 0 WHERE id = ?', (colaborador_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'mensagem': 'Colaborador desativado'})
+    except Exception as e:
+        conn.close()
+        return jsonify({'success': False, 'erro': f'Erro ao desativar: {str(e)}'}), 500
+
+
+@app.route('/api/colaboradores/importar-planilha', methods=['POST'])
+def importar_colaboradores_planilha():
+    """Importa colaboradores: planilha não é mais lida do disco; use cadastro pela tela ou scripts."""
+    if _usa_banco_para_dados():
+        return jsonify({'success': False, 'erro': 'Planilha não é mais usada. Cadastre pela tela de colaboradores ou use os scripts (gerar_sql_colaboradores.py) para subir dados.'}), 400
+    caminho_planilha = encontrar_planilha()
+    if not caminho_planilha:
+        return jsonify({'success': False, 'erro': 'Planilha não encontrada'}), 404
+    try:
+        wb = openpyxl.load_workbook(os.path.abspath(caminho_planilha), data_only=True)
+        nome_aba = next((s for s in wb.sheetnames if s.upper().strip() == 'COLABORADORES'), None)
+        if not nome_aba:
+            wb.close()
+            return jsonify({'success': False, 'erro': 'Aba COLABORADORES não encontrada'}), 404
+        ws = wb[nome_aba]
+        # Colunas: A=Centro de Custo, B=Função, C=Colaborador (nome)
+        col_centro_custo = 0
+        col_funcao = 1
+        col_nome = 2
+        conn = get_db()
+        importados = 0
+        atualizados = 0
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if len(row) <= col_nome:
+                continue
+            nome = str(row[col_nome] or '').strip()
+            if not nome:
+                continue
+            funcao = str(row[col_funcao] or '').strip() if len(row) > col_funcao else ''
+            centro_custo = str(row[col_centro_custo] or '').strip() if len(row) > col_centro_custo else ''
+            # Identificar tipo baseado no centro de custo ou função
+            tipo = ''
+            cc_upper = centro_custo.upper()
+            fn_upper = funcao.upper()
+            if 'TRANSPORTE' in cc_upper or 'MOTORISTA' in fn_upper:
+                tipo = 'MOTORISTA'
+            elif 'CONFERENTE' in fn_upper:
+                tipo = 'CONFERENTE'
+            elif 'AJUDANTE' in fn_upper or 'AUXILIAR' in fn_upper:
+                tipo = 'AJUDANTE'
+            elif 'COORDENADOR' in fn_upper:
+                tipo = 'COORDENADOR'
+            # Verificar se já existe (por nome)
+            existing = conn.execute('SELECT id FROM colaboradores WHERE nome = ?', (nome,)).fetchone()
+            if existing:
+                # Atualizar
+                if getattr(conn, 'kind', 'sqlite') == 'pg':
+                    conn.execute(
+                        'UPDATE colaboradores SET funcao = %s, centro_custo = %s, tipo = %s WHERE nome = %s',
+                        (funcao, centro_custo, tipo, nome)
+                    )
+                else:
+                    conn.execute(
+                        'UPDATE colaboradores SET funcao = ?, centro_custo = ?, tipo = ? WHERE nome = ?',
+                        (funcao, centro_custo, tipo, nome)
+                    )
+                atualizados += 1
+            else:
+                # Inserir
+                if getattr(conn, 'kind', 'sqlite') == 'pg':
+                    conn.execute(
+                        'INSERT INTO colaboradores (nome, funcao, centro_custo, tipo) VALUES (%s, %s, %s, %s)',
+                        (nome, funcao, centro_custo, tipo)
+                    )
+                else:
+                    conn.execute(
+                        'INSERT INTO colaboradores (nome, funcao, centro_custo, tipo) VALUES (?, ?, ?, ?)',
+                        (nome, funcao, centro_custo, tipo)
+                    )
+                importados += 1
+        conn.commit()
+        conn.close()
+        wb.close()
+        return jsonify({
+            'success': True,
+            'mensagem': f'Importação concluída: {importados} novos, {atualizados} atualizados',
+            'importados': importados,
+            'atualizados': atualizados
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'erro': f'Erro ao importar: {str(e)}'}), 500
+
+
+@app.route('/api/viagem/<id_viagem>/data-expedicao', methods=['GET'])
+def get_data_expedicao(id_viagem):
+    """Retorna a data de expedição (Início Previsto) da aba ROMANEIO POR ITEM para a viagem."""
+    if not id_viagem:
+        return jsonify({'data_expedicao': ''})
+    valor = _get_data_expedicao_planilha(id_viagem)
+    return jsonify({'data_expedicao': valor if valor is not None else ''})
+
+
+@app.route('/api/debug-romaneio-headers', methods=['GET'])
+def debug_romaneio_headers():
+    """Retorna os cabeçalhos do romaneio. Com DATABASE_URL, dados vêm do banco."""
+    if _usa_banco_para_dados():
+        return jsonify({'erro': 'Dados vêm do banco (excel_romaneio_por_item).', 'headers': []})
+    caminho_planilha = encontrar_planilha()
+    if not caminho_planilha:
+        return jsonify({'erro': 'Planilha não encontrada', 'headers': []})
+    try:
+        wb = openpyxl.load_workbook(caminho_planilha, data_only=False)
+        if 'ROMANEIO POR ITEM' not in wb.sheetnames:
+            wb.close()
+            return jsonify({'erro': 'Aba ROMANEIO POR ITEM não encontrada', 'headers': []})
+        ws = wb['ROMANEIO POR ITEM']
+        max_col = min(ws.max_column or 30, 30)
+        result = []
+        for row_num in range(1, min(4, ws.max_row + 1)):
+            row_headers = []
+            for col in range(1, max_col + 1):
+                cell = ws.cell(row=row_num, column=col)
+                val = cell.value
+                try:
+                    for merge_range in ws.merged_cells.ranges:
+                        if cell.coordinate in merge_range:
+                            val = ws.cell(merge_range.min_row, merge_range.min_col).value
+                            break
+                except Exception:
+                    pass
+                row_headers.append(str(val) if val is not None else '')
+            result.append({'row': row_num, 'headers': row_headers})
+        wb.close()
+        return jsonify({'planilha': caminho_planilha, 'linhas': result})
+    except Exception as e:
+        return jsonify({'erro': str(e), 'headers': []})
+
+
+def _codigos_produto_na_viagem(id_viagem):
+    """Retorna set de códigos de produto (str) que estão no romaneio da viagem."""
+    wb, from_cache = get_workbook_cached()
+    if not wb:
+        return set()
+    try:
+        nome_romaneio = next((s for s in wb.sheetnames if 'ROMANEIO' in s.upper() and 'ITEM' in s.upper()), None)
+        if not nome_romaneio:
+            return set()
+        ws = wb[nome_romaneio]
+        header_row = list(ws.iter_rows(min_row=1, max_row=1, values_only=True))[0]
+        col_id = next((i for i, h in enumerate(header_row or []) if h and ('ID' in str(h).upper() and 'ROTEIRO' in str(h).upper())), 1)
+        col_cod = next((i for i, h in enumerate(header_row or []) if h and ('CODIGO' in str(h).upper() or 'CÓDIGO' in str(h).upper()) and 'PRODUTO' in str(h).upper() and 'BARRAS' not in str(h).upper()), 14)
+        id_norm = _normalizar_id_viagem(id_viagem)
+        codigos = set()
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if col_id < len(row) and _normalizar_id_viagem(row[col_id]) != id_norm:
+                continue
+            if col_cod < len(row):
+                cp = _valor_celula(row, col_cod)
+                if cp:
+                    codigos.add(cp)
+                    codigos.add(_normalizar_codigo_produto(cp) or cp)
+        return codigos
+    except Exception:
+        return set()
+
+
+@app.route('/api/conferencia/<id_viagem>/produto-na-lista', methods=['GET'])
+def conferencia_produto_na_lista(id_viagem):
+    """Verifica se o produto (codigo_produto ou codigo_barras) está na relação de itens da viagem."""
+    if not id_viagem:
+        return jsonify({'na_lista': False, 'erro': 'id_viagem obrigatório'}), 400
+    codigo_produto = request.args.get('codigo_produto', '').strip()
+    codigo_barras = request.args.get('codigo_barras', '').strip()
+    if not codigo_produto and not codigo_barras:
+        return jsonify({'na_lista': False})
+    codigos_romaneio = _codigos_produto_na_viagem(id_viagem)
+    if codigo_produto:
+        cp_norm = _normalizar_codigo_produto(codigo_produto)
+        na_lista = codigo_produto in codigos_romaneio or (cp_norm and cp_norm in codigos_romaneio)
+        return jsonify({'na_lista': na_lista, 'codigo_produto': codigo_produto})
+    codigo_produto_resolvido = None
+    info = buscar_produto_na_planilha(codigo_barras)
+    if info and not info.get('erro'):
+        codigo_produto_resolvido = (info.get('codigo_produto') or '').strip()
+    if not codigo_produto_resolvido:
+        return jsonify({'na_lista': False, 'codigo_produto': None})
+    cp_norm = _normalizar_codigo_produto(codigo_produto_resolvido)
+    na_lista = codigo_produto_resolvido in codigos_romaneio or (cp_norm and cp_norm in codigos_romaneio)
+    return jsonify({'na_lista': na_lista, 'codigo_produto': codigo_produto_resolvido})
+
+
+@app.route('/api/conferencia', methods=['GET'])
+@app.route('/api/conferencia/<id_viagem>', methods=['GET'])
+def get_conferencia(id_viagem=None):
+    """Retorna itens do romaneio para uma viagem específica com status de bipado"""
+    if not id_viagem:
+        return jsonify({'erro': 'ID do roteiro não informado'}), 400
+    
+    wb, from_cache = get_workbook_cached()
+    if not wb:
+        return jsonify({'erro': 'Planilha não encontrada'}), 404
+    
+    try:
+        resultado = []
+        
+        # Buscar itens do romaneio (aba ROMANEIO POR ITEM) e código de barras na aba BASE
+        nome_romaneio = next((s for s in wb.sheetnames if 'ROMANEIO' in s.upper() and 'ITEM' in s.upper()), None)
+        if nome_romaneio:
+            ws_romaneio = wb[nome_romaneio]
+            
+            # Ler cabeçalho para identificar todas as colunas
+            header_row = list(ws_romaneio.iter_rows(min_row=1, max_row=1, values_only=True))[0]
+            coluna_id_viagem = None
+            coluna_codigo_produto = None
+            coluna_descricao_produto = None
+            coluna_quantidade_produto = None
+            coluna_unidade = None
+            coluna_peso_bruto = None
+            
+            # Identificar colunas pelo cabeçalho
+            for idx, header in enumerate(header_row):
+                if header:
+                    header_str = str(header).upper().strip()
+                    
+                    # ID ROTEIRO (coluna B) tem prioridade; fallback: ID VIAGEM FATURADA (coluna D)
+                    if 'ID' in header_str and 'ROTEIRO' in header_str:
+                        coluna_id_viagem = idx
+                    elif coluna_id_viagem is None and 'ID' in header_str and 'VIAGEM' in header_str and 'FATURADA' in header_str:
+                        coluna_id_viagem = idx
+                    
+                    # CÓDIGO DO PRODUTO
+                    if ('CODIGO' in header_str or 'CÓDIGO' in header_str) and 'PRODUTO' in header_str:
+                        if 'BARRAS' not in header_str:  # Não é código de barras
+                            coluna_codigo_produto = idx
+                    
+                    # DESCRIÇÃO DO PRODUTO (prioridade)
+                    if 'DESCRIÇÃO' in header_str or 'DESCRICAO' in header_str:
+                        if 'PRODUTO' in header_str:
+                            coluna_descricao_produto = idx
+                    
+                    # PRODUTO (fallback se não encontrar descrição)
+                    if coluna_descricao_produto is None and 'PRODUTO' in header_str:
+                        if 'CODIGO' not in header_str and 'CÓDIGO' not in header_str:  # Não é código do produto
+                            coluna_descricao_produto = idx
+                    
+                    # QUANTIDADE DO PRODUTO
+                    if 'QUANTIDADE' in header_str and 'PRODUTO' in header_str:
+                        coluna_quantidade_produto = idx
+                    # Fallback: QUANTIDADE ROMANEIO ou apenas QUANTIDADE
+                    elif coluna_quantidade_produto is None and 'QUANTIDADE' in header_str:
+                        if 'ROMANEIO' not in header_str:  # Evitar pegar quantidade romaneio
+                            coluna_quantidade_produto = idx
+                    
+                    # UNIDADE: prioridade para "Unidade de medida do produto" (aba ROMANEIO POR ITEM)
+                    if 'UNIDADE' in header_str and 'MEDIDA' in header_str:
+                        coluna_unidade = idx  # Unidade de medida do produto
+                    elif coluna_unidade is None and ('UNIDADE' in header_str or 'PACOTE' in header_str or header_str in ('CAIXA', 'UN')):
+                        coluna_unidade = idx
+                    
+                    # PESO BRUTO PEDIDO (aba Romaneio por item)
+                    if 'PESO' in header_str and 'BRUTO' in header_str and 'PEDIDO' in header_str:
+                        coluna_peso_bruto = idx
+                    elif coluna_peso_bruto is None and 'PESO' in header_str and 'BRUTO' in header_str:
+                        coluna_peso_bruto = idx
+            
+            # ROMANEIO POR ITEM: coluna B = Id roteiro (1), O = Código do produto (14), P = Descrição (15), Q = Quantidade (16)
+            num_cols = len(header_row) if header_row else 0
+            if num_cols >= 17:
+                coluna_id_viagem = 1  # Coluna B = Id roteiro (filtro por roteiro)
+                coluna_codigo_produto = 14
+                coluna_descricao_produto = 15
+                coluna_quantidade_produto = 16
+            else:
+                if coluna_id_viagem is None and num_cols >= 2:
+                    coluna_id_viagem = 1  # Coluna B = Id roteiro
+                if coluna_codigo_produto is None:
+                    coluna_codigo_produto = 0
+                if coluna_descricao_produto is None:
+                    coluna_descricao_produto = 1
+                if coluna_quantidade_produto is None:
+                    coluna_quantidade_produto = 2
+            
+            mapa_codigo_barras = {}
+            mapa_barras_to_codigo_produto = {}
+            bipados_por_codigo_produto = {}
+            nome_aba_base = next((s for s in wb.sheetnames if s.upper().strip() == 'BASE'), None)
+            if nome_aba_base:
+                ws_base = wb[nome_aba_base]
+                base_header = list(ws_base.iter_rows(min_row=1, max_row=1, values_only=True))[0]
+                col_codigo = next((i for i, h in enumerate(base_header or []) if _coluna_base_eh_codigo_interno(str(h or ''))), 0)
+                col_ean = next((i for i, h in enumerate(base_header or []) if _coluna_base_eh_ean(str(h or ''))), None)
+                col_dun = next((i for i, h in enumerate(base_header or []) if _coluna_base_eh_dun(str(h or ''))), None)
+                for row in ws_base.iter_rows(min_row=2, values_only=True):
+                    if col_codigo >= len(row):
+                        continue
+                    codigo_interno_base = _valor_celula(row, col_codigo)
+                    if not codigo_interno_base:
+                        continue
+                    ean = _valor_celula(row, col_ean) if col_ean is not None else ''
+                    dun = _valor_celula(row, col_dun) if col_dun is not None else ''
+                    barcode_exibir = ean or dun
+                    if not barcode_exibir:
+                        continue
+                    mapa_codigo_barras[codigo_interno_base] = barcode_exibir
+                    norm = _normalizar_codigo_produto(codigo_interno_base)
+                    if norm:
+                        mapa_codigo_barras[norm] = barcode_exibir
+                    for v in _variantes_codigo_produto(codigo_interno_base):
+                        if v:
+                            mapa_codigo_barras[v] = barcode_exibir
+                    mapa_barras_to_codigo_produto[ean] = codigo_interno_base
+                    mapa_barras_to_codigo_produto[dun] = codigo_interno_base
+                    mapa_barras_to_codigo_produto[barcode_exibir] = codigo_interno_base
+
+            conn = get_db()
+            produtos_bipados = conn.execute(
+                'SELECT codigo_barras, SUM(quantidade) as quantidade_bipada FROM produtos_bipados WHERE id_viagem = ? GROUP BY codigo_barras',
+                (id_viagem,)
+            ).fetchall()
+            bipados_dict = {}
+            for row in produtos_bipados:
+                bipados_dict[row['codigo_barras']] = row['quantidade_bipada']
+            bipados_por_codigo_produto = {}
+            for cb, qtd in bipados_dict.items():
+                codigo_prod = mapa_barras_to_codigo_produto.get(cb) or cb
+                bipados_por_codigo_produto[codigo_prod] = bipados_por_codigo_produto.get(codigo_prod, 0) + qtd
+            conn.close()
+            
+            # Ler itens do romaneio filtrando por ID do roteiro (coluna B)
+            for idx, row in enumerate(ws_romaneio.iter_rows(min_row=2, values_only=True), start=2):
+                # Verificar se o ID do roteiro corresponde (coluna B)
+                if coluna_id_viagem is not None and coluna_id_viagem < len(row):
+                    id_viagem_planilha = _normalizar_id_viagem(row[coluna_id_viagem])
+                    id_viagem_busca = _normalizar_id_viagem(id_viagem)
+                    if id_viagem_planilha and id_viagem_busca and id_viagem_planilha != id_viagem_busca:
+                        continue
+                
+                # Ler código do produto usando a coluna identificada
+                if coluna_codigo_produto < len(row) and row[coluna_codigo_produto]:
+                    codigo_produto_valor = str(row[coluna_codigo_produto]).strip()
+                    # Pular se for fórmula ou vazio
+                    if not codigo_produto_valor or codigo_produto_valor.startswith('='):
+                        continue
+                else:
+                    continue
+                
+                try:
+                    codigo_produto = codigo_produto_valor
+                    codigo_produto_norm = _normalizar_codigo_produto(row[coluna_codigo_produto])
+                    if not codigo_produto_norm:
+                        codigo_produto_norm = _normalizar_codigo_produto(codigo_produto_valor)
+                    
+                    # Consultar aba BASE: código do produto (Código Interno) -> código de barras (tentar valor, normalizado e variantes)
+                    codigo_barras = mapa_codigo_barras.get(codigo_produto, '') or mapa_codigo_barras.get(codigo_produto_norm, '')
+                    if not codigo_barras:
+                        for v in _variantes_codigo_produto(codigo_produto) + _variantes_codigo_produto(codigo_produto_norm or ''):
+                            if v and v in mapa_codigo_barras:
+                                codigo_barras = mapa_codigo_barras[v]
+                                break
+                    
+                    # Ler descrição do produto
+                    produto = ''
+                    if coluna_descricao_produto < len(row) and row[coluna_descricao_produto]:
+                        produto = str(row[coluna_descricao_produto]).strip()
+                    
+                    # Quantidade do produto usando a coluna identificada
+                    quantidade_produto = 0
+                    if coluna_quantidade_produto < len(row) and row[coluna_quantidade_produto] is not None:
+                        try:
+                            valor = str(row[coluna_quantidade_produto]).strip()
+                            if valor and not valor.startswith('='):
+                                quantidade_produto = int(float(valor))
+                        except:
+                            quantidade_produto = 0
+                    
+                    # Unidade (pacote, caixa, etc.)
+                    unidade = ''
+                    if coluna_unidade is not None and coluna_unidade < len(row) and row[coluna_unidade]:
+                        unidade = str(row[coluna_unidade]).strip()
+                        if unidade.startswith('='):
+                            unidade = ''
+                    
+                    # Peso Bruto (Peso Bruto Pedido do Romaneio por Item)
+                    peso_bruto = ''
+                    if coluna_peso_bruto is not None and coluna_peso_bruto < len(row) and row[coluna_peso_bruto] is not None:
+                        v = row[coluna_peso_bruto]
+                        if not str(v).strip().startswith('='):
+                            peso_bruto = str(v).strip()
+                    
+                    # Quantidade já bipada: por código do produto (bip pode ser EAN ou DUN)
+                    quantidade_bipada = bipados_por_codigo_produto.get(codigo_produto, 0) or bipados_por_codigo_produto.get(codigo_produto_norm or '', 0)
+                    if quantidade_bipada == 0 and codigo_barras:
+                        for v in _variantes_codigo_produto(codigo_produto) + _variantes_codigo_produto(codigo_produto_norm or ''):
+                            if v and bipados_por_codigo_produto.get(v, 0) > 0:
+                                quantidade_bipada = bipados_por_codigo_produto[v]
+                                break
+                    if quantidade_bipada == 0 and codigo_barras:
+                        quantidade_bipada = bipados_dict.get(codigo_barras, 0)
+                    
+                    quantidade_falta = max(0, quantidade_produto - quantidade_bipada)
+                    quantidade_sobra = max(0, quantidade_bipada - quantidade_produto)
+                    aviso_sobra = ('Bipou %s a mais' % quantidade_sobra) if quantidade_sobra > 0 else ''
+                    # Status: EXCEDENTE quando bipado a mais, COMPLETO quando certinho, PARCIAL quando falta, PENDENTE quando zero
+                    if quantidade_sobra > 0:
+                        status_bipado = 'EXCEDENTE'
+                    elif quantidade_bipada >= quantidade_produto and quantidade_produto > 0:
+                        status_bipado = 'COMPLETO'
+                    elif quantidade_bipada > 0:
+                        status_bipado = 'PARCIAL'
+                    else:
+                        status_bipado = 'PENDENTE'
+                    
+                    resultado.append({
+                        'codigo_produto': codigo_produto,
+                        'codigo_barras': codigo_barras,
+                        'produto': produto,
+                        'quantidade_produto': quantidade_produto,
+                        'unidade': unidade or '-',
+                        'peso_bruto': peso_bruto or '-',
+                        'quantidade_bipada': quantidade_bipada,
+                        'quantidade_falta': quantidade_falta,
+                        'quantidade_sobra': quantidade_sobra,
+                        'aviso_sobra': aviso_sobra,
+                        'status_bipado': status_bipado
+                    })
+                except Exception as e:
+                    continue
+        
+        # Incluir itens bipados que NÃO estão no romaneio (adicionados via "adicionar na conferência")
+        codigos_no_romaneio = { str(item.get('codigo_barras') or '').strip() for item in resultado }
+        codigos_produto_romaneio = { str(item.get('codigo_produto') or '').strip() for item in resultado }
+        conn = get_db()
+        conn.row_factory = sqlite3.Row
+        extras = conn.execute('''
+            SELECT codigo_barras, MAX(codigo_interno) as codigo_interno, MAX(produto) as produto, SUM(quantidade) as quantidade_bipada, MAX(unidade) as unidade, MAX(peso) as peso
+            FROM produtos_bipados
+            WHERE id_viagem = ? AND codigo_barras IS NOT NULL AND trim(codigo_barras) != ''
+            GROUP BY codigo_barras
+        ''', (id_viagem,)).fetchall()
+        conn.close()
+        for row in extras:
+            cb = (row['codigo_barras'] or '').strip()
+            codigo_prod_resolvido = mapa_barras_to_codigo_produto.get(cb, '') or (row['codigo_interno'] or '').strip() or cb
+            if cb and cb not in codigos_no_romaneio and codigo_prod_resolvido not in codigos_produto_romaneio:
+                qtd = int(row['quantidade_bipada'] or 0)
+                codigo_produto_extra = (row['codigo_interno'] or '').strip() if row['codigo_interno'] else cb
+                unidade_extra = (row['unidade'] or '').strip() if row['unidade'] else '-'
+                peso_extra = (row['peso'] or '').strip() if row['peso'] else '-'
+                resultado.append({
+                    'codigo_produto': codigo_produto_extra or cb,
+                    'codigo_barras': cb,
+                    'produto': (row['produto'] or '').strip() or 'Item adicionado manualmente',
+                    'quantidade_produto': qtd,
+                    'unidade': unidade_extra or '-',
+                    'peso_bruto': peso_extra or '-',
+                    'quantidade_bipada': qtd,
+                    'quantidade_falta': 0,
+                    'quantidade_sobra': 0,
+                    'aviso_sobra': '',
+                    'status_bipado': 'COMPLETO'
+                })
+        
+        for item in resultado:
+            item['id_viagem'] = id_viagem
+        _carregar_motivos_divergencia(resultado)
+        
+        if not from_cache:
+            wb.close()
+        return jsonify(resultado)
+        
+    except Exception as e:
+        if not from_cache and wb:
+            try:
+                wb.close()
+            except Exception:
+                pass
+        return jsonify({'erro': f'Erro ao ler planilha: {str(e)}'}), 500
+
+@app.route('/api/extrato', methods=['GET'])
+def get_extrato():
+    """Retorna itens da carga agrupados (sem repetir): um por produto com quantidade total"""
+    id_viagem = request.args.get('id_viagem')
+    conn = get_db()
+    if id_viagem:
+        produtos = conn.execute('''
+            SELECT id_viagem, codigo_barras, produto,
+                   SUM(quantidade) AS quantidade,
+                   MAX(data_hora) AS data_hora,
+                   MAX(veiculo) AS veiculo,
+                   MAX(status) AS status
+            FROM produtos_bipados
+            WHERE id_viagem = ?
+            GROUP BY id_viagem, codigo_barras, produto
+            ORDER BY produto
+        ''', (id_viagem.strip(),)).fetchall()
+    else:
+        produtos = conn.execute('''
+            SELECT id_viagem, codigo_barras, produto,
+                   SUM(quantidade) AS quantidade,
+                   MAX(data_hora) AS data_hora,
+                   MAX(veiculo) AS veiculo,
+                   MAX(status) AS status
+            FROM produtos_bipados
+            GROUP BY id_viagem, codigo_barras, produto
+            ORDER BY id_viagem, produto
+        ''').fetchall()
+    conn.close()
+    return jsonify([dict(row) for row in produtos])
+
+def _qual_coluna_filtro(header_str, tipo):
+    """Retorna True se o cabeçalho corresponde ao tipo de filtro (data, pedido, nota_fiscal, cliente)."""
+    if not header_str:
+        return False
+    h = header_str.upper().strip().replace('Í', 'I').replace('É', 'E').replace('Á', 'A').replace('Ç', 'C')
+    if tipo == 'data':
+        return 'DATA' in h
+    if tipo == 'pedido':
+        return 'PEDIDO' in h and 'DATA' not in h
+    if tipo == 'nota_fiscal':
+        return ('NOTA' in h and 'FISCAL' in h) or h == 'NF' or (h.startswith('NOTA') and 'FISCAL' in h)
+    if tipo == 'cliente':
+        return 'CLIENTE' in h
+    return False
+
+
+def _qual_coluna_romaneio(header_str, tipo):
+    """Retorna True se o cabeçalho corresponde ao filtro do romaneio (id_viagem, id_roteiro, codigo_cliente, codigo_produto, endereco, cidade)."""
+    if not header_str:
+        return False
+    h = header_str.upper().strip().replace('Í', 'I').replace('É', 'E').replace('Á', 'A').replace('Ã', 'A').replace('Ç', 'C').replace('Ó', 'O')
+    if tipo == 'id_viagem':
+        return ('ID' in h and 'VIAGEM' in h and 'FATURADA' in h) or (h == 'ID VIAGEM')
+    if tipo == 'id_roteiro':
+        return ('ID' in h and 'ROTEIRO' in h) or (h == 'ID ROTEIRO')
+    if tipo == 'codigo_cliente':
+        return 'CODIGO' in h and 'CLIENTE' in h
+    if tipo == 'codigo_produto':
+        return 'CODIGO' in h and 'PRODUTO' in h and 'BARRAS' not in h
+    if tipo == 'endereco':
+        return 'ENDERE' in h
+    if tipo == 'cidade':
+        return 'CIDADE' in h
+    return False
+
+
+@app.route('/api/romaneio', methods=['GET'])
+def get_romaneio():
+    """Retorna dados do romaneio: do banco (excel_romaneio_por_item) quando DATABASE_URL está definido; senão planilha."""
+    if _usa_banco_para_dados():
+        conn = get_db()
+        try:
+            if getattr(conn, 'kind', None) != 'pg':
+                conn.close()
+                return jsonify({'headers': [], 'rows': [], 'erro': 'Configure DATABASE_URL.'})
+            ds = _get_latest_dataset_id(conn)
+            if not ds:
+                conn.close()
+                return jsonify({'headers': [], 'rows': []})
+            filtro_id_viagem = request.args.get('id_viagem', '').strip()
+            filtro_id_roteiro = request.args.get('id_roteiro', '').strip()
+            filtro_codigo_cliente = request.args.get('codigo_cliente', '').strip()
+            filtro_codigo_produto = request.args.get('codigo_produto', '').strip()
+            filtro_endereco = request.args.get('endereco', '').strip()
+            filtro_cidade = request.args.get('cidade', '').strip()
+            sql = """SELECT data FROM excel_romaneio_por_item WHERE dataset_id = ?"""
+            params = [str(ds)]
+            if filtro_id_viagem:
+                sql += " AND id_viagem = ?"
+                params.append(filtro_id_viagem)
+            if filtro_id_roteiro:
+                sql += " AND id_roteiro = ?"
+                params.append(filtro_id_roteiro)
+            if filtro_codigo_produto:
+                sql += " AND codigo_produto ILIKE ?"
+                params.append('%' + filtro_codigo_produto + '%')
+            sql += " ORDER BY row_index"
+            rows_raw = conn.execute(sql, params).fetchall()
+            conn.close()
+            headers = []
+            rows = []
+            for r in rows_raw:
+                data = r.get('data') if isinstance(r.get('data'), dict) else (json.loads(r['data']) if isinstance(r.get('data'), str) else {})
+                if not data:
+                    continue
+                if filtro_codigo_cliente and filtro_codigo_cliente.upper() not in str(data.get('codigo_cliente') or data.get('Codigo Cliente') or '').upper():
+                    continue
+                if filtro_endereco and filtro_endereco.upper() not in str(data.get('endereco') or data.get('Endereco') or '').upper():
+                    continue
+                if filtro_cidade and filtro_cidade.upper() not in str(data.get('cidade') or data.get('Cidade') or '').upper():
+                    continue
+                if not headers:
+                    headers = [str(k) for k in data.keys()]
+                row_dict = {str(k): (v.strftime('%Y-%m-%d %H:%M:%S') if isinstance(v, datetime) else v) for k, v in data.items()}
+                rows.append(row_dict)
+            return jsonify({'headers': headers or [], 'rows': rows})
+        except Exception as e:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return jsonify({'erro': str(e), 'headers': [], 'rows': []}), 500
+
+    caminho_planilha = encontrar_planilha()
+    if not caminho_planilha:
+        return jsonify({'erro': 'Planilha não encontrada'}), 404
+    
+    filtro_id_viagem = request.args.get('id_viagem', '').strip()
+    filtro_id_roteiro = request.args.get('id_roteiro', '').strip()
+    filtro_codigo_cliente = request.args.get('codigo_cliente', '').strip()
+    filtro_codigo_produto = request.args.get('codigo_produto', '').strip()
+    filtro_endereco = request.args.get('endereco', '').strip()
+    filtro_cidade = request.args.get('cidade', '').strip()
+    
+    try:
+        try:
+            wb = openpyxl.load_workbook(caminho_planilha, data_only=True)
+        except:
+            wb = openpyxl.load_workbook(caminho_planilha, data_only=False)
+        
+        headers = []
+        resultado = []
+        
+        if 'ROMANEIO POR ITEM' in wb.sheetnames:
+            ws_romaneio = wb['ROMANEIO POR ITEM']
+            header_row = list(ws_romaneio.iter_rows(min_row=1, max_row=1, values_only=True))[0]
+            headers = [str(h).strip() if h is not None else f'Col_{i}' for i, h in enumerate(header_row)]
+            if not headers:
+                headers = [f'Col_{i}' for i in range(100)]
+            
+            col_id_viagem = next((i for i, h in enumerate(headers) if _qual_coluna_romaneio(h, 'id_viagem')), None)
+            col_id_roteiro = next((i for i, h in enumerate(headers) if _qual_coluna_romaneio(h, 'id_roteiro')), None)
+            col_codigo_cliente = next((i for i, h in enumerate(headers) if _qual_coluna_romaneio(h, 'codigo_cliente')), None)
+            col_codigo_produto = next((i for i, h in enumerate(headers) if _qual_coluna_romaneio(h, 'codigo_produto')), None)
+            col_endereco = next((i for i, h in enumerate(headers) if _qual_coluna_romaneio(h, 'endereco')), None)
+            col_cidade = next((i for i, h in enumerate(headers) if _qual_coluna_romaneio(h, 'cidade')), None)
+            
+            for row in ws_romaneio.iter_rows(min_row=2, values_only=True):
+                if not row:
+                    continue
+                try:
+                    row_dict = {}
+                    for i, val in enumerate(row):
+                        key = headers[i] if i < len(headers) else f'Col_{i}'
+                        if val is None:
+                            row_dict[key] = ''
+                        elif str(val).strip().startswith('='):
+                            row_dict[key] = ''
+                        else:
+                            row_dict[key] = str(val).strip() if isinstance(val, (str, int, float)) else str(val)
+                    
+                    if not any(row_dict.get(h) for h in headers[:min(3, len(headers))]):
+                        continue
+                    
+                    def valor_col(idx):
+                        if idx is None or idx >= len(row):
+                            return ''
+                        return (str(row[idx]).strip() if row[idx] is not None else '').upper()
+                    
+                    if filtro_id_viagem and col_id_viagem is not None:
+                        if filtro_id_viagem.upper() not in valor_col(col_id_viagem):
+                            continue
+                    if filtro_id_roteiro and col_id_roteiro is not None:
+                        if filtro_id_roteiro.upper() not in valor_col(col_id_roteiro):
+                            continue
+                    if filtro_codigo_cliente and col_codigo_cliente is not None:
+                        if filtro_codigo_cliente.upper() not in valor_col(col_codigo_cliente):
+                            continue
+                    if filtro_codigo_produto and col_codigo_produto is not None:
+                        if filtro_codigo_produto.upper() not in valor_col(col_codigo_produto):
+                            continue
+                    if filtro_endereco and col_endereco is not None:
+                        if filtro_endereco.upper() not in valor_col(col_endereco):
+                            continue
+                    if filtro_cidade and col_cidade is not None:
+                        if filtro_cidade.upper() not in valor_col(col_cidade):
+                            continue
+                    
+                    resultado.append(row_dict)
+                except Exception:
+                    continue
+        
+        wb.close()
+        return jsonify({'headers': headers, 'rows': resultado})
+        
+    except Exception as e:
+        return jsonify({'erro': f'Erro ao ler planilha: {str(e)}'}), 500
+
+@app.route('/api/romaneio', methods=['POST'])
+def update_romaneio():
+    """Atualiza quantidade do romaneio"""
+    data = request.json
+    conn = get_db()
+    if getattr(conn, 'kind', 'sqlite') == 'pg':
+        conn.execute(
+            '''INSERT INTO romaneio (codigo_barras, quantidade_romaneio)
+               VALUES (%s, %s)
+               ON CONFLICT (codigo_barras) DO UPDATE SET quantidade_romaneio = EXCLUDED.quantidade_romaneio''',
+            (data['codigo_barras'], data['quantidade_romaneio'])
+        )
+    else:
+        conn.execute(
+            '''INSERT INTO romaneio (codigo_barras, quantidade_romaneio) VALUES (?, ?)
+               ON CONFLICT(codigo_barras) DO UPDATE SET quantidade_romaneio = excluded.quantidade_romaneio''',
+            (data['codigo_barras'], data['quantidade_romaneio'])
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+def _carregar_motivos_divergencia(lista):
+    """Adiciona o campo 'motivo_divergencia' em cada item da lista (id_viagem + codigo_produto)."""
+    if not lista:
+        return lista
+    conn = get_db()
+    motivos = {}
+    for item in lista:
+        vid = (item.get('id_viagem') or '').strip()
+        cod = (item.get('codigo_produto') or '').strip()
+        if vid and cod:
+            id_norm = _normalizar_id_viagem(vid)
+            key = (vid, cod)
+            if key not in motivos:
+                row = conn.execute(
+                    'SELECT motivo FROM divergencia_motivo WHERE id_viagem = ? AND codigo_produto = ?',
+                    (id_norm, cod)
+                ).fetchone()
+                motivos[key] = (row[0] if row and row[0] else '').strip() if row else ''
+    conn.close()
+    for item in lista:
+        vid = (item.get('id_viagem') or '').strip()
+        cod = (item.get('codigo_produto') or '').strip()
+        item['motivo_divergencia'] = motivos.get((vid, cod), '') if (vid and cod) else ''
+    return lista
+
+
+@app.route('/api/divergencias', methods=['GET'])
+def get_divergencias():
+    """Retorna itens com divergência na conferência: falta (faltar item) ou sobra (passar).
+    Sem id_viagem: retorna divergências de TODOS os roteiros (cada item inclui id_viagem).
+    Com id_viagem: retorna apenas divergências daquele roteiro. Inclui motivo_divergencia."""
+    id_viagem = request.args.get('id_viagem', '').strip()
+    todas = []
+
+    if id_viagem:
+        # Um roteiro só
+        result = get_conferencia(id_viagem)
+        resp = result[0] if isinstance(result, tuple) else result
+        status_code = result[1] if isinstance(result, tuple) and len(result) > 1 else 200
+        data = resp.get_json()
+        if isinstance(data, dict) and data.get('erro'):
+            return jsonify(data), status_code if status_code != 200 else 400
+        lista = data if isinstance(data, list) else []
+        divergencias = [
+            dict(item, id_viagem=id_viagem) for item in lista
+            if (item.get('quantidade_falta') or 0) > 0 or (item.get('quantidade_sobra') or 0) > 0
+        ]
+        _carregar_motivos_divergencia(divergencias)
+        return jsonify(divergencias)
+
+    # Todos os roteiros: buscar id_viagem distintos que têm bipagem
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT DISTINCT id_viagem FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != '' ORDER BY id_viagem"
+    ).fetchall()
+    conn.close()
+    ids_viagens = [row[0] for row in rows if row[0]]
+
+    for vid in ids_viagens:
+        result = get_conferencia(vid)
+        resp = result[0] if isinstance(result, tuple) else result
+        data = resp.get_json() if hasattr(resp, 'get_json') else None
+        if isinstance(data, dict) and data.get('erro'):
+            continue
+        lista = data if isinstance(data, list) else []
+        for item in lista:
+            if (item.get('quantidade_falta') or 0) > 0 or (item.get('quantidade_sobra') or 0) > 0:
+                todas.append(dict(item, id_viagem=vid))
+
+    # Ordenar por id_viagem e depois por produto
+    todas.sort(key=lambda x: (str(x.get('id_viagem') or ''), str(x.get('produto') or '')))
+    _carregar_motivos_divergencia(todas)
+    return jsonify(todas)
+
+
+@app.route('/api/divergencias/motivo', methods=['PUT', 'PATCH', 'POST'])
+def salvar_motivo_divergencia():
+    """Salva o motivo da divergência para um item (id_viagem + codigo_produto). Body: id_viagem, codigo_produto, motivo."""
+    data = request.get_json() or {}
+    id_viagem = (data.get('id_viagem') or '').strip()
+    codigo_produto = (data.get('codigo_produto') or '').strip()
+    motivo = (data.get('motivo') or '').strip()
+    if not id_viagem or not codigo_produto:
+        return jsonify({'success': False, 'erro': 'id_viagem e codigo_produto são obrigatórios'}), 400
+    id_norm = _normalizar_id_viagem(id_viagem)
+    usuario = session.get('usuario', '')
+    conn = get_db()
+    if getattr(conn, 'kind', 'sqlite') == 'pg':
+        conn.execute(
+            '''INSERT INTO divergencia_motivo (id_viagem, codigo_produto, motivo, registrado_por)
+               VALUES (%s, %s, %s, %s)
+               ON CONFLICT (id_viagem, codigo_produto) DO UPDATE SET motivo = EXCLUDED.motivo, registrado_por = EXCLUDED.registrado_por''',
+            (id_norm, codigo_produto, motivo, usuario)
+        )
+    else:
+        conn.execute(
+            '''INSERT INTO divergencia_motivo (id_viagem, codigo_produto, motivo) VALUES (?, ?, ?)
+               ON CONFLICT(id_viagem, codigo_produto) DO UPDATE SET motivo = excluded.motivo''',
+            (id_norm, codigo_produto, motivo)
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'motivo': motivo})
+
+
+def _get_lista_divergencias_todas():
+    """Retorna lista de itens divergentes de todos os roteiros (para exportação Excel). Inclui motivo_divergencia."""
+    todas = []
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT DISTINCT id_viagem FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != '' ORDER BY id_viagem"
+    ).fetchall()
+    conn.close()
+    for vid in [row[0] for row in rows if row[0]]:
+        result = get_conferencia(vid)
+        resp = result[0] if isinstance(result, tuple) else result
+        data = resp.get_json() if hasattr(resp, 'get_json') else None
+        if isinstance(data, dict) and data.get('erro'):
+            continue
+        lista = data if isinstance(data, list) else []
+        for item in lista:
+            if (item.get('quantidade_falta') or 0) > 0 or (item.get('quantidade_sobra') or 0) > 0:
+                todas.append(dict(item, id_viagem=vid))
+    todas.sort(key=lambda x: (str(x.get('id_viagem') or ''), str(x.get('produto') or '')))
+    _carregar_motivos_divergencia(todas)
+    return todas
+
+
+def _get_viagem_info_dict(id_viagem):
+    """Retorna dict com dados da viagem (para exportação)."""
+    if not id_viagem:
+        return {'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': '',
+                'coordenador': COORDENADOR_PADRAO, 'conferente': '', 'ajudante1': '', 'ajudante2': ''}
+    info = _get_viagem_info_planilha(id_viagem) or {}
+    info.setdefault('data_expedicao', '')
+    info.setdefault('placa', '')
+    info.setdefault('identificador_rota', '')
+    info.setdefault('motorista', '')
+    info.setdefault('coordenador', COORDENADOR_PADRAO)
+    info.setdefault('conferente', '')
+    info.setdefault('ajudante1', '')
+    info.setdefault('ajudante2', '')
+    id_norm = _normalizar_id_viagem(id_viagem)
+    conn = get_db()
+    row_p = conn.execute('SELECT placa FROM viagem_placa WHERE id_viagem = ?', (id_norm,)).fetchone()
+    row_m = conn.execute('SELECT motorista FROM viagem_motorista WHERE id_viagem = ?', (id_norm,)).fetchone()
+    row_r = conn.execute('SELECT coordenador, conferente, ajudante1, ajudante2 FROM viagem_responsaveis WHERE id_viagem = ?', (id_norm,)).fetchone()
+    conn.close()
+    if row_p and row_p[0]:
+        info['placa'] = row_p[0].strip()
+    if row_m and row_m[0]:
+        info['motorista'] = row_m[0].strip()
+    if row_r:
+        info['coordenador'] = (row_r[0] or '').strip() or COORDENADOR_PADRAO
+        info['conferente'] = (row_r[1] or '').strip()
+        info['ajudante1'] = (row_r[2] or '').strip()
+        info['ajudante2'] = (row_r[3] or '').strip()
+    return info
+
+
+def _get_periodo_dict(id_viagem):
+    """Retorna dict com início e fim do carregamento."""
+    if not id_viagem:
+        return {'inicio_carregamento': '', 'fim_carregamento': ''}
+    conn = get_db()
+    row = conn.execute(
+        'SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE id_viagem = ?',
+        (id_viagem.strip(),)
+    ).fetchone()
+    conn.close()
+    inicio = row['inicio'] if row and row['inicio'] else ''
+    fim = row['fim'] if row and row['fim'] else ''
+    return {'inicio_carregamento': inicio, 'fim_carregamento': fim}
+
+
+@app.route('/api/divergencias/excel', methods=['GET'])
+def export_divergencias_excel():
+    """Gera Excel: tipo=itens (só itens divergentes), tipo=roteiros (só dados dos roteiros), tipo=completo (página: roteiros + itens)."""
+    from openpyxl import Workbook
+    tipo = request.args.get('tipo', 'completo').strip().lower()
+    if tipo not in ('itens', 'roteiros', 'completo'):
+        tipo = 'completo'
+    data_exp_inicio = request.args.get('data_expedicao_inicio', '').strip()
+    data_exp_fim = request.args.get('data_expedicao_fim', '').strip()
+    divergencias = _get_lista_divergencias_todas()
+    ids_filtro = _get_id_viagens_por_data_expedicao(data_exp_inicio, data_exp_fim)
+    if ids_filtro is not None and len(ids_filtro) > 0:
+        divergencias = [d for d in divergencias if (d.get('id_viagem') or '').strip() in ids_filtro]
+    ids_roteiros = sorted(set(d.get('id_viagem') or '' for d in divergencias if d.get('id_viagem')))
+    wb = Workbook()
+    header_font = Font(bold=True)
+    if tipo == 'itens':
+        ws = wb.active
+        ws.title = 'Itens Divergentes'
+        headers = ['ID Roteiro', 'Status', 'Código de Barras', 'Código do Produto', 'Produto', 'Qtd. Romaneio', 'Unidade', 'Peso Bruto', 'Qtd. Bipada', 'Qtd. Falta', 'Qtd. Sobra', 'Aviso', 'Motivo da divergência']
+        for col, h in enumerate(headers, 1):
+            c = ws.cell(row=1, column=col, value=h)
+            c.font = header_font
+        for row_idx, item in enumerate(divergencias, 2):
+            status = item.get('status_bipado') or ''
+            qtd_sobra = item.get('quantidade_sobra') or 0
+            ws.cell(row=row_idx, column=1, value=item.get('id_viagem') or '')
+            ws.cell(row=row_idx, column=2, value=status)
+            ws.cell(row=row_idx, column=3, value=item.get('codigo_barras') or '')
+            ws.cell(row=row_idx, column=4, value=item.get('codigo_produto') or '')
+            ws.cell(row=row_idx, column=5, value=item.get('produto') or '')
+            ws.cell(row=row_idx, column=6, value=item.get('quantidade_produto'))
+            ws.cell(row=row_idx, column=7, value=item.get('unidade') or '')
+            ws.cell(row=row_idx, column=8, value=item.get('peso_bruto') or '')
+            ws.cell(row=row_idx, column=9, value=item.get('quantidade_bipada'))
+            ws.cell(row=row_idx, column=10, value=item.get('quantidade_falta'))
+            ws.cell(row=row_idx, column=11, value=qtd_sobra)
+            ws.cell(row=row_idx, column=12, value=item.get('aviso_sobra') or '')
+            ws.cell(row=row_idx, column=13, value=item.get('motivo_divergencia') or '')
+        nome_arquivo = 'divergencias_itens.xlsx'
+    elif tipo == 'roteiros':
+        ws = wb.active
+        ws.title = 'Dados dos Roteiros Divergentes'
+        headers = ['ID Roteiro', 'Identificador da Rota', 'Data Expedição', 'Placa', 'Motorista', 'Início Carregamento', 'Fim Carregamento', 'Coordenador', 'Conferente', 'Auxiliar 1', 'Auxiliar 2']
+        for col, h in enumerate(headers, 1):
+            c = ws.cell(row=1, column=col, value=h)
+            c.font = header_font
+        for row_idx, vid in enumerate(ids_roteiros, 2):
+            info = _get_viagem_info_dict(vid)
+            periodo = _get_periodo_dict(vid)
+            ws.cell(row=row_idx, column=1, value=vid)
+            ws.cell(row=row_idx, column=2, value=info.get('identificador_rota') or '')
+            ws.cell(row=row_idx, column=3, value=info.get('data_expedicao') or '')
+            ws.cell(row=row_idx, column=4, value=info.get('placa') or '')
+            ws.cell(row=row_idx, column=5, value=info.get('motorista') or '')
+            ws.cell(row=row_idx, column=6, value=periodo.get('inicio_carregamento') or '')
+            ws.cell(row=row_idx, column=7, value=periodo.get('fim_carregamento') or '')
+            ws.cell(row=row_idx, column=8, value=info.get('coordenador') or '')
+            ws.cell(row=row_idx, column=9, value=info.get('conferente') or '')
+            ws.cell(row=row_idx, column=10, value=info.get('ajudante1') or '')
+            ws.cell(row=row_idx, column=11, value=info.get('ajudante2') or '')
+        nome_arquivo = 'divergencias_roteiros.xlsx'
+    else:
+        # completo: uma única aba com, para cada roteiro, DADOS DO ROTEIRO + ITENS DIVERGENTES (como na tela)
+        ws = wb.active
+        ws.title = 'Divergências - Página Completa'
+        headers_rot = ['ID Roteiro', 'Identificador da Rota', 'Data Expedição', 'Placa', 'Motorista', 'Início', 'Fim', 'Coordenador', 'Conferente', 'Auxiliar 1', 'Auxiliar 2']
+        headers_itens = ['Status', 'Código de Barras', 'Código do Produto', 'Produto', 'Qtd. Romaneio', 'Unidade', 'Peso Bruto', 'Qtd. Bipada', 'Qtd. Falta', 'Qtd. Sobra', 'Aviso', 'Motivo da divergência']
+        linha = 1
+        for vid in ids_roteiros:
+            itens_roteiro = [d for d in divergencias if (d.get('id_viagem') or '') == vid]
+            # Título do roteiro
+            ws.cell(row=linha, column=1, value='Roteiro: ' + str(vid))
+            ws.cell(row=linha, column=1).font = Font(bold=True, size=12)
+            linha += 1
+            # DADOS DO ROTEIRO
+            ws.cell(row=linha, column=1, value='DADOS DO ROTEIRO')
+            ws.cell(row=linha, column=1).font = header_font
+            linha += 1
+            for col, h in enumerate(headers_rot, 1):
+                c = ws.cell(row=linha, column=col, value=h)
+                c.font = header_font
+            linha += 1
+            info = _get_viagem_info_dict(vid)
+            periodo = _get_periodo_dict(vid)
+            ws.cell(row=linha, column=1, value=vid)
+            ws.cell(row=linha, column=2, value=info.get('identificador_rota') or '')
+            ws.cell(row=linha, column=3, value=info.get('data_expedicao') or '')
+            ws.cell(row=linha, column=4, value=info.get('placa') or '')
+            ws.cell(row=linha, column=5, value=info.get('motorista') or '')
+            ws.cell(row=linha, column=6, value=periodo.get('inicio_carregamento') or '')
+            ws.cell(row=linha, column=7, value=periodo.get('fim_carregamento') or '')
+            ws.cell(row=linha, column=8, value=info.get('coordenador') or '')
+            ws.cell(row=linha, column=9, value=info.get('conferente') or '')
+            ws.cell(row=linha, column=10, value=info.get('ajudante1') or '')
+            ws.cell(row=linha, column=11, value=info.get('ajudante2') or '')
+            linha += 2  # linha em branco antes dos itens
+            # ITENS DIVERGENTES
+            ws.cell(row=linha, column=1, value='ITENS DIVERGENTES')
+            ws.cell(row=linha, column=1).font = header_font
+            linha += 1
+            for col, h in enumerate(headers_itens, 1):
+                c = ws.cell(row=linha, column=col, value=h)
+                c.font = header_font
+            linha += 1
+            for item in itens_roteiro:
+                ws.cell(row=linha, column=1, value=item.get('status_bipado') or '')
+                ws.cell(row=linha, column=2, value=item.get('codigo_barras') or '')
+                ws.cell(row=linha, column=3, value=item.get('codigo_produto') or '')
+                ws.cell(row=linha, column=4, value=item.get('produto') or '')
+                ws.cell(row=linha, column=5, value=item.get('quantidade_produto'))
+                ws.cell(row=linha, column=6, value=item.get('unidade') or '')
+                ws.cell(row=linha, column=7, value=item.get('peso_bruto') or '')
+                ws.cell(row=linha, column=8, value=item.get('quantidade_bipada'))
+                ws.cell(row=linha, column=9, value=item.get('quantidade_falta'))
+                ws.cell(row=linha, column=10, value=item.get('quantidade_sobra') or 0)
+                ws.cell(row=linha, column=11, value=item.get('aviso_sobra') or '')
+                ws.cell(row=linha, column=12, value=item.get('motivo_divergencia') or '')
+                linha += 1
+            linha += 2  # linhas em branco entre roteiros
+        nome_arquivo = 'divergencias_pagina_completa.xlsx'
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name=nome_arquivo, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+def _get_mapa_motivos_divergencia():
+    """Retorna dict (id_viagem_norm, codigo_produto) -> motivo para uso nos relatórios."""
+    conn = get_db()
+    rows = conn.execute('SELECT id_viagem, codigo_produto, motivo FROM divergencia_motivo').fetchall()
+    conn.close()
+    mapa = {}
+    for r in rows:
+        vid = _normalizar_id_viagem(r['id_viagem'] or '')
+        cod = (r['codigo_produto'] or '').strip()
+        if vid and cod:
+            mapa[(vid, cod)] = (r['motivo'] or '').strip()
+    return mapa
+
+
+@app.route('/api/relatorios/excel/bipados', methods=['GET'])
+def export_relatorio_bipados():
+    """Gera Excel com todos os registros bipados (tudo que foi bipado). Conferente = do roteiro. Inclui Motivo da divergência."""
+    from openpyxl import Workbook
+    data_inicio = request.args.get('data_inicio', '').strip()
+    data_fim = request.args.get('data_fim', '').strip()
+    ids_filtro = _get_id_viagens_por_data_expedicao(data_inicio, data_fim)
+    conn = get_db()
+    sql = '''
+        SELECT p.*, r.conferente as conferente_roteiro
+        FROM produtos_bipados p
+        LEFT JOIN viagem_responsaveis r ON p.id_viagem = r.id_viagem
+    '''
+    params = []
+    if ids_filtro is not None and len(ids_filtro) > 0:
+        sql += ' WHERE p.id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
+        params = list(ids_filtro)
+    sql += ' ORDER BY p.data_hora DESC, p.id DESC'
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    rows = [dict(r) for r in rows]
+    mapa_motivos = _get_mapa_motivos_divergencia()
+    for row in rows:
+        vid = _normalizar_id_viagem(row.get('id_viagem') or '')
+        cod = (row.get('codigo_interno') or row.get('codigo_barras') or '').strip()
+        row['motivo_divergencia'] = mapa_motivos.get((vid, cod), '') or mapa_motivos.get((vid, (row.get('codigo_barras') or '').strip()), '')
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Tudo que foi bipado'
+    header_font = Font(bold=True)
+    col_map = [
+        ('id', 'ID'),
+        ('id_viagem', 'ID Roteiro'),
+        ('codigo_barras', 'Código de Barras'),
+        ('codigo_interno', 'Código Interno'),
+        ('produto', 'Produto'),
+        ('quantidade', 'Quantidade'),
+        ('data_hora', 'Data/Hora'),
+        ('veiculo', 'Veículo'),
+        ('conferente_roteiro', 'Conferente (roteiro)'),
+        ('motivo_divergencia', 'Motivo da divergência'),
+        ('status', 'Status'),
+        ('doca', 'Doca'),
+        ('codigo_dun', 'Código DUN'),
+        ('unidade', 'Unidade'),
+        ('peso', 'Peso'),
+    ]
+    keys_disponiveis = list(rows[0].keys()) if rows else [c[0] for c in col_map]
+    cols_in_order = [(k, label) for k, label in col_map if k in keys_disponiveis]
+    if not cols_in_order:
+        cols_in_order = [(k, label) for k, label in col_map]
+    for col_idx, (_, label) in enumerate(cols_in_order, 1):
+        c = ws.cell(row=1, column=col_idx, value=label)
+        c.font = header_font
+    for row_idx, row in enumerate(rows, 2):
+        for col_idx, (key, _) in enumerate(cols_in_order, 1):
+            ws.cell(row=row_idx, column=col_idx, value=row.get(key))
+    nome_arquivo = 'relatorio_tudo_que_foi_bipado.xlsx'
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name=nome_arquivo, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+def _relatorio_bipados_periodo(data_inicio, data_fim, data_expedicao_inicio=None, data_expedicao_fim=None):
+    """Gera workbook com bipados filtrados por período (data_hora) e opcionalmente por data de expedição."""
+    from openpyxl import Workbook
+    ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
+    conn = get_db()
+    sql = '''
+        SELECT p.*, r.conferente as conferente_roteiro
+        FROM produtos_bipados p
+        LEFT JOIN viagem_responsaveis r ON p.id_viagem = r.id_viagem
+    '''
+    conditions, params = [], []
+    if data_inicio and data_fim:
+        d0 = (data_inicio.strip() + ' 00:00:00') if len(data_inicio.strip()) <= 10 else data_inicio.strip()
+        d1 = (data_fim.strip() + ' 23:59:59') if len(data_fim.strip()) <= 10 else data_fim.strip()
+        conditions.append('p.data_hora >= ? AND p.data_hora <= ?')
+        params.extend([d0, d1])
+    if ids_filtro is not None and len(ids_filtro) > 0:
+        conditions.append('p.id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')')
+        params.extend(list(ids_filtro))
+    if conditions:
+        sql += ' WHERE ' + ' AND '.join(conditions)
+    sql += ' ORDER BY p.data_hora DESC, p.id DESC'
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    rows = [dict(r) for r in rows]
+    mapa_motivos = _get_mapa_motivos_divergencia()
+    for row in rows:
+        vid = _normalizar_id_viagem(row.get('id_viagem') or '')
+        cod = (row.get('codigo_interno') or row.get('codigo_barras') or '').strip()
+        row['motivo_divergencia'] = mapa_motivos.get((vid, cod), '') or mapa_motivos.get((vid, (row.get('codigo_barras') or '').strip()), '')
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Bipados no período'
+    header_font = Font(bold=True)
+    col_map = [
+        ('id', 'ID'), ('id_viagem', 'ID Roteiro'), ('codigo_barras', 'Código de Barras'), ('codigo_interno', 'Código Interno'),
+        ('produto', 'Produto'), ('quantidade', 'Quantidade'), ('data_hora', 'Data/Hora'), ('veiculo', 'Veículo'),
+        ('conferente_roteiro', 'Conferente (roteiro)'), ('motivo_divergencia', 'Motivo da divergência'), ('status', 'Status'), ('doca', 'Doca'), ('codigo_dun', 'Código DUN'), ('unidade', 'Unidade'), ('peso', 'Peso'),
+    ]
+    keys = list(rows[0].keys()) if rows else [c[0] for c in col_map]
+    cols = [(k, lb) for k, lb in col_map if k in keys]
+    if not cols:
+        cols = [(k, k) for k, lb in col_map]
+    for col_idx, (_, lb) in enumerate(cols, 1):
+        ws.cell(row=1, column=col_idx, value=lb).font = header_font
+    for row_idx, row in enumerate(rows, 2):
+        for col_idx, (key, _) in enumerate(cols, 1):
+            ws.cell(row=row_idx, column=col_idx, value=row.get(key))
+    return wb
+
+
+def _relatorio_resumo_roteiro(data_expedicao_inicio=None, data_expedicao_fim=None):
+    """Uma linha por viagem: ID Roteiro, Placa, Motorista, Data expedição, Início/Fim, Duração (min), Total itens, Faltas, Responsáveis."""
+    from openpyxl import Workbook
+    ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
+    conn = get_db()
+    sql = '''
+        SELECT id_viagem, SUM(quantidade) as total_bipados, MIN(data_hora) as inicio, MAX(data_hora) as fim
+        FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != ''
+    '''
+    params = []
+    if ids_filtro is not None and len(ids_filtro) > 0:
+        sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
+        params = list(ids_filtro)
+    sql += ' GROUP BY id_viagem ORDER BY MAX(data_hora) DESC'
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    viagens = []
+    for r in rows:
+        inicio = r['inicio'] or ''
+        fim = r['fim'] or ''
+        d_min = None
+        if inicio and fim:
+            t0, t1 = _parse_datetime(inicio), _parse_datetime(fim)
+            if t0 and t1:
+                d_min = max(0, int((t1 - t0).total_seconds() / 60))
+        viagens.append({
+            'id_viagem': r['id_viagem'], 'total_bipados': r['total_bipados'] or 0,
+            'inicio': inicio, 'fim': fim, 'duracao_minutos': d_min
+        })
+    total_faltas_map = {}
+    for v in viagens[:300]:
+        try:
+            ret = get_conferencia(v['id_viagem'])
+            resp = ret[0] if isinstance(ret, tuple) else ret
+            data = resp.get_json() if hasattr(resp, 'get_json') else []
+            total_faltas_map[v['id_viagem']] = sum((item.get('quantidade_falta') or 0) for item in (data if isinstance(data, list) else []))
+        except Exception:
+            total_faltas_map[v['id_viagem']] = 0
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Resumo por Roteiro'
+    header_font = Font(bold=True)
+    headers = ['ID Roteiro', 'Placa', 'Motorista', 'Data Expedição', 'Início Carregamento', 'Fim Carregamento', 'Duração (min)', 'Total Itens Bipados', 'Faltas', 'Coordenador', 'Conferente', 'Auxiliar 1', 'Auxiliar 2']
+    for col, h in enumerate(headers, 1):
+        ws.cell(row=1, column=col, value=h).font = header_font
+    for row_idx, v in enumerate(viagens, 2):
+        info = _get_viagem_info_dict(v.get('id_viagem') or '')
+        periodo = _get_periodo_dict(v.get('id_viagem') or '')
+        faltas = total_faltas_map.get(v['id_viagem'], 0)
+        ws.cell(row=row_idx, column=1, value=v.get('id_viagem') or '')
+        ws.cell(row=row_idx, column=2, value=info.get('placa') or '')
+        ws.cell(row=row_idx, column=3, value=info.get('motorista') or '')
+        ws.cell(row=row_idx, column=4, value=info.get('data_expedicao') or '')
+        ws.cell(row=row_idx, column=5, value=periodo.get('inicio_carregamento') or '')
+        ws.cell(row=row_idx, column=6, value=periodo.get('fim_carregamento') or '')
+        ws.cell(row=row_idx, column=7, value=v.get('duracao_minutos'))
+        ws.cell(row=row_idx, column=8, value=v.get('total_bipados', 0))
+        ws.cell(row=row_idx, column=9, value=faltas)
+        ws.cell(row=row_idx, column=10, value=info.get('coordenador') or '')
+        ws.cell(row=row_idx, column=11, value=info.get('conferente') or '')
+        ws.cell(row=row_idx, column=12, value=info.get('ajudante1') or '')
+        ws.cell(row=row_idx, column=13, value=info.get('ajudante2') or '')
+    return wb
+
+
+def _relatorio_tempo_placa(data_expedicao_inicio=None, data_expedicao_fim=None):
+    """Tempo de carregamento por placa (total minutos e quantidade de viagens)."""
+    from openpyxl import Workbook
+    ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
+    conn = get_db()
+    sql = '''
+        SELECT id_viagem, SUM(quantidade) as total_bipados, MIN(data_hora) as inicio, MAX(data_hora) as fim
+        FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != ''
+    '''
+    params = []
+    if ids_filtro is not None and len(ids_filtro) > 0:
+        sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
+        params = list(ids_filtro)
+    sql += ' GROUP BY id_viagem'
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    placa_minutos = {}
+    placa_viagens = {}
+    for r in rows:
+        inicio, fim = r['inicio'] or '', r['fim'] or ''
+        d_min = None
+        if inicio and fim:
+            t0, t1 = _parse_datetime(inicio), _parse_datetime(fim)
+            if t0 and t1:
+                d_min = max(0, int((t1 - t0).total_seconds() / 60))
+        info = _get_viagem_info_dict(r['id_viagem'] or '')
+        placa = (info.get('placa') or '').strip() or 'Sem placa'
+        placa_minutos[placa] = placa_minutos.get(placa, 0) + (d_min or 0)
+        placa_viagens[placa] = placa_viagens.get(placa, 0) + 1
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Tempo por Placa'
+    header_font = Font(bold=True)
+    for col, h in enumerate(['Placa', 'Total Minutos', 'Qtd. Viagens'], 1):
+        ws.cell(row=1, column=col, value=h).font = header_font
+    for row_idx, (placa, minutos) in enumerate(sorted(placa_minutos.items(), key=lambda x: -x[1]), 2):
+        ws.cell(row=row_idx, column=1, value=placa)
+        ws.cell(row=row_idx, column=2, value=minutos)
+        ws.cell(row=row_idx, column=3, value=placa_viagens.get(placa, 0))
+    return wb
+
+
+def _relatorio_itens_por_roteiro(data_expedicao_inicio=None, data_expedicao_fim=None):
+    """Resumo: por roteiro e produto, quantidade bipada (uma linha por id_viagem + codigo_barras). Inclui conferente e motivo da divergência."""
+    from openpyxl import Workbook
+    ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
+    conn = get_db()
+    sql = '''
+        SELECT id_viagem, codigo_barras, MAX(codigo_interno) as codigo_interno, produto, SUM(quantidade) as total
+        FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != ''
+    '''
+    params = []
+    if ids_filtro is not None and len(ids_filtro) > 0:
+        sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
+        params = list(ids_filtro)
+    sql += ' GROUP BY id_viagem, codigo_barras ORDER BY id_viagem, total DESC'
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    vids = sorted(set((r['id_viagem'] or '').strip() for r in rows if (r['id_viagem'] or '').strip()))
+    conferente_por_viagem = {vid: (_get_viagem_info_dict(vid).get('conferente') or '').strip() or '' for vid in vids}
+    mapa_motivos = _get_mapa_motivos_divergencia()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Itens por Roteiro'
+    header_font = Font(bold=True)
+    for col, h in enumerate(['ID Roteiro', 'Conferente', 'Motivo da divergência', 'Código de Barras', 'Produto', 'Quantidade Bipada'], 1):
+        ws.cell(row=1, column=col, value=h).font = header_font
+    for row_idx, r in enumerate(rows, 2):
+        vid = (r['id_viagem'] or '').strip()
+        vid_norm = _normalizar_id_viagem(vid)
+        cod_prod = (r.get('codigo_interno') or r.get('codigo_barras') or '').strip()
+        motivo = mapa_motivos.get((vid_norm, cod_prod), '') or mapa_motivos.get((vid_norm, (r.get('codigo_barras') or '').strip()), '')
+        ws.cell(row=row_idx, column=1, value=vid)
+        ws.cell(row=row_idx, column=2, value=conferente_por_viagem.get(vid, ''))
+        ws.cell(row=row_idx, column=3, value=motivo)
+        ws.cell(row=row_idx, column=4, value=r['codigo_barras'] or '')
+        ws.cell(row=row_idx, column=5, value=r['produto'] or '')
+        ws.cell(row=row_idx, column=6, value=r['total'] or 0)
+    return wb
+
+
+def _relatorio_itens_mais_bipados(data_expedicao_inicio=None, data_expedicao_fim=None):
+    """Ranking de produtos por quantidade total bipada."""
+    from openpyxl import Workbook
+    ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
+    conn = get_db()
+    sql = 'SELECT codigo_barras, produto, SUM(quantidade) as total, COUNT(DISTINCT id_viagem) as num_viagens FROM produtos_bipados'
+    params = []
+    if ids_filtro is not None and len(ids_filtro) > 0:
+        sql += ' WHERE id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
+        params = list(ids_filtro)
+    sql += ' GROUP BY codigo_barras ORDER BY total DESC'
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Itens mais bipados'
+    header_font = Font(bold=True)
+    for col, h in enumerate(['Código de Barras', 'Produto', 'Total Bipado', 'Qtd. Viagens'], 1):
+        ws.cell(row=1, column=col, value=h).font = header_font
+    for row_idx, r in enumerate(rows, 2):
+        ws.cell(row=row_idx, column=1, value=r['codigo_barras'] or '')
+        ws.cell(row=row_idx, column=2, value=(r['produto'] or '')[:80])
+        ws.cell(row=row_idx, column=3, value=r['total'] or 0)
+        ws.cell(row=row_idx, column=4, value=r['num_viagens'] or 0)
+    return wb
+
+
+def _relatorio_resumo_produto(data_expedicao_inicio=None, data_expedicao_fim=None):
+    """Por produto: total bipado, em quantas viagens, primeira e última data."""
+    from openpyxl import Workbook
+    ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
+    conn = get_db()
+    sql = '''SELECT codigo_barras, produto, SUM(quantidade) as total,
+               COUNT(DISTINCT id_viagem) as num_viagens, MIN(data_hora) as primeira, MAX(data_hora) as ultima
+        FROM produtos_bipados'''
+    params = []
+    if ids_filtro is not None and len(ids_filtro) > 0:
+        sql += ' WHERE id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
+        params = list(ids_filtro)
+    sql += ' GROUP BY codigo_barras ORDER BY total DESC'
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Resumo por Produto'
+    header_font = Font(bold=True)
+    for col, h in enumerate(['Código de Barras', 'Produto', 'Total Bipado', 'Qtd. Viagens', 'Primeira Data', 'Última Data'], 1):
+        ws.cell(row=1, column=col, value=h).font = header_font
+    for row_idx, r in enumerate(rows, 2):
+        ws.cell(row=row_idx, column=1, value=r['codigo_barras'] or '')
+        ws.cell(row=row_idx, column=2, value=(r['produto'] or '')[:80])
+        ws.cell(row=row_idx, column=3, value=r['total'] or 0)
+        ws.cell(row=row_idx, column=4, value=r['num_viagens'] or 0)
+        ws.cell(row=row_idx, column=5, value=r['primeira'] or '')
+        ws.cell(row=row_idx, column=6, value=r['ultima'] or '')
+    return wb
+
+
+def _relatorio_roteiros_divergencia(data_expedicao_inicio=None, data_expedicao_fim=None):
+    """Roteiros que têm divergência, com totais de faltas e sobras. Inclui conferente do roteiro."""
+    from openpyxl import Workbook
+    ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
+    divergencias = _get_lista_divergencias_todas()
+    if ids_filtro is not None and len(ids_filtro) > 0:
+        divergencias = [d for d in divergencias if (d.get('id_viagem') or '').strip() in ids_filtro]
+    by_roteiro = {}
+    for d in divergencias:
+        vid = d.get('id_viagem') or ''
+        if vid not in by_roteiro:
+            by_roteiro[vid] = {'faltas': 0, 'sobras': 0}
+        by_roteiro[vid]['faltas'] += (d.get('quantidade_falta') or 0)
+        by_roteiro[vid]['sobras'] += (d.get('quantidade_sobra') or 0)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Roteiros com Divergência'
+    header_font = Font(bold=True)
+    for col, h in enumerate(['ID Roteiro', 'Conferente', 'Total Faltas', 'Total Sobras'], 1):
+        ws.cell(row=1, column=col, value=h).font = header_font
+    for row_idx, (vid, tot) in enumerate(sorted(by_roteiro.items()), 2):
+        info = _get_viagem_info_dict(vid)
+        conferente = (info.get('conferente') or '').strip() or ''
+        ws.cell(row=row_idx, column=1, value=vid)
+        ws.cell(row=row_idx, column=2, value=conferente)
+        ws.cell(row=row_idx, column=3, value=tot['faltas'])
+        ws.cell(row=row_idx, column=4, value=tot['sobras'])
+    return wb
+
+
+def _relatorio_carregamento_veiculo(data_expedicao_inicio=None, data_expedicao_fim=None):
+    """Por veículo (placa/veículo no bipado): total itens e quantidade de viagens."""
+    from openpyxl import Workbook
+    ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
+    conn = get_db()
+    sql = '''
+        SELECT veiculo, SUM(quantidade) as total, COUNT(DISTINCT id_viagem) as num_viagens
+        FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != ''
+    '''
+    params = []
+    if ids_filtro is not None and len(ids_filtro) > 0:
+        sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
+        params = list(ids_filtro)
+    sql += ' GROUP BY veiculo ORDER BY total DESC'
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Carregamento por Veículo'
+    header_font = Font(bold=True)
+    for col, h in enumerate(['Veículo', 'Total Itens', 'Qtd. Viagens'], 1):
+        ws.cell(row=1, column=col, value=h).font = header_font
+    for row_idx, r in enumerate(rows, 2):
+        ws.cell(row=row_idx, column=1, value=r['veiculo'] or '')
+        ws.cell(row=row_idx, column=2, value=r['total'] or 0)
+        ws.cell(row=row_idx, column=3, value=r['num_viagens'] or 0)
+    return wb
+
+
+def _relatorio_peso_viagem_placa(data_expedicao_inicio=None, data_expedicao_fim=None):
+    """Peso carregado por viagem e por placa. Peso unitário: do banco (base_codigo_barras) ou planilha."""
+    from openpyxl import Workbook
+    ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
+    conn = get_db()
+    sql = 'SELECT id_viagem, codigo_barras, quantidade FROM produtos_bipados'
+    params = []
+    if ids_filtro is not None and len(ids_filtro) > 0:
+        sql += ' WHERE id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
+        params = list(ids_filtro)
+    rows = conn.execute(sql, params).fetchall()
+    mapa_peso = {}
+    mapa_barras_codigo = {}
+    if _usa_banco_para_dados() and getattr(conn, 'kind', None) == 'pg':
+        try:
+            ds = _get_latest_dataset_id(conn)
+            if ds:
+                base_rows = conn.execute("SELECT codigo_interno, ean, dun, peso FROM base_codigo_barras WHERE dataset_id = ?", (str(ds),)).fetchall()
+                for r in base_rows:
+                    ci = (r.get('codigo_interno') or r[0] or '').strip()
+                    ean = (r.get('ean') or r[1] or '').strip()
+                    dun = (r.get('dun') or r[2] or '').strip()
+                    try:
+                        p = float(r.get('peso') or r[3] or 0)
+                    except (TypeError, ValueError):
+                        p = 0
+                    if ci:
+                        mapa_peso[ci] = p
+                    if ean:
+                        mapa_barras_codigo[ean] = ci
+                    if dun:
+                        mapa_barras_codigo[dun] = ci
+        except Exception:
+            pass
+    conn.close()
+    if not mapa_peso and not mapa_barras_codigo:
+        caminho_planilha = encontrar_planilha()
+        if caminho_planilha:
+            try:
+                wb_plan = openpyxl.load_workbook(caminho_planilha, data_only=True)
+                mapa_peso = _build_mapa_peso_romaneio(wb_plan)
+                mapa_barras_codigo = _build_mapa_barras_to_codigo_produto(wb_plan)
+                wb_plan.close()
+            except Exception:
+                pass
+    peso_por_viagem = {}
+    peso_por_placa = {}
+    for r in rows:
+        vid = (r['id_viagem'] or '').strip()
+        codigo_barras = (r['codigo_barras'] or '').strip()
+        qtd = int(r['quantidade'] or 0)
+        codigo_produto = mapa_barras_codigo.get(codigo_barras) or codigo_barras
+        peso_unit = mapa_peso.get(codigo_produto, 0) or mapa_peso.get(codigo_barras, 0)
+        p = qtd * peso_unit
+        if vid:
+            peso_por_viagem[vid] = peso_por_viagem.get(vid, 0.0) + p
+        info = _get_viagem_info_dict(vid)
+        placa = (info.get('placa') or '').strip() or 'Sem placa'
+        peso_por_placa[placa] = peso_por_placa.get(placa, 0.0) + p
+    wb = Workbook()
+    header_font = Font(bold=True)
+    ws1 = wb.active
+    ws1.title = 'Peso por Viagem'
+    for col, h in enumerate(['ID Roteiro', 'Conferente', 'Peso Total (kg)'], 1):
+        ws1.cell(row=1, column=col, value=h).font = header_font
+    for row_idx, (vid, p) in enumerate(sorted(peso_por_viagem.items(), key=lambda x: -x[1]), 2):
+        info = _get_viagem_info_dict(vid)
+        conferente = (info.get('conferente') or '').strip() or ''
+        ws1.cell(row=row_idx, column=1, value=vid)
+        ws1.cell(row=row_idx, column=2, value=conferente)
+        ws1.cell(row=row_idx, column=3, value=round(p, 2))
+    ws2 = wb.create_sheet('Peso por Placa')
+    for col, h in enumerate(['Placa', 'Peso Total (kg)'], 1):
+        ws2.cell(row=1, column=col, value=h).font = header_font
+    for row_idx, (placa, p) in enumerate(sorted(peso_por_placa.items(), key=lambda x: -x[1]), 2):
+        ws2.cell(row=row_idx, column=1, value=placa)
+        ws2.cell(row=row_idx, column=2, value=round(p, 2))
+    return wb
+
+
+def _relatorio_responsaveis_viagem(data_expedicao_inicio=None, data_expedicao_fim=None):
+    """Por roteiro: coordenador, conferente, auxiliares 1 e 2."""
+    from openpyxl import Workbook
+    ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
+    conn = get_db()
+    sql = "SELECT DISTINCT id_viagem FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != ''"
+    params = []
+    if ids_filtro is not None and len(ids_filtro) > 0:
+        sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
+        params = list(ids_filtro)
+    sql += ' ORDER BY id_viagem'
+    ids = conn.execute(sql, params).fetchall()
+    conn.close()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Responsáveis por Viagem'
+    header_font = Font(bold=True)
+    for col, h in enumerate(['ID Roteiro', 'Coordenador', 'Conferente', 'Auxiliar 1', 'Auxiliar 2'], 1):
+        ws.cell(row=1, column=col, value=h).font = header_font
+    for row_idx, (row,) in enumerate(ids, 2):
+        info = _get_viagem_info_dict(row or '')
+        ws.cell(row=row_idx, column=1, value=row or '')
+        ws.cell(row=row_idx, column=2, value=info.get('coordenador') or '')
+        ws.cell(row=row_idx, column=3, value=info.get('conferente') or '')
+        ws.cell(row=row_idx, column=4, value=info.get('ajudante1') or '')
+        ws.cell(row=row_idx, column=5, value=info.get('ajudante2') or '')
+    return wb
+
+
+@app.route('/api/relatorios/excel/bipados_periodo', methods=['GET'])
+def export_relatorio_bipados_periodo():
+    data_inicio = request.args.get('data_inicio', '').strip()
+    data_fim = request.args.get('data_fim', '').strip()
+    data_exp_inicio = request.args.get('data_expedicao_inicio', '').strip()
+    data_exp_fim = request.args.get('data_expedicao_fim', '').strip()
+    wb = _relatorio_bipados_periodo(data_inicio, data_fim, data_exp_inicio, data_exp_fim)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='relatorio_bipados_periodo.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/api/relatorios/excel/resumo_roteiro', methods=['GET'])
+def export_relatorio_resumo_roteiro():
+    de = request.args.get('data_expedicao_inicio', '').strip()
+    ate = request.args.get('data_expedicao_fim', '').strip()
+    wb = _relatorio_resumo_roteiro(de, ate)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='relatorio_resumo_por_roteiro.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/api/relatorios/excel/tempo_placa', methods=['GET'])
+def export_relatorio_tempo_placa():
+    de = request.args.get('data_expedicao_inicio', '').strip()
+    ate = request.args.get('data_expedicao_fim', '').strip()
+    wb = _relatorio_tempo_placa(de, ate)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='relatorio_tempo_por_placa.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/api/relatorios/excel/itens_por_roteiro', methods=['GET'])
+def export_relatorio_itens_por_roteiro():
+    de = request.args.get('data_expedicao_inicio', '').strip()
+    ate = request.args.get('data_expedicao_fim', '').strip()
+    wb = _relatorio_itens_por_roteiro(de, ate)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='relatorio_itens_por_roteiro.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/api/relatorios/excel/itens_mais_bipados', methods=['GET'])
+def export_relatorio_itens_mais_bipados():
+    de = request.args.get('data_expedicao_inicio', '').strip()
+    ate = request.args.get('data_expedicao_fim', '').strip()
+    wb = _relatorio_itens_mais_bipados(de, ate)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='relatorio_itens_mais_bipados.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/api/relatorios/excel/resumo_produto', methods=['GET'])
+def export_relatorio_resumo_produto():
+    de = request.args.get('data_expedicao_inicio', '').strip()
+    ate = request.args.get('data_expedicao_fim', '').strip()
+    wb = _relatorio_resumo_produto(de, ate)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='relatorio_resumo_por_produto.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/api/relatorios/excel/roteiros_divergencia', methods=['GET'])
+def export_relatorio_roteiros_divergencia():
+    de = request.args.get('data_expedicao_inicio', '').strip()
+    ate = request.args.get('data_expedicao_fim', '').strip()
+    wb = _relatorio_roteiros_divergencia(de, ate)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='relatorio_roteiros_com_divergencia.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/api/relatorios/excel/carregamento_veiculo', methods=['GET'])
+def export_relatorio_carregamento_veiculo():
+    de = request.args.get('data_expedicao_inicio', '').strip()
+    ate = request.args.get('data_expedicao_fim', '').strip()
+    wb = _relatorio_carregamento_veiculo(de, ate)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='relatorio_carregamento_por_veiculo.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/api/relatorios/excel/peso_viagem_placa', methods=['GET'])
+def export_relatorio_peso_viagem_placa():
+    de = request.args.get('data_expedicao_inicio', '').strip()
+    ate = request.args.get('data_expedicao_fim', '').strip()
+    wb = _relatorio_peso_viagem_placa(de, ate)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='relatorio_peso_por_viagem_placa.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/api/relatorios/excel/responsaveis_viagem', methods=['GET'])
+def export_relatorio_responsaveis_viagem():
+    de = request.args.get('data_expedicao_inicio', '').strip()
+    ate = request.args.get('data_expedicao_fim', '').strip()
+    wb = _relatorio_responsaveis_viagem(de, ate)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='relatorio_responsaveis_por_viagem.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+def _relatorio_romaneio_guarulhos():
+    """Gera workbook com os dados do Romaneio CD Guarulhos: Resumo, Quantidade por item, Peso por carro."""
+    from openpyxl import Workbook
+    wb_plan, _ = get_workbook_cached()
+    if not wb_plan:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Resumo'
+        ws.cell(row=1, column=1, value='Planilha não encontrada. Carregue a planilha e tente novamente.')
+        return wb
+    try:
+        stats = _estatisticas_romaneio_por_item(wb_plan)
+    except Exception:
+        stats = {}
+    wb = Workbook()
+    header_font = Font(bold=True)
+    ws_resumo = wb.active
+    ws_resumo.title = 'Resumo'
+    ws_resumo.cell(row=1, column=1, value='Romaneio CD Guarulhos Ultrapão (Distribuidora) - Resumo').font = Font(bold=True, size=12)
+    ws_resumo.cell(row=2, column=1, value='Indicador')
+    ws_resumo.cell(row=2, column=2, value='Valor')
+    ws_resumo.cell(row=2, column=1).font = header_font
+    ws_resumo.cell(row=2, column=2).font = header_font
+    ws_resumo.cell(row=3, column=1, value='Quantidade de roteiros')
+    ws_resumo.cell(row=3, column=2, value=stats.get('qtd_roteiros', 0))
+    ws_resumo.cell(row=4, column=1, value='Quantidade de veículos')
+    ws_resumo.cell(row=4, column=2, value=stats.get('qtd_veiculos', 0))
+    ws_resumo.cell(row=5, column=1, value='Quantidade total de itens (soma)')
+    ws_resumo.cell(row=5, column=2, value=stats.get('quantidade_total_itens', 0))
+    ws_resumo.cell(row=6, column=1, value='Peso total (kg)')
+    ws_resumo.cell(row=6, column=2, value=stats.get('peso_total_geral', 0))
+    ws_itens = wb.create_sheet('Quantidade por item')
+    ws_itens.cell(row=1, column=1, value='Código do produto').font = header_font
+    ws_itens.cell(row=1, column=2, value='Descrição do produto').font = header_font
+    ws_itens.cell(row=1, column=3, value='Quantidade total').font = header_font
+    itens = stats.get('itens_total_por_codigo') or {}
+    descricoes = stats.get('itens_descricao_por_codigo') or {}
+    for row_idx, (cod, qtd) in enumerate(sorted(itens.items(), key=lambda x: -x[1]), 2):
+        ws_itens.cell(row=row_idx, column=1, value=cod)
+        ws_itens.cell(row=row_idx, column=2, value=descricoes.get(cod, '') or '')
+        ws_itens.cell(row=row_idx, column=3, value=qtd)
+    ws_peso = wb.create_sheet('Peso por carro')
+    ws_peso.cell(row=1, column=1, value='Placa / Veículo').font = header_font
+    ws_peso.cell(row=1, column=2, value='Peso total (kg)').font = header_font
+    peso_carro = stats.get('peso_por_carro') or {}
+    for row_idx, (placa, peso) in enumerate(peso_carro.items(), 2):
+        ws_peso.cell(row=row_idx, column=1, value=placa)
+        ws_peso.cell(row=row_idx, column=2, value=peso)
+    return wb
+
+
+@app.route('/api/relatorios/excel/romaneio_guarulhos', methods=['GET'])
+def export_relatorio_romaneio_guarulhos():
+    wb = _relatorio_romaneio_guarulhos()
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='relatorio_romaneio_cd_guarulhos.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/api/relatorios/excel/extrato', methods=['GET'])
+def export_relatorio_extrato_excel():
+    """Gera Excel com o extrato (comprovante) da carga de um roteiro: mesmas colunas da aba Extrato."""
+    from openpyxl import Workbook
+    id_viagem = (request.args.get('id_viagem') or '').strip()
+    if not id_viagem:
+        return jsonify({'erro': 'Informe o ID do roteiro (id_viagem)'}), 400
+    try:
+        result = get_conferencia(id_viagem)
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+    resp = result[0] if isinstance(result, tuple) else result
+    status = result[1] if isinstance(result, tuple) and len(result) > 1 else 200
+    data = resp.get_json() if hasattr(resp, 'get_json') else None
+    if isinstance(data, dict) and data.get('erro'):
+        return jsonify(data), status if status != 200 else 400
+    itens = data if isinstance(data, list) else []
+    if not itens:
+        return jsonify({'erro': 'Nenhum item encontrado para este roteiro'}), 404
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Extrato'
+    header_font = Font(bold=True)
+    ws.cell(row=1, column=1, value='Extrato - ID Roteiro: ' + id_viagem).font = Font(bold=True, size=12)
+    headers = ['Status', 'Código de Barras', 'Código do Produto', 'Produto', 'Qtd. Produto', 'Unidade', 'Peso Bruto', 'Aviso', 'Qtd. Bipada', 'Qtd. Falta', 'Motivo da divergência']
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=3, column=col, value=h)
+        c.font = header_font
+    for row_idx, item in enumerate(itens, 4):
+        ws.cell(row=row_idx, column=1, value=item.get('status_bipado') or '')
+        ws.cell(row=row_idx, column=2, value=item.get('codigo_barras') or '')
+        ws.cell(row=row_idx, column=3, value=item.get('codigo_produto') or '')
+        ws.cell(row=row_idx, column=4, value=item.get('produto') or '')
+        ws.cell(row=row_idx, column=5, value=item.get('quantidade_produto'))
+        ws.cell(row=row_idx, column=6, value=item.get('unidade') or '')
+        ws.cell(row=row_idx, column=7, value=item.get('peso_bruto') or '')
+        ws.cell(row=row_idx, column=8, value=item.get('aviso_sobra') or '')
+        ws.cell(row=row_idx, column=9, value=item.get('quantidade_bipada'))
+        ws.cell(row=row_idx, column=10, value=item.get('quantidade_falta'))
+        ws.cell(row=row_idx, column=11, value=item.get('motivo_divergencia') or '')
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    nome_arquivo = 'extrato_roteiro_{}.xlsx'.format(id_viagem.replace('/', '_').replace('\\', '_')[:50])
+    return send_file(buf, as_attachment=True, download_name=nome_arquivo, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+def allowed_file(filename):
+    """Verifica se o arquivo tem extensão permitida"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def encontrar_planilha():
+    """Encontra a planilha Excel no diretório do app, na pasta do exe (quando instalado) ou no diretório atual"""
+    arquivos_possiveis = [
+        'CONTROLE DE CARREGAMENTO ULTRAPAO.xlsx',
+        'CONTROLE DE CARREGAMENTO ULTRAPAO_NOVO.xlsx'
+    ]
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    diretorios = [app_dir, _EXE_DIR, _BASE_DIR, '.']
+    for diretorio in diretorios:
+        try:
+            for arquivo in os.listdir(diretorio):
+                if arquivo.endswith('.xlsx') and 'ULTRAPAO' in arquivo.upper():
+                    path = os.path.join(diretorio, arquivo)
+                    if os.path.isfile(path):
+                        return path
+            for arquivo in arquivos_possiveis:
+                path = os.path.join(diretorio, arquivo)
+                if os.path.isfile(path):
+                    return path
+        except OSError:
+            continue
+    return None
+
+# Cache da planilha (até 6 segundos) para agilizar várias requisições seguidas (ex.: painel + conferência)
+_workbook_cache = {}
+
+def get_workbook_cached():
+    """Retorna (wb, from_cache). Se from_cache=True, não feche o wb. TTL 6 segundos."""
+    path = encontrar_planilha()
+    if not path:
+        return (None, False)
+    path = os.path.abspath(path)
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return (None, False)
+    now = time.time()
+    c = _workbook_cache
+    if c.get('path') == path and c.get('mtime') == mtime and (now - c.get('ts', 0)) < 6:
+        return (c['wb'], True)
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True)
+    except Exception:
+        wb = openpyxl.load_workbook(path, data_only=False)
+    _workbook_cache.clear()
+    _workbook_cache['path'] = path
+    _workbook_cache['mtime'] = mtime
+    _workbook_cache['wb'] = wb
+    _workbook_cache['ts'] = now
+    return (wb, False)
+
+def _valor_celula(row, col):
+    if col is None or col >= len(row) or row[col] is None:
+        return ''
+    v = row[col]
+    if str(v).strip().startswith('='):
+        return ''
+    return str(int(v)) if isinstance(v, float) and v == int(v) else str(v).strip()
+
+
+def get_unidade_romaneio(id_viagem, codigo_produto):
+    """Retorna a unidade (Pacote, Caixa, Unidade, etc.) do produto no Romaneio por Item para o id_viagem/roteiro."""
+    caminho_planilha = encontrar_planilha()
+    if not caminho_planilha or not (id_viagem and codigo_produto):
+        return ''
+    try:
+        try:
+            wb = openpyxl.load_workbook(caminho_planilha, data_only=True)
+        except Exception:
+            wb = openpyxl.load_workbook(caminho_planilha, data_only=False)
+        nome_romaneio = next((s for s in wb.sheetnames if 'ROMANEIO' in s.upper() and 'ITEM' in s.upper()), None)
+        if not nome_romaneio:
+            wb.close()
+            return ''
+        ws = wb[nome_romaneio]
+        header_row = list(ws.iter_rows(min_row=1, max_row=1, values_only=True))[0]
+        coluna_id_viagem = None
+        coluna_codigo_produto = None
+        coluna_unidade = None
+        for idx, header in enumerate(header_row or []):
+            if not header:
+                continue
+            hs = str(header).upper().strip()
+            if 'ID' in hs and 'ROTEIRO' in hs:
+                coluna_id_viagem = idx
+            elif coluna_id_viagem is None and 'ID' in hs and 'VIAGEM' in hs and 'FATURADA' in hs:
+                coluna_id_viagem = idx
+            if ('CODIGO' in hs or 'CÓDIGO' in hs) and 'PRODUTO' in hs and 'BARRAS' not in hs:
+                coluna_codigo_produto = idx
+            if 'UNIDADE' in hs and 'MEDIDA' in hs:
+                coluna_unidade = idx
+            elif coluna_unidade is None and ('UNIDADE' in hs or 'PACOTE' in hs or hs in ('CAIXA', 'UN')):
+                coluna_unidade = idx
+        if coluna_codigo_produto is None:
+            coluna_codigo_produto = 14
+        if coluna_id_viagem is None:
+            coluna_id_viagem = 1
+        id_busca = _normalizar_id_viagem(id_viagem)
+        cod_busca = str(codigo_produto).strip()
+        cod_norm = _normalizar_codigo_produto(codigo_produto)
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if coluna_id_viagem >= len(row) or coluna_codigo_produto >= len(row):
+                continue
+            id_plan = _normalizar_id_viagem(row[coluna_id_viagem])
+            if id_plan and id_busca and id_plan != id_busca:
+                continue
+            cp = _valor_celula(row, coluna_codigo_produto)
+            if not cp or (cp != cod_busca and (not cod_norm or _normalizar_codigo_produto(cp) != cod_norm)):
+                continue
+            if coluna_unidade is not None and coluna_unidade < len(row):
+                un = _valor_celula(row, coluna_unidade)
+                if un:
+                    wb.close()
+                    return un
+            wb.close()
+            return 'Unidade'
+        wb.close()
+        return 'Unidade'
+    except Exception:
+        return 'Unidade'
+
+
+def buscar_produto_na_planilha(codigo_barras):
+    """Busca produto por código de barras: no banco (base_codigo_barras) quando DATABASE_URL está definido; senão na planilha."""
+    if _usa_banco_para_dados():
+        conn = get_db()
+        try:
+            ds = _get_latest_dataset_id(conn)
+            if not ds:
+                conn.close()
+                return None
+            codigo_busca = str(codigo_barras or '').strip()
+            if not codigo_busca:
+                conn.close()
+                return None
+            row = conn.execute(
+                """SELECT codigo_interno, ean, dun, descricao, unidade, peso, data FROM base_codigo_barras
+                   WHERE dataset_id = ? AND (ean = ? OR dun = ?) LIMIT 1""",
+                (str(ds), codigo_busca, codigo_busca),
+            ).fetchone()
+            conn.close()
+            if not row:
+                return None
+            r = dict(row) if hasattr(row, 'keys') else row
+            tipo_codigo = 'EAN' if (r.get('ean') or '') == codigo_busca else 'DUN'
+            peso_bruto = r.get('peso') or ''
+            return {
+                'codigo_barras': codigo_busca,
+                'codigo_produto': r.get('codigo_interno') or '',
+                'produto': r.get('descricao') or '',
+                'quantidade': 1,
+                'veiculo': '',
+                'status': 'PENDENTE',
+                'peso_bruto': peso_bruto,
+                'tipo_codigo': tipo_codigo
+            }
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return None
+
+    # Sem planilha: dados vêm apenas do banco (DATABASE_URL)
+    return None
+
+def _buscar_produto_por_codigo_interno(codigo_interno):
+    """Busca produto por código interno: no banco (base_codigo_barras) quando DATABASE_URL está definido; senão na planilha."""
+    if _usa_banco_para_dados():
+        conn = get_db()
+        try:
+            ds = _get_latest_dataset_id(conn)
+            if not ds:
+                conn.close()
+                return None
+            ci = str(codigo_interno or '').strip()
+            if not ci:
+                conn.close()
+                return None
+            row = conn.execute(
+                """SELECT codigo_interno, ean, dun, descricao, unidade, peso FROM base_codigo_barras
+                   WHERE dataset_id = ? AND codigo_interno = ? LIMIT 1""",
+                (str(ds), ci),
+            ).fetchone()
+            conn.close()
+            if not row:
+                return None
+            r = dict(row) if hasattr(row, 'keys') else row
+            return {
+                'codigo_barras': r.get('ean') or r.get('dun') or ci,
+                'codigo_produto': r.get('codigo_interno') or ci,
+                'produto': r.get('descricao') or '',
+                'quantidade': 1,
+                'veiculo': '',
+                'status': 'PENDENTE',
+                'peso_bruto': r.get('peso') or '',
+                'tipo_codigo': 'EAN' if r.get('ean') else 'DUN'
+            }
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return None
+
+    # Sem planilha: dados vêm apenas do banco
+    return None
+
+
+@app.route('/api/buscar-produto/<codigo_barras>', methods=['GET'])
+def buscar_produto(codigo_barras):
+    """Endpoint para buscar produto na planilha por código de barras"""
+    resultado = buscar_produto_na_planilha(codigo_barras)
+    
+    if resultado is None:
+        return jsonify({'encontrado': False})
+    
+    if 'erro' in resultado:
+        return jsonify(resultado), 500
+    
+    return jsonify({
+        'encontrado': True,
+        'produto': resultado
+    })
+
+
+@app.route('/api/buscar-produto-por-codigo-interno/<codigo_interno>', methods=['GET'])
+def api_buscar_produto_por_codigo_interno(codigo_interno):
+    """Endpoint para buscar produto na planilha por código do produto (código interno)"""
+    resultado = _buscar_produto_por_codigo_interno(codigo_interno)
+    if resultado is None:
+        return jsonify({'encontrado': False})
+    return jsonify({
+        'encontrado': True,
+        'produto': resultado
+    })
+
+def importar_planilha_excel(caminho_arquivo):
+    """Importa dados da planilha Excel"""
+    try:
+        # Tentar carregar com data_only=True primeiro (valores calculados)
+        # Se não funcionar, tentar sem data_only para pegar fórmulas
+        try:
+            wb = openpyxl.load_workbook(caminho_arquivo, data_only=True)
+        except:
+            wb = openpyxl.load_workbook(caminho_arquivo, data_only=False)
+        
+        conn = get_db()
+        resultados = {
+            'base': 0,
+            'romaneio': 0,
+            'erros': []
+        }
+        
+        # Importar dados da aba BASE
+        if 'BASE' in wb.sheetnames:
+            ws_base = wb['BASE']
+            linhas_importadas = 0
+            
+            # Pular cabeçalho (linha 1) e ler a partir da linha 2
+            for idx, row in enumerate(ws_base.iter_rows(min_row=2, values_only=True), start=2):
+                if row[0] and str(row[0]).strip() and not str(row[0]).startswith('='):  # Se tem código de barras e não é fórmula
+                    try:
+                        codigo_barras = str(row[0]).strip()
+                        produto = str(row[1]).strip() if row[1] else ''
+                        
+                        # Tentar converter quantidade
+                        quantidade = 1
+                        if row[2] is not None:
+                            try:
+                                quantidade = int(float(str(row[2])))
+                            except:
+                                quantidade = 1
+                        
+                        data_hora = str(row[3]).strip() if row[3] else datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+                        veiculo = str(row[4]).strip() if row[4] else ''
+                        status = str(row[5]).strip() if row[5] else 'PENDENTE'
+                        
+                        # Verificar se já existe (evitar duplicatas)
+                        existing = conn.execute(
+                            'SELECT * FROM produtos_bipados WHERE codigo_barras = ? AND data_hora = ? AND quantidade = ?',
+                            (codigo_barras, data_hora, quantidade)
+                        ).fetchone()
+                        
+                        if not existing:
+                            conn.execute(
+                                '''INSERT INTO produtos_bipados 
+                                   (codigo_barras, produto, quantidade, data_hora, veiculo, status)
+                                   VALUES (?, ?, ?, ?, ?, ?)''',
+                                (codigo_barras, produto, quantidade, data_hora, veiculo, status)
+                            )
+                            linhas_importadas += 1
+                    except Exception as e:
+                        resultados['erros'].append(f"Erro na linha BASE {idx}: {str(e)}")
+            
+            resultados['base'] = linhas_importadas
+            conn.commit()
+        
+        # Importar dados da aba ROMANEIO POR ITEM
+        if 'ROMANEIO POR ITEM' in wb.sheetnames:
+            ws_romaneio = wb['ROMANEIO POR ITEM']
+            linhas_importadas = 0
+            
+            # Pular cabeçalho (linha 1) e ler a partir da linha 2
+            for idx, row in enumerate(ws_romaneio.iter_rows(min_row=2, values_only=True), start=2):
+                if row[0] and str(row[0]).strip() and not str(row[0]).startswith('='):  # Se tem código de barras e não é fórmula
+                    try:
+                        codigo_barras = str(row[0]).strip()
+                        
+                        # Coluna D (índice 3) é a quantidade do romaneio
+                        quantidade_romaneio = 0
+                        if row[3] is not None:
+                            try:
+                                # Tentar converter para número
+                                valor = str(row[3]).strip()
+                                if valor and not valor.startswith('='):
+                                    quantidade_romaneio = int(float(valor))
+                            except:
+                                quantidade_romaneio = 0
+                        
+                        # Importar mesmo se quantidade for 0, para manter registro do código
+                        if codigo_barras:
+                            # Inserir ou atualizar romaneio
+                            if getattr(conn, 'kind', 'sqlite') == 'pg':
+                                conn.execute(
+                                    '''INSERT INTO romaneio (codigo_barras, quantidade_romaneio)
+                                       VALUES (%s, %s)
+                                       ON CONFLICT (codigo_barras) DO UPDATE SET quantidade_romaneio = EXCLUDED.quantidade_romaneio''',
+                                    (codigo_barras, quantidade_romaneio)
+                                )
+                            else:
+                                conn.execute(
+                                    '''INSERT INTO romaneio (codigo_barras, quantidade_romaneio) VALUES (?, ?)
+                                       ON CONFLICT(codigo_barras) DO UPDATE SET quantidade_romaneio = excluded.quantidade_romaneio''',
+                                    (codigo_barras, quantidade_romaneio)
+                                )
+                            linhas_importadas += 1
+                    except Exception as e:
+                        resultados['erros'].append(f"Erro na linha ROMANEIO {idx}: {str(e)}")
+            
+            resultados['romaneio'] = linhas_importadas
+            conn.commit()
+        
+        # NOTA: A aba DIVERGÊNCIAS não é importada porque é sempre calculada dinamicamente
+        # a partir da comparação entre produtos bipados e romaneio
+        
+        conn.close()
+        return resultados
+        
+    except Exception as e:
+        import traceback
+        return {'erro': f'Erro ao importar planilha: {str(e)}', 'traceback': traceback.format_exc()}
+
+@app.route('/api/importar-planilha', methods=['POST'])
+def importar_planilha():
+    """Endpoint para importar planilha Excel"""
+    if 'file' not in request.files:
+        return jsonify({'erro': 'Nenhum arquivo enviado'}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({'erro': 'Nenhum arquivo selecionado'}), 400
+    
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        resultados = importar_planilha_excel(filepath)
+        
+        # Remover arquivo após importação
+        try:
+            os.remove(filepath)
+        except:
+            pass
+        
+        return jsonify(resultados)
+    
+    return jsonify({'erro': 'Formato de arquivo não permitido'}), 400
+
+@app.route('/api/importar-planilha-local', methods=['POST'])
+def importar_planilha_local():
+    """Importa planilha do diretório local"""
+    data = request.json
+    caminho_arquivo = data.get('caminho', '')
+    
+    # Tentar encontrar a planilha no diretório atual
+    arquivos_possiveis = [
+        'CONTROLE DE CARREGAMENTO ULTRAPAO.xlsx',
+        'CONTROLE DE CARREGAMENTO ULTRAPAO_NOVO.xlsx',
+        caminho_arquivo
+    ]
+    
+    arquivo_encontrado = None
+    for arquivo in arquivos_possiveis:
+        if os.path.exists(arquivo):
+            arquivo_encontrado = arquivo
+            break
+    
+    if not arquivo_encontrado:
+        # Procurar qualquer arquivo .xlsx no diretório atual
+        for arquivo in os.listdir('.'):
+            if arquivo.endswith('.xlsx') and 'ULTRAPAO' in arquivo.upper():
+                arquivo_encontrado = arquivo
+                break
+    
+    if arquivo_encontrado:
+        resultados = importar_planilha_excel(arquivo_encontrado)
+        return jsonify({
+            'sucesso': True,
+            'arquivo': arquivo_encontrado,
+            **resultados
+        })
+    else:
+        return jsonify({
+            'erro': 'Planilha não encontrada. Certifique-se de que o arquivo está no mesmo diretório do servidor.',
+            'arquivos_procurados': arquivos_possiveis
+        }), 404
+
+def _parse_datetime(s):
+    """Tenta parsear data/hora em texto para calcular duração."""
+    if not s or not str(s).strip():
+        return None
+    s = str(s).strip()
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M', '%Y-%m-%d %H:%M', '%d/%m/%Y'):
+        try:
+            return datetime.strptime(s[:19].replace('T', ' '), fmt)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+@app.route('/api/painel-graficos', methods=['GET'])
+def get_painel_graficos():
+    """Retorna dados por viagem para gráficos: tempo de carregamento, itens bipados, faltas."""
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT id_viagem,
+               SUM(quantidade) as total_bipados,
+               MIN(data_hora) as inicio,
+               MAX(data_hora) as fim
+        FROM produtos_bipados
+        WHERE id_viagem IS NOT NULL AND id_viagem != ''
+        GROUP BY id_viagem
+        ORDER BY MAX(data_hora) DESC
+        LIMIT 25
+    ''').fetchall()
+    conn.close()
+    
+    viagens = []
+    for r in rows:
+        inicio = r['inicio'] or ''
+        fim = r['fim'] or ''
+        d_min = None
+        if inicio and fim:
+            t0 = _parse_datetime(inicio)
+            t1 = _parse_datetime(fim)
+            if t0 and t1:
+                delta = t1 - t0
+                d_min = max(0, int(delta.total_seconds() / 60))
+        viagens.append({
+            'id_viagem': r['id_viagem'],
+            'total_bipados': r['total_bipados'] or 0,
+            'inicio': inicio,
+            'fim': fim,
+            'duracao_minutos': d_min
+        })
+    
+    # Calcular total_faltas só para as 2 primeiras viagens (conferência é pesada; cache da planilha agiliza)
+    try:
+        for v in viagens[:2]:
+            ret = get_conferencia(v['id_viagem'])
+            resp = ret[0] if isinstance(ret, tuple) else ret
+            data = resp.get_json() if hasattr(resp, 'get_json') else []
+            if isinstance(data, list):
+                v['total_faltas'] = sum((item.get('quantidade_falta') or 0) for item in data)
+            else:
+                v['total_faltas'] = 0
+        for v in viagens[2:]:
+            v['total_faltas'] = 0
+    except Exception:
+        for v in viagens:
+            if 'total_faltas' not in v:
+                v['total_faltas'] = 0
+    
+    # Tempo de carregamento por placa (agrupa duração por placa de cada viagem)
+    placa_to_minutos = {}
+    for v in viagens:
+        info = _get_viagem_info_dict(v.get('id_viagem') or '')
+        placa = (info.get('placa') or '').strip() or 'Sem placa'
+        if placa not in placa_to_minutos:
+            placa_to_minutos[placa] = 0
+        if v.get('duracao_minutos') is not None:
+            placa_to_minutos[placa] += v['duracao_minutos']
+    tempo_por_placa = [
+        {'placa': p, 'total_minutos': m}
+        for p, m in sorted(placa_to_minutos.items(), key=lambda x: -x[1])
+    ]
+    
+    return jsonify({'viagens': viagens, 'tempo_por_placa': tempo_por_placa})
+
+
+# Unidade/CD a considerar nos dados do painel (romaneio). None = todas; ou texto que deve constar na coluna da unidade.
+UNIDADE_CD_FILTRO = 'Unidade CD Guarulhos Ultrapão (Distribuidora)'
+
+
+def _estatisticas_romaneio_por_item(wb):
+    """
+    Lê a aba ROMANEIO POR ITEM e retorna: qtd roteiros, qtd veículos,
+    quantidade total por item (código), peso por carro (placa), peso total geral.
+    Considera apenas linhas da unidade UNIDADE_CD_FILTRO quando a planilha tiver coluna de unidade/CD.
+    """
+    out = {
+        'qtd_roteiros': 0,
+        'qtd_veiculos': 0,
+        'itens_total_por_codigo': {},
+        'itens_descricao_por_codigo': {},
+        'peso_por_carro': {},
+        'peso_total_geral': 0.0,
+        'quantidade_total_itens': 0
+    }
+    if not wb or 'ROMANEIO POR ITEM' not in wb.sheetnames:
+        return out
+    ws = wb['ROMANEIO POR ITEM']
+    header_row = list(ws.iter_rows(min_row=1, max_row=1, values_only=True))[0] or []
+    col_id = None
+    col_placa = None
+    col_codigo = None
+    col_descricao = None
+    col_qtd = None
+    col_peso = None
+    peso_bruto_eh_total_linha = False  # True = coluna já é peso total da linha (ex: Peso Bruto Pedido)
+    col_unidade_cd = None
+    for idx, h in enumerate(header_row):
+        if not h:
+            continue
+        hs = str(h).upper().strip()
+        if ('ID' in hs and 'ROTEIRO' in hs) or (col_id is None and 'ID' in hs and 'VIAGEM' in hs and 'FATURADA' in hs):
+            col_id = idx
+        if col_placa is None and ('PLACA' in hs and 'EMPLACA' not in hs):
+            col_placa = idx
+        if ('CODIGO' in hs or 'CÓDIGO' in hs) and 'PRODUTO' in hs and 'BARRAS' not in hs:
+            col_codigo = idx
+        if col_descricao is None and ('DESCRI' in hs and 'PRODUTO' in hs or hs == 'DESCRICAO' or hs == 'DESCRIÇÃO'):
+            col_descricao = idx
+        if 'QUANTIDADE' in hs and 'PRODUTO' in hs:
+            col_qtd = idx
+        elif col_qtd is None and 'QUANTIDADE' in hs and 'ROMANEIO' not in hs:
+            col_qtd = idx
+        if 'PESO' in hs and 'BRUTO' in hs:
+            col_peso = idx
+            if 'PEDIDO' in hs or 'TOTAL' in hs or 'LINHA' in hs:
+                peso_bruto_eh_total_linha = True
+        if col_unidade_cd is None and (hs == 'UNIDADE' or 'DISTRIBUIDORA' in hs or (('CD' in hs or 'UNIDADE' in hs) and 'MEDIDA' not in hs and 'PRODUTO' not in hs)):
+            col_unidade_cd = idx
+    ncol = len(header_row)
+    if ncol >= 17:
+        col_id = 1 if col_id is None else col_id
+        col_placa = 5 if col_placa is None else col_placa
+        col_codigo = 14 if col_codigo is None else col_codigo
+        col_qtd = 16 if col_qtd is None else col_qtd
+    if col_id is None:
+        col_id = 1
+    if col_placa is None and ncol > 5:
+        col_placa = 5
+    if col_codigo is None:
+        col_codigo = 14 if ncol >= 15 else 0
+    if col_descricao is None and ncol >= 16:
+        col_descricao = 15  # coluna P = Descrição típica na planilha
+    if col_qtd is None:
+        col_qtd = 16 if ncol >= 17 else 2
+    roteiros = set()
+    veiculos = set()
+    itens_por_codigo = {}
+    itens_descricao_por_codigo = {}
+    peso_por_placa = {}
+    id_viagem_to_placa = {}
+    peso_total = 0.0
+    quantidade_total = 0
+    filtro_unidade = (UNIDADE_CD_FILTRO or '').strip()
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if filtro_unidade and col_unidade_cd is not None and col_unidade_cd < len(row):
+            cel_unidade = (str(row[col_unidade_cd]).strip() if row[col_unidade_cd] else '') or ''
+            if filtro_unidade not in cel_unidade and 'GUARULHOS' not in cel_unidade.upper():
+                continue
+        id_v = _normalizar_id_viagem(row[col_id] if col_id < len(row) else '')
+        placa = (str(row[col_placa]).strip() if col_placa is not None and col_placa < len(row) and row[col_placa] else '') or ''
+        if id_v and placa:
+            id_viagem_to_placa[id_v] = placa
+        cod = str(row[col_codigo]).strip() if col_codigo < len(row) and row[col_codigo] else ''
+        if cod and cod.startswith('='):
+            cod = ''
+        try:
+            qtd = int(float(str(row[col_qtd]).replace(',', '.').strip() or 0)) if col_qtd < len(row) else 0
+        except (ValueError, TypeError):
+            qtd = 0
+        try:
+            peso = float(str(row[col_peso]).replace(',', '.').strip() or 0) if col_peso is not None and col_peso < len(row) and row[col_peso] else 0
+        except (ValueError, TypeError):
+            peso = 0
+        if peso_bruto_eh_total_linha:
+            p = peso
+        else:
+            p = qtd * peso
+        if id_v:
+            roteiros.add(id_v)
+        if placa:
+            veiculos.add(placa)
+        if cod:
+            itens_por_codigo[cod] = itens_por_codigo.get(cod, 0) + qtd
+            if cod not in itens_descricao_por_codigo and col_descricao is not None and col_descricao < len(row):
+                desc = (str(row[col_descricao]).strip() if row[col_descricao] else '') or ''
+                itens_descricao_por_codigo[cod] = desc
+        quantidade_total += qtd
+        placa_eff = placa or id_viagem_to_placa.get(id_v, 'Sem placa')
+        if placa_eff:
+            peso_por_placa[placa_eff] = peso_por_placa.get(placa_eff, 0.0) + p
+        peso_total += p
+    out['qtd_roteiros'] = len(roteiros)
+    out['qtd_veiculos'] = len(veiculos)
+    out['itens_total_por_codigo'] = itens_por_codigo
+    out['itens_descricao_por_codigo'] = itens_descricao_por_codigo
+    out['peso_por_carro'] = {k: round(v, 2) for k, v in sorted(peso_por_placa.items(), key=lambda x: -x[1])}
+    out['peso_total_geral'] = round(peso_total, 2)
+    out['quantidade_total_itens'] = quantidade_total
+    out['id_viagem_to_placa'] = id_viagem_to_placa
+    return out
+
+
+def _build_mapa_peso_romaneio(wb):
+    """Retorna dict: codigo_produto -> peso unitário (float). Usa aba ROMANEIO POR ITEM."""
+    mapa_codigo_to_peso = {}
+    if 'ROMANEIO POR ITEM' not in wb.sheetnames:
+        return mapa_codigo_to_peso
+    ws = wb['ROMANEIO POR ITEM']
+    header_row = list(ws.iter_rows(min_row=1, max_row=1, values_only=True))[0] or []
+    col_codigo = None
+    col_peso = None
+    col_qtd = None
+    peso_bruto_eh_total = False
+    for idx, h in enumerate(header_row):
+        if not h:
+            continue
+        hs = str(h).upper().strip()
+        if ('CODIGO' in hs or 'CÓDIGO' in hs) and 'PRODUTO' in hs and 'BARRAS' not in hs:
+            col_codigo = idx
+        if 'PESO' in hs and 'BRUTO' in hs:
+            col_peso = idx
+            if 'PEDIDO' in hs or 'TOTAL' in hs or 'LINHA' in hs:
+                peso_bruto_eh_total = True
+        if 'QUANTIDADE' in hs and 'PRODUTO' in hs:
+            col_qtd = idx
+        elif col_qtd is None and 'QUANTIDADE' in hs and 'ROMANEIO' not in hs:
+            col_qtd = idx
+    ncol = len(header_row)
+    if col_codigo is None:
+        col_codigo = 14 if ncol >= 15 else 0
+    if col_peso is None:
+        return mapa_codigo_to_peso
+    if col_qtd is None:
+        col_qtd = 16 if ncol >= 17 else 2
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if col_codigo < len(row) and col_peso < len(row):
+            cod = str(row[col_codigo]).strip() if row[col_codigo] else ''
+            if not cod or cod.startswith('='):
+                continue
+            try:
+                p = float(str(row[col_peso]).replace(',', '.').strip() or 0)
+            except (ValueError, TypeError):
+                p = 0
+            if peso_bruto_eh_total and col_qtd < len(row):
+                try:
+                    qtd = int(float(str(row[col_qtd]).replace(',', '.').strip() or 0))
+                except (ValueError, TypeError):
+                    qtd = 1
+                if qtd > 0:
+                    p = p / qtd
+            mapa_codigo_to_peso[cod] = p
+    return mapa_codigo_to_peso
+
+
+def _build_mapa_barras_to_codigo_produto(wb):
+    """Retorna dict: codigo_barras (EAN-13 ou DUN-14) -> codigo_interno (Codigo). Da aba BASE."""
+    mapa = {}
+    ws = next((wb[s] for s in wb.sheetnames if s.upper().strip() == 'BASE'), None)
+    if ws is None:
+        return mapa
+    header_row = list(ws.iter_rows(min_row=1, max_row=1, values_only=True))[0]
+    col_codigo = next((i for i, h in enumerate(header_row or []) if _coluna_base_eh_codigo_interno(str(h or ''))), 0)
+    col_ean = next((i for i, h in enumerate(header_row or []) if _coluna_base_eh_ean(str(h or ''))), None)
+    col_dun = next((i for i, h in enumerate(header_row or []) if _coluna_base_eh_dun(str(h or ''))), None)
+    colunas_barras = [i for i, h in enumerate(header_row or []) if _coluna_base_eh_codigo_barras(str(h or ''))]
+    if col_ean is not None and col_ean not in colunas_barras:
+        colunas_barras.append(col_ean)
+    if col_dun is not None and col_dun not in colunas_barras:
+        colunas_barras.append(col_dun)
+    if not colunas_barras:
+        colunas_barras = [0]
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if col_codigo >= len(row):
+            continue
+        ci = _valor_celula(row, col_codigo)
+        if not ci:
+            continue
+        for col in colunas_barras:
+            if col >= len(row):
+                continue
+            cb = _valor_celula(row, col)
+            if cb:
+                mapa[cb] = ci
+    return mapa
+
+
+@app.route('/api/painel-graficos-extras', methods=['GET'])
+def get_painel_graficos_extras():
+    """Retorna dados para gráficos: itens mais bipados, carros com mais itens, carros com mais peso."""
+    conn = get_db()
+    conn.row_factory = sqlite3.Row
+    # Item mais bipado (agrupa por codigo_barras, soma quantidade; label = produto ou codigo_barras)
+    rows_itens = conn.execute('''
+        SELECT produto, codigo_barras, SUM(quantidade) as total
+        FROM produtos_bipados
+        GROUP BY codigo_barras
+        ORDER BY total DESC
+        LIMIT 15
+    ''').fetchall()
+    top_itens = []
+    for r in rows_itens:
+        label = (r['produto'] or '').strip() or (r['codigo_barras'] or '')
+        if not label:
+            label = r['codigo_barras'] or '-'
+        top_itens.append({'label': label[:50], 'total': r['total'] or 0})
+    # Carros com mais itens (soma de quantidade por veículo)
+    rows_carros = conn.execute('''
+        SELECT veiculo, SUM(quantidade) as total
+        FROM produtos_bipados
+        WHERE veiculo IS NOT NULL AND trim(veiculo) != ''
+        GROUP BY veiculo
+        ORDER BY total DESC
+        LIMIT 15
+    ''').fetchall()
+    carros_itens = [{'veiculo': r['veiculo'] or '', 'total': r['total'] or 0} for r in rows_carros]
+    # Carros com mais peso: precisa da planilha (codigo_barras -> codigo produto -> peso)
+    carros_peso = []
+    wb_extras, from_cache_extras = get_workbook_cached()
+    if wb_extras:
+        try:
+            mapa_peso = _build_mapa_peso_romaneio(wb_extras)
+            mapa_barras_codigo = _build_mapa_barras_to_codigo_produto(wb_extras)
+            if not from_cache_extras:
+                wb_extras.close()
+            rows_bipados = conn.execute(
+                "SELECT veiculo, codigo_barras, quantidade FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != ''"
+            ).fetchall()
+            peso_por_veiculo = {}
+            for r in rows_bipados:
+                veic = (r['veiculo'] or '').strip()
+                if not veic:
+                    continue
+                codigo_barras = (r['codigo_barras'] or '').strip()
+                qtd = int(r['quantidade'] or 0)
+                codigo_produto = mapa_barras_codigo.get(codigo_barras) or codigo_barras
+                peso_unit = mapa_peso.get(codigo_produto, 0) or mapa_peso.get(codigo_barras, 0)
+                if veic not in peso_por_veiculo:
+                    peso_por_veiculo[veic] = 0.0
+                peso_por_veiculo[veic] += qtd * peso_unit
+            carros_peso = [{'veiculo': v, 'peso_total': round(p, 2)} for v, p in sorted(peso_por_veiculo.items(), key=lambda x: -x[1])[:15]]
+        except Exception:
+            if not from_cache_extras and wb_extras:
+                try:
+                    wb_extras.close()
+                except Exception:
+                    pass
+    conn.close()
+    return jsonify({
+        'top_itens_bipados': top_itens,
+        'carros_mais_itens': carros_itens,
+        'carros_mais_peso': carros_peso
+    })
+
+
+@app.route('/api/painel-completo', methods=['GET'])
+def get_painel_completo():
+    """Um único request: estatísticas + viagens + gráficos. Estatísticas em 1 query para carregar mais rápido."""
+    conn = get_db()
+    conn.row_factory = sqlite3.Row
+    # Estatísticas em uma única query (menos ida e volta ao DB)
+    row_stats = conn.execute('''
+        SELECT
+            (SELECT COUNT(*) FROM produtos_bipados) AS total_bipados,
+            (SELECT COUNT(*) FROM produtos_bipados WHERE status = 'CARREGADO') AS total_carregados,
+            (SELECT COUNT(DISTINCT codigo_barras) FROM produtos_bipados) AS total_unicos,
+            (SELECT COUNT(DISTINCT id_viagem) FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(COALESCE(id_viagem,'')) != '') AS total_viagens,
+            (SELECT COALESCE(SUM(quantidade), 0) FROM produtos_bipados) AS soma_quantidades
+    ''').fetchone()
+    veiculos_rows = conn.execute(
+        "SELECT veiculo, COUNT(*) as total FROM produtos_bipados WHERE status = ? AND trim(COALESCE(veiculo,'')) != '' GROUP BY veiculo", ('CARREGADO',)
+    ).fetchall()
+    estatisticas = {
+        'total_bipados': row_stats['total_bipados'] or 0,
+        'total_carregados': row_stats['total_carregados'] or 0,
+        'total_unicos': row_stats['total_unicos'] or 0,
+        'total_divergencias': 0,
+        'total_viagens': row_stats['total_viagens'] or 0,
+        'soma_quantidades': row_stats['soma_quantidades'] or 0,
+        'veiculos': [dict(r) for r in veiculos_rows]
+    }
+    # Viagens
+    rows = conn.execute('''
+        SELECT id_viagem, SUM(quantidade) as total_bipados, MIN(data_hora) as inicio, MAX(data_hora) as fim
+        FROM produtos_bipados
+        WHERE id_viagem IS NOT NULL AND id_viagem != ''
+        GROUP BY id_viagem
+        ORDER BY MAX(data_hora) DESC
+        LIMIT 25
+    ''').fetchall()
+    viagens = []
+    for r in rows:
+        inicio, fim = r['inicio'] or '', r['fim'] or ''
+        d_min = None
+        if inicio and fim:
+            t0, t1 = _parse_datetime(inicio), _parse_datetime(fim)
+            if t0 and t1:
+                d_min = max(0, int((t1 - t0).total_seconds() / 60))
+        viagens.append({
+            'id_viagem': r['id_viagem'],
+            'total_bipados': r['total_bipados'] or 0,
+            'inicio': inicio,
+            'fim': fim,
+            'duracao_minutos': d_min
+        })
+    wb, from_cache = get_workbook_cached()
+    for v in viagens:
+        v['total_faltas'] = 0
+    id_viagem_placa = {}
+    romaneio_stats = {}
+    if wb:
+        try:
+            romaneio_stats = _estatisticas_romaneio_por_item(wb)
+            id_viagem_placa = romaneio_stats.get('id_viagem_to_placa') or {}
+        except Exception:
+            pass
+    placa_to_minutos = {}
+    for v in viagens:
+        vid = (v.get('id_viagem') or '').strip()
+        placa = (id_viagem_placa.get(vid) or '').strip() or 'Sem placa'
+        placa_to_minutos[placa] = placa_to_minutos.get(placa, 0) + (v.get('duracao_minutos') or 0)
+    tempo_por_placa = [{'placa': p, 'total_minutos': m} for p, m in sorted(placa_to_minutos.items(), key=lambda x: -x[1])]
+    # Extras: top itens, carros itens, carros peso
+    rows_itens = conn.execute(
+        'SELECT produto, codigo_barras, SUM(quantidade) as total FROM produtos_bipados GROUP BY codigo_barras ORDER BY total DESC LIMIT 15'
+    ).fetchall()
+    top_itens = []
+    for r in rows_itens:
+        label = (r['produto'] or '').strip() or (r['codigo_barras'] or '') or '-'
+        top_itens.append({'label': label[:50], 'total': r['total'] or 0})
+    rows_carros = conn.execute(
+        "SELECT veiculo, SUM(quantidade) as total FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != '' GROUP BY veiculo ORDER BY total DESC LIMIT 15"
+    ).fetchall()
+    carros_itens = [{'veiculo': r['veiculo'] or '', 'total': r['total'] or 0} for r in rows_carros]
+    carros_peso = []
+    if wb:
+        try:
+            mapa_peso = _build_mapa_peso_romaneio(wb)
+            mapa_barras_codigo = _build_mapa_barras_to_codigo_produto(wb)
+            rows_bipados = conn.execute(
+                "SELECT veiculo, codigo_barras, quantidade FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != ''"
+            ).fetchall()
+            peso_por_veiculo = {}
+            for r in rows_bipados:
+                veic = (r['veiculo'] or '').strip()
+                if not veic:
+                    continue
+                cb = (r['codigo_barras'] or '').strip()
+                qtd = int(r['quantidade'] or 0)
+                cp = mapa_barras_codigo.get(cb) or cb
+                peso_unit = mapa_peso.get(cp, 0) or mapa_peso.get(cb, 0)
+                peso_por_veiculo[veic] = peso_por_veiculo.get(veic, 0.0) + qtd * peso_unit
+            carros_peso = [{'veiculo': v, 'peso_total': round(p, 2)} for v, p in sorted(peso_por_veiculo.items(), key=lambda x: -x[1])[:15]]
+        except Exception:
+            pass
+    if wb and not from_cache:
+        try:
+            wb.close()
+        except Exception:
+            pass
+    conn.close()
+    romaneio_resp = {k: v for k, v in romaneio_stats.items() if k != 'id_viagem_to_placa'}
+    return jsonify({
+        'estatisticas': estatisticas,
+        'viagens': viagens,
+        'tempo_por_placa': tempo_por_placa,
+        'top_itens_bipados': top_itens,
+        'carros_mais_itens': carros_itens,
+        'carros_mais_peso': carros_peso,
+        'romaneio': romaneio_resp
+    })
+
+
+@app.route('/api/estatisticas', methods=['GET'])
+def get_estatisticas():
+    """Retorna estatísticas para o painel"""
+    conn = get_db()
+    
+    total_bipados = conn.execute('SELECT COUNT(*) as total FROM produtos_bipados').fetchone()['total']
+    total_carregados = conn.execute(
+        'SELECT COUNT(*) as total FROM produtos_bipados WHERE status = ?',
+        ('CARREGADO',)
+    ).fetchone()['total']
+    
+    total_unicos = conn.execute('''
+        SELECT COUNT(DISTINCT codigo_barras) as total FROM produtos_bipados
+    ''').fetchone()['total']
+    
+    # Total de viagens com bipagem
+    total_viagens = conn.execute('''
+        SELECT COUNT(DISTINCT id_viagem) as total FROM produtos_bipados
+        WHERE id_viagem IS NOT NULL AND id_viagem != ''
+    ''').fetchone()['total']
+    
+    # Soma total de quantidades bipadas (não só contagem de linhas)
+    soma_quantidades = conn.execute('SELECT COALESCE(SUM(quantidade), 0) as total FROM produtos_bipados').fetchone()['total']
+    
+    # Contar divergências (por viagem; sem id_viagem retorna 0)
+    total_divergencias = 0
+    
+    # Estatísticas por veículo
+    veiculos = conn.execute('''
+        SELECT veiculo, COUNT(*) as total
+        FROM produtos_bipados
+        WHERE status = 'CARREGADO' AND veiculo != ''
+        GROUP BY veiculo
+    ''').fetchall()
+    
+    conn.close()
+    
+    return jsonify({
+        'total_bipados': total_bipados,
+        'total_carregados': total_carregados,
+        'total_unicos': total_unicos,
+        'total_divergencias': total_divergencias,
+        'total_viagens': total_viagens,
+        'soma_quantidades': soma_quantidades,
+        'veiculos': [dict(row) for row in veiculos]
+    })
+
+if __name__ == '__main__':
+    init_db()
+    sync_usuarios_from_config()
+    port = int(os.environ.get('PORT', '5000'))
+    print("=" * 60)
+    print("CONTROLE DE CARREGAMENTO ULTRAPÃO")
+    print("=" * 60)
+    print(f"\nServidor iniciado em: http://127.0.0.1:{port}")
+    print("\nPressione Ctrl+C para parar o servidor")
+    print("=" * 60)
+    app.run(debug=True, host='0.0.0.0', port=port, threaded=True)

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: controle-de-carregamento
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -b 0.0.0.0:$PORT app:app
+    autoDeploy: true
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PGSSLMODE
+        value: require
+      - key: DATABASE_URL
+        sync: false
