@@ -98,7 +98,7 @@ git push -u origin main
 - Conecte ao repositório do GitHub
 - Configurações:
   - **Build Command**: `pip install -r requirements.txt`
-  - **Start Command**: `gunicorn -b 0.0.0.0:$PORT app:app`
+  - **Start Command**: `gunicorn -b 0.0.0.0:$PORT --timeout 120 app:app`
   - **Environment Variables**:
     - `DATABASE_URL` = (URL do Supabase)
     - `PGSSLMODE` = `require`

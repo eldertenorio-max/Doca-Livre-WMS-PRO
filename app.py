@@ -695,7 +695,7 @@ def eventos_stream():
         try:
             while True:
                 try:
-                    msg = client_queue.get(timeout=25)
+                    msg = client_queue.get(timeout=10)
                     yield f"data: {msg}\n\n"
                 except queue.Empty:
                     yield ": heartbeat\n\n"
