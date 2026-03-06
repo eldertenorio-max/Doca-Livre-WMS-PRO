@@ -57,9 +57,13 @@ document.addEventListener('DOMContentLoaded', function() {
     var btnSair = document.getElementById('btn-sair');
     if (btnSair) {
         btnSair.addEventListener('click', function() {
-            // Mostra "Saindo..." na hora e redireciona; evita tela de carregamento do painel
+            // Feedback imediato: tela mínima "Saindo..." e redireciona após pintar (evita travar)
             document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Outfit,sans-serif;font-size:18px;color:#1565c0;">Saindo...</div>';
-            window.location.replace('/login?sair=1');
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() {
+                    window.location.replace('/login?sair=1');
+                });
+            });
         });
     }
     var btnAtualizarAba = document.getElementById('btn-atualizar-aba');

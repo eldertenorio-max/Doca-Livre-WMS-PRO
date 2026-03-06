@@ -612,10 +612,8 @@ def proteger_rotas():
 
 @app.route('/login', methods=['GET'])
 def login():
-    """Página de login."""
-    if session.get('usuario'):
-        return redirect(url_for('painel'))
-    return render_template('login.html')
+    """Página de login. Sempre exibe a tela de login; se já logado, mostra link para o painel."""
+    return render_template('login.html', usuario=session.get('usuario') or '')
 
 
 @app.route('/api/login', methods=['POST'])
