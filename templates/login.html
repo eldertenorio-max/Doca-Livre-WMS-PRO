@@ -175,7 +175,7 @@
                     try { localStorage.setItem('access_token', data.access_token); } catch (e) {}
                     try { localStorage.setItem('usuario', data.usuario || document.getElementById('usuario').value.trim()); } catch (e) {}
                 }
-                window.location.href = '/';
+                window.location.href = (data.redirect || '/painel');
                 return;
             }
             mostrarErro(msgErroLogin, data.erro || 'Erro ao entrar.');

@@ -57,7 +57,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var btnSair = document.getElementById('btn-sair');
     if (btnSair) {
         btnSair.addEventListener('click', function() {
-            // Redireciona na hora; logout no servidor será chamado ao carregar a página de login
+            // Mostra "Saindo..." na hora e redireciona; evita tela de carregamento do painel
+            document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Outfit,sans-serif;font-size:18px;color:#1565c0;">Saindo...</div>';
             window.location.replace('/login?sair=1');
         });
     }

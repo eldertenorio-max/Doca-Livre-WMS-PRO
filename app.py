@@ -568,7 +568,7 @@ def _get_latest_dataset_id(conn):
 
 def _requer_login():
     """Retorna True se a rota atual requer login (e o usuário não está logado)."""
-    if request.endpoint in (None, 'login', 'static'):
+    if request.endpoint in (None, 'login', 'static', 'raiz'):
         return False
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return False
@@ -591,7 +591,7 @@ def _usuario_ainda_existe(usuario):
 def proteger_rotas():
     """Redireciona para /login se o usuário não estiver autenticado. Invalida sessão se o usuário foi excluído."""
     # Rotas que não exigem autenticação
-    if request.endpoint in (None, 'login', 'static'):
+    if request.endpoint in (None, 'login', 'static', 'raiz'):
         return None
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return None
@@ -614,7 +614,7 @@ def proteger_rotas():
 def login():
     """Página de login."""
     if session.get('usuario'):
-        return redirect(url_for('index'))
+        return redirect(url_for('painel'))
     return render_template('login.html')
 
 
@@ -633,7 +633,7 @@ def api_login():
         return jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})
     session['usuario'] = usuario
     session['usuario_id'] = row['id']
-    return jsonify({'ok': True, 'redirect': url_for('index')})
+    return jsonify({'ok': True, 'redirect': url_for('painel')})
 
 
 @app.route('/api/cadastrar', methods=['POST'])
@@ -684,8 +684,14 @@ def api_listar_usuarios():
 
 
 @app.route('/')
-def index():
-    """Página principal - Painel"""
+def raiz():
+    """Raiz do site: sempre abre na página de login."""
+    return redirect(url_for('login'))
+
+
+@app.route('/painel')
+def painel():
+    """Página principal - Painel (requer login)."""
     return render_template('index.html', usuario=session.get('usuario', ''))
 
 
