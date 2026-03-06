@@ -4558,7 +4558,7 @@ def get_painel_completo():
         placa = (id_viagem_placa.get(vid) or '').strip() or 'Sem placa'
         placa_to_minutos[placa] = placa_to_minutos.get(placa, 0) + (v.get('duracao_minutos') or 0)
     tempo_por_placa = [{'placa': p, 'total_minutos': m} for p, m in sorted(placa_to_minutos.items(), key=lambda x: -x[1])]
-    # Extras: top itens, carros itens, carros peso
+    # Top itens: GROUP BY codigo_barras, produto (PostgreSQL exige todas as colunas não agregadas no GROUP BY)
     rows_itens = conn.execute(
         'SELECT produto, codigo_barras, SUM(quantidade) as total FROM produtos_bipados GROUP BY codigo_barras, produto ORDER BY total DESC LIMIT 15'
     ).fetchall()
