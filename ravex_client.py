@@ -126,3 +126,67 @@ def obter_ponto_referencia(token, referencia_id):
     except (TypeError, ValueError):
         return None
     return _get(f"{RAVEX_BASE_URL}/api/ponto-referencia/{ref_id}", token, 15)
+
+
+def _fetch_viagens_janela(token, data_inicio_str, data_fim_str):
+    """Busca viagens em uma janela de até 1h (API Ravex limita intervalo). Retorna lista de dicts."""
+    try:
+        import requests
+        url = f"{RAVEX_BASE_URL}/api/viagem-faturada/finalizadas-por-periodo"
+        r = requests.get(
+            url,
+            params={"dataHoraInicio": data_inicio_str, "dataHoraFim": data_fim_str},
+            headers=_headers(token),
+            timeout=60,
+            verify=False,
+        )
+        if r.status_code != 200:
+            return []
+        data = r.json()
+        if not data.get("success"):
+            return []
+        raw = data.get("data")
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, dict):
+            return raw.get("data") or raw.get("items") or raw.get("result") or []
+        return []
+    except Exception:
+        return []
+
+
+def viagens_finalizadas_por_periodo(token, data_inicio_str, data_fim_str):
+    """
+    Lista todas as viagens finalizadas no período. A API Ravex exige janelas de no máximo 1h,
+    então faz várias requisições e agrega por id (sem duplicar).
+    data_inicio_str e data_fim_str no formato ISO (ex: 2026-03-01T00:00:00.000Z).
+    """
+    try:
+        from datetime import datetime, timedelta
+    except ImportError:
+        return []
+    try:
+        ini = datetime.strptime(data_inicio_str.replace("Z", "")[:19], "%Y-%m-%dT%H:%M:%S")
+        fim = datetime.strptime(data_fim_str.replace("Z", "")[:19], "%Y-%m-%dT%H:%M:%S")
+    except Exception:
+        return []
+    if ini >= fim:
+        return []
+    delta = timedelta(hours=1)
+    todas = []
+    ids_vistos = set()
+    dt = ini
+    while dt < fim:
+        dt_prox = min(dt + delta, fim)
+        ini_str = dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        fim_str = dt_prox.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        chunk = _fetch_viagens_janela(token, ini_str, fim_str)
+        for v in chunk or []:
+            vid = v.get("id") or v.get("Id")
+            if vid is not None:
+                k = int(vid) if isinstance(vid, (int, float)) else vid
+                if k not in ids_vistos:
+                    ids_vistos.add(k)
+                    todas.append(v)
+        dt = dt_prox
+    return todas

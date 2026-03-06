@@ -23,6 +23,7 @@ try:
         obter_itens_nota_fiscal,
         obter_canhotos_viagem,
         obter_ponto_referencia,
+        viagens_finalizadas_por_periodo,
     )
 except ImportError:
     ravex_get_token = None
@@ -32,6 +33,7 @@ except ImportError:
     obter_itens_nota_fiscal = None
     obter_canhotos_viagem = None
     obter_ponto_referencia = None
+    viagens_finalizadas_por_periodo = None
 
 try:
     from dotenv import load_dotenv  # type: ignore
@@ -2256,6 +2258,93 @@ def get_conferencia(id_viagem=None):
         return jsonify({'erro': f'Erro ao ler planilha: {str(e)}'}), 500
 
 
+def _ravex_linhas_romaneio_viagem(token, id_viagem):
+    """Dado token e id_viagem, busca na API Ravex e monta (id_roteiro, linhas) para excel_romaneio_por_item. Retorna (None, []) em erro."""
+    if not obter_viagem_por_id or not obter_canhotos_viagem or not obter_notas_fiscais_viagem or not obter_itens_nota_fiscal or not obter_ponto_referencia:
+        return (None, [])
+    viagem_full = obter_viagem_por_id(token, id_viagem)
+    if not viagem_full:
+        return (None, [])
+    roteiro_obj = viagem_full.get('roteiro') or viagem_full.get('roteiroFaturado')
+    id_roteiro = ''
+    if isinstance(roteiro_obj, dict):
+        id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or '')
+    if not id_roteiro:
+        id_roteiro = str(viagem_full.get('roteiroId') or viagem_full.get('idRoteiro') or '')
+    entregas, meta_canhotos = obter_canhotos_viagem(token, id_viagem)
+    placa = (meta_canhotos.get('veiculo') or meta_canhotos.get('veículo') or '').strip()
+    motorista = (meta_canhotos.get('motoristaNome') or meta_canhotos.get('motorista_nome') or '').strip()
+    data_ini = viagem_full.get('inicioDataHora') or viagem_full.get('dataInicioViagem') or ''
+    data_expedicao = data_ini[:10] if isinstance(data_ini, str) and len(data_ini) >= 10 else str(data_ini or '')
+    nfs = obter_notas_fiscais_viagem(token, id_viagem)
+    linhas = []
+    row_index = 0
+    for nf in nfs or []:
+        nf_id = nf.get('id') or nf.get('Id')
+        itens = obter_itens_nota_fiscal(token, id_viagem, nf_id) if nf_id else []
+        pedido = nf.get('pedido') or {}
+        ent0 = (entregas or [{}])[0] if entregas else {}
+        dados_ent = (ent0.get('entrega') or ent0.get('canhoto') or ent0) if isinstance(ent0, dict) else {}
+        cliente = dados_ent.get('cliente') or dados_ent.get('Cliente')
+        ref_id = dados_ent.get('referenciaId') or dados_ent.get('referencia_id')
+        ref = obter_ponto_referencia(token, ref_id) if ref_id else None
+        cliente_nome = (cliente.get('nome', '') or cliente.get('razaoSocial', '')) if isinstance(cliente, dict) else ''
+        cliente_razao = (cliente.get('razaoSocial', '') or cliente.get('nome', '')) if isinstance(cliente, dict) else ''
+        endereco = (cliente.get('endereco') or cliente.get('endereço') or '') if isinstance(cliente, dict) else ''
+        cidade = (cliente.get('cidade') or '') if isinstance(cliente, dict) else ''
+        if ref and isinstance(ref, dict):
+            if not cliente_nome:
+                cliente_nome = ref.get('nome') or ref.get('razaoSocial') or ''
+            if not cliente_razao:
+                cliente_razao = ref.get('razaoSocial') or ref.get('nome') or ''
+            if not endereco:
+                endereco = ref.get('endereco') or ref.get('endereço') or ''
+            if not cidade:
+                cidade = ref.get('cidade') or ''
+        codigo_cliente = (dados_ent.get('cnpj') or (pedido.get('cnpj') if isinstance(pedido, dict) else '') or '').strip()
+        for item in itens or []:
+            prod = item.get('produto') or {}
+            codigo_produto = str(item.get('codigo') or item.get('referenciaItem') or prod.get('codigo') or '').strip()
+            descricao = str(item.get('descricaoItem') or item.get('descricao') or prod.get('descricao') or prod.get('descrição') or '').strip()
+            quantidade = int(item.get('quantidade', 0) or 0)
+            unidade = str(item.get('unidade') or prod.get('unidade') or '').strip()
+            peso_bruto = str(item.get('pesoBruto') or item.get('pesoLiquido') or prod.get('pesoBruto') or '').strip()
+            row_index += 1
+            data_row = {
+                'id_roteiro': id_roteiro,
+                'id_viagem': id_viagem,
+                'codigo_produto': codigo_produto,
+                'descricao': descricao,
+                'quantidade': quantidade,
+                'unidade': unidade,
+                'peso_bruto': peso_bruto,
+                'codigo_cliente': codigo_cliente,
+                'endereco': endereco,
+                'cidade': cidade,
+                'placa': placa,
+                'motorista': motorista,
+                'data_expedicao': data_expedicao,
+            }
+            linhas.append({
+                'row_index': row_index,
+                'id_roteiro': id_roteiro or None,
+                'id_viagem': id_viagem,
+                'codigo_produto': codigo_produto or None,
+                'descricao': descricao or None,
+                'quantidade': quantidade,
+                'unidade': unidade or None,
+                'peso_bruto': peso_bruto or None,
+                'codigo_cliente': codigo_cliente or None,
+                'endereco': endereco or None,
+                'cidade': cidade or None,
+                'placa': placa or None,
+                'motorista': motorista or None,
+                'data_expedicao': data_expedicao or None,
+                'data': data_row,
+            })
+    return (id_roteiro, linhas)
+
+
 @app.route('/api/ravex/importar-romaneio', methods=['POST'])
 def api_ravex_importar_romaneio():
     """Importa itens do romaneio da API Ravex por id_roteiro ou id_viagem. Só importa quando a viagem já existe (faturada)."""
@@ -2335,80 +2424,9 @@ def api_ravex_importar_romaneio():
                 return jsonify({'erro': 'Roteiro ainda não possui viagem faturada.'}), 400
     if not id_viagem:
         return jsonify({'erro': 'Não foi possível obter o ID da viagem.'}), 400
-    viagem_full = obter_viagem_por_id(token, id_viagem)
-    if not viagem_full:
-        return jsonify({'erro': 'Viagem não encontrada na API Ravex.'}), 404
-    entregas, meta_canhotos = obter_canhotos_viagem(token, id_viagem)
-    placa = (meta_canhotos.get('veiculo') or meta_canhotos.get('veículo') or '').strip()
-    motorista = (meta_canhotos.get('motoristaNome') or meta_canhotos.get('motorista_nome') or '').strip()
-    data_ini = viagem_full.get('inicioDataHora') or viagem_full.get('dataInicioViagem') or ''
-    data_expedicao = data_ini[:10] if isinstance(data_ini, str) and len(data_ini) >= 10 else str(data_ini or '')
-    nfs = obter_notas_fiscais_viagem(token, id_viagem)
-    linhas = []
-    row_index = 0
-    for nf in nfs or []:
-        nf_id = nf.get('id') or nf.get('Id')
-        itens = obter_itens_nota_fiscal(token, id_viagem, nf_id) if nf_id else []
-        pedido = nf.get('pedido') or {}
-        ent0 = (entregas or [{}])[0] if entregas else {}
-        dados_ent = (ent0.get('entrega') or ent0.get('canhoto') or ent0) if isinstance(ent0, dict) else {}
-        cliente = dados_ent.get('cliente') or dados_ent.get('Cliente')
-        ref_id = dados_ent.get('referenciaId') or dados_ent.get('referencia_id')
-        ref = obter_ponto_referencia(token, ref_id) if ref_id else None
-        cliente_nome = (cliente.get('nome', '') or cliente.get('razaoSocial', '')) if isinstance(cliente, dict) else ''
-        cliente_razao = (cliente.get('razaoSocial', '') or cliente.get('nome', '')) if isinstance(cliente, dict) else ''
-        endereco = (cliente.get('endereco') or cliente.get('endereço') or '') if isinstance(cliente, dict) else ''
-        cidade = (cliente.get('cidade') or '') if isinstance(cliente, dict) else ''
-        if ref and isinstance(ref, dict):
-            if not cliente_nome:
-                cliente_nome = ref.get('nome') or ref.get('razaoSocial') or ''
-            if not cliente_razao:
-                cliente_razao = ref.get('razaoSocial') or ref.get('nome') or ''
-            if not endereco:
-                endereco = ref.get('endereco') or ref.get('endereço') or ''
-            if not cidade:
-                cidade = ref.get('cidade') or ''
-        codigo_cliente = (dados_ent.get('cnpj') or (pedido.get('cnpj') if isinstance(pedido, dict) else '') or '').strip()
-        for item in itens or []:
-            prod = item.get('produto') or {}
-            codigo_produto = str(item.get('codigo') or item.get('referenciaItem') or prod.get('codigo') or '').strip()
-            descricao = str(item.get('descricaoItem') or item.get('descricao') or prod.get('descricao') or prod.get('descrição') or '').strip()
-            quantidade = int(item.get('quantidade', 0) or 0)
-            unidade = str(item.get('unidade') or prod.get('unidade') or '').strip()
-            peso_bruto = str(item.get('pesoBruto') or item.get('pesoLiquido') or prod.get('pesoBruto') or '').strip()
-            row_index += 1
-            data_row = {
-                'id_roteiro': id_roteiro,
-                'id_viagem': id_viagem,
-                'codigo_produto': codigo_produto,
-                'descricao': descricao,
-                'quantidade': quantidade,
-                'unidade': unidade,
-                'peso_bruto': peso_bruto,
-                'codigo_cliente': codigo_cliente,
-                'endereco': endereco,
-                'cidade': cidade,
-                'placa': placa,
-                'motorista': motorista,
-                'data_expedicao': data_expedicao,
-            }
-            linhas.append({
-                'row_index': row_index,
-                'id_roteiro': id_roteiro or None,
-                'id_viagem': id_viagem,
-                'codigo_produto': codigo_produto or None,
-                'descricao': descricao or None,
-                'quantidade': quantidade,
-                'unidade': unidade or None,
-                'peso_bruto': peso_bruto or None,
-                'codigo_cliente': codigo_cliente or None,
-                'endereco': endereco or None,
-                'cidade': cidade or None,
-                'placa': placa or None,
-                'motorista': motorista or None,
-                'data_expedicao': data_expedicao or None,
-                'data': data_row,
-            })
+    id_roteiro, linhas = _ravex_linhas_romaneio_viagem(token, id_viagem)
+    if id_roteiro is None:
+        return jsonify({'erro': 'Viagem não encontrada ou sem itens na API Ravex.'}), 404
     conn = get_db()
     if getattr(conn, 'kind', None) != 'pg':
         conn.close()
@@ -2449,6 +2467,93 @@ def api_ravex_importar_romaneio():
         'id_roteiro': id_roteiro or id_viagem,
         'total_itens': len(linhas),
         'mensagem': 'Romaneio importado. Use o ID da viagem (%s) para conferência.' % id_viagem,
+    })
+
+
+@app.route('/api/ravex/sincronizar-periodo', methods=['POST'])
+def api_ravex_sincronizar_periodo():
+    """Puxa todos os roteiros/viagens finalizadas no período da API Ravex e grava na tabela excel_romaneio_por_item."""
+    if not _usa_banco_para_dados():
+        return jsonify({'erro': 'Configure DATABASE_URL para usar sincronização Ravex.'}), 400
+    if not ravex_get_token or not viagens_finalizadas_por_periodo:
+        return jsonify({'erro': 'Módulo ravex_client não disponível ou endpoint de período não implementado.'}), 500
+    data = request.get_json() or {}
+    data_inicio = (data.get('data_inicio') or data.get('dataInicio') or '').strip()
+    data_fim = (data.get('data_fim') or data.get('dataFim') or '').strip()
+    if not data_inicio or not data_fim:
+        return jsonify({'erro': 'Informe data_inicio e data_fim (ex: 2026-03-01 e 2026-03-05).'}), 400
+    try:
+        from datetime import datetime
+        if len(data_inicio) <= 10:
+            data_inicio += 'T00:00:00.000Z'
+        if len(data_fim) <= 10:
+            data_fim += 'T23:59:59.000Z'
+    except Exception:
+        pass
+    try:
+        token = ravex_get_token()
+    except Exception as e:
+        return jsonify({'erro': 'Falha ao autenticar na API Ravex: %s' % str(e)}), 502
+    viagens = viagens_finalizadas_por_periodo(token, data_inicio, data_fim)
+    conn = get_db()
+    if getattr(conn, 'kind', None) != 'pg':
+        conn.close()
+        return jsonify({'erro': 'Banco não é Postgres.'}), 400
+    ds = _get_latest_dataset_id(conn)
+    if not ds:
+        conn.close()
+        return jsonify({'erro': 'Nenhum dataset ativo. Importe a base (planilha) primeiro.'}), 400
+    viagens_processadas = 0
+    total_itens = 0
+    erros = []
+    try:
+        for v in viagens:
+            id_viagem = str(v.get('id') or v.get('Id') or '')
+            if not id_viagem:
+                continue
+            try:
+                id_roteiro, linhas = _ravex_linhas_romaneio_viagem(token, id_viagem)
+                if id_roteiro is None or not linhas:
+                    continue
+                conn.execute(
+                    """DELETE FROM excel_romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
+                    (str(ds), id_viagem),
+                )
+                for L in linhas:
+                    conn.execute(
+                        """INSERT INTO excel_romaneio_por_item
+                           (dataset_id, row_index, id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
+                            codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
+                        (
+                            str(ds), L['row_index'], L['id_roteiro'], L['id_viagem'], L['codigo_produto'], L['descricao'],
+                            L['quantidade'], L['unidade'], L['peso_bruto'], L['codigo_cliente'], L['endereco'], L['cidade'],
+                            L['placa'], L['motorista'], L['data_expedicao'],
+                            json.dumps(L['data']) if isinstance(L['data'], dict) else L['data'],
+                        ),
+                    )
+                viagens_processadas += 1
+                total_itens += len(linhas)
+            except Exception as e:
+                erros.append({'id_viagem': id_viagem, 'erro': str(e)})
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': 'Erro ao sincronizar: %s' % str(e)}), 500
+    conn.close()
+    return jsonify({
+        'ok': True,
+        'viagens_processadas': viagens_processadas,
+        'total_itens': total_itens,
+        'viagens_listadas': len(viagens),
+        'erros': erros,
     })
 
 
@@ -4216,6 +4321,86 @@ def get_painel_graficos():
 UNIDADE_CD_FILTRO = 'Unidade CD Guarulhos Ultrapão (Distribuidora)'
 
 
+def _estatisticas_romaneio_por_item_banco(conn):
+    """
+    Lê da tabela excel_romaneio_por_item (dataset ativo) e retorna o mesmo formato de _estatisticas_romaneio_por_item:
+    qtd_roteiros, qtd_veiculos, itens_total_por_codigo, itens_descricao_por_codigo, peso_por_carro, peso_total_geral, quantidade_total_itens, id_viagem_to_placa.
+    Usado quando DATABASE_URL está definido para o painel usar a tabela em vez da planilha.
+    """
+    out = {
+        'qtd_roteiros': 0,
+        'qtd_veiculos': 0,
+        'itens_total_por_codigo': {},
+        'itens_descricao_por_codigo': {},
+        'peso_por_carro': {},
+        'peso_total_geral': 0.0,
+        'quantidade_total_itens': 0,
+        'id_viagem_to_placa': {}
+    }
+    if getattr(conn, 'kind', None) != 'pg':
+        return out
+    ds = _get_latest_dataset_id(conn)
+    if not ds:
+        return out
+    try:
+        rows = conn.execute(
+            """SELECT id_roteiro, id_viagem, codigo_produto, descricao, quantidade, peso_bruto, placa
+               FROM excel_romaneio_por_item WHERE dataset_id = ? ORDER BY row_index""",
+            (str(ds),),
+        ).fetchall()
+    except Exception:
+        return out
+    roteiros = set()
+    veiculos = set()
+    itens_por_codigo = {}
+    itens_descricao = {}
+    peso_por_placa = {}
+    id_viagem_to_placa = {}
+    peso_total = 0.0
+    quantidade_total = 0
+    for r in rows or []:
+        id_v = (r.get('id_viagem') or r.get('id_roteiro') or '').strip()
+        placa = (r.get('placa') or '').strip()
+        cod = (r.get('codigo_produto') or '').strip()
+        desc = (r.get('descricao') or '').strip()
+        try:
+            qtd = int(r.get('quantidade') or 0)
+        except (TypeError, ValueError):
+            qtd = 0
+        try:
+            peso_val = r.get('peso_bruto')
+            if peso_val is None:
+                p = 0.0
+            else:
+                p = float(str(peso_val).replace(',', '.').strip() or 0)
+        except (TypeError, ValueError):
+            p = 0.0
+        if id_v:
+            roteiros.add(id_v)
+            if placa:
+                id_viagem_to_placa[id_v] = placa
+        if placa:
+            veiculos.add(placa)
+        if cod:
+            itens_por_codigo[cod] = itens_por_codigo.get(cod, 0) + qtd
+            if cod not in itens_descricao and desc:
+                itens_descricao[cod] = desc
+        quantidade_total += qtd
+        placa_eff = placa or id_viagem_to_placa.get(id_v, '') or 'Sem placa'
+        if placa_eff:
+            peso_por_placa[placa_eff] = peso_por_placa.get(placa_eff, 0.0) + p * max(1, qtd)
+        peso_total += p * max(1, qtd)
+    out['qtd_roteiros'] = len(roteiros)
+    out['qtd_veiculos'] = len(veiculos)
+    out['itens_total_por_codigo'] = itens_por_codigo
+    out['itens_descricao_por_codigo'] = itens_descricao
+    out['peso_por_carro'] = {k: round(v, 2) for k, v in sorted(peso_por_placa.items(), key=lambda x: -x[1])}
+    out['peso_total_geral'] = round(peso_total, 2)
+    out['quantidade_total_itens'] = quantidade_total
+    out['id_viagem_to_placa'] = id_viagem_to_placa
+    return out
+
+
 def _estatisticas_romaneio_por_item(wb):
     """
     Lê a aba ROMANEIO POR ITEM e retorna: qtd roteiros, qtd veículos,
@@ -4546,7 +4731,13 @@ def get_painel_completo():
         v['total_faltas'] = 0
     id_viagem_placa = {}
     romaneio_stats = {}
-    if wb:
+    if _usa_banco_para_dados() and getattr(conn, 'kind', None) == 'pg':
+        try:
+            romaneio_stats = _estatisticas_romaneio_por_item_banco(conn)
+            id_viagem_placa = romaneio_stats.get('id_viagem_to_placa') or {}
+        except Exception:
+            pass
+    if wb and not romaneio_stats:
         try:
             romaneio_stats = _estatisticas_romaneio_por_item(wb)
             id_viagem_placa = romaneio_stats.get('id_viagem_to_placa') or {}

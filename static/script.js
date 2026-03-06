@@ -127,6 +127,8 @@ function loadTabData(tab) {
             return loadExtrato();
         case 'romaneio':
             return loadRomaneio();
+        case 'importar-ravex':
+            return Promise.resolve();
         case 'divergencias':
             return loadDivergencias(false);
         default:
@@ -232,6 +234,58 @@ function initForms() {
         });
     }
     window.atualizarEstadoCampoBipar();
+
+    // Aba Importar Ravex: puxar todos os roteiros por período
+    const btnImportarRavex = document.getElementById('btn-importar-ravex-periodo');
+    const resultadoImportarRavex = document.getElementById('importar-ravex-resultado');
+    if (btnImportarRavex && resultadoImportarRavex) {
+        btnImportarRavex.addEventListener('click', async function() {
+            const dataInicio = (document.getElementById('importar-ravex-data-inicio') || {}).value || '';
+            const dataFim = (document.getElementById('importar-ravex-data-fim') || {}).value || '';
+            if (!dataInicio || !dataFim) {
+                resultadoImportarRavex.style.display = 'block';
+                resultadoImportarRavex.style.background = '#fff3cd';
+                resultadoImportarRavex.style.border = '1px solid #ffc107';
+                resultadoImportarRavex.innerHTML = 'Preencha data início e data fim.';
+                return;
+            }
+            if (dataInicio > dataFim) {
+                resultadoImportarRavex.style.display = 'block';
+                resultadoImportarRavex.style.background = '#fff3cd';
+                resultadoImportarRavex.style.border = '1px solid #ffc107';
+                resultadoImportarRavex.innerHTML = 'Data início não pode ser maior que data fim.';
+                return;
+            }
+            btnImportarRavex.disabled = true;
+            resultadoImportarRavex.style.display = 'block';
+            resultadoImportarRavex.style.background = '#e3f2fd';
+            resultadoImportarRavex.style.border = '1px solid #2196f3';
+            resultadoImportarRavex.innerHTML = 'Puxando roteiros da API Ravex... Aguarde.';
+            try {
+                const r = await fetch(API_BASE + '/ravex/sincronizar-periodo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data_inicio: dataInicio, data_fim: dataFim })
+                });
+                const data = await r.json().catch(function() { return {}; });
+                if (r.ok && data.ok) {
+                    resultadoImportarRavex.style.background = '#e8f5e9';
+                    resultadoImportarRavex.style.border = '1px solid #4caf50';
+                    resultadoImportarRavex.innerHTML = 'Sincronização concluída. Viagens processadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens gravados: <strong>' + (data.total_itens || 0) + '</strong>. Viagens listadas no período: ' + (data.viagens_listadas || 0) + (data.erros && data.erros.length ? '. Erros em algumas viagens: ' + data.erros.length : '') + '.';
+                    loadAllData();
+                } else {
+                    resultadoImportarRavex.style.background = '#ffebee';
+                    resultadoImportarRavex.style.border = '1px solid #f44336';
+                    resultadoImportarRavex.innerHTML = 'Erro: ' + (data.erro || r.statusText || 'Falha na sincronização');
+                }
+            } catch (e) {
+                resultadoImportarRavex.style.background = '#ffebee';
+                resultadoImportarRavex.style.border = '1px solid #f44336';
+                resultadoImportarRavex.innerHTML = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
+            }
+            btnImportarRavex.disabled = false;
+        });
+    }
 
     // Buscar produto automaticamente quando código de barras for digitado
     const codigoInput = document.getElementById('codigo-barras');

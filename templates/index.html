@@ -32,6 +32,7 @@
             <button class="tab-button" data-tab="conferencia">CONFERÊNCIA</button>
             <button class="tab-button" data-tab="extrato">EXTRATO</button>
             <button class="tab-button" data-tab="romaneio">ROMANEIO POR ITEM</button>
+            <button class="tab-button" data-tab="importar-ravex">IMPORTAR RAVEX</button>
             <button class="tab-button" data-tab="relatorios">RELATÓRIOS</button>
             <button class="tab-button" id="tab-btn-divergencias" data-tab="divergencias">DIVERGÊNCIAS</button>
         </nav>
@@ -73,7 +74,7 @@
                 </div>
 
                 <h2 style="margin-top: 30px;">DADOS DA ABA ROMANEIO POR ITEM</h2>
-                <p class="info-text" style="margin-bottom: 16px;">Resumo com base na planilha Excel (aba ROMANEIO POR ITEM) — somente <strong>Unidade CD Guarulhos Ultrapão (Distribuidora)</strong>.</p>
+                <p class="info-text" style="margin-bottom: 16px;">Resumo com base na tabela de romaneio por item (quando houver banco configurado) ou na planilha Excel (aba ROMANEIO POR ITEM) — somente <strong>Unidade CD Guarulhos Ultrapão (Distribuidora)</strong>.</p>
                 <div class="stats-grid" id="romaneio-stats-grid">
                     <div class="stat-card">
                         <h3>Quantidade de Roteiros</h3>
@@ -608,6 +609,26 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            <!-- ABA IMPORTAR RAVEX -->
+            <div id="importar-ravex" class="tab-content">
+                <h2>IMPORTAR RAVEX – Puxar todos os roteiros</h2>
+                <p class="info-text" style="margin-bottom: 16px;">
+                    Informe o período (data início e data fim). Ao clicar em <strong>Puxar todos os roteiros</strong>, o sistema busca na API Ravex todas as viagens finalizadas nesse período e grava na tabela de romaneio por item. Depois disso, o <strong>Painel</strong> e a <strong>Conferência</strong> passam a usar apenas os dados da tabela (não da planilha Excel).
+                </p>
+                <div class="form-container" style="max-width: 520px; margin-bottom: 24px;">
+                    <div class="form-group">
+                        <label for="importar-ravex-data-inicio">Data início</label>
+                        <input type="date" id="importar-ravex-data-inicio" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="importar-ravex-data-fim">Data fim</label>
+                        <input type="date" id="importar-ravex-data-fim" required>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="btn-importar-ravex-periodo">📥 Puxar todos os roteiros</button>
+                </div>
+                <div id="importar-ravex-resultado" style="display: none; padding: 12px; border-radius: 8px; margin-top: 16px;"></div>
             </div>
 
             <!-- ABA RELATÓRIOS -->
