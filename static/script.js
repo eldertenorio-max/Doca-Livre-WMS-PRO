@@ -57,13 +57,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var btnSair = document.getElementById('btn-sair');
     if (btnSair) {
         btnSair.addEventListener('click', function() {
-            // Feedback imediato: tela mínima "Saindo..." e redireciona após pintar (evita travar)
-            document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Outfit,sans-serif;font-size:18px;color:#1565c0;">Saindo...</div>';
-            requestAnimationFrame(function() {
-                requestAnimationFrame(function() {
-                    window.location.replace('/login?sair=1');
-                });
-            });
+            // Redireciona na hora; nao alterar o body antes para nao quebrar o redirect
+            window.location.replace('/login?sair=1');
         });
     }
     var btnAtualizarAba = document.getElementById('btn-atualizar-aba');
