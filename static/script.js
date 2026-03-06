@@ -56,10 +56,18 @@ document.addEventListener('DOMContentLoaded', function() {
     var btnSair = document.getElementById('btn-sair');
     if (btnSair) {
         btnSair.addEventListener('click', function() {
+            // Sempre redireciona após 2,5s (permite sair mesmo com servidor fora)
+            var timeoutId = setTimeout(function() { window.location.href = '/login'; }, 2500);
             fetch(API_BASE + '/logout', { method: 'POST' })
                 .then(function(r) { return r.json(); })
-                .then(function(d) { if (d.redirect) window.location.href = d.redirect; })
-                .catch(function() { window.location.href = '/login'; });
+                .then(function(d) {
+                    clearTimeout(timeoutId);
+                    window.location.href = (d && d.redirect) ? d.redirect : '/login';
+                })
+                .catch(function() {
+                    clearTimeout(timeoutId);
+                    window.location.href = '/login';
+                });
         });
     }
     var btnAtualizarAba = document.getElementById('btn-atualizar-aba');
