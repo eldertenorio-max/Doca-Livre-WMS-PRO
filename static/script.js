@@ -51,14 +51,21 @@ document.addEventListener('DOMContentLoaded', function() {
     initTabs();
     initForms();
     initFiltrosBase();
-    loadAllData();
+    // Primeira carga após um tick para a tela pintar antes (resposta mais rápida percebida)
+    setTimeout(function() { loadAllData(); }, 0);
     initEventosStream();
     var btnSair = document.getElementById('btn-sair');
     if (btnSair) {
         btnSair.addEventListener('click', function() {
-            // Redireciona na hora; avisa o servidor em segundo plano (não espera resposta)
-            try { fetch(API_BASE + '/logout', { method: 'POST', keepalive: true }).catch(function() {}); } catch (e) {}
-            window.location.href = '/login';
+            // Redireciona na hora; envia logout em segundo plano (sendBeacon não bloqueia)
+            try {
+                if (navigator.sendBeacon && typeof navigator.sendBeacon === 'function') {
+                    navigator.sendBeacon(API_BASE + '/logout', '');
+                } else {
+                    fetch(API_BASE + '/logout', { method: 'POST', keepalive: true }).catch(function() {});
+                }
+            } catch (e) {}
+            window.location.replace('/login');
         });
     }
     var btnAtualizarAba = document.getElementById('btn-atualizar-aba');
@@ -78,8 +85,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Fallback: atualizar a cada 5 segundos se o stream falhar (mantém dados sincronizados)
-    setInterval(loadAllData, 5000);
+    // Fallback: atualizar a cada 10 segundos se o stream falhar (reduz carga no servidor)
+    setInterval(loadAllData, 10000);
 });
 
 // Sistema de Abas

@@ -668,10 +668,10 @@ def api_cadastrar():
 
 @app.route('/api/logout', methods=['POST'])
 def api_logout():
-    """Encerra a sessão."""
+    """Encerra a sessão. Resposta mínima para sair rápido."""
     session.pop('usuario', None)
     session.pop('usuario_id', None)
-    return jsonify({'ok': True, 'redirect': url_for('login')})
+    return '', 204
 
 
 @app.route('/api/usuarios', methods=['GET'])
