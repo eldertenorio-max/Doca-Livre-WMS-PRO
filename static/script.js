@@ -54,13 +54,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Primeira carga após um tick para a tela pintar antes (resposta mais rápida percebida)
     setTimeout(function() { loadAllData(); }, 0);
     initEventosStream();
-    var btnSair = document.getElementById('btn-sair');
-    if (btnSair) {
-        btnSair.addEventListener('click', function() {
-            // Redireciona na hora; nao alterar o body antes para nao quebrar o redirect
-            window.location.replace('/login?sair=1');
-        });
-    }
+    // Sair é um link direto (href="/login?sair=1") no HTML; não depende de JS
     var btnAtualizarAba = document.getElementById('btn-atualizar-aba');
     if (btnAtualizarAba) {
         btnAtualizarAba.addEventListener('click', function() {
