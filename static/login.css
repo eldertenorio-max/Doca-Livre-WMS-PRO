@@ -182,6 +182,8 @@ body {
     display: block;
     height: 180px;
     width: auto;
+    max-width: 200px;
+    margin: 0 auto;
     object-fit: contain;
     filter: drop-shadow(0 2px 12px rgba(54, 96, 146, 0.2));
 }
