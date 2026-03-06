@@ -287,6 +287,94 @@ function initForms() {
         });
     }
 
+    // Importar Ravex: puxar por ID único (roteiro ou viagem)
+    const btnImportarRavexIdUnico = document.getElementById('btn-importar-ravex-id-unico');
+    if (btnImportarRavexIdUnico && resultadoImportarRavex) {
+        btnImportarRavexIdUnico.addEventListener('click', async function() {
+            const idUnico = (document.getElementById('importar-ravex-id-unico') || {}).value || '';
+            if (!idUnico.trim()) {
+                resultadoImportarRavex.style.display = 'block';
+                resultadoImportarRavex.style.background = '#fff3cd';
+                resultadoImportarRavex.style.border = '1px solid #ffc107';
+                resultadoImportarRavex.innerHTML = 'Digite o ID do roteiro ou da viagem.';
+                return;
+            }
+            btnImportarRavexIdUnico.disabled = true;
+            resultadoImportarRavex.style.display = 'block';
+            resultadoImportarRavex.style.background = '#e3f2fd';
+            resultadoImportarRavex.style.border = '1px solid #2196f3';
+            resultadoImportarRavex.innerHTML = 'Puxando roteiro/viagem da API Ravex...';
+            try {
+                const r = await fetch(API_BASE + '/ravex/importar-romaneio', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: idUnico.trim() })
+                });
+                const data = await r.json().catch(function() { return {}; });
+                if (r.ok && data.ok) {
+                    resultadoImportarRavex.style.background = '#e8f5e9';
+                    resultadoImportarRavex.style.border = '1px solid #4caf50';
+                    resultadoImportarRavex.innerHTML = 'Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.';
+                    loadAllData();
+                } else {
+                    resultadoImportarRavex.style.background = '#ffebee';
+                    resultadoImportarRavex.style.border = '1px solid #f44336';
+                    resultadoImportarRavex.innerHTML = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar');
+                }
+            } catch (e) {
+                resultadoImportarRavex.style.background = '#ffebee';
+                resultadoImportarRavex.style.border = '1px solid #f44336';
+                resultadoImportarRavex.innerHTML = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
+            }
+            btnImportarRavexIdUnico.disabled = false;
+        });
+    }
+
+    // Importar Ravex: puxar lista de IDs
+    const btnImportarRavexLista = document.getElementById('btn-importar-ravex-lista');
+    if (btnImportarRavexLista && resultadoImportarRavex) {
+        btnImportarRavexLista.addEventListener('click', async function() {
+            const textarea = document.getElementById('importar-ravex-lista-ids');
+            const texto = (textarea && textarea.value) ? textarea.value : '';
+            const ids = texto.replace(/,/g, '\n').split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
+            if (ids.length === 0) {
+                resultadoImportarRavex.style.display = 'block';
+                resultadoImportarRavex.style.background = '#fff3cd';
+                resultadoImportarRavex.style.border = '1px solid #ffc107';
+                resultadoImportarRavex.innerHTML = 'Cole uma lista de IDs (um por linha ou separados por vírgula).';
+                return;
+            }
+            btnImportarRavexLista.disabled = true;
+            resultadoImportarRavex.style.display = 'block';
+            resultadoImportarRavex.style.background = '#e3f2fd';
+            resultadoImportarRavex.style.border = '1px solid #2196f3';
+            resultadoImportarRavex.innerHTML = 'Puxando ' + ids.length + ' roteiro(s)/viagem(ns) da API Ravex... Aguarde.';
+            try {
+                const r = await fetch(API_BASE + '/ravex/importar-lista', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: ids })
+                });
+                const data = await r.json().catch(function() { return {}; });
+                if (r.ok && data.ok) {
+                    resultadoImportarRavex.style.background = '#e8f5e9';
+                    resultadoImportarRavex.style.border = '1px solid #4caf50';
+                    resultadoImportarRavex.innerHTML = 'Lista processada. Viagens importadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>. IDs na lista: ' + (data.ids_recebidos || 0) + (data.erros && data.erros.length ? '. Erros: ' + data.erros.length : '') + '.';
+                    loadAllData();
+                } else {
+                    resultadoImportarRavex.style.background = '#ffebee';
+                    resultadoImportarRavex.style.border = '1px solid #f44336';
+                    resultadoImportarRavex.innerHTML = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar lista');
+                }
+            } catch (e) {
+                resultadoImportarRavex.style.background = '#ffebee';
+                resultadoImportarRavex.style.border = '1px solid #f44336';
+                resultadoImportarRavex.innerHTML = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
+            }
+            btnImportarRavexLista.disabled = false;
+        });
+    }
+
     // Buscar produto automaticamente quando código de barras for digitado
     const codigoInput = document.getElementById('codigo-barras');
     if (codigoInput) {

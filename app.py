@@ -2352,6 +2352,43 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
     return (id_roteiro, linhas)
 
 
+def _ravex_resolver_id_para_viagem(token, id_unico):
+    """Dado um ID (roteiro ou viagem), resolve para (id_viagem, id_roteiro). Retorna (None, None) se não encontrar ou sem viagem faturada."""
+    if not id_unico or not obter_viagem_por_id or not obter_roteiro_por_id:
+        return (None, None)
+    id_unico = str(id_unico).strip()
+    if not id_unico:
+        return (None, None)
+    try:
+        vid = int(id_unico)
+    except (TypeError, ValueError):
+        vid = id_unico
+    viagem = obter_viagem_por_id(token, vid)
+    if viagem:
+        id_viagem = id_unico
+        roteiro_obj = viagem.get('roteiro') or viagem.get('roteiroFaturado')
+        if isinstance(roteiro_obj, dict):
+            id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or '')
+        else:
+            id_roteiro = str(viagem.get('roteiroId') or viagem.get('idRoteiro') or '')
+        return (id_viagem, id_roteiro)
+    try:
+        rid = int(id_unico)
+    except (TypeError, ValueError):
+        rid = id_unico
+    roteiro = obter_roteiro_por_id(token, rid)
+    if not roteiro:
+        return (None, None)
+    vf = roteiro.get('viagemFaturada') or roteiro.get('viagem_faturada')
+    if isinstance(vf, dict):
+        id_viagem = str(vf.get('id') or vf.get('Id') or '')
+    else:
+        id_viagem = str(roteiro.get('viagemFaturadaId') or roteiro.get('viagem_id') or '')
+    if not id_viagem:
+        return (None, None)
+    return (id_viagem, str(rid))
+
+
 @app.route('/api/ravex/importar-romaneio', methods=['POST'])
 def api_ravex_importar_romaneio():
     """Importa itens do romaneio da API Ravex por id_roteiro ou id_viagem. Só importa quando a viagem já existe (faturada)."""
@@ -2560,6 +2597,94 @@ def api_ravex_sincronizar_periodo():
         'viagens_processadas': viagens_processadas,
         'total_itens': total_itens,
         'viagens_listadas': len(viagens),
+        'erros': erros,
+    })
+
+
+@app.route('/api/ravex/importar-lista', methods=['POST'])
+def api_ravex_importar_lista():
+    """Importa romaneio para uma lista de IDs (cada ID pode ser id_roteiro ou id_viagem). Um ID por item na lista."""
+    if not _usa_banco_para_dados():
+        return jsonify({'erro': 'Configure DATABASE_URL para usar importação Ravex.'}), 400
+    if not ravex_get_token:
+        return jsonify({'erro': 'Módulo ravex_client não disponível.'}), 500
+    data = request.get_json() or {}
+    raw_ids = data.get('ids') or data.get('lista') or data.get('id_list') or []
+    if isinstance(raw_ids, str):
+        raw_ids = [s.strip() for s in raw_ids.replace(',', '\n').splitlines() if s.strip()]
+    elif not isinstance(raw_ids, list):
+        raw_ids = []
+    ids = [str(x).strip() for x in raw_ids if str(x).strip()]
+    if not ids:
+        return jsonify({'erro': 'Informe uma lista de IDs (ids: ["18765009", "18765008", ...] ou um ID por linha).'}), 400
+    try:
+        token = ravex_get_token()
+    except Exception as e:
+        return jsonify({'erro': 'Falha ao autenticar na API Ravex: %s' % str(e)}), 502
+    conn = get_db()
+    if getattr(conn, 'kind', None) != 'pg':
+        conn.close()
+        return jsonify({'erro': 'Banco não é Postgres.'}), 400
+    ds = _get_latest_dataset_id(conn)
+    if not ds:
+        conn.close()
+        return jsonify({'erro': 'Nenhum dataset ativo. Importe a base primeiro.'}), 400
+    viagens_processadas = 0
+    total_itens = 0
+    erros = []
+    ids_vistos = set()
+    try:
+        for id_unico in ids:
+            if not id_unico or id_unico in ids_vistos:
+                continue
+            ids_vistos.add(id_unico)
+            try:
+                id_viagem, id_roteiro = _ravex_resolver_id_para_viagem(token, id_unico)
+                if not id_viagem:
+                    erros.append({'id': id_unico, 'erro': 'ID não encontrado ou roteiro sem viagem faturada'})
+                    continue
+                id_roteiro, linhas = _ravex_linhas_romaneio_viagem(token, id_viagem)
+                if id_roteiro is None or not linhas:
+                    erros.append({'id': id_unico, 'erro': 'Sem itens na API'})
+                    continue
+                conn.execute(
+                    """DELETE FROM excel_romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
+                    (str(ds), id_viagem),
+                )
+                for L in linhas:
+                    conn.execute(
+                        """INSERT INTO excel_romaneio_por_item
+                           (dataset_id, row_index, id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
+                            codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
+                        (
+                            str(ds), L['row_index'], L['id_roteiro'], L['id_viagem'], L['codigo_produto'], L['descricao'],
+                            L['quantidade'], L['unidade'], L['peso_bruto'], L['codigo_cliente'], L['endereco'], L['cidade'],
+                            L['placa'], L['motorista'], L['data_expedicao'],
+                            json.dumps(L['data']) if isinstance(L['data'], dict) else L['data'],
+                        ),
+                    )
+                viagens_processadas += 1
+                total_itens += len(linhas)
+            except Exception as e:
+                erros.append({'id': id_unico, 'erro': str(e)})
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': 'Erro ao importar lista: %s' % str(e)}), 500
+    conn.close()
+    return jsonify({
+        'ok': True,
+        'viagens_processadas': viagens_processadas,
+        'total_itens': total_itens,
+        'ids_recebidos': len(ids),
         'erros': erros,
     })
 

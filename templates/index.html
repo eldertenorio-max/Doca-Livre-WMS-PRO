@@ -613,11 +613,13 @@
 
             <!-- ABA IMPORTAR RAVEX -->
             <div id="importar-ravex" class="tab-content">
-                <h2>IMPORTAR RAVEX – Puxar todos os roteiros</h2>
+                <h2>IMPORTAR RAVEX – Puxar roteiros/viagens</h2>
                 <p class="info-text" style="margin-bottom: 16px;">
-                    Informe o período (data início e data fim). Ao clicar em <strong>Puxar todos os roteiros</strong>, o sistema busca na API Ravex todas as viagens finalizadas nesse período e grava na tabela de romaneio por item. O <strong>Painel</strong> e a <strong>Conferência</strong> usam apenas os dados das tabelas.
+                    Você pode puxar por <strong>período</strong>, por <strong>um ID único</strong> (roteiro ou viagem) ou por <strong>uma lista de IDs</strong>. Os dados são gravados na tabela de romaneio por item. O Painel e a Conferência usam apenas os dados das tabelas.
                 </p>
+
                 <div class="form-container" style="max-width: 520px; margin-bottom: 24px;">
+                    <h3 style="margin-top: 0; color: #1565c0;">Por período</h3>
                     <div class="form-group">
                         <label for="importar-ravex-data-inicio">Data início</label>
                         <input type="date" id="importar-ravex-data-inicio" required>
@@ -626,8 +628,28 @@
                         <label for="importar-ravex-data-fim">Data fim</label>
                         <input type="date" id="importar-ravex-data-fim" required>
                     </div>
-                    <button type="button" class="btn btn-primary" id="btn-importar-ravex-periodo">📥 Puxar todos os roteiros</button>
+                    <button type="button" class="btn btn-primary" id="btn-importar-ravex-periodo">📥 Puxar todos os roteiros do período</button>
                 </div>
+
+                <div class="form-container" style="max-width: 520px; margin-bottom: 24px;">
+                    <h3 style="margin-top: 0; color: #1565c0;">Por ID único (roteiro ou viagem)</h3>
+                    <div class="form-group">
+                        <label for="importar-ravex-id-unico">ID do roteiro ou da viagem</label>
+                        <input type="text" id="importar-ravex-id-unico" placeholder="Ex.: 18765009">
+                    </div>
+                    <button type="button" class="btn btn-primary" id="btn-importar-ravex-id-unico">📥 Puxar este roteiro/viagem</button>
+                </div>
+
+                <div class="form-container" style="max-width: 600px; margin-bottom: 24px;">
+                    <h3 style="margin-top: 0; color: #1565c0;">Por lista de IDs</h3>
+                    <p class="info-text" style="margin-bottom: 8px;">Cole uma lista de IDs (um por linha ou separados por vírgula). Cada ID pode ser de roteiro ou de viagem.</p>
+                    <div class="form-group">
+                        <label for="importar-ravex-lista-ids">Lista de IDs</label>
+                        <textarea id="importar-ravex-lista-ids" rows="8" placeholder="18765009&#10;18765008&#10;18765007&#10;..." style="width: 100%; font-family: monospace;"></textarea>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="btn-importar-ravex-lista">📥 Puxar lista de roteiros/viagens</button>
+                </div>
+
                 <div id="importar-ravex-resultado" style="display: none; padding: 12px; border-radius: 8px; margin-top: 16px;"></div>
             </div>
 
