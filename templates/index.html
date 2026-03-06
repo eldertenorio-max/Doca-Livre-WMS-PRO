@@ -20,7 +20,7 @@
             <button type="button" class="btn-atualizar-aba" id="btn-atualizar-aba" title="Atualizar apenas os dados da aba atual">🔄 Atualizar aba</button>
             <div class="header-perfil">
                 <span class="perfil-label">Logado como:</span>
-                <span class="perfil-usuario" id="perfil-usuario">—</span>
+                <span class="perfil-usuario" id="perfil-usuario">{{ usuario or '—' }}</span>
             </div>
             <button type="button" class="btn-sair" id="btn-sair" title="Sair">Sair</button>
         </header>

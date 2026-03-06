@@ -539,6 +539,10 @@ class CompatConn:
     def commit(self):
         return self._conn.commit()
 
+    def rollback(self):
+        if getattr(self._conn, 'rollback', None):
+            self._conn.rollback()
+
     def close(self):
         return self._conn.close()
 
@@ -4816,126 +4820,141 @@ def get_painel_completo():
     """Um único request: estatísticas + viagens + gráficos. Estatísticas em 1 query para carregar mais rápido."""
     conn = get_db()
     conn.row_factory = sqlite3.Row
-    # Estatísticas em uma única query (menos ida e volta ao DB)
-    row_stats = conn.execute('''
-        SELECT
-            (SELECT COUNT(*) FROM produtos_bipados) AS total_bipados,
-            (SELECT COUNT(*) FROM produtos_bipados WHERE status = 'CARREGADO') AS total_carregados,
-            (SELECT COUNT(DISTINCT codigo_barras) FROM produtos_bipados) AS total_unicos,
-            (SELECT COUNT(DISTINCT id_viagem) FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(COALESCE(id_viagem,'')) != '') AS total_viagens,
-            (SELECT COALESCE(SUM(quantidade), 0) FROM produtos_bipados) AS soma_quantidades
-    ''').fetchone()
-    veiculos_rows = conn.execute(
-        "SELECT veiculo, COUNT(*) as total FROM produtos_bipados WHERE status = ? AND trim(COALESCE(veiculo,'')) != '' GROUP BY veiculo", ('CARREGADO',)
-    ).fetchall()
-    estatisticas = {
-        'total_bipados': row_stats['total_bipados'] or 0,
-        'total_carregados': row_stats['total_carregados'] or 0,
-        'total_unicos': row_stats['total_unicos'] or 0,
-        'total_divergencias': 0,
-        'total_viagens': row_stats['total_viagens'] or 0,
-        'soma_quantidades': row_stats['soma_quantidades'] or 0,
-        'veiculos': [dict(r) for r in veiculos_rows]
-    }
-    # Viagens
-    rows = conn.execute('''
-        SELECT id_viagem, SUM(quantidade) as total_bipados, MIN(data_hora) as inicio, MAX(data_hora) as fim
-        FROM produtos_bipados
-        WHERE id_viagem IS NOT NULL AND id_viagem != ''
-        GROUP BY id_viagem
-        ORDER BY MAX(data_hora) DESC
-        LIMIT 25
-    ''').fetchall()
-    viagens = []
-    for r in rows:
-        inicio, fim = r['inicio'] or '', r['fim'] or ''
-        d_min = None
-        if inicio and fim:
-            t0, t1 = _parse_datetime(inicio), _parse_datetime(fim)
-            if t0 and t1:
-                d_min = max(0, int((t1 - t0).total_seconds() / 60))
-        viagens.append({
-            'id_viagem': r['id_viagem'],
-            'total_bipados': r['total_bipados'] or 0,
-            'inicio': inicio,
-            'fim': fim,
-            'duracao_minutos': d_min
+    try:
+        # Estatísticas em uma única query (menos ida e volta ao DB)
+        row_stats = conn.execute('''
+            SELECT
+                (SELECT COUNT(*) FROM produtos_bipados) AS total_bipados,
+                (SELECT COUNT(*) FROM produtos_bipados WHERE status = 'CARREGADO') AS total_carregados,
+                (SELECT COUNT(DISTINCT codigo_barras) FROM produtos_bipados) AS total_unicos,
+                (SELECT COUNT(DISTINCT id_viagem) FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(COALESCE(id_viagem,'')) != '') AS total_viagens,
+                (SELECT COALESCE(SUM(quantidade), 0) FROM produtos_bipados) AS soma_quantidades
+        ''').fetchone()
+        veiculos_rows = conn.execute(
+            "SELECT veiculo, COUNT(*) as total FROM produtos_bipados WHERE status = ? AND trim(COALESCE(veiculo,'')) != '' GROUP BY veiculo", ('CARREGADO',)
+        ).fetchall()
+        estatisticas = {
+            'total_bipados': row_stats['total_bipados'] or 0,
+            'total_carregados': row_stats['total_carregados'] or 0,
+            'total_unicos': row_stats['total_unicos'] or 0,
+            'total_divergencias': 0,
+            'total_viagens': row_stats['total_viagens'] or 0,
+            'soma_quantidades': row_stats['soma_quantidades'] or 0,
+            'veiculos': [dict(r) for r in veiculos_rows]
+        }
+        # Viagens
+        rows = conn.execute('''
+            SELECT id_viagem, SUM(quantidade) as total_bipados, MIN(data_hora) as inicio, MAX(data_hora) as fim
+            FROM produtos_bipados
+            WHERE id_viagem IS NOT NULL AND id_viagem != ''
+            GROUP BY id_viagem
+            ORDER BY MAX(data_hora) DESC
+            LIMIT 25
+        ''').fetchall()
+        viagens = []
+        for r in rows:
+            inicio, fim = r['inicio'] or '', r['fim'] or ''
+            d_min = None
+            if inicio and fim:
+                t0, t1 = _parse_datetime(inicio), _parse_datetime(fim)
+                if t0 and t1:
+                    d_min = max(0, int((t1 - t0).total_seconds() / 60))
+            viagens.append({
+                'id_viagem': r['id_viagem'],
+                'total_bipados': r['total_bipados'] or 0,
+                'inicio': inicio,
+                'fim': fim,
+                'duracao_minutos': d_min
+            })
+        wb = None
+        from_cache = False
+        for v in viagens:
+            v['total_faltas'] = 0
+        id_viagem_placa = {}
+        romaneio_stats = {}
+        if _usa_banco_para_dados() and getattr(conn, 'kind', None) == 'pg':
+            try:
+                romaneio_stats = _estatisticas_romaneio_por_item_banco(conn)
+                id_viagem_placa = romaneio_stats.get('id_viagem_to_placa') or {}
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                pass
+        if wb and not romaneio_stats:
+            try:
+                romaneio_stats = _estatisticas_romaneio_por_item(wb)
+                id_viagem_placa = romaneio_stats.get('id_viagem_to_placa') or {}
+            except Exception:
+                pass
+        placa_to_minutos = {}
+        for v in viagens:
+            vid = (v.get('id_viagem') or '').strip()
+            placa = (id_viagem_placa.get(vid) or '').strip() or 'Sem placa'
+            placa_to_minutos[placa] = placa_to_minutos.get(placa, 0) + (v.get('duracao_minutos') or 0)
+        tempo_por_placa = [{'placa': p, 'total_minutos': m} for p, m in sorted(placa_to_minutos.items(), key=lambda x: -x[1])]
+        # Top itens: GROUP BY codigo_barras, produto (PostgreSQL exige todas as colunas não agregadas no GROUP BY)
+        rows_itens = conn.execute(
+            'SELECT produto, codigo_barras, SUM(quantidade) as total FROM produtos_bipados GROUP BY codigo_barras, produto ORDER BY total DESC LIMIT 15'
+        ).fetchall()
+        top_itens = []
+        for r in rows_itens:
+            label = (r['produto'] or '').strip() or (r['codigo_barras'] or '') or '-'
+            top_itens.append({'label': label[:50], 'total': r['total'] or 0})
+        rows_carros = conn.execute(
+            "SELECT veiculo, SUM(quantidade) as total FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != '' GROUP BY veiculo ORDER BY total DESC LIMIT 15"
+        ).fetchall()
+        carros_itens = [{'veiculo': r['veiculo'] or '', 'total': r['total'] or 0} for r in rows_carros]
+        carros_peso = []
+        if wb:
+            try:
+                mapa_peso = _build_mapa_peso_romaneio(wb)
+                mapa_barras_codigo = _build_mapa_barras_to_codigo_produto(wb)
+                rows_bipados = conn.execute(
+                    "SELECT veiculo, codigo_barras, quantidade FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != ''"
+                ).fetchall()
+                peso_por_veiculo = {}
+                for r in rows_bipados:
+                    veic = (r['veiculo'] or '').strip()
+                    if not veic:
+                        continue
+                    cb = (r['codigo_barras'] or '').strip()
+                    qtd = int(r['quantidade'] or 0)
+                    cp = mapa_barras_codigo.get(cb) or cb
+                    peso_unit = mapa_peso.get(cp, 0) or mapa_peso.get(cb, 0)
+                    peso_por_veiculo[veic] = peso_por_veiculo.get(veic, 0.0) + qtd * peso_unit
+                carros_peso = [{'veiculo': v, 'peso_total': round(p, 2)} for v, p in sorted(peso_por_veiculo.items(), key=lambda x: -x[1])[:15]]
+            except Exception:
+                pass
+        elif romaneio_stats and romaneio_stats.get('peso_por_carro'):
+            carros_peso = [{'veiculo': k, 'peso_total': v} for k, v in sorted(romaneio_stats['peso_por_carro'].items(), key=lambda x: -x[1])[:15]]
+        if wb and not from_cache:
+            try:
+                wb.close()
+            except Exception:
+                pass
+        conn.close()
+        romaneio_resp = {k: v for k, v in romaneio_stats.items() if k != 'id_viagem_to_placa'}
+        return jsonify({
+            'estatisticas': estatisticas,
+            'viagens': viagens,
+            'tempo_por_placa': tempo_por_placa,
+            'top_itens_bipados': top_itens,
+            'carros_mais_itens': carros_itens,
+            'carros_mais_peso': carros_peso,
+            'romaneio': romaneio_resp
         })
-    wb = None
-    from_cache = False
-    for v in viagens:
-        v['total_faltas'] = 0
-    id_viagem_placa = {}
-    romaneio_stats = {}
-    if _usa_banco_para_dados() and getattr(conn, 'kind', None) == 'pg':
+    except Exception as e:
         try:
-            romaneio_stats = _estatisticas_romaneio_por_item_banco(conn)
-            id_viagem_placa = romaneio_stats.get('id_viagem_to_placa') or {}
+            conn.rollback()
         except Exception:
             pass
-    if wb and not romaneio_stats:
         try:
-            romaneio_stats = _estatisticas_romaneio_por_item(wb)
-            id_viagem_placa = romaneio_stats.get('id_viagem_to_placa') or {}
+            conn.close()
         except Exception:
             pass
-    placa_to_minutos = {}
-    for v in viagens:
-        vid = (v.get('id_viagem') or '').strip()
-        placa = (id_viagem_placa.get(vid) or '').strip() or 'Sem placa'
-        placa_to_minutos[placa] = placa_to_minutos.get(placa, 0) + (v.get('duracao_minutos') or 0)
-    tempo_por_placa = [{'placa': p, 'total_minutos': m} for p, m in sorted(placa_to_minutos.items(), key=lambda x: -x[1])]
-    # Top itens: GROUP BY codigo_barras, produto (PostgreSQL exige todas as colunas não agregadas no GROUP BY)
-    rows_itens = conn.execute(
-        'SELECT produto, codigo_barras, SUM(quantidade) as total FROM produtos_bipados GROUP BY codigo_barras, produto ORDER BY total DESC LIMIT 15'
-    ).fetchall()
-    top_itens = []
-    for r in rows_itens:
-        label = (r['produto'] or '').strip() or (r['codigo_barras'] or '') or '-'
-        top_itens.append({'label': label[:50], 'total': r['total'] or 0})
-    rows_carros = conn.execute(
-        "SELECT veiculo, SUM(quantidade) as total FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != '' GROUP BY veiculo ORDER BY total DESC LIMIT 15"
-    ).fetchall()
-    carros_itens = [{'veiculo': r['veiculo'] or '', 'total': r['total'] or 0} for r in rows_carros]
-    carros_peso = []
-    if wb:
-        try:
-            mapa_peso = _build_mapa_peso_romaneio(wb)
-            mapa_barras_codigo = _build_mapa_barras_to_codigo_produto(wb)
-            rows_bipados = conn.execute(
-                "SELECT veiculo, codigo_barras, quantidade FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != ''"
-            ).fetchall()
-            peso_por_veiculo = {}
-            for r in rows_bipados:
-                veic = (r['veiculo'] or '').strip()
-                if not veic:
-                    continue
-                cb = (r['codigo_barras'] or '').strip()
-                qtd = int(r['quantidade'] or 0)
-                cp = mapa_barras_codigo.get(cb) or cb
-                peso_unit = mapa_peso.get(cp, 0) or mapa_peso.get(cb, 0)
-                peso_por_veiculo[veic] = peso_por_veiculo.get(veic, 0.0) + qtd * peso_unit
-            carros_peso = [{'veiculo': v, 'peso_total': round(p, 2)} for v, p in sorted(peso_por_veiculo.items(), key=lambda x: -x[1])[:15]]
-        except Exception:
-            pass
-    elif romaneio_stats and romaneio_stats.get('peso_por_carro'):
-        carros_peso = [{'veiculo': k, 'peso_total': v} for k, v in sorted(romaneio_stats['peso_por_carro'].items(), key=lambda x: -x[1])[:15]]
-    if wb and not from_cache:
-        try:
-            wb.close()
-        except Exception:
-            pass
-    conn.close()
-    romaneio_resp = {k: v for k, v in romaneio_stats.items() if k != 'id_viagem_to_placa'}
-    return jsonify({
-        'estatisticas': estatisticas,
-        'viagens': viagens,
-        'tempo_por_placa': tempo_por_placa,
-        'top_itens_bipados': top_itens,
-        'carros_mais_itens': carros_itens,
-        'carros_mais_peso': carros_peso,
-        'romaneio': romaneio_resp
-    })
+        return jsonify({'erro': str(e)}), 500
 
 
 @app.route('/api/estatisticas', methods=['GET'])
