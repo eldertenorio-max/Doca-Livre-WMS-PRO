@@ -2,13 +2,22 @@
 
 Sistema web (Flask + SQLite/Postgres) para **bipagem, conferência e controle de carregamento** de mercadorias.
 
-## 🚀 Estrutura do Projeto
+## 🚀 Estrutura do repositório (o que sobe no Git)
 
-### Tabelas principais
+- **`app.py`** – aplicação Flask (bipagem, conferência, painel)
+- **`templates/`** e **`static/`** – frontend (HTML, CSS, JS)
+- **`requirements.txt`** e **`render.yaml`** – deploy (Render)
+- **`CONTROLE DE CARREGAMENTO ULTRAPAO_NOVO.xlsx`** – planilha base (scripts leem daqui para popular o banco)
+- **`scripts/`** – popular base, gerar SQL (motoristas, placas, colaboradores, etc.)
+- **`supabase/`** – schema SQL, inserts, RLS, migrações
+- **`iniciar_painel.bat`** – atalho para rodar local no Windows
+- **`.env.example`**, **`config_usuarios.example.py`** – exemplos de configuração (não versionar `.env` nem `config_usuarios.py`)
+
+### Tabelas principais (Supabase)
 
 - **`usuarios`**: login e autenticação
 - **`produtos_bipados`**: registro de cada bipagem (código, quantidade, doca, usuário, timestamp)
-- **`viagem_veiculo`**: override de placa/motorista por viagem (unificado)
+- **`viagem_placa`** e **`viagem_motorista`**: override de placa/motorista por viagem
 - **`viagem_responsaveis`**: coordenador, conferente e auxiliares por viagem
 - **`divergencia_motivo`**: justificativa de faltas/sobras por item
 - **`romaneio`**: quantidades esperadas (cache)

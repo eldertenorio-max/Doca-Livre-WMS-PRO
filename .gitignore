@@ -5,6 +5,9 @@
 # Config com senhas (use config_usuarios.example.py como modelo)
 config_usuarios.py
 
+# Arquivos temporários / gerados
+EBB1A500
+
 # Ambientes virtuais
 .venv/
 venv/
@@ -53,7 +56,7 @@ desktop.ini
 # *.xlsx
 # *.xls
 
-# Arquivos de build do instalador
+# Arquivos de build do instalador (PyInstaller)
+*.spec
 dist/
 build/
-*.spec
