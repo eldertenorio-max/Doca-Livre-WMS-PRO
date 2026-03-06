@@ -1251,7 +1251,7 @@ async function loadBasePlanilha() {
         thead.innerHTML = '<tr>' + data.headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
         const cols = data.headers.length;
         if (!data.rows || data.rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="' + cols + '" class="loading">Nenhum dado encontrado na planilha BASE.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="' + cols + '" class="loading">Nenhum dado encontrado na base de produtos.</td></tr>';
         } else {
             tbody.innerHTML = data.rows.map(row => {
                 return '<tr>' + data.headers.map(h => `<td>${escapeHtml(row[h] != null ? String(row[h]) : '')}</td>`).join('') + '</tr>';
@@ -1259,7 +1259,7 @@ async function loadBasePlanilha() {
         }
     } else if (data === null || (data && data.erro)) {
         thead.innerHTML = '<tr><th>Erro</th></tr>';
-        tbody.innerHTML = '<tr><td class="loading">Erro ao carregar dados da planilha. Certifique-se de que a planilha está no diretório.</td></tr>';
+        tbody.innerHTML = '<tr><td class="loading">' + (data && data.erro ? escapeHtml(data.erro) : 'Erro ao carregar dados. Configure DATABASE_URL para usar as tabelas.') + '</td></tr>';
     }
 }
 
@@ -2785,7 +2785,7 @@ async function loadRomaneio() {
     const tbody = document.getElementById('tbody-romaneio');
     if (!resp || resp.erro) {
         thead.innerHTML = '<tr><th>Erro</th></tr>';
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">' + (resp && resp.erro ? resp.erro : 'Erro ao carregar. Verifique a planilha.') + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">' + (resp && resp.erro ? resp.erro : 'Erro ao carregar. Configure DATABASE_URL para usar as tabelas.') + '</td></tr>';
         return;
     }
     const headers = resp.headers || [];
@@ -2793,7 +2793,7 @@ async function loadRomaneio() {
     const temFiltro = idViagem || idRoteiro || codigoCliente || codigoProduto || endereco || cidade;
     thead.innerHTML = '<tr>' + headers.map(h => '<th>' + (h || '-').replace(/</g, '&lt;') + '</th>').join('') + '</tr>';
     if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="' + Math.max(headers.length, 1) + '" class="loading">Nenhum registro encontrado' + (temFiltro ? ' com os filtros aplicados.' : ' na planilha ROMANEIO POR ITEM.') + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + Math.max(headers.length, 1) + '" class="loading">Nenhum registro encontrado' + (temFiltro ? ' com os filtros aplicados.' : ' na tabela de romaneio por item.') + '</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(row => {

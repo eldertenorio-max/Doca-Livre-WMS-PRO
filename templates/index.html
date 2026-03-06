@@ -74,7 +74,7 @@
                 </div>
 
                 <h2 style="margin-top: 30px;">DADOS DA ABA ROMANEIO POR ITEM</h2>
-                <p class="info-text" style="margin-bottom: 16px;">Resumo com base na tabela de romaneio por item (quando houver banco configurado) ou na planilha Excel (aba ROMANEIO POR ITEM) — somente <strong>Unidade CD Guarulhos Ultrapão (Distribuidora)</strong>.</p>
+                <p class="info-text" style="margin-bottom: 16px;">Resumo com base na tabela de romaneio por item — somente <strong>Unidade CD Guarulhos Ultrapão (Distribuidora)</strong>.</p>
                 <div class="stats-grid" id="romaneio-stats-grid">
                     <div class="stat-card">
                         <h3>Quantidade de Roteiros</h3>
@@ -124,7 +124,7 @@
                 </div>
 
                 <h3 style="margin-top: 28px; margin-bottom: 16px;">Gráficos – Romaneio por item</h3>
-                <p class="info-text" style="margin-bottom: 16px;">Dados da aba ROMANEIO POR ITEM (CD Guarulhos).</p>
+                <p class="info-text" style="margin-bottom: 16px;">Dados da tabela ROMANEIO POR ITEM (CD Guarulhos).</p>
                 <div class="romaneio-charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-bottom: 24px;">
                     <div class="chart-container-romaneio" style="background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); min-height: 260px;">
                         <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #366092;">Roteiros e Veículos</h4>
@@ -202,7 +202,7 @@
 
                 <h2 style="margin-top: 30px;">IMPORTAR PLANILHA EXCEL</h2>
                 <div class="import-section">
-                    <p class="info-text">Importe os dados da planilha Excel para sincronizar com o sistema.</p>
+                    <p class="info-text">Importe os dados (Excel ou arquivo) para popular as tabelas do sistema.</p>
                     <div class="import-buttons">
                         <button class="btn btn-primary" onclick="importarPlanilhaLocal()">
                             📥 Importar Planilha do Diretório
@@ -218,8 +218,8 @@
 
             <!-- ABA BASE -->
             <div id="base" class="tab-content">
-                <h2>BASE - DADOS DA PLANILHA</h2>
-                <p class="info-text">Dados exatos da aba BASE da planilha Excel (todas as colunas)</p>
+                <h2>BASE - DADOS DA TABELA</h2>
+                <p class="info-text">Dados da tabela base de produtos (base_codigo_barras). Filtre por código de barras ou descrição.</p>
                 
                 <div class="form-container" style="margin-bottom: 1rem;">
                     <label>Código de barras:</label>
@@ -567,8 +567,8 @@
 
             <!-- ABA ROMANEIO POR ITEM -->
             <div id="romaneio" class="tab-content">
-                <h2>ROMANEIO POR ITEM - DADOS DA PLANILHA</h2>
-                <p class="info-text">Dados da aba ROMANEIO POR ITEM. Filtre por ID Viagem, ID Roteiro, Código Cliente, Código do Produto, Endereço ou Cidade e visualize todas as colunas.</p>
+                <h2>ROMANEIO POR ITEM - DADOS DA TABELA</h2>
+                <p class="info-text">Dados da tabela de romaneio por item (excel_romaneio_por_item). Filtre por ID Viagem, ID Roteiro, Código Cliente, Código do Produto, Endereço ou Cidade.</p>
                 
                 <div class="form-container" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;">
                     <div class="form-group" style="margin-bottom: 0;">
@@ -615,7 +615,7 @@
             <div id="importar-ravex" class="tab-content">
                 <h2>IMPORTAR RAVEX – Puxar todos os roteiros</h2>
                 <p class="info-text" style="margin-bottom: 16px;">
-                    Informe o período (data início e data fim). Ao clicar em <strong>Puxar todos os roteiros</strong>, o sistema busca na API Ravex todas as viagens finalizadas nesse período e grava na tabela de romaneio por item. Depois disso, o <strong>Painel</strong> e a <strong>Conferência</strong> passam a usar apenas os dados da tabela (não da planilha Excel).
+                    Informe o período (data início e data fim). Ao clicar em <strong>Puxar todos os roteiros</strong>, o sistema busca na API Ravex todas as viagens finalizadas nesse período e grava na tabela de romaneio por item. O <strong>Painel</strong> e a <strong>Conferência</strong> usam apenas os dados das tabelas.
                 </p>
                 <div class="form-container" style="max-width: 520px; margin-bottom: 24px;">
                     <div class="form-group">
@@ -734,7 +734,7 @@
                         </div>
                         <div class="relatorio-item">
                             <button type="button" class="btn btn-primary" onclick="gerarRelatorioPesoViagemPlaca()">📥 Peso por viagem e placa</button>
-                            <span>Peso carregado por roteiro e por placa (usa planilha para peso unitário).</span>
+                            <span>Peso carregado por roteiro e por placa (usa tabela base para peso unitário).</span>
                         </div>
                     </div>
                 </div>
@@ -754,7 +754,7 @@
                     <div class="relatorios-lista">
                         <div class="relatorio-item">
                             <button type="button" class="btn btn-primary" onclick="gerarRelatorioRomaneioGuarulhos()">📥 Romaneio CD Guarulhos (Resumo, Quantidade por item, Peso por carro)</button>
-                            <span>Planilha com abas: Resumo (roteiros, veículos, itens, peso total), Quantidade por item e Peso por carro.</span>
+                            <span>Arquivo Excel com abas: Resumo (roteiros, veículos, itens, peso total), Quantidade por item e Peso por carro (dados das tabelas).</span>
                         </div>
                     </div>
                 </div>

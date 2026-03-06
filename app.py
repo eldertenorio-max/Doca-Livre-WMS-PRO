@@ -1795,31 +1795,35 @@ def debug_romaneio_headers():
 
 
 def _codigos_produto_na_viagem(id_viagem):
-    """Retorna set de códigos de produto (str) que estão no romaneio da viagem."""
-    wb, from_cache = get_workbook_cached()
-    if not wb:
+    """Retorna set de códigos de produto (str) que estão no romaneio da viagem. Lê da tabela quando DATABASE_URL está definido."""
+    if _usa_banco_para_dados():
+        conn = get_db()
+        try:
+            if getattr(conn, 'kind', None) == 'pg':
+                ds = _get_latest_dataset_id(conn)
+                if ds:
+                    id_norm = _normalizar_id_viagem(id_viagem)
+                    rows = conn.execute(
+                        """SELECT DISTINCT codigo_produto FROM excel_romaneio_por_item
+                           WHERE dataset_id = ? AND (id_viagem = ? OR id_roteiro = ?)""",
+                        (str(ds), id_norm or id_viagem, id_norm or id_viagem),
+                    ).fetchall()
+                    codigos = set()
+                    for r in rows or []:
+                        cp = (r.get('codigo_produto') or r[0] or '').strip()
+                        if cp:
+                            codigos.add(cp)
+                            codigos.add(_normalizar_codigo_produto(cp) or cp)
+                    conn.close()
+                    return codigos
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
         return set()
-    try:
-        nome_romaneio = next((s for s in wb.sheetnames if 'ROMANEIO' in s.upper() and 'ITEM' in s.upper()), None)
-        if not nome_romaneio:
-            return set()
-        ws = wb[nome_romaneio]
-        header_row = list(ws.iter_rows(min_row=1, max_row=1, values_only=True))[0]
-        col_id = next((i for i, h in enumerate(header_row or []) if h and ('ID' in str(h).upper() and 'ROTEIRO' in str(h).upper())), 1)
-        col_cod = next((i for i, h in enumerate(header_row or []) if h and ('CODIGO' in str(h).upper() or 'CÓDIGO' in str(h).upper()) and 'PRODUTO' in str(h).upper() and 'BARRAS' not in str(h).upper()), 14)
-        id_norm = _normalizar_id_viagem(id_viagem)
-        codigos = set()
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if col_id < len(row) and _normalizar_id_viagem(row[col_id]) != id_norm:
-                continue
-            if col_cod < len(row):
-                cp = _valor_celula(row, col_cod)
-                if cp:
-                    codigos.add(cp)
-                    codigos.add(_normalizar_codigo_produto(cp) or cp)
-        return codigos
-    except Exception:
-        return set()
+    return set()
 
 
 @app.route('/api/conferencia/<id_viagem>/produto-na-lista', methods=['GET'])
@@ -1976,6 +1980,9 @@ def get_conferencia(id_viagem=None):
             except Exception:
                 pass
             return jsonify({'erro': str(e)}), 500
+
+    # Dados vêm apenas do banco; não usar mais planilha
+    return jsonify({'erro': 'Configure DATABASE_URL. Os dados vêm apenas do banco de dados.'}), 400
 
     wb, from_cache = get_workbook_cached()
     if not wb:
@@ -2680,6 +2687,9 @@ def get_romaneio():
             except Exception:
                 pass
             return jsonify({'erro': str(e), 'headers': [], 'rows': []}), 500
+
+    # Dados vêm apenas do banco; não usar mais planilha
+    return jsonify({'headers': [], 'rows': [], 'erro': 'Configure DATABASE_URL. Os dados vêm apenas do banco de dados.'}), 400
 
     caminho_planilha = encontrar_planilha()
     if not caminho_planilha:
@@ -4726,7 +4736,8 @@ def get_painel_completo():
             'fim': fim,
             'duracao_minutos': d_min
         })
-    wb, from_cache = get_workbook_cached()
+    wb = None
+    from_cache = False
     for v in viagens:
         v['total_faltas'] = 0
     id_viagem_placa = {}
@@ -4782,6 +4793,8 @@ def get_painel_completo():
             carros_peso = [{'veiculo': v, 'peso_total': round(p, 2)} for v, p in sorted(peso_por_veiculo.items(), key=lambda x: -x[1])[:15]]
         except Exception:
             pass
+    elif romaneio_stats and romaneio_stats.get('peso_por_carro'):
+        carros_peso = [{'veiculo': k, 'peso_total': v} for k, v in sorted(romaneio_stats['peso_por_carro'].items(), key=lambda x: -x[1])[:15]]
     if wb and not from_cache:
         try:
             wb.close()
