@@ -5031,6 +5031,13 @@ def get_estatisticas():
         'veiculos': [dict(row) for row in veiculos]
     })
 
+# Inicializar banco ao carregar o app (gunicorn não executa __main__; evita 500 em /api/painel-completo no Render)
+try:
+    init_db()
+    sync_usuarios_from_config()
+except Exception:
+    pass
+
 if __name__ == '__main__':
     init_db()
     sync_usuarios_from_config()
