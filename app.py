@@ -15,6 +15,25 @@ from io import BytesIO
 from werkzeug.utils import secure_filename
 
 try:
+    from ravex_client import (
+        get_token as ravex_get_token,
+        obter_roteiro_por_id,
+        obter_viagem_por_id,
+        obter_notas_fiscais_viagem,
+        obter_itens_nota_fiscal,
+        obter_canhotos_viagem,
+        obter_ponto_referencia,
+    )
+except ImportError:
+    ravex_get_token = None
+    obter_roteiro_por_id = None
+    obter_viagem_por_id = None
+    obter_notas_fiscais_viagem = None
+    obter_itens_nota_fiscal = None
+    obter_canhotos_viagem = None
+    obter_ponto_referencia = None
+
+try:
     from dotenv import load_dotenv  # type: ignore
 except Exception:
     load_dotenv = None
@@ -1068,9 +1087,9 @@ def _formatar_data_celula(val):
 
 
 def _get_viagem_info_planilha(id_viagem):
-    """Busca data expedição, placa, motorista: do banco. Sem planilha."""
+    """Busca data expedição, placa, motorista, id_roteiro: do banco. Sem planilha."""
     id_viagem = (id_viagem or '').strip()
-    result = {'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': ''}
+    result = {'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': '', 'id_roteiro': '', 'id_viagem': id_viagem}
     if not id_viagem:
         return result
     if _usa_banco_para_dados():
@@ -1086,11 +1105,14 @@ def _get_viagem_info_planilha(id_viagem):
                 ds = _get_latest_dataset_id(conn)
                 if ds:
                     r = conn.execute(
-                        """SELECT data_expedicao FROM excel_romaneio_por_item WHERE dataset_id = ? AND id_viagem = ? LIMIT 1""",
+                        """SELECT data_expedicao, id_roteiro FROM excel_romaneio_por_item WHERE dataset_id = ? AND id_viagem = ? LIMIT 1""",
                         (str(ds), id_viagem),
                     ).fetchone()
-                    if r and (r.get('data_expedicao') or (r[0] if hasattr(r, '__getitem__') else None)):
-                        result['data_expedicao'] = str(r.get('data_expedicao') or r[0] or '').strip()
+                    if r:
+                        if r.get('data_expedicao') or (r[0] if hasattr(r, '__getitem__') else None):
+                            result['data_expedicao'] = str(r.get('data_expedicao') or r[0] or '').strip()
+                        if r.get('id_roteiro') or (r[1] if hasattr(r, '__getitem__') and len(r) > 1 else None):
+                            result['id_roteiro'] = str(r.get('id_roteiro') or r[1] or '').strip()
             conn.close()
         except Exception:
             try:
@@ -1317,11 +1339,14 @@ def get_viagem_info(id_viagem):
     if not id_viagem:
         return jsonify({
             'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': '',
-            'coordenador': COORDENADOR_PADRAO, 'conferente': '', 'ajudante1': '', 'ajudante2': ''
+            'coordenador': COORDENADOR_PADRAO, 'conferente': '', 'ajudante1': '', 'ajudante2': '',
+            'id_roteiro': '', 'id_viagem': ''
         })
     info = _get_viagem_info_planilha(id_viagem)
     if not info:
-        info = {'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': ''}
+        info = {'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': '', 'id_roteiro': '', 'id_viagem': id_viagem}
+    info.setdefault('id_roteiro', '')
+    info.setdefault('id_viagem', id_viagem)
     info.setdefault('coordenador', COORDENADOR_PADRAO)
     info.setdefault('conferente', '')
     info.setdefault('ajudante1', '')
@@ -1827,6 +1852,129 @@ def get_conferencia(id_viagem=None):
     if not id_viagem:
         return jsonify({'erro': 'ID do roteiro não informado'}), 400
     
+    id_viagem = (id_viagem or '').strip()
+    id_viagem_norm = _normalizar_id_viagem(id_viagem)
+
+    # Quando DATABASE_URL está definido: ler do banco (excel_romaneio_por_item)
+    if _usa_banco_para_dados():
+        conn = get_db()
+        try:
+            if getattr(conn, 'kind', None) != 'pg':
+                conn.close()
+            else:
+                ds = _get_latest_dataset_id(conn)
+                if not ds:
+                    conn.close()
+                    return jsonify({'erro': 'Nenhum dataset ativo. Importe a base primeiro.'}), 400
+                romaneio_rows = conn.execute(
+                    """SELECT id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
+                              codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data
+                       FROM excel_romaneio_por_item
+                       WHERE dataset_id = ? AND (id_viagem = ? OR id_roteiro = ?)
+                       ORDER BY row_index""",
+                    (str(ds), id_viagem_norm or id_viagem, id_viagem_norm or id_viagem),
+                ).fetchall()
+                base_rows = conn.execute(
+                    "SELECT codigo_interno, ean, dun FROM base_codigo_barras WHERE dataset_id = ?",
+                    (str(ds),),
+                ).fetchall()
+                mapa_codigo_barras = {}
+                mapa_barras_to_codigo = {}
+                for r in base_rows or []:
+                    cod = (r.get('codigo_interno') or r[0] or '').strip() if hasattr(r, 'get') else ''
+                    ean = (r.get('ean') or r[1] or '').strip() if hasattr(r, 'get') else ''
+                    dun = (r.get('dun') or r[2] or '').strip() if hasattr(r, 'get') else ''
+                    barcode = ean or dun
+                    if cod and barcode:
+                        mapa_codigo_barras[cod] = barcode
+                        mapa_barras_to_codigo[barcode] = cod
+                bipados = conn.execute(
+                    'SELECT codigo_barras, SUM(quantidade) as quantidade_bipada FROM produtos_bipados WHERE id_viagem = ? GROUP BY codigo_barras',
+                    (id_viagem_norm or id_viagem,),
+                ).fetchall()
+                bipados_dict = {}
+                for row in bipados or []:
+                    cb = (row.get('codigo_barras') or row[0] or '').strip()
+                    q = int(row.get('quantidade_bipada') or row[1] or 0)
+                    bipados_dict[cb] = bipados_dict.get(cb, 0) + q
+                bipados_por_codigo = {}
+                for cb, qtd in bipados_dict.items():
+                    cod_prod = mapa_barras_to_codigo.get(cb) or cb
+                    bipados_por_codigo[cod_prod] = bipados_por_codigo.get(cod_prod, 0) + qtd
+                resultado = []
+                for r in romaneio_rows or []:
+                    codigo_produto = (r.get('codigo_produto') or '').strip()
+                    if not codigo_produto:
+                        continue
+                    descricao = (r.get('descricao') or '').strip()
+                    quantidade_produto = int(r.get('quantidade') or 0)
+                    unidade = (r.get('unidade') or '').strip() or '-'
+                    peso_bruto = (r.get('peso_bruto') or '').strip() or '-'
+                    codigo_barras = mapa_codigo_barras.get(codigo_produto, '')
+                    quantidade_bipada = bipados_por_codigo.get(codigo_produto, 0) or bipados_dict.get(codigo_barras, 0)
+                    quantidade_falta = max(0, quantidade_produto - quantidade_bipada)
+                    quantidade_sobra = max(0, quantidade_bipada - quantidade_produto)
+                    if quantidade_sobra > 0:
+                        status_bipado = 'EXCEDENTE'
+                    elif quantidade_bipada >= quantidade_produto and quantidade_produto > 0:
+                        status_bipado = 'COMPLETO'
+                    elif quantidade_bipada > 0:
+                        status_bipado = 'PARCIAL'
+                    else:
+                        status_bipado = 'PENDENTE'
+                    resultado.append({
+                        'codigo_produto': codigo_produto,
+                        'codigo_barras': codigo_barras,
+                        'produto': descricao,
+                        'quantidade_produto': quantidade_produto,
+                        'unidade': unidade,
+                        'peso_bruto': peso_bruto,
+                        'quantidade_bipada': quantidade_bipada,
+                        'quantidade_falta': quantidade_falta,
+                        'quantidade_sobra': quantidade_sobra,
+                        'aviso_sobra': ('Bipou %s a mais' % quantidade_sobra) if quantidade_sobra > 0 else '',
+                        'status_bipado': status_bipado,
+                        'id_viagem': id_viagem_norm or id_viagem,
+                    })
+                extras = conn.execute(
+                    """SELECT codigo_barras, MAX(codigo_interno) as codigo_interno, MAX(produto) as produto,
+                              SUM(quantidade) as quantidade_bipada, MAX(unidade) as unidade, MAX(peso) as peso
+                       FROM produtos_bipados
+                       WHERE id_viagem = ? AND codigo_barras IS NOT NULL AND trim(codigo_barras) != ''
+                       GROUP BY codigo_barras""",
+                    (id_viagem_norm or id_viagem,),
+                ).fetchall()
+                codigos_romaneio = {str(it.get('codigo_barras') or '').strip() for it in resultado}
+                codigos_prod_romaneio = {str(it.get('codigo_produto') or '').strip() for it in resultado}
+                for row in extras or []:
+                    cb = (row.get('codigo_barras') or row[0] or '').strip()
+                    cod_prod = mapa_barras_to_codigo.get(cb) or (row.get('codigo_interno') or '').strip() or cb
+                    if cb and cb not in codigos_romaneio and cod_prod not in codigos_prod_romaneio:
+                        qtd = int(row.get('quantidade_bipada') or row[3] or 0)
+                        resultado.append({
+                            'codigo_produto': cod_prod or cb,
+                            'codigo_barras': cb,
+                            'produto': (row.get('produto') or '').strip() or 'Item adicionado manualmente',
+                            'quantidade_produto': qtd,
+                            'unidade': (row.get('unidade') or '').strip() or '-',
+                            'peso_bruto': (row.get('peso') or '').strip() or '-',
+                            'quantidade_bipada': qtd,
+                            'quantidade_falta': 0,
+                            'quantidade_sobra': 0,
+                            'aviso_sobra': '',
+                            'status_bipado': 'COMPLETO',
+                            'id_viagem': id_viagem_norm or id_viagem,
+                        })
+                conn.close()
+                _carregar_motivos_divergencia(resultado)
+                return jsonify(resultado)
+        except Exception as e:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return jsonify({'erro': str(e)}), 500
+
     wb, from_cache = get_workbook_cached()
     if not wb:
         return jsonify({'erro': 'Planilha não encontrada'}), 404
@@ -2106,6 +2254,203 @@ def get_conferencia(id_viagem=None):
             except Exception:
                 pass
         return jsonify({'erro': f'Erro ao ler planilha: {str(e)}'}), 500
+
+
+@app.route('/api/ravex/importar-romaneio', methods=['POST'])
+def api_ravex_importar_romaneio():
+    """Importa itens do romaneio da API Ravex por id_roteiro ou id_viagem. Só importa quando a viagem já existe (faturada)."""
+    if not _usa_banco_para_dados():
+        return jsonify({'erro': 'Configure DATABASE_URL para usar importação Ravex.'}), 400
+    if not ravex_get_token or not obter_viagem_por_id or not obter_roteiro_por_id:
+        return jsonify({'erro': 'Módulo ravex_client não disponível. Instale: pip install requests'}), 500
+    data = request.get_json() or {}
+    id_roteiro_in = (data.get('id_roteiro') or data.get('id_roteiro_str') or '').strip()
+    id_viagem_in = (data.get('id_viagem') or data.get('id_viagem_str') or '').strip()
+    id_unico = (data.get('id') or data.get('id_busca') or '').strip()
+    if not id_roteiro_in and not id_viagem_in and not id_unico:
+        return jsonify({'erro': 'Informe id_roteiro, id_viagem ou id (roteiro/viagem).'}), 400
+    try:
+        token = ravex_get_token()
+    except Exception as e:
+        return jsonify({'erro': 'Falha ao autenticar na API Ravex: %s' % str(e)}), 502
+    id_viagem = None
+    id_roteiro = None
+    if id_viagem_in:
+        try:
+            vid = int(id_viagem_in)
+        except (TypeError, ValueError):
+            vid = id_viagem_in
+        viagem = obter_viagem_por_id(token, vid)
+        if viagem:
+            id_viagem = str(vid)
+            roteiro_obj = viagem.get('roteiro') or viagem.get('roteiroFaturado')
+            if isinstance(roteiro_obj, dict):
+                id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or '')
+            if not id_roteiro:
+                id_roteiro = str(viagem.get('roteiroId') or viagem.get('idRoteiro') or '')
+    if not id_viagem and id_roteiro_in:
+        try:
+            rid = int(id_roteiro_in)
+        except (TypeError, ValueError):
+            rid = id_roteiro_in
+        roteiro = obter_roteiro_por_id(token, rid)
+        if not roteiro:
+            return jsonify({'erro': 'Roteiro não encontrado na API Ravex.'}), 404
+        id_roteiro = str(rid)
+        vf = roteiro.get('viagemFaturada') or roteiro.get('viagem_faturada')
+        if isinstance(vf, dict):
+            id_viagem = str(vf.get('id') or vf.get('Id') or '')
+        if not id_viagem:
+            id_viagem = str(roteiro.get('viagemFaturadaId') or roteiro.get('viagem_id') or '')
+        if not id_viagem:
+            return jsonify({'erro': 'Roteiro ainda não possui viagem faturada. Só é possível bipar quando a viagem já foi faturada.'}), 400
+    if not id_viagem and id_unico:
+        try:
+            vid = int(id_unico)
+        except (TypeError, ValueError):
+            vid = id_unico
+        viagem = obter_viagem_por_id(token, vid)
+        if viagem:
+            id_viagem = str(id_unico)
+            roteiro_obj = viagem.get('roteiro') or viagem.get('roteiroFaturado')
+            if isinstance(roteiro_obj, dict):
+                id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or '')
+            if not id_roteiro:
+                id_roteiro = str(viagem.get('roteiroId') or viagem.get('idRoteiro') or '')
+        else:
+            try:
+                rid = int(id_unico)
+            except (TypeError, ValueError):
+                rid = id_unico
+            roteiro = obter_roteiro_por_id(token, rid)
+            if not roteiro:
+                return jsonify({'erro': 'ID não encontrado como viagem nem como roteiro na API Ravex.'}), 404
+            id_roteiro = str(id_unico)
+            vf = roteiro.get('viagemFaturada') or roteiro.get('viagem_faturada')
+            if isinstance(vf, dict):
+                id_viagem = str(vf.get('id') or vf.get('Id') or '')
+            if not id_viagem:
+                id_viagem = str(roteiro.get('viagemFaturadaId') or roteiro.get('viagem_id') or '')
+            if not id_viagem:
+                return jsonify({'erro': 'Roteiro ainda não possui viagem faturada.'}), 400
+    if not id_viagem:
+        return jsonify({'erro': 'Não foi possível obter o ID da viagem.'}), 400
+    viagem_full = obter_viagem_por_id(token, id_viagem)
+    if not viagem_full:
+        return jsonify({'erro': 'Viagem não encontrada na API Ravex.'}), 404
+    entregas, meta_canhotos = obter_canhotos_viagem(token, id_viagem)
+    placa = (meta_canhotos.get('veiculo') or meta_canhotos.get('veículo') or '').strip()
+    motorista = (meta_canhotos.get('motoristaNome') or meta_canhotos.get('motorista_nome') or '').strip()
+    data_ini = viagem_full.get('inicioDataHora') or viagem_full.get('dataInicioViagem') or ''
+    data_expedicao = data_ini[:10] if isinstance(data_ini, str) and len(data_ini) >= 10 else str(data_ini or '')
+    nfs = obter_notas_fiscais_viagem(token, id_viagem)
+    linhas = []
+    row_index = 0
+    for nf in nfs or []:
+        nf_id = nf.get('id') or nf.get('Id')
+        itens = obter_itens_nota_fiscal(token, id_viagem, nf_id) if nf_id else []
+        pedido = nf.get('pedido') or {}
+        ent0 = (entregas or [{}])[0] if entregas else {}
+        dados_ent = (ent0.get('entrega') or ent0.get('canhoto') or ent0) if isinstance(ent0, dict) else {}
+        cliente = dados_ent.get('cliente') or dados_ent.get('Cliente')
+        ref_id = dados_ent.get('referenciaId') or dados_ent.get('referencia_id')
+        ref = obter_ponto_referencia(token, ref_id) if ref_id else None
+        cliente_nome = (cliente.get('nome', '') or cliente.get('razaoSocial', '')) if isinstance(cliente, dict) else ''
+        cliente_razao = (cliente.get('razaoSocial', '') or cliente.get('nome', '')) if isinstance(cliente, dict) else ''
+        endereco = (cliente.get('endereco') or cliente.get('endereço') or '') if isinstance(cliente, dict) else ''
+        cidade = (cliente.get('cidade') or '') if isinstance(cliente, dict) else ''
+        if ref and isinstance(ref, dict):
+            if not cliente_nome:
+                cliente_nome = ref.get('nome') or ref.get('razaoSocial') or ''
+            if not cliente_razao:
+                cliente_razao = ref.get('razaoSocial') or ref.get('nome') or ''
+            if not endereco:
+                endereco = ref.get('endereco') or ref.get('endereço') or ''
+            if not cidade:
+                cidade = ref.get('cidade') or ''
+        codigo_cliente = (dados_ent.get('cnpj') or (pedido.get('cnpj') if isinstance(pedido, dict) else '') or '').strip()
+        for item in itens or []:
+            prod = item.get('produto') or {}
+            codigo_produto = str(item.get('codigo') or item.get('referenciaItem') or prod.get('codigo') or '').strip()
+            descricao = str(item.get('descricaoItem') or item.get('descricao') or prod.get('descricao') or prod.get('descrição') or '').strip()
+            quantidade = int(item.get('quantidade', 0) or 0)
+            unidade = str(item.get('unidade') or prod.get('unidade') or '').strip()
+            peso_bruto = str(item.get('pesoBruto') or item.get('pesoLiquido') or prod.get('pesoBruto') or '').strip()
+            row_index += 1
+            data_row = {
+                'id_roteiro': id_roteiro,
+                'id_viagem': id_viagem,
+                'codigo_produto': codigo_produto,
+                'descricao': descricao,
+                'quantidade': quantidade,
+                'unidade': unidade,
+                'peso_bruto': peso_bruto,
+                'codigo_cliente': codigo_cliente,
+                'endereco': endereco,
+                'cidade': cidade,
+                'placa': placa,
+                'motorista': motorista,
+                'data_expedicao': data_expedicao,
+            }
+            linhas.append({
+                'row_index': row_index,
+                'id_roteiro': id_roteiro or None,
+                'id_viagem': id_viagem,
+                'codigo_produto': codigo_produto or None,
+                'descricao': descricao or None,
+                'quantidade': quantidade,
+                'unidade': unidade or None,
+                'peso_bruto': peso_bruto or None,
+                'codigo_cliente': codigo_cliente or None,
+                'endereco': endereco or None,
+                'cidade': cidade or None,
+                'placa': placa or None,
+                'motorista': motorista or None,
+                'data_expedicao': data_expedicao or None,
+                'data': data_row,
+            })
+    conn = get_db()
+    if getattr(conn, 'kind', None) != 'pg':
+        conn.close()
+        return jsonify({'erro': 'Banco não é Postgres.'}), 400
+    ds = _get_latest_dataset_id(conn)
+    if not ds:
+        conn.close()
+        return jsonify({'erro': 'Nenhum dataset ativo. Importe a base (planilha) primeiro.'}), 400
+    try:
+        conn.execute(
+            """DELETE FROM excel_romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
+            (str(ds), id_viagem),
+        )
+        for L in linhas:
+            conn.execute(
+                """INSERT INTO excel_romaneio_por_item
+                   (dataset_id, row_index, id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
+                    codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
+                (
+                    str(ds), L['row_index'], L['id_roteiro'], L['id_viagem'], L['codigo_produto'], L['descricao'],
+                    L['quantidade'], L['unidade'], L['peso_bruto'], L['codigo_cliente'], L['endereco'], L['cidade'],
+                    L['placa'], L['motorista'], L['data_expedicao'],
+                    json.dumps(L['data']) if isinstance(L['data'], dict) else L['data'],
+                ),
+            )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': 'Erro ao gravar romaneio: %s' % str(e)}), 500
+    return jsonify({
+        'ok': True,
+        'id_viagem': id_viagem,
+        'id_roteiro': id_roteiro or id_viagem,
+        'total_itens': len(linhas),
+        'mensagem': 'Romaneio importado. Use o ID da viagem (%s) para conferência.' % id_viagem,
+    })
+
 
 @app.route('/api/extrato', methods=['GET'])
 def get_extrato():
@@ -4215,7 +4560,7 @@ def get_painel_completo():
     tempo_por_placa = [{'placa': p, 'total_minutos': m} for p, m in sorted(placa_to_minutos.items(), key=lambda x: -x[1])]
     # Extras: top itens, carros itens, carros peso
     rows_itens = conn.execute(
-        'SELECT produto, codigo_barras, SUM(quantidade) as total FROM produtos_bipados GROUP BY codigo_barras ORDER BY total DESC LIMIT 15'
+        'SELECT produto, codigo_barras, SUM(quantidade) as total FROM produtos_bipados GROUP BY codigo_barras, produto ORDER BY total DESC LIMIT 15'
     ).fetchall()
     top_itens = []
     for r in rows_itens:

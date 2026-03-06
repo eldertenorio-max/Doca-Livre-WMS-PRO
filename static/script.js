@@ -1807,6 +1807,8 @@ async function loadViagemInfo(idViagem) {
             setInput('viagem-conferente', data.conferente || '');
             setInput('viagem-ajudante1', data.ajudante1 || '');
             setInput('viagem-ajudante2', data.ajudante2 || '');
+            setVal('display-id-roteiro', data.id_roteiro || '-');
+            setVal('display-id-viagem', data.id_viagem || idViagem || '-');
         } else {
             setVal('data-expedicao', '-');
             setPlaca('');
@@ -1816,6 +1818,8 @@ async function loadViagemInfo(idViagem) {
             setInput('viagem-conferente', '');
             setInput('viagem-ajudante1', '');
             setInput('viagem-ajudante2', '');
+            setVal('display-id-roteiro', '-');
+            setVal('display-id-viagem', idViagem || '-');
         }
     } catch (e) {
         setVal('data-expedicao', '-');
@@ -1826,6 +1830,8 @@ async function loadViagemInfo(idViagem) {
         setInput('viagem-conferente', '');
         setInput('viagem-ajudante1', '');
         setInput('viagem-ajudante2', '');
+        setVal('display-id-roteiro', '-');
+        setVal('display-id-viagem', idViagem || '-');
     }
 }
 
@@ -1882,23 +1888,48 @@ async function salvarResponsaveisViagem() {
     }
 }
 
-// Buscar Itens da Viagem
+// Buscar Itens da Viagem (aceita ID do roteiro ou ID da viagem; quando DATABASE_URL, importa da API Ravex)
 window.buscarItensViagem = async function() {
-    const idViagem = document.getElementById('id-viagem').value.trim();
+    const idInput = document.getElementById('id-viagem').value.trim();
     
-    if (!idViagem) {
-        showMessage('Por favor, digite o ID do roteiro', 'error');
+    if (!idInput) {
+        showMessage('Por favor, digite o ID do roteiro ou o ID da viagem', 'error');
         document.getElementById('id-viagem').focus();
         return;
     }
     
-    // Mostrar loading
-    showMessage('Buscando itens da viagem...', 'success');
+    showMessage('Buscando itens...', 'success');
     
-    // Salvar ID do roteiro no campo hidden
+    var idViagem = idInput;
+    try {
+        const res = await fetch(API_BASE + '/ravex/importar-romaneio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: idInput })
+        });
+        const data = await res.json().catch(function() { return {}; });
+        if (res.ok && data.ok && data.id_viagem) {
+            idViagem = data.id_viagem;
+            if (data.mensagem) showMessage(data.mensagem, 'success');
+            var setVal = function(id, val) {
+                var el = document.getElementById(id);
+                if (el) el.textContent = (val && String(val).trim()) ? val : '-';
+            };
+            setVal('display-id-roteiro', data.id_roteiro || '-');
+            setVal('display-id-viagem', data.id_viagem || idViagem);
+        } else if (res.status === 400 && data.erro && (data.erro.indexOf('Configure DATABASE_URL') >= 0 || data.erro.indexOf('Nenhum dataset') >= 0)) {
+            idViagem = idInput;
+        } else if (!res.ok && data.erro) {
+            showMessage(data.erro, 'error');
+            return;
+        }
+    } catch (e) {
+        idViagem = idInput;
+    }
+    
     document.getElementById('id-viagem-hidden').value = idViagem;
+    document.getElementById('id-viagem').value = idViagem;
     
-    // Habilitar blocos 2, 3 e 4 (remover bloqueio) e mostrar tabela
     var formBip = document.getElementById('form-bipagem-container');
     if (formBip) formBip.classList.remove('conferencia-blocos-bloqueado');
     var bloco4Wrap = document.getElementById('conferencia-bloco-4-wrapper');
@@ -1913,15 +1944,12 @@ window.buscarItensViagem = async function() {
     
     window.atualizarEstadoCampoBipar();
     
-    // Carregar sugestões de motoristas e de placas
     loadColaboradoresMotoristas();
     loadPlacas();
-    // Buscar itens, período e info da viagem (data expedição, placa, rota, motorista)
     await loadConferencia(idViagem);
     await loadPeriodoCarregamento(idViagem);
     await loadViagemInfo(idViagem);
     
-    // Focar na doca se não estiver selecionada, senão no código de barras
     setTimeout(() => {
         const docaSelect = document.getElementById('doca');
         const codigoBarrasInput = document.getElementById('codigo-barras');

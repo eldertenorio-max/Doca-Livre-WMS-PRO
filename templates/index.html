@@ -251,12 +251,12 @@
                         <h3 style="margin-top: 0; color: #1976D2;">1. SELECIONE O ROTEIRO</h3>
                         <div class="form-row">
                             <div class="form-group" style="flex: 1;">
-                                <label for="id-viagem">ID Roteiro *</label>
+                                <label for="id-viagem">ID Roteiro ou Viagem *</label>
                                 <div class="input-com-lupa">
-                                    <input type="text" id="id-viagem" placeholder="Digite o ID do roteiro e pressione Enter ou clique na lupa" style="font-size: 16px; font-weight: bold;">
+                                    <input type="text" id="id-viagem" placeholder="Digite o ID do roteiro ou da viagem e pressione Enter ou clique na lupa" style="font-size: 16px; font-weight: bold;">
                                     <span class="input-lupa" onclick="buscarItensViagem()" title="Buscar itens do roteiro">🔍</span>
                                 </div>
-                                <small style="color: #666; font-size: 12px;">O sistema buscará os itens do romaneio por este Id roteiro</small>
+                                <small style="color: #666; font-size: 12px;">O sistema buscará os itens do romaneio por este ID (roteiro ou viagem). Se for roteiro, só importa quando já existir viagem faturada.</small>
                             </div>
                         </div>
                     </div>
@@ -326,7 +326,9 @@
                                     </div>
                                 </div>
                                 <div id="periodo-carregamento-box" style="display: none; margin-top: 12px; padding: 10px; background: #fff3e0; border-radius: 6px;">
-                                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                                    <div style="display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center;">
+                                        <div><label style="color: #666;">ID Roteiro</label><div id="display-id-roteiro" style="font-weight: bold; color: #1565c0;">-</div></div>
+                                        <div><label style="color: #666;">ID Viagem</label><div id="display-id-viagem" style="font-weight: bold; color: #2e7d32;">-</div></div>
                                         <div><label style="color: #666;">Data expedição</label><div id="data-expedicao" style="font-weight: bold;">-</div></div>
                                         <div><label style="color: #666;">Início carreg.</label><div id="periodo-inicio-carregamento" style="font-weight: bold;">-</div></div>
                                         <div><label style="color: #666;">Fim carreg.</label><div id="periodo-fim-carregamento" style="font-weight: bold;">-</div></div>
