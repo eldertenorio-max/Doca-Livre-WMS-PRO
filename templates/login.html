@@ -97,6 +97,12 @@
     </div>
     <script>
 (function () {
+    // Se veio do botão Sair, encerra sessão no servidor em segundo plano (não bloqueia a tela)
+    if (window.location.search.indexOf('sair=1') !== -1) {
+        var apiBase = window.API_BASE || '/api';
+        fetch(apiBase + '/logout', { method: 'POST' }).catch(function() {});
+    }
+
     var cardLogin = document.getElementById('card-login');
     var cardCadastro = document.getElementById('card-cadastro');
     var formLogin = document.getElementById('form-login');

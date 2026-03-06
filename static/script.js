@@ -57,15 +57,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var btnSair = document.getElementById('btn-sair');
     if (btnSair) {
         btnSair.addEventListener('click', function() {
-            // Redireciona na hora; envia logout em segundo plano (sendBeacon não bloqueia)
-            try {
-                if (navigator.sendBeacon && typeof navigator.sendBeacon === 'function') {
-                    navigator.sendBeacon(API_BASE + '/logout', '');
-                } else {
-                    fetch(API_BASE + '/logout', { method: 'POST', keepalive: true }).catch(function() {});
-                }
-            } catch (e) {}
-            window.location.replace('/login');
+            // Redireciona na hora; logout no servidor será chamado ao carregar a página de login
+            window.location.replace('/login?sair=1');
         });
     }
     var btnAtualizarAba = document.getElementById('btn-atualizar-aba');
