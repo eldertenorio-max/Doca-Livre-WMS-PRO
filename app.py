@@ -695,14 +695,14 @@ def painel():
 
 @app.route('/api/eventos-stream')
 def eventos_stream():
-    """Server-Sent Events: envia 'atualizar' quando alguém bipa. Conexão fecha após ~2 min para evitar WORKER TIMEOUT no Render; o frontend reconecta."""
+    """Server-Sent Events: envia 'atualizar' quando alguém bipa. Conexão fecha em ~20s (Render free tier limita request ~30s); frontend reconecta."""
     def gerar():
         client_queue = queue.Queue()
         with _sse_lock:
             _sse_queues.append(client_queue)
         try:
-            # Fechar após ~110s para ficar abaixo do timeout 120s do gunicorn; cliente reconecta (initEventosStream)
-            max_heartbeats = 11
+            # Fechar em ~20s para ficar abaixo do limite de request do Render (free tier ~30s); cliente reconecta
+            max_heartbeats = 2
             for _ in range(max_heartbeats):
                 try:
                     msg = client_queue.get(timeout=10)
