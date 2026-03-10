@@ -13,8 +13,14 @@ except Exception:
     pass
 
 RAVEX_BASE_URL = (os.environ.get("RAVEX_BASE_URL") or "https://api.rest.app.ravex.com.br").rstrip("/")
-RAVEX_USER = (os.environ.get("RAVEX_USER") or "").strip()
-RAVEX_PASSWORD = (os.environ.get("RAVEX_PASSWORD") or "").strip().strip('"').strip("'")
+# RAVEX_USER e RAVEX_PASSWORD lidos dentro de get_token() para pegar o valor atual (importante no Render após deploy)
+
+
+def _get_ravex_credenciais():
+    """Lê credenciais do ambiente na hora da chamada (evita valor vazio quando o app carrega antes das vars no Render)."""
+    user = (os.environ.get("RAVEX_USER") or "").strip()
+    pwd = (os.environ.get("RAVEX_PASSWORD") or "").strip().strip('"').strip("'")
+    return user, pwd
 
 
 def get_token():
@@ -23,15 +29,15 @@ def get_token():
         import requests
     except ImportError:
         raise RuntimeError("Instale: pip install requests")
-    if not RAVEX_USER or not RAVEX_PASSWORD:
+    username, password = _get_ravex_credenciais()
+    if not username or not password:
         raise ValueError(
             "Defina RAVEX_USER e RAVEX_PASSWORD nas variáveis de ambiente. "
-            "No Render: Dashboard do serviço → Environment → Add Environment Variable."
+            "No Render: Dashboard do serviço → Environment → Add Environment Variable. Depois clique em Save e aguarde o redeploy."
         )
     url = f"{RAVEX_BASE_URL}/usuario/autenticar"
-    # Senha pode vir entre aspas do .env/Render; remover para evitar invalid_grant (igual BASE VIAGENS)
-    password = (RAVEX_PASSWORD or "").strip().strip('"').strip("'")
-    username = (RAVEX_USER or "").strip()
+    password = (password or "").strip().strip('"').strip("'")
+    username = (username or "").strip()
     dados = {"grant_type": "password", "username": username, "password": password}
     # Sem headers extras: só form-data (igual BASE VIAGENS / OXXO)
     r = requests.post(url, data=dados, timeout=30, verify=False)
