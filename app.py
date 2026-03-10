@@ -2433,8 +2433,10 @@ def api_ravex_importar_romaneio():
     try:
         token = ravex_get_token()
     except Exception as e:
-        return jsonify({'erro': 'Falha ao autenticar na API Ravex: %s' % str(e)}), 502
-    id_viagem = None
+        msg = str(e)
+        if 'RAVEX_USER' in msg or 'RAVEX_PASSWORD' in msg or 'variáveis de ambiente' in msg:
+            msg = 'Configure RAVEX_USER e RAVEX_PASSWORD no Render: Dashboard do serviço → Environment → Add Environment Variable.'
+        return jsonify({'erro': 'Falha ao autenticar na API Ravex: %s' % msg}), 502
     id_roteiro = None
     if id_viagem_in:
         try:
@@ -2565,7 +2567,10 @@ def api_ravex_sincronizar_periodo():
     try:
         token = ravex_get_token()
     except Exception as e:
-        return jsonify({'erro': 'Falha ao autenticar na API Ravex: %s' % str(e)}), 502
+        msg = str(e)
+        if 'RAVEX_USER' in msg or 'RAVEX_PASSWORD' in msg or 'variáveis de ambiente' in msg:
+            msg = 'Configure RAVEX_USER e RAVEX_PASSWORD no Render: Dashboard do serviço → Environment → Add Environment Variable.'
+        return jsonify({'erro': 'Falha ao autenticar na API Ravex: %s' % msg}), 502
     viagens = viagens_finalizadas_por_periodo(token, data_inicio, data_fim)
     conn = get_db()
     if getattr(conn, 'kind', None) != 'pg':
@@ -2648,7 +2653,10 @@ def api_ravex_importar_lista():
     try:
         token = ravex_get_token()
     except Exception as e:
-        return jsonify({'erro': 'Falha ao autenticar na API Ravex: %s' % str(e)}), 502
+        msg = str(e)
+        if 'RAVEX_USER' in msg or 'RAVEX_PASSWORD' in msg or 'variáveis de ambiente' in msg:
+            msg = 'Configure RAVEX_USER e RAVEX_PASSWORD no Render: Dashboard do serviço → Environment → Add Environment Variable.'
+        return jsonify({'erro': 'Falha ao autenticar na API Ravex: %s' % msg}), 502
     conn = get_db()
     if getattr(conn, 'kind', None) != 'pg':
         conn.close()

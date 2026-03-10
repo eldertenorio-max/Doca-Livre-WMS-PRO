@@ -18,22 +18,32 @@ RAVEX_PASSWORD = (os.environ.get("RAVEX_PASSWORD") or "").strip().strip('"').str
 
 
 def get_token():
-    """Obtém token de acesso (POST /usuario/autenticar)."""
+    """Obtém token de acesso (POST /usuario/autenticar). Formato igual ao projeto BASE VIAGENS: form-data, sem headers extras."""
     try:
         import requests
     except ImportError:
         raise RuntimeError("Instale: pip install requests")
     if not RAVEX_USER or not RAVEX_PASSWORD:
-        raise ValueError("Defina RAVEX_USER e RAVEX_PASSWORD nas variáveis de ambiente.")
+        raise ValueError(
+            "Defina RAVEX_USER e RAVEX_PASSWORD nas variáveis de ambiente. "
+            "No Render: Dashboard do serviço → Environment → Add Environment Variable."
+        )
     url = f"{RAVEX_BASE_URL}/usuario/autenticar"
-    r = requests.post(
-        url,
-        data={"grant_type": "password", "username": RAVEX_USER, "password": RAVEX_PASSWORD},
-        timeout=30,
-        verify=False,
-    )
+    # Senha pode vir entre aspas do .env/Render; remover para evitar invalid_grant (igual BASE VIAGENS)
+    password = (RAVEX_PASSWORD or "").strip().strip('"').strip("'")
+    username = (RAVEX_USER or "").strip()
+    dados = {"grant_type": "password", "username": username, "password": password}
+    # Sem headers extras: só form-data (igual BASE VIAGENS / OXXO)
+    r = requests.post(url, data=dados, timeout=30, verify=False)
     if r.status_code != 200:
-        raise RuntimeError("API Ravex autenticação falhou (HTTP %s): %s" % (r.status_code, (r.text or "")[:200]))
+        msg = (r.text or "")[:500]
+        try:
+            err = r.json()
+            if err.get("error") == "invalid_grant" or "incorreto" in (err.get("error_description") or "").lower():
+                msg = "E-mail ou senha incorretos. Confira RAVEX_USER e RAVEX_PASSWORD no Render e teste o login no portal da Ravex."
+        except Exception:
+            pass
+        raise RuntimeError("API Ravex autenticação falhou (HTTP %s): %s" % (r.status_code, msg))
     data = r.json()
     token = data.get("access_token")
     if not token:
