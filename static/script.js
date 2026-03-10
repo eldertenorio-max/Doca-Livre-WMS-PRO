@@ -866,6 +866,7 @@ async function loadPainelCompleto() {
     const data = await fetchAPI('/painel-completo');
     if (!data) return;
     if (data.estatisticas) paintEstatisticas(data.estatisticas);
+    if (data.erro) showMessage('Painel: ' + data.erro, 'error');
     paintRomaneioStats(data.romaneio || {});
     const viagens = data.viagens || [];
     const tbody = document.getElementById('tbody-painel-viagens');

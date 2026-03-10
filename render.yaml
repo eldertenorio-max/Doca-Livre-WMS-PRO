@@ -13,3 +13,7 @@ services:
         value: require
       - key: DATABASE_URL
         sync: false
+      - key: RAVEX_USER
+        sync: false
+      - key: RAVEX_PASSWORD
+        sync: false

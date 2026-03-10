@@ -4854,7 +4854,8 @@ def get_painel_graficos_extras():
 def get_painel_completo():
     """Um único request: estatísticas + viagens + gráficos. Estatísticas em 1 query para carregar mais rápido."""
     conn = get_db()
-    conn.row_factory = sqlite3.Row
+    if getattr(conn, 'kind', None) != 'pg':
+        conn.row_factory = sqlite3.Row
     try:
         # Estatísticas em uma única query (menos ida e volta ao DB)
         row_stats = conn.execute('''
@@ -4868,13 +4869,21 @@ def get_painel_completo():
         veiculos_rows = conn.execute(
             "SELECT veiculo, COUNT(*) as total FROM produtos_bipados WHERE status = ? AND trim(COALESCE(veiculo,'')) != '' GROUP BY veiculo", ('CARREGADO',)
         ).fetchall()
+        def _val(r, k):
+            if r is None:
+                return 0
+            try:
+                v = r[k]
+                return v if v is not None else 0
+            except (TypeError, KeyError, IndexError):
+                return 0
         estatisticas = {
-            'total_bipados': row_stats['total_bipados'] or 0,
-            'total_carregados': row_stats['total_carregados'] or 0,
-            'total_unicos': row_stats['total_unicos'] or 0,
+            'total_bipados': _val(row_stats, 'total_bipados'),
+            'total_carregados': _val(row_stats, 'total_carregados'),
+            'total_unicos': _val(row_stats, 'total_unicos'),
             'total_divergencias': 0,
-            'total_viagens': row_stats['total_viagens'] or 0,
-            'soma_quantidades': row_stats['soma_quantidades'] or 0,
+            'total_viagens': _val(row_stats, 'total_viagens'),
+            'soma_quantidades': _val(row_stats, 'soma_quantidades'),
             'veiculos': [dict(r) for r in veiculos_rows]
         }
         # Viagens
@@ -4989,7 +4998,18 @@ def get_painel_completo():
             conn.close()
         except Exception:
             pass
-        return jsonify({'erro': str(e)}), 500
+        # Retorna 200 com dados vazios para o painel carregar; frontend pode exibir erro
+        empty = {'total_bipados': 0, 'total_carregados': 0, 'total_unicos': 0, 'total_divergencias': 0, 'total_viagens': 0, 'soma_quantidades': 0, 'veiculos': []}
+        return jsonify({
+            'estatisticas': empty,
+            'viagens': [],
+            'tempo_por_placa': [],
+            'top_itens_bipados': [],
+            'carros_mais_itens': [],
+            'carros_mais_peso': [],
+            'romaneio': {},
+            'erro': str(e)
+        }), 200
 
 
 @app.route('/api/estatisticas', methods=['GET'])
@@ -5043,8 +5063,13 @@ def get_estatisticas():
 try:
     init_db()
     sync_usuarios_from_config()
-except Exception:
-    pass
+except Exception as e:
+    import traceback
+    try:
+        print("[controle-carregamento] init_db/sync_usuarios falhou:", e, flush=True)
+        traceback.print_exc()
+    except Exception:
+        pass
 
 if __name__ == '__main__':
     init_db()

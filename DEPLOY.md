@@ -94,6 +94,8 @@ Durante a criação ou depois (Settings → Environment):
 | `DATABASE_URL` | `postgresql://postgres.[project]:...` | URL do Supabase (Transaction Pooler) |
 | `PGSSLMODE` | `require` | SSL obrigatório |
 | `SECRET_KEY` | (gere uma chave aleatória) | Chave do Flask |
+| `RAVEX_USER` | (opcional) e-mail | Usuário da API Ravex – para a aba **Importar Ravex** |
+| `RAVEX_PASSWORD` | (opcional) senha | Senha da API Ravex – para a aba **Importar Ravex** |
 
 **Como gerar SECRET_KEY**:
 ```bash

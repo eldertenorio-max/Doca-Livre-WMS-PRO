@@ -44,6 +44,7 @@ git push -u origin main
 - [ ] `DATABASE_URL` = URL do Supabase (Transaction Pooler)
 - [ ] `PGSSLMODE` = `require`
 - [ ] `SECRET_KEY` = (gerar: `python -c "import secrets; print(secrets.token_hex(32))"`)
+- [ ] (Opcional) `RAVEX_USER` e `RAVEX_PASSWORD` = credenciais da API Ravex para a aba **Importar Ravex**
 
 - [ ] Aguardar "Deploy live" (3-5 minutos)
 - [ ] Acessar a URL: `https://seu-app.onrender.com`

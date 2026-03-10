@@ -45,6 +45,8 @@ Em **Environment** (ou **Environment Variables**), adicione:
 | **DATABASE_URL** | A URL do Supabase (Transaction Pooler). Exemplo: `postgresql://postgres.lvcygloownkzotqynbol:SUA_SENHA@aws-1-us-east-1.pooler.supabase.com:5432/postgres` |
 | **PGSSLMODE** | `require` |
 | **SECRET_KEY** | Uma chave aleatória (veja abaixo) |
+| **RAVEX_USER** | (Opcional) E-mail do usuário da API Ravex – necessário para a aba **Importar Ravex** |
+| **RAVEX_PASSWORD** | (Opcional) Senha da API Ravex – necessário para a aba **Importar Ravex** |
 
 **Como gerar SECRET_KEY** (no PowerShell ou CMD):
 
