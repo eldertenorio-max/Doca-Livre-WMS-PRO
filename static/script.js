@@ -313,7 +313,9 @@ function initForms() {
                 } else {
                     resultadoImportarRavex.style.background = '#ffebee';
                     resultadoImportarRavex.style.border = '1px solid #f44336';
-                    resultadoImportarRavex.innerHTML = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar');
+                    let msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar');
+                    if (data.diagnostico) msg += ' ' + data.diagnostico;
+                    resultadoImportarRavex.innerHTML = msg;
                 }
             } catch (e) {
                 resultadoImportarRavex.style.background = '#ffebee';
@@ -358,7 +360,9 @@ function initForms() {
                 } else {
                     resultadoImportarRavex.style.background = '#ffebee';
                     resultadoImportarRavex.style.border = '1px solid #f44336';
-                    resultadoImportarRavex.innerHTML = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar lista');
+                    let msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar lista');
+                    if (data.diagnostico) msg += ' ' + data.diagnostico;
+                    resultadoImportarRavex.innerHTML = msg;
                 }
             } catch (e) {
                 resultadoImportarRavex.style.background = '#ffebee';
@@ -2060,7 +2064,9 @@ window.buscarItensViagem = async function() {
         } else if (res.status === 400 && data.erro && (data.erro.indexOf('Configure DATABASE_URL') >= 0 || data.erro.indexOf('Nenhum dataset') >= 0)) {
             idViagem = idInput;
         } else if (!res.ok && data.erro) {
-            showMessage(data.erro, 'error');
+            let msg = data.erro;
+            if (data.diagnostico) msg += ' ' + data.diagnostico;
+            showMessage(msg, 'error');
             return;
         }
     } catch (e) {

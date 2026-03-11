@@ -17,9 +17,20 @@ RAVEX_BASE_URL = (os.environ.get("RAVEX_BASE_URL") or "https://api.rest.app.rave
 
 
 def _get_ravex_credenciais():
-    """Lê credenciais do ambiente na hora da chamada (evita valor vazio quando o app carrega antes das vars no Render)."""
-    user = (os.environ.get("RAVEX_USER") or "").strip()
-    pwd = (os.environ.get("RAVEX_PASSWORD") or "").strip().strip('"').strip("'")
+    """Lê credenciais: primeiro variáveis de ambiente; se vazias, tenta arquivo em RAVEX_CREDENTIALS_FILE (Secret File no Render)."""
+    user = (os.environ.get("RAVEX_USER") or os.environ.get("ravex_user") or "").strip()
+    pwd = (os.environ.get("RAVEX_PASSWORD") or os.environ.get("ravex_password") or "").strip().strip('"').strip("'")
+    if not user or not pwd:
+        path = (os.environ.get("RAVEX_CREDENTIALS_FILE") or "").strip()
+        if path and os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    import json
+                    data = json.load(f)
+                user = (data.get("RAVEX_USER") or data.get("username") or "").strip()
+                pwd = (str(data.get("RAVEX_PASSWORD") or data.get("password") or "").strip().strip('"').strip("'")
+            except Exception:
+                pass
     return user, pwd
 
 
@@ -31,9 +42,16 @@ def get_token():
         raise RuntimeError("Instale: pip install requests")
     username, password = _get_ravex_credenciais()
     if not username or not password:
+        falta = []
+        if not username:
+            falta.append("RAVEX_USER")
+        if not password:
+            falta.append("RAVEX_PASSWORD")
         raise ValueError(
-            "Defina RAVEX_USER e RAVEX_PASSWORD nas variáveis de ambiente. "
-            "No Render: Dashboard do serviço → Environment → Add Environment Variable. Depois clique em Save e aguarde o redeploy."
+            "Variáveis não encontradas: %s. No Render: 1) Confira Environment (chaves exatamente RAVEX_USER e RAVEX_PASSWORD). "
+            "2) Clique em 'Save changes' e depois 'Manual Deploy' → 'Clear build cache & deploy'. "
+            "3) Teste se o servidor vê as vars: abra no navegador /api/ravex-env-check (deve mostrar ok: true)."
+            % ", ".join(falta)
         )
     url = f"{RAVEX_BASE_URL}/usuario/autenticar"
     password = (password or "").strip().strip('"').strip("'")

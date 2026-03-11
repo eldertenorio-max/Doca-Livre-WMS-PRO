@@ -568,7 +568,7 @@ def _get_latest_dataset_id(conn):
 
 def _requer_login():
     """Retorna True se a rota atual requer login (e o usuário não está logado)."""
-    if request.endpoint in (None, 'login', 'static', 'raiz'):
+    if request.endpoint in (None, 'login', 'static', 'raiz', 'ravex_env_check'):
         return False
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return False
@@ -591,7 +591,7 @@ def _usuario_ainda_existe(usuario):
 def proteger_rotas():
     """Redireciona para /login se o usuário não estiver autenticado. Invalida sessão se o usuário foi excluído."""
     # Rotas que não exigem autenticação
-    if request.endpoint in (None, 'login', 'static', 'raiz'):
+    if request.endpoint in (None, 'login', 'static', 'raiz', 'ravex_env_check'):
         return None
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return None
@@ -670,6 +670,16 @@ def api_logout():
     session.pop('usuario', None)
     session.pop('usuario_id', None)
     return '', 204
+
+
+@app.route('/api/ravex-env-check', methods=['GET'])
+def ravex_env_check():
+    """Diagnóstico: retorna se RAVEX_USER e RAVEX_PASSWORD estão definidos (sem mostrar valores). Acesso público."""
+    u = bool((os.environ.get("RAVEX_USER") or os.environ.get("ravex_user") or "").strip())
+    p = bool((os.environ.get("RAVEX_PASSWORD") or os.environ.get("ravex_password") or "").strip())
+    # Listar chaves que contêm RAVEX (sem valores) para debug se o Render usar outro nome
+    ravex_keys = [k for k in os.environ if "RAVEX" in k.upper()]
+    return jsonify({"RAVEX_USER": u, "RAVEX_PASSWORD": p, "ok": u and p, "env_keys_com_ravex": ravex_keys})
 
 
 @app.route('/api/usuarios', methods=['GET'])
@@ -2419,6 +2429,17 @@ def _ravex_resolver_id_para_viagem(token, id_unico):
     return (id_viagem, str(rid))
 
 
+def _ravex_502_resposta(e):
+    """Resposta 502 para falha de auth Ravex, com diagnóstico se as vars estão no servidor."""
+    msg = getattr(e, 'args', [str(e)])[0] if getattr(e, 'args', None) else str(e)
+    env_u = bool((os.environ.get("RAVEX_USER") or os.environ.get("ravex_user") or "").strip())
+    env_p = bool((os.environ.get("RAVEX_PASSWORD") or os.environ.get("ravex_password") or "").strip())
+    return jsonify({
+        'erro': 'Falha ao autenticar na API Ravex: %s' % msg,
+        'diagnostico': 'No servidor: RAVEX_USER=%s, RAVEX_PASSWORD=%s. Se os dois forem "não", no Render faça Save e depois Manual Deploy → Clear build cache & deploy. Teste: /api/ravex-env-check' % ('sim' if env_u else 'não', 'sim' if env_p else 'não')
+    }), 502
+
+
 @app.route('/api/ravex/importar-romaneio', methods=['POST'])
 def api_ravex_importar_romaneio():
     """Importa itens do romaneio da API Ravex por id_roteiro ou id_viagem. Só importa quando a viagem já existe (faturada)."""
@@ -2435,10 +2456,8 @@ def api_ravex_importar_romaneio():
     try:
         token = ravex_get_token()
     except Exception as e:
-        msg = str(e)
-        if 'RAVEX_USER' in msg or 'RAVEX_PASSWORD' in msg or 'variáveis de ambiente' in msg:
-            msg = 'Configure RAVEX_USER e RAVEX_PASSWORD no Render: Dashboard do serviço → Environment → Add Environment Variable.'
-        return jsonify({'erro': 'Falha ao autenticar na API Ravex: %s' % msg}), 502
+        return _ravex_502_resposta(e)
+    id_viagem = None
     id_roteiro = None
     if id_viagem_in:
         try:
@@ -2569,10 +2588,7 @@ def api_ravex_sincronizar_periodo():
     try:
         token = ravex_get_token()
     except Exception as e:
-        msg = str(e)
-        if 'RAVEX_USER' in msg or 'RAVEX_PASSWORD' in msg or 'variáveis de ambiente' in msg:
-            msg = 'Configure RAVEX_USER e RAVEX_PASSWORD no Render: Dashboard do serviço → Environment → Add Environment Variable.'
-        return jsonify({'erro': 'Falha ao autenticar na API Ravex: %s' % msg}), 502
+        return _ravex_502_resposta(e)
     viagens = viagens_finalizadas_por_periodo(token, data_inicio, data_fim)
     conn = get_db()
     if getattr(conn, 'kind', None) != 'pg':
@@ -2655,10 +2671,7 @@ def api_ravex_importar_lista():
     try:
         token = ravex_get_token()
     except Exception as e:
-        msg = str(e)
-        if 'RAVEX_USER' in msg or 'RAVEX_PASSWORD' in msg or 'variáveis de ambiente' in msg:
-            msg = 'Configure RAVEX_USER e RAVEX_PASSWORD no Render: Dashboard do serviço → Environment → Add Environment Variable.'
-        return jsonify({'erro': 'Falha ao autenticar na API Ravex: %s' % msg}), 502
+        return _ravex_502_resposta(e)
     conn = get_db()
     if getattr(conn, 'kind', None) != 'pg':
         conn.close()
