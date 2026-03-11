@@ -1995,16 +1995,19 @@ async function loadViagemInfo(idViagem) {
     try {
         const data = await fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/info');
         if (data) {
-            setVal('data-expedicao', data.data_expedicao);
-            setPlaca(data.placa);
-            setVal('viagem-identificador-rota', data.identificador_rota);
-            setMotorista(data.motorista);
+            if (data.data_expedicao != null && String(data.data_expedicao).trim()) setVal('data-expedicao', data.data_expedicao);
+            if (data.placa !== undefined && data.placa !== null && String(data.placa).trim()) setPlaca(data.placa);
+            if (data.identificador_rota !== undefined && data.identificador_rota !== null && String(data.identificador_rota).trim()) setVal('viagem-identificador-rota', data.identificador_rota);
+            else setVal('viagem-identificador-rota', data.identificador_rota || '-');
+            if (data.motorista !== undefined && data.motorista !== null && String(data.motorista).trim()) setMotorista(data.motorista);
             setInput('viagem-coordenador', (data.coordenador && String(data.coordenador).trim()) ? data.coordenador : COORDENADOR_PADRAO);
             setInput('viagem-conferente', data.conferente || '');
             setInput('viagem-ajudante1', data.ajudante1 || '');
             setInput('viagem-ajudante2', data.ajudante2 || '');
-            setVal('display-id-roteiro', data.id_roteiro || '-');
-            setVal('display-id-viagem', data.id_viagem || idViagem || '-');
+            if (data.id_roteiro != null && String(data.id_roteiro).trim()) setVal('display-id-roteiro', data.id_roteiro);
+            else setVal('display-id-roteiro', data.id_roteiro || '-');
+            if (data.id_viagem != null && String(data.id_viagem).trim()) setVal('display-id-viagem', data.id_viagem);
+            else setVal('display-id-viagem', data.id_viagem || idViagem || '-');
         } else {
             setVal('data-expedicao', '-');
             setPlaca('');
@@ -2094,6 +2097,24 @@ window.buscarItensViagem = async function() {
         return;
     }
     
+    var overlayEl = document.getElementById('ravex-loading-overlay');
+    var overlayText = document.getElementById('ravex-loading-text');
+    var overlayBox = document.getElementById('ravex-loading-box');
+    var barTrack = document.getElementById('ravex-loading-bar-track');
+    var errorActions = document.getElementById('ravex-error-actions');
+    function showOverlay(msg) {
+        if (overlayEl && overlayText) {
+            overlayText.textContent = msg || 'Puxando roteiro/viagem da API Ravex... Aguarde.';
+            if (overlayBox) overlayBox.classList.remove('ravex-loading-box--error');
+            if (barTrack) barTrack.style.display = '';
+            if (errorActions) errorActions.style.display = 'none';
+            overlayEl.style.display = 'flex';
+        }
+    }
+    function hideOverlay() {
+        if (overlayEl) overlayEl.style.display = 'none';
+    }
+    showOverlay('Puxando roteiro/viagem da API Ravex e carregando conferência... Aguarde.');
     showMessage('Buscando itens...', 'success');
     
     var idViagem = idInput;
@@ -2119,10 +2140,22 @@ window.buscarItensViagem = async function() {
             let msg = data.erro;
             if (data.diagnostico) msg += ' ' + data.diagnostico;
             showMessage(msg, 'error');
+            hideOverlay();
+            if (overlayEl && overlayText) {
+                overlayText.textContent = msg;
+                if (overlayBox) overlayBox.classList.add('ravex-loading-box--error');
+                if (barTrack) barTrack.style.display = 'none';
+                if (errorActions) errorActions.style.display = 'block';
+                var okBtn = document.getElementById('ravex-overlay-ok');
+                if (okBtn) okBtn.onclick = function() { hideOverlay(); };
+            }
             return;
         }
     } catch (e) {
         idViagem = idInput;
+        showMessage('Erro ao conectar. Tente novamente.', 'error');
+        hideOverlay();
+        return;
     }
     
     document.getElementById('id-viagem-hidden').value = idViagem;
@@ -2144,9 +2177,13 @@ window.buscarItensViagem = async function() {
     
     loadColaboradoresMotoristas();
     loadPlacas();
-    await loadConferencia(idViagem);
-    await loadPeriodoCarregamento(idViagem);
-    await loadViagemInfo(idViagem);
+    try {
+        await loadConferencia(idViagem);
+        await loadPeriodoCarregamento(idViagem);
+        await loadViagemInfo(idViagem);
+    } finally {
+        hideOverlay();
+    }
     
     setTimeout(() => {
         const docaSelect = document.getElementById('doca');
