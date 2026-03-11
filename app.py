@@ -2009,9 +2009,23 @@ def get_conferencia(id_viagem=None):
                             'status_bipado': 'COMPLETO',
                             'id_viagem': id_viagem_norm or id_viagem,
                         })
+                meta = {'id_roteiro': '', 'placa': '', 'motorista': '', 'data_expedicao': ''}
+                if romaneio_rows and len(romaneio_rows) > 0:
+                    r0 = romaneio_rows[0]
+                    meta['id_roteiro'] = (r0.get('id_roteiro') or '').strip() or ''
+                    meta['placa'] = (r0.get('placa') or '').strip() or ''
+                    meta['motorista'] = (r0.get('motorista') or '').strip() or ''
+                    meta['data_expedicao'] = (r0.get('data_expedicao') or '').strip() or ''
                 conn.close()
                 _carregar_motivos_divergencia(resultado)
-                return jsonify(resultado)
+                return jsonify({
+                    'lista': resultado,
+                    'id_roteiro': meta['id_roteiro'],
+                    'id_viagem': id_viagem_norm or id_viagem,
+                    'placa': meta['placa'],
+                    'motorista': meta['motorista'],
+                    'data_expedicao': meta['data_expedicao'],
+                })
         except Exception as e:
             try:
                 conn.close()
@@ -2485,6 +2499,34 @@ def _ravex_502_resposta(e):
     }), 502
 
 
+def _upsert_viagem_placa_motorista(conn, id_viagem, placa, motorista):
+    """Grava placa e motorista em viagem_placa e viagem_motorista para o id_viagem (upsert)."""
+    if not id_viagem:
+        return
+    id_norm = _normalizar_id_viagem(id_viagem)
+    usuario = session.get('usuario', '') or ''
+    if getattr(conn, 'kind', None) == 'pg':
+        conn.execute(
+            '''INSERT INTO viagem_placa (id_viagem, placa, atualizado_por) VALUES (?, ?, ?)
+               ON CONFLICT (id_viagem) DO UPDATE SET placa = EXCLUDED.placa, atualizado_por = EXCLUDED.atualizado_por''',
+            (id_norm, (placa or '').strip(), usuario)
+        )
+        conn.execute(
+            '''INSERT INTO viagem_motorista (id_viagem, motorista, atualizado_por) VALUES (?, ?, ?)
+               ON CONFLICT (id_viagem) DO UPDATE SET motorista = EXCLUDED.motorista, atualizado_por = EXCLUDED.atualizado_por''',
+            (id_norm, (motorista or '').strip(), usuario)
+        )
+    else:
+        conn.execute(
+            '''INSERT INTO viagem_placa (id_viagem, placa) VALUES (?, ?) ON CONFLICT(id_viagem) DO UPDATE SET placa = excluded.placa''',
+            (id_norm, (placa or '').strip())
+        )
+        conn.execute(
+            '''INSERT INTO viagem_motorista (id_viagem, motorista) VALUES (?, ?) ON CONFLICT(id_viagem) DO UPDATE SET motorista = excluded.motorista''',
+            (id_norm, (motorista or '').strip())
+        )
+
+
 @app.route('/api/ravex/importar-romaneio', methods=['POST'])
 def api_ravex_importar_romaneio():
     """Importa itens do romaneio da API Ravex por id_roteiro ou id_viagem. Só importa quando a viagem já existe (faturada)."""
@@ -2588,6 +2630,8 @@ def api_ravex_importar_romaneio():
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
                 _romaneio_linha_para_tuple_pg(ds, L),
             )
+        if linhas:
+            _upsert_viagem_placa_motorista(conn, id_viagem, linhas[0].get('placa'), linhas[0].get('motorista'))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -2662,6 +2706,8 @@ def api_ravex_sincronizar_periodo():
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
                         _romaneio_linha_para_tuple_pg(ds, L),
                     )
+                if linhas:
+                    _upsert_viagem_placa_motorista(conn, id_viagem, linhas[0].get('placa'), linhas[0].get('motorista'))
                 viagens_processadas += 1
                 total_itens += len(linhas)
             except Exception as e:
@@ -2745,6 +2791,8 @@ def api_ravex_importar_lista():
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
                         _romaneio_linha_para_tuple_pg(ds, L),
                     )
+                if linhas:
+                    _upsert_viagem_placa_motorista(conn, id_viagem, linhas[0].get('placa'), linhas[0].get('motorista'))
                 viagens_processadas += 1
                 total_itens += len(linhas)
             except Exception as e:

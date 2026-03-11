@@ -2380,7 +2380,15 @@ async function loadConferencia(idViagem = null) {
     try {
         const conferencia = await fetchAPI(`/conferencia/${encodeURIComponent(idViagem)}?_=${Date.now()}`);
         if (conferencia && !conferencia.erro) {
-            const conferenciaUI = agruparConferenciaPorCodigoProduto(conferencia);
+            const listaParaUI = Array.isArray(conferencia.lista) ? conferencia.lista : (Array.isArray(conferencia) ? conferencia : []);
+            if (conferencia.id_roteiro !== undefined || conferencia.id_viagem !== undefined || conferencia.placa !== undefined || conferencia.motorista !== undefined || conferencia.data_expedicao !== undefined) {
+                var elR = document.getElementById('display-id-roteiro'); if (elR) elR.textContent = (conferencia.id_roteiro && String(conferencia.id_roteiro).trim()) ? conferencia.id_roteiro : '-';
+                var elV = document.getElementById('display-id-viagem'); if (elV) elV.textContent = (conferencia.id_viagem && String(conferencia.id_viagem).trim()) ? conferencia.id_viagem : (idViagem || '-');
+                var elP = document.getElementById('viagem-placa'); if (elP) elP.value = (conferencia.placa && String(conferencia.placa).trim()) ? conferencia.placa : '';
+                var elM = document.getElementById('viagem-motorista'); if (elM) elM.value = (conferencia.motorista && String(conferencia.motorista).trim()) ? conferencia.motorista : '';
+                var elD = document.getElementById('data-expedicao'); if (elD) elD.textContent = (conferencia.data_expedicao && String(conferencia.data_expedicao).trim()) ? conferencia.data_expedicao : '-';
+            }
+            const conferenciaUI = agruparConferenciaPorCodigoProduto(listaParaUI);
             const tbody = document.getElementById('tbody-conferencia');
             // Preservar texto que o usuário está digitando nos campos Motivo ao atualizar a tabela (ex.: refresh a cada 5s)
             const motivosEmEdicao = {};
