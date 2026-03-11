@@ -2314,6 +2314,42 @@ def _romaneio_data_para_json(val):
     return json.dumps(val)  # qualquer outro tipo (evita cannot adapt type)
 
 
+def _romaneio_linha_para_tuple_pg(ds, L):
+    """Converte uma linha L para tupla de parâmetros seguros para psycopg (nenhum dict/list)."""
+    def _str(v):
+        if v is None:
+            return None
+        if isinstance(v, (dict, list)):
+            return json.dumps(v)
+        return str(v) if not isinstance(v, str) else (v or None)
+    def _int(v):
+        if v is None:
+            return 0
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
+    data_json = _romaneio_data_para_json(L.get('data'))
+    return (
+        str(ds),
+        _int(L.get('row_index')),
+        _str(L.get('id_roteiro')),
+        _str(L.get('id_viagem')),
+        _str(L.get('codigo_produto')),
+        _str(L.get('descricao')),
+        _int(L.get('quantidade')),
+        _str(L.get('unidade')),
+        _str(L.get('peso_bruto')),
+        _str(L.get('codigo_cliente')),
+        _str(L.get('endereco')),
+        _str(L.get('cidade')),
+        _str(L.get('placa')),
+        _str(L.get('motorista')),
+        _str(L.get('data_expedicao')),
+        data_json,
+    )
+
+
 def _ravex_linhas_romaneio_viagem(token, id_viagem):
     """Dado token e id_viagem, busca na API Ravex e monta (id_roteiro, linhas) para romaneio_por_item. Retorna (None, []) em erro."""
     if not obter_viagem_por_id or not obter_canhotos_viagem or not obter_notas_fiscais_viagem or not obter_itens_nota_fiscal or not obter_ponto_referencia:
@@ -2545,18 +2581,12 @@ def api_ravex_importar_romaneio():
             (str(ds), id_viagem),
         )
         for L in linhas:
-            data_json = _romaneio_data_para_json(L.get('data'))
             conn.execute(
                 """INSERT INTO romaneio_por_item
                    (dataset_id, row_index, id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                     codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
-                (
-                    str(ds), L['row_index'], L['id_roteiro'], L['id_viagem'], L['codigo_produto'], L['descricao'],
-                    L['quantidade'], L['unidade'], L['peso_bruto'], L['codigo_cliente'], L['endereco'], L['cidade'],
-                    L['placa'], L['motorista'], L['data_expedicao'],
-                    data_json,
-                ),
+                _romaneio_linha_para_tuple_pg(ds, L),
             )
         conn.commit()
         conn.close()
@@ -2625,18 +2655,12 @@ def api_ravex_sincronizar_periodo():
                     (str(ds), id_viagem),
                 )
                 for L in linhas:
-                    data_json = _romaneio_data_para_json(L.get('data'))
                     conn.execute(
                         """INSERT INTO romaneio_por_item
                            (dataset_id, row_index, id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                             codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
-                        (
-                            str(ds), L['row_index'], L['id_roteiro'], L['id_viagem'], L['codigo_produto'], L['descricao'],
-                            L['quantidade'], L['unidade'], L['peso_bruto'], L['codigo_cliente'], L['endereco'], L['cidade'],
-                            L['placa'], L['motorista'], L['data_expedicao'],
-                            data_json,
-                        ),
+                        _romaneio_linha_para_tuple_pg(ds, L),
                     )
                 viagens_processadas += 1
                 total_itens += len(linhas)
@@ -2714,18 +2738,12 @@ def api_ravex_importar_lista():
                     (str(ds), id_viagem),
                 )
                 for L in linhas:
-                    data_json = _romaneio_data_para_json(L.get('data'))
                     conn.execute(
                         """INSERT INTO romaneio_por_item
                            (dataset_id, row_index, id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                             codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
-                        (
-                            str(ds), L['row_index'], L['id_roteiro'], L['id_viagem'], L['codigo_produto'], L['descricao'],
-                            L['quantidade'], L['unidade'], L['peso_bruto'], L['codigo_cliente'], L['endereco'], L['cidade'],
-                            L['placa'], L['motorista'], L['data_expedicao'],
-                            data_json,
-                        ),
+                        _romaneio_linha_para_tuple_pg(ds, L),
                     )
                 viagens_processadas += 1
                 total_itens += len(linhas)
