@@ -274,7 +274,7 @@ def init_db():
         ):
             try:
                 conn.execute(col_sql)
-            conn.commit()
+                conn.commit()
             except Exception:
                 pass
 
@@ -373,8 +373,8 @@ def init_db():
                 atualizado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )'''
         )
-    conn.commit()
-    
+        conn.commit()
+
         conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_id_viagem ON produtos_bipados(id_viagem)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_colaboradores_nome ON colaboradores(nome) WHERE ativo = 1')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_colaboradores_tipo ON colaboradores(tipo) WHERE ativo = 1 AND tipo IS NOT NULL')
@@ -382,10 +382,10 @@ def init_db():
         conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_placas_placa ON placas(placa)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_codigo ON produtos_bipados(codigo_barras)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_viagem_codigo ON produtos_bipados(id_viagem, codigo_barras)')
-    conn.commit()
+        conn.commit()
     finally:
         try:
-    conn.close()
+            conn.close()
         except Exception:
             pass
 
@@ -802,8 +802,8 @@ def get_base_planilha():
             ds = _get_latest_dataset_id(conn)
             if not ds:
                 return jsonify({'headers': [], 'rows': []})
-    filtro_codigo = request.args.get('codigo_barras', '').strip()
-    filtro_descricao = request.args.get('descricao', '').strip()
+            filtro_codigo = request.args.get('codigo_barras', '').strip()
+            filtro_descricao = request.args.get('descricao', '').strip()
             if getattr(conn, 'kind', None) == 'pg':
                 # Filtros no SQL quando a tabela tem colunas ean, dun, descricao (mais rápido)
                 try:
@@ -833,9 +833,6 @@ def get_base_planilha():
                             if filtro_d and filtro_d not in str(data.get('Descricao') or data.get('descricao') or '').upper(): continue
                             out.append(r)
                         rows_raw = out
-                        else:
-                conn.close()
-                return jsonify({'headers': [], 'rows': []})
             conn.close()
             rows = []
             headers = []
@@ -851,7 +848,7 @@ def get_base_planilha():
         except Exception as e:
             try:
                 conn.close()
-                except Exception:
+            except Exception:
                 pass
             return jsonify({'erro': str(e)}), 500
 
@@ -1433,7 +1430,7 @@ def set_viagem_motorista(id_viagem):
     usuario = session.get('usuario', '')
     conn = get_db()
     if getattr(conn, 'kind', 'sqlite') == 'pg':
-    conn.execute(
+        conn.execute(
             '''INSERT INTO viagem_motorista (id_viagem, motorista, atualizado_por)
                VALUES (%s, %s, %s)
                ON CONFLICT (id_viagem) DO UPDATE SET motorista = EXCLUDED.motorista, atualizado_por = EXCLUDED.atualizado_por''',
@@ -1443,8 +1440,8 @@ def set_viagem_motorista(id_viagem):
         conn.execute(
             '''INSERT INTO viagem_motorista (id_viagem, motorista) VALUES (?, ?)
                ON CONFLICT(id_viagem) DO UPDATE SET motorista = excluded.motorista''',
-        (id_norm, motorista)
-    )
+            (id_norm, motorista)
+        )
     conn.commit()
     conn.close()
     return jsonify({'ok': True, 'motorista': motorista})
@@ -1461,7 +1458,7 @@ def set_viagem_placa(id_viagem):
     usuario = session.get('usuario', '')
     conn = get_db()
     if getattr(conn, 'kind', 'sqlite') == 'pg':
-    conn.execute(
+        conn.execute(
             '''INSERT INTO viagem_placa (id_viagem, placa, atualizado_por)
                VALUES (%s, %s, %s)
                ON CONFLICT (id_viagem) DO UPDATE SET placa = EXCLUDED.placa, atualizado_por = EXCLUDED.atualizado_por''',
@@ -1471,8 +1468,8 @@ def set_viagem_placa(id_viagem):
         conn.execute(
             '''INSERT INTO viagem_placa (id_viagem, placa) VALUES (?, ?)
                ON CONFLICT(id_viagem) DO UPDATE SET placa = excluded.placa''',
-        (id_norm, placa)
-    )
+            (id_norm, placa)
+        )
     conn.commit()
     conn.close()
     return jsonify({'ok': True, 'placa': placa})
@@ -1492,7 +1489,7 @@ def set_viagem_responsaveis(id_viagem):
     usuario = session.get('usuario', '')
     conn = get_db()
     if getattr(conn, 'kind', 'sqlite') == 'pg':
-    conn.execute(
+        conn.execute(
             '''INSERT INTO viagem_responsaveis (id_viagem, coordenador, conferente, ajudante1, ajudante2, atualizado_por)
                VALUES (%s, %s, %s, %s, %s, %s)
                ON CONFLICT (id_viagem) DO UPDATE SET
@@ -1512,8 +1509,8 @@ def set_viagem_responsaveis(id_viagem):
                  conferente = excluded.conferente,
                  ajudante1 = excluded.ajudante1,
                  ajudante2 = excluded.ajudante2''',
-        (id_norm, coordenador, conferente, ajudante1, ajudante2)
-    )
+            (id_norm, coordenador, conferente, ajudante1, ajudante2)
+        )
     conn.commit()
     conn.close()
     return jsonify({
@@ -1545,7 +1542,8 @@ def get_colaboradores_motoristas():
             ).fetchall()
             nomes = [r.get('nome', r[0]) for r in rows if r.get('nome') or (r[0] if hasattr(r, '__getitem__') else None)]
             conn.close()
-            else:
+            return jsonify({'nomes': nomes})
+        else:
             rows = conn.execute(
                 '''SELECT nome FROM colaboradores WHERE ativo = ? AND (tipo = ? OR UPPER(centro_custo) LIKE ? OR UPPER(centro_custo) LIKE ?) ORDER BY nome''',
                 (1, 'MOTORISTA', '%TRANSPORTE GRU%', '%TRANSPORTE PPY%')
@@ -1556,8 +1554,8 @@ def get_colaboradores_motoristas():
     except Exception:
         try:
             conn.close()
-    except Exception:
-        pass
+        except Exception:
+            pass
         return jsonify({'nomes': []})
 
 
@@ -1728,12 +1726,12 @@ def importar_colaboradores_planilha():
         conn = get_db()
         importados = 0
         atualizados = 0
-            for row in ws.iter_rows(min_row=2, values_only=True):
+        for row in ws.iter_rows(min_row=2, values_only=True):
             if len(row) <= col_nome:
-                    continue
+                continue
             nome = str(row[col_nome] or '').strip()
             if not nome:
-                    continue
+                continue
             funcao = str(row[col_funcao] or '').strip() if len(row) > col_funcao else ''
             centro_custo = str(row[col_centro_custo] or '').strip() if len(row) > col_centro_custo else ''
             # Identificar tipo baseado no centro de custo ou função
@@ -1842,28 +1840,28 @@ def _codigos_produto_na_viagem(id_viagem):
             if getattr(conn, 'kind', None) == 'pg':
                 ds = _get_latest_dataset_id(conn)
                 if ds:
-        id_norm = _normalizar_id_viagem(id_viagem)
+                    id_norm = _normalizar_id_viagem(id_viagem)
                     rows = conn.execute(
                         """SELECT DISTINCT codigo_produto FROM romaneio_por_item
                            WHERE dataset_id = ? AND (id_viagem = ? OR id_roteiro = ?)""",
                         (str(ds), id_norm or id_viagem, id_norm or id_viagem),
                     ).fetchall()
-        codigos = set()
+                    codigos = set()
                     for r in rows or []:
                         cp = (r.get('codigo_produto') or r[0] or '').strip()
-                if cp:
-                    codigos.add(cp)
-                    codigos.add(_normalizar_codigo_produto(cp) or cp)
+                        if cp:
+                            codigos.add(cp)
+                            codigos.add(_normalizar_codigo_produto(cp) or cp)
                     conn.close()
-        return codigos
-    except Exception:
+                    return codigos
+        except Exception:
             pass
         try:
             conn.close()
         except Exception:
             pass
         return set()
-        return set()
+    return set()
 
 
 @app.route('/api/conferencia/<id_viagem>/produto-na-lista', methods=['GET'])
@@ -3074,7 +3072,7 @@ def salvar_motivo_divergencia():
     usuario = session.get('usuario', '')
     conn = get_db()
     if getattr(conn, 'kind', 'sqlite') == 'pg':
-    conn.execute(
+        conn.execute(
             '''INSERT INTO divergencia_motivo (id_viagem, codigo_produto, motivo, registrado_por)
                VALUES (%s, %s, %s, %s)
                ON CONFLICT (id_viagem, codigo_produto) DO UPDATE SET motivo = EXCLUDED.motivo, registrado_por = EXCLUDED.registrado_por''',
@@ -3084,8 +3082,8 @@ def salvar_motivo_divergencia():
         conn.execute(
             '''INSERT INTO divergencia_motivo (id_viagem, codigo_produto, motivo) VALUES (?, ?, ?)
                ON CONFLICT(id_viagem, codigo_produto) DO UPDATE SET motivo = excluded.motivo''',
-        (id_norm, codigo_produto, motivo)
-    )
+            (id_norm, codigo_produto, motivo)
+        )
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'motivo': motivo})
@@ -4142,7 +4140,7 @@ def buscar_produto_na_planilha(codigo_barras):
             ds = _get_latest_dataset_id(conn)
             if not ds:
                 conn.close()
-            return None
+                return None
             codigo_busca = str(codigo_barras or '').strip()
             if not codigo_busca:
                 conn.close()
@@ -4171,12 +4169,12 @@ def buscar_produto_na_planilha(codigo_barras):
         except Exception:
             try:
                 conn.close()
-                except Exception:
-                    pass
+            except Exception:
+                pass
             return None
 
     # Sem planilha: dados vêm apenas do banco (DATABASE_URL)
-        return None
+    return None
 
 def _buscar_produto_por_codigo_interno(codigo_interno):
     """Busca produto por código interno: no banco (base_codigo_barras) quando DATABASE_URL está definido; senão na planilha."""
@@ -4186,7 +4184,7 @@ def _buscar_produto_por_codigo_interno(codigo_interno):
             ds = _get_latest_dataset_id(conn)
             if not ds:
                 conn.close()
-            return None
+                return None
             ci = str(codigo_interno or '').strip()
             if not ci:
                 conn.close()
@@ -4204,21 +4202,21 @@ def _buscar_produto_por_codigo_interno(codigo_interno):
                 'codigo_barras': r.get('ean') or r.get('dun') or ci,
                 'codigo_produto': r.get('codigo_interno') or ci,
                 'produto': r.get('descricao') or '',
-                    'quantidade': 1,
-                    'veiculo': '',
+                'quantidade': 1,
+                'veiculo': '',
                 'status': 'PENDENTE',
                 'peso_bruto': r.get('peso') or '',
                 'tipo_codigo': 'EAN' if r.get('ean') else 'DUN'
-                }
-            except Exception:
+            }
+        except Exception:
             try:
                 conn.close()
-    except Exception:
+            except Exception:
                 pass
             return None
 
     # Sem planilha: dados vêm apenas do banco
-        return None
+    return None
 
 
 @app.route('/api/buscar-produto/<codigo_barras>', methods=['GET'])
@@ -4883,10 +4881,10 @@ def get_painel_completo():
     """Um único request: estatísticas + viagens + gráficos. Estatísticas em 1 query para carregar mais rápido."""
     conn = get_db()
     if getattr(conn, 'kind', None) != 'pg':
-    conn.row_factory = sqlite3.Row
+        conn.row_factory = sqlite3.Row
     try:
-    # Estatísticas em uma única query (menos ida e volta ao DB)
-    row_stats = conn.execute('''
+        # Estatísticas em uma única query (menos ida e volta ao DB)
+        row_stats = conn.execute('''
         SELECT
             (SELECT COUNT(*) FROM produtos_bipados) AS total_bipados,
             (SELECT COUNT(*) FROM produtos_bipados WHERE status = 'CARREGADO') AS total_carregados,
@@ -4894,9 +4892,9 @@ def get_painel_completo():
             (SELECT COUNT(DISTINCT id_viagem) FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(COALESCE(id_viagem,'')) != '') AS total_viagens,
             (SELECT COALESCE(SUM(quantidade), 0) FROM produtos_bipados) AS soma_quantidades
     ''').fetchone()
-    veiculos_rows = conn.execute(
-        "SELECT veiculo, COUNT(*) as total FROM produtos_bipados WHERE status = ? AND trim(COALESCE(veiculo,'')) != '' GROUP BY veiculo", ('CARREGADO',)
-    ).fetchall()
+        veiculos_rows = conn.execute(
+            "SELECT veiculo, COUNT(*) as total FROM produtos_bipados WHERE status = ? AND trim(COALESCE(veiculo,'')) != '' GROUP BY veiculo", ('CARREGADO',)
+        ).fetchall()
         def _val(r, k):
             if r is None:
                 return 0
@@ -4905,45 +4903,45 @@ def get_painel_completo():
                 return v if v is not None else 0
             except (TypeError, KeyError, IndexError):
                 return 0
-    estatisticas = {
+        estatisticas = {
             'total_bipados': _val(row_stats, 'total_bipados'),
             'total_carregados': _val(row_stats, 'total_carregados'),
             'total_unicos': _val(row_stats, 'total_unicos'),
-        'total_divergencias': 0,
+            'total_divergencias': 0,
             'total_viagens': _val(row_stats, 'total_viagens'),
             'soma_quantidades': _val(row_stats, 'soma_quantidades'),
-        'veiculos': [dict(r) for r in veiculos_rows]
-    }
-    # Viagens
-    rows = conn.execute('''
+            'veiculos': [dict(r) for r in veiculos_rows]
+        }
+        # Viagens
+        rows = conn.execute('''
         SELECT id_viagem, SUM(quantidade) as total_bipados, MIN(data_hora) as inicio, MAX(data_hora) as fim
         FROM produtos_bipados
         WHERE id_viagem IS NOT NULL AND id_viagem != ''
         GROUP BY id_viagem
         ORDER BY MAX(data_hora) DESC
         LIMIT 25
-    ''').fetchall()
-    viagens = []
-    for r in rows:
-        inicio, fim = r['inicio'] or '', r['fim'] or ''
-        d_min = None
-        if inicio and fim:
-            t0, t1 = _parse_datetime(inicio), _parse_datetime(fim)
-            if t0 and t1:
-                d_min = max(0, int((t1 - t0).total_seconds() / 60))
-        viagens.append({
-            'id_viagem': r['id_viagem'],
-            'total_bipados': r['total_bipados'] or 0,
-            'inicio': inicio,
-            'fim': fim,
-            'duracao_minutos': d_min
-        })
+        ''').fetchall()
+        viagens = []
+        for r in rows:
+            inicio, fim = r['inicio'] or '', r['fim'] or ''
+            d_min = None
+            if inicio and fim:
+                t0, t1 = _parse_datetime(inicio), _parse_datetime(fim)
+                if t0 and t1:
+                    d_min = max(0, int((t1 - t0).total_seconds() / 60))
+            viagens.append({
+                'id_viagem': r['id_viagem'],
+                'total_bipados': r['total_bipados'] or 0,
+                'inicio': inicio,
+                'fim': fim,
+                'duracao_minutos': d_min
+            })
         wb = None
         from_cache = False
-    for v in viagens:
-        v['total_faltas'] = 0
-    id_viagem_placa = {}
-    romaneio_stats = {}
+        for v in viagens:
+            v['total_faltas'] = 0
+        id_viagem_placa = {}
+        romaneio_stats = {}
         if _usa_banco_para_dados() and getattr(conn, 'kind', None) == 'pg':
             try:
                 romaneio_stats = _estatisticas_romaneio_por_item_banco(conn)
@@ -4963,68 +4961,68 @@ def get_painel_completo():
                     except Exception:
                         pass
         if wb and not romaneio_stats:
-        try:
-            romaneio_stats = _estatisticas_romaneio_por_item(wb)
-            id_viagem_placa = romaneio_stats.get('id_viagem_to_placa') or {}
-        except Exception:
-            pass
-    placa_to_minutos = {}
-    for v in viagens:
-        vid = (v.get('id_viagem') or '').strip()
-        placa = (id_viagem_placa.get(vid) or '').strip() or 'Sem placa'
-        placa_to_minutos[placa] = placa_to_minutos.get(placa, 0) + (v.get('duracao_minutos') or 0)
-    tempo_por_placa = [{'placa': p, 'total_minutos': m} for p, m in sorted(placa_to_minutos.items(), key=lambda x: -x[1])]
+            try:
+                romaneio_stats = _estatisticas_romaneio_por_item(wb)
+                id_viagem_placa = romaneio_stats.get('id_viagem_to_placa') or {}
+            except Exception:
+                pass
+        placa_to_minutos = {}
+        for v in viagens:
+            vid = (v.get('id_viagem') or '').strip()
+            placa = (id_viagem_placa.get(vid) or '').strip() or 'Sem placa'
+            placa_to_minutos[placa] = placa_to_minutos.get(placa, 0) + (v.get('duracao_minutos') or 0)
+        tempo_por_placa = [{'placa': p, 'total_minutos': m} for p, m in sorted(placa_to_minutos.items(), key=lambda x: -x[1])]
         # Top itens: GROUP BY codigo_barras, produto (PostgreSQL exige todas as colunas não agregadas no GROUP BY)
-    rows_itens = conn.execute(
+        rows_itens = conn.execute(
             'SELECT produto, codigo_barras, SUM(quantidade) as total FROM produtos_bipados GROUP BY codigo_barras, produto ORDER BY total DESC LIMIT 15'
-    ).fetchall()
-    top_itens = []
-    for r in rows_itens:
-        label = (r['produto'] or '').strip() or (r['codigo_barras'] or '') or '-'
-        top_itens.append({'label': label[:50], 'total': r['total'] or 0})
-    rows_carros = conn.execute(
-        "SELECT veiculo, SUM(quantidade) as total FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != '' GROUP BY veiculo ORDER BY total DESC LIMIT 15"
-    ).fetchall()
-    carros_itens = [{'veiculo': r['veiculo'] or '', 'total': r['total'] or 0} for r in rows_carros]
-    carros_peso = []
-    if wb:
-        try:
-            mapa_peso = _build_mapa_peso_romaneio(wb)
-            mapa_barras_codigo = _build_mapa_barras_to_codigo_produto(wb)
-            rows_bipados = conn.execute(
-                "SELECT veiculo, codigo_barras, quantidade FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != ''"
-            ).fetchall()
-            peso_por_veiculo = {}
-            for r in rows_bipados:
-                veic = (r['veiculo'] or '').strip()
-                if not veic:
-                    continue
-                cb = (r['codigo_barras'] or '').strip()
-                qtd = int(r['quantidade'] or 0)
-                cp = mapa_barras_codigo.get(cb) or cb
-                peso_unit = mapa_peso.get(cp, 0) or mapa_peso.get(cb, 0)
-                peso_por_veiculo[veic] = peso_por_veiculo.get(veic, 0.0) + qtd * peso_unit
-            carros_peso = [{'veiculo': v, 'peso_total': round(p, 2)} for v, p in sorted(peso_por_veiculo.items(), key=lambda x: -x[1])[:15]]
-        except Exception:
-            pass
+        ).fetchall()
+        top_itens = []
+        for r in rows_itens:
+            label = (r['produto'] or '').strip() or (r['codigo_barras'] or '') or '-'
+            top_itens.append({'label': label[:50], 'total': r['total'] or 0})
+        rows_carros = conn.execute(
+            "SELECT veiculo, SUM(quantidade) as total FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != '' GROUP BY veiculo ORDER BY total DESC LIMIT 15"
+        ).fetchall()
+        carros_itens = [{'veiculo': r['veiculo'] or '', 'total': r['total'] or 0} for r in rows_carros]
+        carros_peso = []
+        if wb:
+            try:
+                mapa_peso = _build_mapa_peso_romaneio(wb)
+                mapa_barras_codigo = _build_mapa_barras_to_codigo_produto(wb)
+                rows_bipados = conn.execute(
+                    "SELECT veiculo, codigo_barras, quantidade FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != ''"
+                ).fetchall()
+                peso_por_veiculo = {}
+                for r in rows_bipados:
+                    veic = (r['veiculo'] or '').strip()
+                    if not veic:
+                        continue
+                    cb = (r['codigo_barras'] or '').strip()
+                    qtd = int(r['quantidade'] or 0)
+                    cp = mapa_barras_codigo.get(cb) or cb
+                    peso_unit = mapa_peso.get(cp, 0) or mapa_peso.get(cb, 0)
+                    peso_por_veiculo[veic] = peso_por_veiculo.get(veic, 0.0) + qtd * peso_unit
+                carros_peso = [{'veiculo': v, 'peso_total': round(p, 2)} for v, p in sorted(peso_por_veiculo.items(), key=lambda x: -x[1])[:15]]
+            except Exception:
+                pass
         elif romaneio_stats and romaneio_stats.get('peso_por_carro'):
             carros_peso = [{'veiculo': k, 'peso_total': v} for k, v in sorted(romaneio_stats['peso_por_carro'].items(), key=lambda x: -x[1])[:15]]
-    if wb and not from_cache:
-        try:
-            wb.close()
-        except Exception:
-            pass
-    conn.close()
-    romaneio_resp = {k: v for k, v in romaneio_stats.items() if k != 'id_viagem_to_placa'}
-    return jsonify({
-        'estatisticas': estatisticas,
-        'viagens': viagens,
-        'tempo_por_placa': tempo_por_placa,
-        'top_itens_bipados': top_itens,
-        'carros_mais_itens': carros_itens,
-        'carros_mais_peso': carros_peso,
-        'romaneio': romaneio_resp
-    })
+        if wb and not from_cache:
+            try:
+                wb.close()
+            except Exception:
+                pass
+        conn.close()
+        romaneio_resp = {k: v for k, v in romaneio_stats.items() if k != 'id_viagem_to_placa'}
+        return jsonify({
+            'estatisticas': estatisticas,
+            'viagens': viagens,
+            'tempo_por_placa': tempo_por_placa,
+            'top_itens_bipados': top_itens,
+            'carros_mais_itens': carros_itens,
+            'carros_mais_peso': carros_peso,
+            'romaneio': romaneio_resp
+        })
     except Exception as e:
         try:
             conn.rollback()
