@@ -1147,7 +1147,7 @@ def _get_viagem_info_planilha(id_viagem):
                 ds = _get_latest_dataset_id(conn)
                 if ds:
                     r = conn.execute(
-                        """SELECT data_expedicao, id_roteiro FROM excel_romaneio_por_item WHERE dataset_id = ? AND id_viagem = ? LIMIT 1""",
+                        """SELECT data_expedicao, id_roteiro FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ? LIMIT 1""",
                         (str(ds), id_viagem),
                     ).fetchone()
                     if r:
@@ -1802,7 +1802,7 @@ def get_data_expedicao(id_viagem):
 def debug_romaneio_headers():
     """Retorna os cabeçalhos do romaneio. Com DATABASE_URL, dados vêm do banco."""
     if _usa_banco_para_dados():
-        return jsonify({'erro': 'Dados vêm do banco (excel_romaneio_por_item).', 'headers': []})
+        return jsonify({'erro': 'Dados vêm do banco (romaneio_por_item).', 'headers': []})
     caminho_planilha = encontrar_planilha()
     if not caminho_planilha:
         return jsonify({'erro': 'Planilha não encontrada', 'headers': []})
@@ -1844,7 +1844,7 @@ def _codigos_produto_na_viagem(id_viagem):
                 if ds:
                     id_norm = _normalizar_id_viagem(id_viagem)
                     rows = conn.execute(
-                        """SELECT DISTINCT codigo_produto FROM excel_romaneio_por_item
+                        """SELECT DISTINCT codigo_produto FROM romaneio_por_item
                            WHERE dataset_id = ? AND (id_viagem = ? OR id_roteiro = ?)""",
                         (str(ds), id_norm or id_viagem, id_norm or id_viagem),
                     ).fetchall()
@@ -1901,7 +1901,7 @@ def get_conferencia(id_viagem=None):
     id_viagem = (id_viagem or '').strip()
     id_viagem_norm = _normalizar_id_viagem(id_viagem)
 
-    # Quando DATABASE_URL está definido: ler do banco (excel_romaneio_por_item)
+    # Quando DATABASE_URL está definido: ler do banco (romaneio_por_item)
     if _usa_banco_para_dados():
         conn = get_db()
         try:
@@ -1915,7 +1915,7 @@ def get_conferencia(id_viagem=None):
                 romaneio_rows = conn.execute(
                     """SELECT id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                               codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data
-                       FROM excel_romaneio_por_item
+                       FROM romaneio_por_item
                        WHERE dataset_id = ? AND (id_viagem = ? OR id_roteiro = ?)
                        ORDER BY row_index""",
                     (str(ds), id_viagem_norm or id_viagem, id_viagem_norm or id_viagem),
@@ -2306,7 +2306,7 @@ def get_conferencia(id_viagem=None):
 
 
 def _ravex_linhas_romaneio_viagem(token, id_viagem):
-    """Dado token e id_viagem, busca na API Ravex e monta (id_roteiro, linhas) para excel_romaneio_por_item. Retorna (None, []) em erro."""
+    """Dado token e id_viagem, busca na API Ravex e monta (id_roteiro, linhas) para romaneio_por_item. Retorna (None, []) em erro."""
     if not obter_viagem_por_id or not obter_canhotos_viagem or not obter_notas_fiscais_viagem or not obter_itens_nota_fiscal or not obter_ponto_referencia:
         return (None, [])
     viagem_full = obter_viagem_por_id(token, id_viagem)
@@ -2532,12 +2532,12 @@ def api_ravex_importar_romaneio():
         return jsonify({'erro': 'Nenhum dataset ativo. Importe a base (planilha) primeiro.'}), 400
     try:
         conn.execute(
-            """DELETE FROM excel_romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
+            """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
             (str(ds), id_viagem),
         )
         for L in linhas:
             conn.execute(
-                """INSERT INTO excel_romaneio_por_item
+                """INSERT INTO romaneio_por_item
                    (dataset_id, row_index, id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                     codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
@@ -2567,7 +2567,7 @@ def api_ravex_importar_romaneio():
 
 @app.route('/api/ravex/sincronizar-periodo', methods=['POST'])
 def api_ravex_sincronizar_periodo():
-    """Puxa todos os roteiros/viagens finalizadas no período da API Ravex e grava na tabela excel_romaneio_por_item."""
+    """Puxa todos os roteiros/viagens finalizadas no período da API Ravex e grava na tabela romaneio_por_item."""
     if not _usa_banco_para_dados():
         return jsonify({'erro': 'Configure DATABASE_URL para usar sincronização Ravex.'}), 400
     if not ravex_get_token or not viagens_finalizadas_por_periodo:
@@ -2611,12 +2611,12 @@ def api_ravex_sincronizar_periodo():
                 if id_roteiro is None or not linhas:
                     continue
                 conn.execute(
-                    """DELETE FROM excel_romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
+                    """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
                     (str(ds), id_viagem),
                 )
                 for L in linhas:
                     conn.execute(
-                        """INSERT INTO excel_romaneio_por_item
+                        """INSERT INTO romaneio_por_item
                            (dataset_id, row_index, id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                             codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
@@ -2699,12 +2699,12 @@ def api_ravex_importar_lista():
                     erros.append({'id': id_unico, 'erro': 'Sem itens na API'})
                     continue
                 conn.execute(
-                    """DELETE FROM excel_romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
+                    """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
                     (str(ds), id_viagem),
                 )
                 for L in linhas:
                     conn.execute(
-                        """INSERT INTO excel_romaneio_por_item
+                        """INSERT INTO romaneio_por_item
                            (dataset_id, row_index, id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                             codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
@@ -2809,7 +2809,7 @@ def _qual_coluna_romaneio(header_str, tipo):
 
 @app.route('/api/romaneio', methods=['GET'])
 def get_romaneio():
-    """Retorna dados do romaneio: do banco (excel_romaneio_por_item) quando DATABASE_URL está definido; senão planilha."""
+    """Retorna dados do romaneio: do banco (romaneio_por_item) quando DATABASE_URL está definido; senão planilha."""
     if _usa_banco_para_dados():
         conn = get_db()
         try:
@@ -2826,7 +2826,7 @@ def get_romaneio():
             filtro_codigo_produto = request.args.get('codigo_produto', '').strip()
             filtro_endereco = request.args.get('endereco', '').strip()
             filtro_cidade = request.args.get('cidade', '').strip()
-            sql = """SELECT data FROM excel_romaneio_por_item WHERE dataset_id = ?"""
+            sql = """SELECT data FROM romaneio_por_item WHERE dataset_id = ?"""
             params = [str(ds)]
             if filtro_id_viagem:
                 sql += " AND id_viagem = ?"
@@ -4512,7 +4512,7 @@ UNIDADE_CD_FILTRO = 'Unidade CD Guarulhos Ultrapão (Distribuidora)'
 
 def _estatisticas_romaneio_por_item_banco(conn):
     """
-    Lê da tabela excel_romaneio_por_item (dataset ativo) e retorna o mesmo formato de _estatisticas_romaneio_por_item:
+    Lê da tabela romaneio_por_item (dataset ativo) e retorna o mesmo formato de _estatisticas_romaneio_por_item:
     qtd_roteiros, qtd_veiculos, itens_total_por_codigo, itens_descricao_por_codigo, peso_por_carro, peso_total_geral, quantidade_total_itens, id_viagem_to_placa.
     Usado quando DATABASE_URL está definido para o painel usar a tabela em vez da planilha.
     """
@@ -4534,10 +4534,14 @@ def _estatisticas_romaneio_por_item_banco(conn):
     try:
         rows = conn.execute(
             """SELECT id_roteiro, id_viagem, codigo_produto, descricao, quantidade, peso_bruto, placa
-               FROM excel_romaneio_por_item WHERE dataset_id = ? ORDER BY row_index""",
+               FROM romaneio_por_item WHERE dataset_id = ? ORDER BY row_index""",
             (str(ds),),
         ).fetchall()
     except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         return out
     roteiros = set()
     veiculos = set()
@@ -4941,6 +4945,14 @@ def get_painel_completo():
                 except Exception:
                     pass
                 pass
+            finally:
+                # Em PostgreSQL, se _estatisticas_romaneio_por_item_banco falhar internamente e retornar sem raise,
+                # a conexão fica em "transaction aborted". Garantir estado limpo para as queries seguintes.
+                if getattr(conn, 'kind', None) == 'pg':
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
         if wb and not romaneio_stats:
             try:
                 romaneio_stats = _estatisticas_romaneio_por_item(wb)
