@@ -232,6 +232,46 @@ function initForms() {
     // Aba Importar Ravex: puxar todos os roteiros por período
     const btnImportarRavex = document.getElementById('btn-importar-ravex-periodo');
     const resultadoImportarRavex = document.getElementById('importar-ravex-resultado');
+    function ravexLoadingShow(msg) {
+        var el = document.getElementById('ravex-loading-overlay');
+        var text = document.getElementById('ravex-loading-text');
+        var box = document.getElementById('ravex-loading-box');
+        var barTrack = document.getElementById('ravex-loading-bar-track');
+        var errorActions = document.getElementById('ravex-error-actions');
+        if (el && text) {
+            text.textContent = msg || 'Puxando roteiro/viagem da API Ravex...';
+            if (box) box.classList.remove('ravex-loading-box--error');
+            if (barTrack) barTrack.style.display = '';
+            if (errorActions) errorActions.style.display = 'none';
+            el.style.display = 'flex';
+        }
+    }
+    function ravexLoadingHide() {
+        var el = document.getElementById('ravex-loading-overlay');
+        var box = document.getElementById('ravex-loading-box');
+        var barTrack = document.getElementById('ravex-loading-bar-track');
+        var errorActions = document.getElementById('ravex-error-actions');
+        if (el) el.style.display = 'none';
+        if (box) box.classList.remove('ravex-loading-box--error');
+        if (barTrack) barTrack.style.display = '';
+        if (errorActions) errorActions.style.display = 'none';
+    }
+    function ravexErrorShow(msg) {
+        var el = document.getElementById('ravex-loading-overlay');
+        var text = document.getElementById('ravex-loading-text');
+        var box = document.getElementById('ravex-loading-box');
+        var barTrack = document.getElementById('ravex-loading-bar-track');
+        var errorActions = document.getElementById('ravex-error-actions');
+        var okBtn = document.getElementById('ravex-overlay-ok');
+        if (el && text) {
+            text.textContent = msg || 'Erro ao processar.';
+            if (box) box.classList.add('ravex-loading-box--error');
+            if (barTrack) barTrack.style.display = 'none';
+            if (errorActions) errorActions.style.display = 'block';
+            el.style.display = 'flex';
+            if (okBtn) okBtn.onclick = function() { ravexLoadingHide(); };
+        }
+    }
     if (btnImportarRavex && resultadoImportarRavex) {
         btnImportarRavex.addEventListener('click', async function() {
             const dataInicio = (document.getElementById('importar-ravex-data-inicio') || {}).value || '';
@@ -251,10 +291,8 @@ function initForms() {
                 return;
             }
             btnImportarRavex.disabled = true;
-            resultadoImportarRavex.style.display = 'block';
-            resultadoImportarRavex.style.background = '#e3f2fd';
-            resultadoImportarRavex.style.border = '1px solid #2196f3';
-            resultadoImportarRavex.innerHTML = 'Puxando roteiros da API Ravex... Aguarde.';
+            resultadoImportarRavex.style.display = 'none';
+            ravexLoadingShow('Puxando roteiros da API Ravex... Aguarde.');
             try {
                 const r = await fetch(API_BASE + '/ravex/sincronizar-periodo', {
                     method: 'POST',
@@ -267,16 +305,23 @@ function initForms() {
                     resultadoImportarRavex.style.border = '1px solid #4caf50';
                     resultadoImportarRavex.innerHTML = 'Sincronização concluída. Viagens processadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens gravados: <strong>' + (data.total_itens || 0) + '</strong>. Viagens listadas no período: ' + (data.viagens_listadas || 0) + (data.erros && data.erros.length ? '. Erros em algumas viagens: ' + data.erros.length : '') + '.';
                     loadAllData();
+                    ravexLoadingHide();
                 } else {
                     resultadoImportarRavex.style.background = '#ffebee';
                     resultadoImportarRavex.style.border = '1px solid #f44336';
-                    resultadoImportarRavex.innerHTML = 'Erro: ' + (data.erro || r.statusText || 'Falha na sincronização');
+                    var errMsg = 'Erro: ' + (data.erro || r.statusText || 'Falha na sincronização');
+                    resultadoImportarRavex.innerHTML = errMsg;
+                    ravexErrorShow(errMsg);
                 }
             } catch (e) {
                 resultadoImportarRavex.style.background = '#ffebee';
                 resultadoImportarRavex.style.border = '1px solid #f44336';
-                resultadoImportarRavex.innerHTML = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
+                var errMsg = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
+                resultadoImportarRavex.innerHTML = errMsg;
+                ravexErrorShow(errMsg);
             }
+            resultadoImportarRavex.style.display = 'block';
+            resultadoImportarRavex.style.display = 'block';
             btnImportarRavex.disabled = false;
         });
     }
@@ -294,10 +339,8 @@ function initForms() {
                 return;
             }
             btnImportarRavexIdUnico.disabled = true;
-            resultadoImportarRavex.style.display = 'block';
-            resultadoImportarRavex.style.background = '#e3f2fd';
-            resultadoImportarRavex.style.border = '1px solid #2196f3';
-            resultadoImportarRavex.innerHTML = 'Puxando roteiro/viagem da API Ravex...';
+            resultadoImportarRavex.style.display = 'none';
+            ravexLoadingShow('Puxando roteiro/viagem da API Ravex...');
             try {
                 const r = await fetch(API_BASE + '/ravex/importar-romaneio', {
                     method: 'POST',
@@ -310,18 +353,24 @@ function initForms() {
                     resultadoImportarRavex.style.border = '1px solid #4caf50';
                     resultadoImportarRavex.innerHTML = 'Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.';
                     loadAllData();
+                    ravexLoadingHide();
                 } else {
                     resultadoImportarRavex.style.background = '#ffebee';
                     resultadoImportarRavex.style.border = '1px solid #f44336';
-                    let msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar');
+                    var msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar');
                     if (data.diagnostico) msg += ' ' + data.diagnostico;
                     resultadoImportarRavex.innerHTML = msg;
+                    ravexErrorShow(msg);
                 }
             } catch (e) {
                 resultadoImportarRavex.style.background = '#ffebee';
                 resultadoImportarRavex.style.border = '1px solid #f44336';
-                resultadoImportarRavex.innerHTML = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
+                var msg = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
+                resultadoImportarRavex.innerHTML = msg;
+                ravexErrorShow(msg);
             }
+            resultadoImportarRavex.style.display = 'block';
+            resultadoImportarRavex.style.display = 'block';
             btnImportarRavexIdUnico.disabled = false;
         });
     }
@@ -341,10 +390,8 @@ function initForms() {
                 return;
             }
             btnImportarRavexLista.disabled = true;
-            resultadoImportarRavex.style.display = 'block';
-            resultadoImportarRavex.style.background = '#e3f2fd';
-            resultadoImportarRavex.style.border = '1px solid #2196f3';
-            resultadoImportarRavex.innerHTML = 'Puxando ' + ids.length + ' roteiro(s)/viagem(ns) da API Ravex... Aguarde.';
+            resultadoImportarRavex.style.display = 'none';
+            ravexLoadingShow('Puxando ' + ids.length + ' roteiro(s)/viagem(ns) da API Ravex... Aguarde.');
             try {
                 const r = await fetch(API_BASE + '/ravex/importar-lista', {
                     method: 'POST',
@@ -357,18 +404,23 @@ function initForms() {
                     resultadoImportarRavex.style.border = '1px solid #4caf50';
                     resultadoImportarRavex.innerHTML = 'Lista processada. Viagens importadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>. IDs na lista: ' + (data.ids_recebidos || 0) + (data.erros && data.erros.length ? '. Erros: ' + data.erros.length : '') + '.';
                     loadAllData();
+                    ravexLoadingHide();
                 } else {
                     resultadoImportarRavex.style.background = '#ffebee';
                     resultadoImportarRavex.style.border = '1px solid #f44336';
-                    let msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar lista');
+                    var msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar lista');
                     if (data.diagnostico) msg += ' ' + data.diagnostico;
                     resultadoImportarRavex.innerHTML = msg;
+                    ravexErrorShow(msg);
                 }
             } catch (e) {
                 resultadoImportarRavex.style.background = '#ffebee';
                 resultadoImportarRavex.style.border = '1px solid #f44336';
-                resultadoImportarRavex.innerHTML = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
+                var msg = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
+                resultadoImportarRavex.innerHTML = msg;
+                ravexErrorShow(msg);
             }
+            resultadoImportarRavex.style.display = 'block';
             btnImportarRavexLista.disabled = false;
         });
     }
