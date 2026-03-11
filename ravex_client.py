@@ -28,7 +28,7 @@ def _get_ravex_credenciais():
                     import json
                     data = json.load(f)
                 user = (data.get("RAVEX_USER") or data.get("username") or "").strip()
-                pwd = (str(data.get("RAVEX_PASSWORD") or data.get("password") or "").strip().strip('"').strip("'")
+                pwd = (str(data.get("RAVEX_PASSWORD") or data.get("password") or "").strip().strip('"').strip("'"))
             except Exception:
                 pass
     return user, pwd
