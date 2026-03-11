@@ -2305,6 +2305,15 @@ def get_conferencia(id_viagem=None):
         return jsonify({'erro': f'Erro ao ler planilha: {str(e)}'}), 500
 
 
+def _romaneio_data_para_json(val):
+    """Converte campo 'data' do romaneio para string JSON (psycopg não adapta dict)."""
+    if val is None:
+        return '{}'
+    if isinstance(val, str):
+        return val
+    return json.dumps(val)
+
+
 def _ravex_linhas_romaneio_viagem(token, id_viagem):
     """Dado token e id_viagem, busca na API Ravex e monta (id_roteiro, linhas) para romaneio_por_item. Retorna (None, []) em erro."""
     if not obter_viagem_por_id or not obter_canhotos_viagem or not obter_notas_fiscais_viagem or not obter_itens_nota_fiscal or not obter_ponto_referencia:
@@ -2545,7 +2554,7 @@ def api_ravex_importar_romaneio():
                     str(ds), L['row_index'], L['id_roteiro'], L['id_viagem'], L['codigo_produto'], L['descricao'],
                     L['quantidade'], L['unidade'], L['peso_bruto'], L['codigo_cliente'], L['endereco'], L['cidade'],
                     L['placa'], L['motorista'], L['data_expedicao'],
-                    json.dumps(L['data']) if isinstance(L['data'], dict) else L['data'],
+                    _romaneio_data_para_json(L.get('data')),
                 ),
             )
         conn.commit()
@@ -2624,7 +2633,7 @@ def api_ravex_sincronizar_periodo():
                             str(ds), L['row_index'], L['id_roteiro'], L['id_viagem'], L['codigo_produto'], L['descricao'],
                             L['quantidade'], L['unidade'], L['peso_bruto'], L['codigo_cliente'], L['endereco'], L['cidade'],
                             L['placa'], L['motorista'], L['data_expedicao'],
-                            json.dumps(L['data']) if isinstance(L['data'], dict) else L['data'],
+                            _romaneio_data_para_json(L.get('data')),
                         ),
                     )
                 viagens_processadas += 1
@@ -2712,7 +2721,7 @@ def api_ravex_importar_lista():
                             str(ds), L['row_index'], L['id_roteiro'], L['id_viagem'], L['codigo_produto'], L['descricao'],
                             L['quantidade'], L['unidade'], L['peso_bruto'], L['codigo_cliente'], L['endereco'], L['cidade'],
                             L['placa'], L['motorista'], L['data_expedicao'],
-                            json.dumps(L['data']) if isinstance(L['data'], dict) else L['data'],
+                            _romaneio_data_para_json(L.get('data')),
                         ),
                     )
                 viagens_processadas += 1
