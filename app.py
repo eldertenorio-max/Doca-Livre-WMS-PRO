@@ -23,6 +23,8 @@ try:
         obter_itens_nota_fiscal,
         obter_canhotos_viagem,
         obter_ponto_referencia,
+        obter_pedido_por_id,
+        obter_veiculo_por_id,
         viagens_finalizadas_por_periodo,
     )
 except ImportError:
@@ -33,6 +35,8 @@ except ImportError:
     obter_itens_nota_fiscal = None
     obter_canhotos_viagem = None
     obter_ponto_referencia = None
+    obter_pedido_por_id = None
+    obter_veiculo_por_id = None
     viagens_finalizadas_por_periodo = None
 
 try:
@@ -2381,7 +2385,8 @@ def _romaneio_linha_para_tuple_pg(ds, L):
 
 
 def _ravex_linhas_romaneio_viagem(token, id_viagem):
-    """Dado token e id_viagem, busca na API Ravex e monta (id_roteiro, linhas) para romaneio_por_item. Retorna (None, []) em erro."""
+    """Dado token e id_viagem, busca na API Ravex e monta (id_roteiro, linhas) para romaneio_por_item. Retorna (None, []) em erro.
+    Melhorias alinhadas ao BASE VIAGENS: id_roteiro/identificador via roteiro e pedido; cliente/endereço por entrega por NF; placa/veículo fallback."""
     if not obter_viagem_por_id or not obter_canhotos_viagem or not obter_notas_fiscais_viagem or not obter_itens_nota_fiscal or not obter_ponto_referencia:
         return (None, [])
     viagem_full = obter_viagem_por_id(token, id_viagem)
@@ -2393,13 +2398,48 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
         id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or roteiro_obj.get('roteiroId') or roteiro_obj.get('idRoteiro') or '')
     if not id_roteiro:
         id_roteiro = str(viagem_full.get('roteiroId') or viagem_full.get('idRoteiro') or viagem_full.get('roteiro_id') or viagem_full.get('id_roteiro') or '')
+    # Via pedido da primeira NF quando a viagem não traz roteiro (igual BASE VIAGENS sync_to_excel)
+    if not id_roteiro and obter_notas_fiscais_viagem and obter_pedido_por_id:
+        nfs_pre = obter_notas_fiscais_viagem(token, id_viagem)
+        for nf in (nfs_pre or [])[:5]:
+            pedido = nf.get('pedido') if isinstance(nf, dict) else None
+            id_pedido = (pedido.get('id') or pedido.get('Id')) if isinstance(pedido, dict) else None
+            if not id_pedido:
+                continue
+            pedido_full = obter_pedido_por_id(token, id_pedido)
+            if not isinstance(pedido_full, dict):
+                continue
+            id_roteiro = str(pedido_full.get('roteiroId') or pedido_full.get('idRoteiro') or pedido_full.get('roteiro_id') or '')
+            if not id_roteiro:
+                rot = pedido_full.get('roteiro') or pedido_full.get('roteiroFaturado')
+                if isinstance(rot, dict):
+                    id_roteiro = str(rot.get('id') or rot.get('Id') or '')
+            if id_roteiro:
+                break
     identificador_rota = ''
     if isinstance(roteiro_obj, dict):
-        identificador_rota = (roteiro_obj.get('identificador') or roteiro_obj.get('nome') or roteiro_obj.get('descricao') or '').strip()
+        identificador_rota = (roteiro_obj.get('identificadorRota') or roteiro_obj.get('identificador_rota') or roteiro_obj.get('identificador') or roteiro_obj.get('nome') or roteiro_obj.get('descricao') or '').strip()
     if not identificador_rota:
         identificador_rota = (viagem_full.get('identificadorRota') or viagem_full.get('identificador') or viagem_full.get('nome') or '').strip()
+    # GET roteiro por id para completar identificador (igual BASE VIAGENS)
+    if not identificador_rota and id_roteiro and obter_roteiro_por_id:
+        try:
+            rid = int(id_roteiro)
+            roteiro_full = obter_roteiro_por_id(token, rid)
+            if isinstance(roteiro_full, dict):
+                identificador_rota = (roteiro_full.get('identificadorRota') or roteiro_full.get('identificador_rota') or roteiro_full.get('identificador') or roteiro_full.get('nome') or '').strip()
+        except (TypeError, ValueError):
+            pass
     entregas, meta_canhotos = obter_canhotos_viagem(token, id_viagem)
     placa = (meta_canhotos.get('veiculo') or meta_canhotos.get('veículo') or '').strip()
+    if not placa:
+        veiculo_viagem = viagem_full.get('veiculo') or viagem_full.get('veículo')
+        if isinstance(veiculo_viagem, dict):
+            placa = (veiculo_viagem.get('placa') or veiculo_viagem.get('Placa') or '').strip()
+        if not placa and isinstance(veiculo_viagem, dict) and (veiculo_viagem or {}).get('id') and obter_veiculo_por_id:
+            v_api = obter_veiculo_por_id(token, veiculo_viagem.get('id'))
+            if isinstance(v_api, dict):
+                placa = (v_api.get('placa') or v_api.get('Placa') or '').strip()
     motorista = (meta_canhotos.get('motoristaNome') or meta_canhotos.get('motorista_nome') or '').strip()
     data_ini = viagem_full.get('inicioDataHora') or viagem_full.get('dataInicioViagem') or ''
     data_expedicao = data_ini[:10] if isinstance(data_ini, str) and len(data_ini) >= 10 else str(data_ini or '')
@@ -2408,16 +2448,35 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
     row_index = 0
     for nf in nfs or []:
         nf_id = nf.get('id') or nf.get('Id')
-        itens = obter_itens_nota_fiscal(token, id_viagem, nf_id) if nf_id else []
+        numero_nf = str(nf.get('numero') or nf.get('numeroNF') or nf.get('numeroNf') or nf.get('nf') or '')
         pedido = nf.get('pedido') or {}
-        ent0 = (entregas or [{}])[0] if entregas else {}
-        dados_ent = (ent0.get('entrega') or ent0.get('canhoto') or ent0) if isinstance(ent0, dict) else {}
-        cliente = dados_ent.get('cliente') or dados_ent.get('Cliente')
-        ref_id = dados_ent.get('referenciaId') or dados_ent.get('referencia_id')
+        # Para esta NF, achar a entrega correspondente (canhoto que contém esta NF) — igual BASE VIAGENS _linhas_itens_nf_uma_viagem
+        info_ent = None
+        for ent in (entregas or []):
+            dados = ent.get('entrega') or ent.get('canhoto') or ent
+            if not isinstance(dados, dict):
+                dados = ent
+            for nf_ent in (dados.get('notasFiscais') or dados.get('notas_fiscais') or []):
+                if not isinstance(nf_ent, dict):
+                    if nf_ent == numero_nf or str(nf_ent) == str(nf_id):
+                        info_ent = dados
+                        break
+                    continue
+                if (nf_ent.get('numero') or nf_ent.get('id')) in (numero_nf, nf_id, str(nf_id)):
+                    info_ent = dados
+                    break
+            if info_ent:
+                break
+        dados_ent = info_ent if info_ent else ((entregas or [{}])[0] if entregas else {})
+        if isinstance(dados_ent, dict) and not dados_ent:
+            ent0 = (entregas or [{}])[0] if entregas else {}
+            dados_ent = (ent0.get('entrega') or ent0.get('canhoto') or ent0) if isinstance(ent0, dict) else {}
+        cliente = (dados_ent.get('cliente') or dados_ent.get('Cliente')) if isinstance(dados_ent, dict) else None
+        ref_id = (dados_ent.get('referenciaId') or dados_ent.get('referencia_id')) if isinstance(dados_ent, dict) else None
         ref = obter_ponto_referencia(token, ref_id) if ref_id else None
         cliente_nome = (cliente.get('nome', '') or cliente.get('razaoSocial', '')) if isinstance(cliente, dict) else ''
         cliente_razao = (cliente.get('razaoSocial', '') or cliente.get('nome', '')) if isinstance(cliente, dict) else ''
-        endereco = (cliente.get('endereco') or cliente.get('endereço') or '') if isinstance(cliente, dict) else ''
+        endereco = (cliente.get('endereco') or cliente.get('endereço') or cliente.get('logradouro') or '') if isinstance(cliente, dict) else ''
         cidade = (cliente.get('cidade') or '') if isinstance(cliente, dict) else ''
         if ref and isinstance(ref, dict):
             if not cliente_nome:
@@ -2425,10 +2484,15 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
             if not cliente_razao:
                 cliente_razao = ref.get('razaoSocial') or ref.get('nome') or ''
             if not endereco:
-                endereco = ref.get('endereco') or ref.get('endereço') or ''
+                endereco = ref.get('endereco') or ref.get('endereço') or ref.get('logradouro') or ''
             if not cidade:
                 cidade = ref.get('cidade') or ''
-        codigo_cliente = (dados_ent.get('cnpj') or (pedido.get('cnpj') if isinstance(pedido, dict) else '') or '').strip()
+        codigo_cliente = (dados_ent.get('cnpj') or dados_ent.get('Cnpj') or '') if isinstance(dados_ent, dict) else ''
+        if not codigo_cliente and isinstance(pedido, dict):
+            codigo_cliente = (pedido.get('cnpj') or pedido.get('Cnpj') or '').strip()
+        if not codigo_cliente and ref and isinstance(ref, dict):
+            codigo_cliente = (ref.get('cnpj') or ref.get('Cnpj') or '').strip()
+        itens = obter_itens_nota_fiscal(token, id_viagem, nf_id) if nf_id else []
         for item in itens or []:
             prod = item.get('produto') or {}
             codigo_produto = str(item.get('codigo') or item.get('referenciaItem') or prod.get('codigo') or '').strip()

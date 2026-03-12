@@ -139,17 +139,96 @@ def obter_itens_nota_fiscal(token, viagem_id, nota_fiscal_id):
 
 
 def obter_canhotos_viagem(token, viagem_id):
-    """GET /api/viagem-faturada/{viagemId}/canhotos-v2. Retorna (entregas, metadata)."""
+    """
+    GET /api/viagem-faturada/{viagemId}/canhotos-v2.
+    Enriquece com canhotos-v3 e canhotos (v1) quando faltar tipoVeiculo ou ajudantes (igual BASE VIAGENS).
+    Retorna (entregas, metadata).
+    """
     url = f"{RAVEX_BASE_URL}/api/viagem-faturada/{viagem_id}/canhotos-v2"
     raw = _get(url, token, 30)
     if not isinstance(raw, dict):
         return [], {}
     entregas = raw.get("entregas", raw.get("canhotos", [])) or []
+    if isinstance(raw.get("data"), list):
+        entregas = raw.get("data") or entregas
     meta = {
         "motoristaNome": raw.get("motoristaNome", raw.get("motorista_nome", "")) or "",
         "veiculo": raw.get("veiculo", raw.get("veículo", "")) or "",
+        "transportadoraNome": raw.get("transportadoraNome", raw.get("transportadora_nome", "")) or "",
+        "tipoVeiculo": raw.get("tipoVeiculo", raw.get("tipo_veiculo")),
+        "primeiroAjudante": raw.get("primeiroAjudante", raw.get("primeiro_ajudante", "")) or "",
+        "segundoAjudante": raw.get("segundoAjudante", raw.get("segundo_ajudante", "")) or "",
     }
+    # Enriquecer com canhotos-v3 se v2 não trouxe tipo/ajudantes
+    if not meta.get("tipoVeiculo") or not meta.get("primeiroAjudante") or not meta.get("segundoAjudante"):
+        try:
+            import requests
+            r3 = requests.get(
+                f"{RAVEX_BASE_URL}/api/viagem-faturada/{viagem_id}/canhotos-v3",
+                headers=_headers(token), timeout=20, verify=False
+            )
+            if r3.status_code == 200:
+                d3 = r3.json()
+                if d3.get("success") and isinstance(d3.get("data"), list) and d3["data"]:
+                    c3 = d3["data"][0]
+                    if not meta.get("tipoVeiculo"):
+                        tv = c3.get("tipoVeiculo") or c3.get("tipo_veiculo")
+                        if tv is not None:
+                            meta["tipoVeiculo"] = tv
+                    if not meta.get("primeiroAjudante"):
+                        pa = c3.get("primeiroAjudante") or c3.get("primeiro_ajudante") or c3.get("ajudante1")
+                        if pa:
+                            meta["primeiroAjudante"] = pa
+                    if not meta.get("segundoAjudante"):
+                        sa = c3.get("segundoAjudante") or c3.get("segundo_ajudante") or c3.get("ajudante2")
+                        if sa:
+                            meta["segundoAjudante"] = sa
+        except Exception:
+            pass
+    if not meta.get("primeiroAjudante") or not meta.get("segundoAjudante"):
+        try:
+            import requests
+            r1 = requests.get(
+                f"{RAVEX_BASE_URL}/api/viagem-faturada/{viagem_id}/canhotos",
+                headers=_headers(token), timeout=20, verify=False
+            )
+            if r1.status_code == 200:
+                d1 = r1.json()
+                if d1.get("success") and isinstance(d1.get("data"), list) and d1["data"]:
+                    c1 = d1["data"][0] if isinstance(d1["data"][0], dict) else {}
+                    if not meta.get("primeiroAjudante"):
+                        pa = c1.get("primeiroAjudante") or c1.get("primeiro_ajudante") or c1.get("ajudante1") or c1.get("ajudanteNome")
+                        if pa:
+                            meta["primeiroAjudante"] = pa
+                    if not meta.get("segundoAjudante"):
+                        sa = c1.get("segundoAjudante") or c1.get("segundo_ajudante") or c1.get("ajudante2")
+                        if sa:
+                            meta["segundoAjudante"] = sa
+        except Exception:
+            pass
     return entregas, meta
+
+
+def obter_pedido_por_id(token, pedido_id):
+    """GET /api/pedido/{id}. Retorna pedido completo (roteiroId, roteiro, etc.). Usado para obter id_roteiro quando a viagem não traz."""
+    if pedido_id is None or (isinstance(pedido_id, (int, float)) and int(pedido_id) <= 0):
+        return None
+    try:
+        pid = int(pedido_id)
+    except (TypeError, ValueError):
+        return None
+    return _get(f"{RAVEX_BASE_URL}/api/pedido/{pid}", token, 20)
+
+
+def obter_veiculo_por_id(token, veiculo_id):
+    """GET /api/veiculo/{id}. Retorna veículo com tipoVeiculo (nome). Usado para placa/tipo quando canhotos não traz."""
+    if veiculo_id is None or (isinstance(veiculo_id, (int, float)) and int(veiculo_id) <= 0):
+        return None
+    try:
+        vid = int(veiculo_id)
+    except (TypeError, ValueError):
+        return None
+    return _get(f"{RAVEX_BASE_URL}/api/veiculo/{vid}", token, 15)
 
 
 def obter_ponto_referencia(token, referencia_id):
