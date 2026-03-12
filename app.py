@@ -2454,12 +2454,9 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
                     pass
             if dt is not None:
                 try:
-                    if len(dt_str) <= 10:
-                        inicio = (dt - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-                        fim = (dt + timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-                    else:
-                        inicio = (dt - timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-                        fim = (dt + timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                    # obter-roteiro-por-periodo: pDataInicial/pDataFinal em YYYY-MM-DD (ex: 2026-03-11, 2026-03-13)
+                    inicio = (dt - timedelta(days=1)).strftime('%Y-%m-%d')
+                    fim = (dt + timedelta(days=1)).strftime('%Y-%m-%d')
                     roteiros_periodo = obter_roteiro_por_periodo(token, inicio, fim)
                     id_viagem_int = None
                     try:
@@ -2512,13 +2509,15 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
     # Não usar identificador da viagem quando for código técnico (ex: 260306090310SWB3F77); legível é tipo "38 - GRU - BARRA FUNDA"
     if identificador_rota and len(identificador_rota) >= 12 and ' - ' not in identificador_rota:
         identificador_rota = ''
-    # GET roteiro por id para completar identificador (igual BASE VIAGENS)
-    if not identificador_rota and id_roteiro and obter_roteiro_por_id:
+    # GET /api/roteiro/{id} é a fonte oficial do identificador (ex: .../api/roteiro/660002); usar sempre que tivermos id_roteiro
+    if id_roteiro and obter_roteiro_por_id:
         try:
             rid = int(id_roteiro)
             roteiro_full = obter_roteiro_por_id(token, rid)
             if isinstance(roteiro_full, dict):
-                identificador_rota = (roteiro_full.get('identificadorRota') or roteiro_full.get('identificador_rota') or roteiro_full.get('identificador') or roteiro_full.get('nome') or '').strip()
+                ident = (roteiro_full.get('identificadorRota') or roteiro_full.get('identificador_rota') or roteiro_full.get('identificador') or roteiro_full.get('nome') or '').strip()
+                if ident:
+                    identificador_rota = ident
         except (TypeError, ValueError):
             pass
     # Identificador legível tem formato tipo "38 - GRU - BARRA FUNDA"; código longo alfanumérico sem espaços/traços é inválido
@@ -2553,12 +2552,9 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
                         pass
             if dt is not None:
                 try:
-                    if len(dt_str) <= 10:
-                        inicio = (dt - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-                        fim = (dt + timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-                    else:
-                        inicio = (dt - timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-                        fim = (dt + timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                    # obter-roteiro-por-periodo: pDataInicial/pDataFinal em YYYY-MM-DD (ex: 2026-03-11, 2026-03-13)
+                    inicio = (dt - timedelta(days=1)).strftime('%Y-%m-%d')
+                    fim = (dt + timedelta(days=1)).strftime('%Y-%m-%d')
                     roteiros_periodo = obter_roteiro_por_periodo(token, inicio, fim)
                     id_viagem_int = None
                     try:

@@ -269,6 +269,8 @@ function initForms() {
         if (barTrack) barTrack.style.display = '';
         if (errorActions) errorActions.style.display = 'none';
     }
+    window.ravexLoadingShow = ravexLoadingShow;
+    window.ravexLoadingHide = ravexLoadingHide;
     function ravexErrorShow(msg) {
         var el = document.getElementById('ravex-loading-overlay');
         var text = document.getElementById('ravex-loading-text');
@@ -1384,7 +1386,11 @@ async function loadBasePlanilha(showLoadingState) {
     const thead = document.getElementById('thead-base');
     const tbody = document.getElementById('tbody-base');
     const isRefresh = tbody && tbody.rows.length > 0 && !(tbody.rows.length === 1 && tbody.rows[0].cells.length === 1 && tbody.rows[0].querySelector('.loading'));
-    if (thead && tbody && (showLoadingState === true || !isRefresh)) {
+    const showOverlay = thead && tbody && (showLoadingState === true || !isRefresh);
+    if (showOverlay && typeof window.ravexLoadingShow === 'function') {
+        window.ravexLoadingShow('Carregando BASE...');
+    }
+    if (thead && tbody && showOverlay) {
         tbody.innerHTML = '<tr><td colspan="6" class="loading">Carregando...</td></tr>';
     }
     const codigo = document.getElementById('filtro-base-codigo')?.value?.trim() || '';
@@ -1393,23 +1399,29 @@ async function loadBasePlanilha(showLoadingState) {
     if (codigo) params.set('codigo_barras', codigo);
     if (descricao) params.set('descricao', descricao);
     const url = '/base-planilha' + (params.toString() ? '?' + params.toString() : '');
-    const data = await fetchAPI(url);
-    
-    if (!thead || !tbody) return;
-    
-    if (data && data.headers && Array.isArray(data.headers)) {
-        thead.innerHTML = '<tr>' + data.headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
-        const cols = data.headers.length;
-        if (!data.rows || data.rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="' + cols + '" class="loading">Nenhum dado encontrado na base de produtos.</td></tr>';
-        } else {
-            tbody.innerHTML = data.rows.map(row => {
-                return '<tr>' + data.headers.map(h => `<td>${escapeHtml(row[h] != null ? String(row[h]) : '')}</td>`).join('') + '</tr>';
-            }).join('');
+    try {
+        const data = await fetchAPI(url);
+
+        if (!thead || !tbody) return;
+
+        if (data && data.headers && Array.isArray(data.headers)) {
+            thead.innerHTML = '<tr>' + data.headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
+            const cols = data.headers.length;
+            if (!data.rows || data.rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="' + cols + '" class="loading">Nenhum dado encontrado na base de produtos.</td></tr>';
+            } else {
+                tbody.innerHTML = data.rows.map(row => {
+                    return '<tr>' + data.headers.map(h => `<td>${escapeHtml(row[h] != null ? String(row[h]) : '')}</td>`).join('') + '</tr>';
+                }).join('');
+            }
+        } else if (data === null || (data && data.erro)) {
+            thead.innerHTML = '<tr><th>Erro</th></tr>';
+            tbody.innerHTML = '<tr><td class="loading">' + (data && data.erro ? escapeHtml(data.erro) : 'Erro ao carregar dados. Configure DATABASE_URL para usar as tabelas.') + '</td></tr>';
         }
-    } else if (data === null || (data && data.erro)) {
-        thead.innerHTML = '<tr><th>Erro</th></tr>';
-        tbody.innerHTML = '<tr><td class="loading">' + (data && data.erro ? escapeHtml(data.erro) : 'Erro ao carregar dados. Configure DATABASE_URL para usar as tabelas.') + '</td></tr>';
+    } finally {
+        if (showOverlay && typeof window.ravexLoadingHide === 'function') {
+            window.ravexLoadingHide();
+        }
     }
 }
 
@@ -2944,7 +2956,11 @@ async function loadRomaneio(showLoadingState) {
     const thead = document.getElementById('thead-romaneio');
     const tbody = document.getElementById('tbody-romaneio');
     const isRefresh = tbody && tbody.rows.length > 0 && !(tbody.rows.length === 1 && tbody.rows[0].cells.length === 1 && tbody.rows[0].querySelector('.loading'));
-    if (thead && tbody && (showLoadingState === true || !isRefresh)) {
+    const showOverlay = thead && tbody && (showLoadingState === true || !isRefresh);
+    if (showOverlay && typeof window.ravexLoadingShow === 'function') {
+        window.ravexLoadingShow('Carregando Romaneio por item...');
+    }
+    if (thead && tbody && showOverlay) {
         thead.innerHTML = '<tr><th>Carregando...</th></tr>';
         tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando...</td></tr>';
     }
@@ -2962,28 +2978,34 @@ async function loadRomaneio(showLoadingState) {
     if (endereco) params.set('endereco', endereco);
     if (cidade) params.set('cidade', cidade);
     const url = '/romaneio' + (params.toString() ? '?' + params.toString() : '');
-    const resp = await fetchAPI(url);
-    if (!thead || !tbody) return;
-    if (!resp || resp.erro) {
-        thead.innerHTML = '<tr><th>Erro</th></tr>';
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">' + (resp && resp.erro ? resp.erro : 'Erro ao carregar. Configure DATABASE_URL para usar as tabelas.') + '</td></tr>';
-        return;
+    try {
+        const resp = await fetchAPI(url);
+        if (!thead || !tbody) return;
+        if (!resp || resp.erro) {
+            thead.innerHTML = '<tr><th>Erro</th></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" class="loading">' + (resp && resp.erro ? resp.erro : 'Erro ao carregar. Configure DATABASE_URL para usar as tabelas.') + '</td></tr>';
+            return;
+        }
+        const headers = resp.headers || [];
+        const rows = resp.rows || [];
+        const temFiltro = idViagem || idRoteiro || codigoCliente || codigoProduto || endereco || cidade;
+        thead.innerHTML = '<tr>' + headers.map(h => '<th>' + (h || '-').replace(/</g, '&lt;') + '</th>').join('') + '</tr>';
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="' + Math.max(headers.length, 1) + '" class="loading">Nenhum registro encontrado' + (temFiltro ? ' com os filtros aplicados.' : ' na tabela de romaneio por item.') + '</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(row => {
+            return '<tr>' + headers.map(h => {
+                const val = row[h];
+                const txt = (val !== undefined && val !== null) ? String(val) : '';
+                return '<td>' + txt.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</td>';
+            }).join('') + '</tr>';
+        }).join('');
+    } finally {
+        if (showOverlay && typeof window.ravexLoadingHide === 'function') {
+            window.ravexLoadingHide();
+        }
     }
-    const headers = resp.headers || [];
-    const rows = resp.rows || [];
-    const temFiltro = idViagem || idRoteiro || codigoCliente || codigoProduto || endereco || cidade;
-    thead.innerHTML = '<tr>' + headers.map(h => '<th>' + (h || '-').replace(/</g, '&lt;') + '</th>').join('') + '</tr>';
-    if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="' + Math.max(headers.length, 1) + '" class="loading">Nenhum registro encontrado' + (temFiltro ? ' com os filtros aplicados.' : ' na tabela de romaneio por item.') + '</td></tr>';
-        return;
-    }
-    tbody.innerHTML = rows.map(row => {
-        return '<tr>' + headers.map(h => {
-            const val = row[h];
-            const txt = (val !== undefined && val !== null) ? String(val) : '';
-            return '<td>' + txt.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</td>';
-        }).join('') + '</tr>';
-    }).join('');
 }
 
 window.limparFiltrosRomaneio = function() {

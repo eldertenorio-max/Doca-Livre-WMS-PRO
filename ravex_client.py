@@ -111,9 +111,10 @@ def obter_roteiro_por_id(token, roteiro_id):
 
 def obter_roteiro_por_periodo(token, data_inicial_iso, data_final_iso):
     """
-    GET /api/roteiro/obter-roteiro-por-periodo?pDataInicial=<ISO>&pDataFinal=<ISO>.
-    Retorna lista de roteiros no período; cada um tem id, identificadorRota, viagemFaturada.id.
-    Usado quando a viagem não vem com identificadorRota/roteiro para achar o roteiro certo por viagemFaturada.id.
+    GET /api/roteiro/obter-roteiro-por-periodo?pDataInicial=<date>&pDataFinal=<date>.
+    Aceita datas em YYYY-MM-DD (ex: 2026-03-11, 2026-03-13) ou ISO com hora.
+    Retorna lista de roteiros no período; cada um tem id, identificadorRota, viagemFaturada.
+    Usado para achar o id do roteiro pela viagem (viagemFaturada.id == id_viagem).
     """
     if not data_inicial_iso or not data_final_iso:
         return []
