@@ -2390,11 +2390,9 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
     roteiro_obj = viagem_full.get('roteiro') or viagem_full.get('roteiroFaturado')
     id_roteiro = ''
     if isinstance(roteiro_obj, dict):
-        id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or '')
+        id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or roteiro_obj.get('roteiroId') or roteiro_obj.get('idRoteiro') or '')
     if not id_roteiro:
-        id_roteiro = str(viagem_full.get('roteiroId') or viagem_full.get('idRoteiro') or '')
-    if not id_roteiro:
-        id_roteiro = str(id_viagem)
+        id_roteiro = str(viagem_full.get('roteiroId') or viagem_full.get('idRoteiro') or viagem_full.get('roteiro_id') or viagem_full.get('id_roteiro') or '')
     identificador_rota = ''
     if isinstance(roteiro_obj, dict):
         identificador_rota = (roteiro_obj.get('identificador') or roteiro_obj.get('nome') or roteiro_obj.get('descricao') or '').strip()
@@ -2456,7 +2454,7 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
             }
             linhas.append({
                 'row_index': row_index,
-                'id_roteiro': id_roteiro or id_viagem,
+                'id_roteiro': id_roteiro or None,
                 'id_viagem': id_viagem,
                 'identificador_rota': identificador_rota or None,
                 'codigo_produto': codigo_produto or None,
