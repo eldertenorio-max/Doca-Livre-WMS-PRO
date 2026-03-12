@@ -247,6 +247,14 @@ def init_db():
             conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_id_viagem ON public.produtos_bipados(id_viagem)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_codigo ON public.produtos_bipados(codigo_barras)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_viagem_codigo ON public.produtos_bipados(id_viagem, codigo_barras)')
+            try:
+                conn.execute('ALTER TABLE public.romaneio_por_item ADD COLUMN identificador_rota TEXT')
+            except Exception:
+                pass
+            try:
+                conn.execute('ALTER TABLE public.excel_romaneio_por_item ADD COLUMN identificador_rota TEXT')
+            except Exception:
+                pass
             conn.commit()
             return
 
@@ -1144,7 +1152,7 @@ def _get_viagem_info_planilha(id_viagem):
                 ds = _get_latest_dataset_id(conn)
                 if ds:
                     r = conn.execute(
-                        """SELECT data_expedicao, id_roteiro FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ? LIMIT 1""",
+                        """SELECT data_expedicao, id_roteiro, identificador_rota FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ? LIMIT 1""",
                         (str(ds), id_viagem),
                     ).fetchone()
                     if r:
@@ -1152,6 +1160,8 @@ def _get_viagem_info_planilha(id_viagem):
                             result['data_expedicao'] = str(r.get('data_expedicao') or r[0] or '').strip()
                         if r.get('id_roteiro') or (r[1] if hasattr(r, '__getitem__') and len(r) > 1 else None):
                             result['id_roteiro'] = str(r.get('id_roteiro') or r[1] or '').strip()
+                        if r.get('identificador_rota') is not None or (len(r) > 2 and r[2] is not None if hasattr(r, '__getitem__') else False):
+                            result['identificador_rota'] = str(r.get('identificador_rota') or (r[2] if hasattr(r, '__getitem__') and len(r) > 2 else '') or '').strip()
             conn.close()
         except Exception:
             try:
@@ -1905,133 +1915,138 @@ def get_conferencia(id_viagem=None):
         try:
             if getattr(conn, 'kind', None) != 'pg':
                 conn.close()
-            else:
-                ds = _get_latest_dataset_id(conn)
-                if not ds:
-                    conn.close()
-                    return jsonify({'erro': 'Nenhum dataset ativo. Importe a base primeiro.'}), 400
-                romaneio_rows = conn.execute(
-                    """SELECT id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
+                return jsonify({'erro': 'Conferência disponível apenas com Postgres (DATABASE_URL).'}), 400
+            ds = _get_latest_dataset_id(conn)
+            if not ds:
+                conn.close()
+                return jsonify({'erro': 'Nenhum dataset ativo. Importe a base primeiro.'}), 400
+            romaneio_rows = conn.execute(
+                """SELECT id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                               codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data
                        FROM romaneio_por_item
                        WHERE dataset_id = ? AND (id_viagem = ? OR id_roteiro = ?)
                        ORDER BY row_index""",
-                    (str(ds), id_viagem_norm or id_viagem, id_viagem_norm or id_viagem),
-                ).fetchall()
-                base_rows = conn.execute(
-                    "SELECT codigo_interno, ean, dun FROM base_codigo_barras WHERE dataset_id = ?",
-                    (str(ds),),
-                ).fetchall()
-                mapa_codigo_barras = {}
-                mapa_barras_to_codigo = {}
-                for r in base_rows or []:
-                    cod = (r.get('codigo_interno') or r[0] or '').strip() if hasattr(r, 'get') else ''
-                    ean = (r.get('ean') or r[1] or '').strip() if hasattr(r, 'get') else ''
-                    dun = (r.get('dun') or r[2] or '').strip() if hasattr(r, 'get') else ''
-                    barcode = ean or dun
-                    if cod and barcode:
-                        mapa_codigo_barras[cod] = barcode
-                        mapa_barras_to_codigo[barcode] = cod
-                bipados = conn.execute(
-                    'SELECT codigo_barras, SUM(quantidade) as quantidade_bipada FROM produtos_bipados WHERE id_viagem = ? GROUP BY codigo_barras',
-                    (id_viagem_norm or id_viagem,),
-                ).fetchall()
-                bipados_dict = {}
-                for row in bipados or []:
-                    cb = (row.get('codigo_barras') or row[0] or '').strip()
-                    q = int(row.get('quantidade_bipada') or row[1] or 0)
-                    bipados_dict[cb] = bipados_dict.get(cb, 0) + q
-                bipados_por_codigo = {}
-                for cb, qtd in bipados_dict.items():
-                    cod_prod = mapa_barras_to_codigo.get(cb) or cb
-                    bipados_por_codigo[cod_prod] = bipados_por_codigo.get(cod_prod, 0) + qtd
-                resultado = []
-                for r in romaneio_rows or []:
-                    codigo_produto = (r.get('codigo_produto') or '').strip()
-                    if not codigo_produto:
-                        continue
-                    descricao = (r.get('descricao') or '').strip()
-                    quantidade_produto = int(r.get('quantidade') or 0)
-                    unidade = (r.get('unidade') or '').strip() or '-'
-                    peso_bruto = (r.get('peso_bruto') or '').strip() or '-'
-                    codigo_barras = mapa_codigo_barras.get(codigo_produto, '')
-                    quantidade_bipada = bipados_por_codigo.get(codigo_produto, 0) or bipados_dict.get(codigo_barras, 0)
-                    quantidade_falta = max(0, quantidade_produto - quantidade_bipada)
-                    quantidade_sobra = max(0, quantidade_bipada - quantidade_produto)
-                    if quantidade_sobra > 0:
-                        status_bipado = 'EXCEDENTE'
-                    elif quantidade_bipada >= quantidade_produto and quantidade_produto > 0:
-                        status_bipado = 'COMPLETO'
-                    elif quantidade_bipada > 0:
-                        status_bipado = 'PARCIAL'
-                    else:
-                        status_bipado = 'PENDENTE'
+                (str(ds), id_viagem_norm or id_viagem, id_viagem_norm or id_viagem),
+            ).fetchall()
+            base_rows = conn.execute(
+                "SELECT codigo_interno, ean, dun FROM base_codigo_barras WHERE dataset_id = ?",
+                (str(ds),),
+            ).fetchall()
+            mapa_codigo_barras = {}
+            mapa_barras_to_codigo = {}
+            for r in base_rows or []:
+                cod = ((r.get('codigo_interno') or '') if hasattr(r, 'get') else (r[0] if len(r) > 0 else '')).strip() if r else ''
+                ean = ((r.get('ean') or '') if hasattr(r, 'get') else (r[1] if len(r) > 1 else '')).strip() if r else ''
+                dun = ((r.get('dun') or '') if hasattr(r, 'get') else (r[2] if len(r) > 2 else '')).strip() if r else ''
+                barcode = ean or dun
+                if cod and barcode:
+                    mapa_codigo_barras[cod] = barcode
+                    mapa_barras_to_codigo[barcode] = cod
+            bipados = conn.execute(
+                'SELECT codigo_barras, SUM(quantidade) as quantidade_bipada FROM produtos_bipados WHERE id_viagem = ? GROUP BY codigo_barras',
+                (id_viagem_norm or id_viagem,),
+            ).fetchall()
+            bipados_dict = {}
+            for row in bipados or []:
+                cb = ((row.get('codigo_barras') or '') if hasattr(row, 'get') else (row[0] if len(row) > 0 else '')).strip()
+                q = int((row.get('quantidade_bipada') or 0) if hasattr(row, 'get') else (row[1] if len(row) > 1 else 0))
+                bipados_dict[cb] = bipados_dict.get(cb, 0) + q
+            bipados_por_codigo = {}
+            for cb, qtd in bipados_dict.items():
+                cod_prod = mapa_barras_to_codigo.get(cb) or cb
+                bipados_por_codigo[cod_prod] = bipados_por_codigo.get(cod_prod, 0) + qtd
+            resultado = []
+            for r in romaneio_rows or []:
+                codigo_produto = (r.get('codigo_produto') or '').strip()
+                if not codigo_produto:
+                    continue
+                descricao = (r.get('descricao') or '').strip()
+                quantidade_produto = int(r.get('quantidade') or 0)
+                unidade = (r.get('unidade') or '').strip() or '-'
+                peso_bruto = (r.get('peso_bruto') or '').strip() or '-'
+                codigo_barras = mapa_codigo_barras.get(codigo_produto, '')
+                quantidade_bipada = bipados_por_codigo.get(codigo_produto, 0) or bipados_dict.get(codigo_barras, 0)
+                quantidade_falta = max(0, quantidade_produto - quantidade_bipada)
+                quantidade_sobra = max(0, quantidade_bipada - quantidade_produto)
+                if quantidade_sobra > 0:
+                    status_bipado = 'EXCEDENTE'
+                elif quantidade_bipada >= quantidade_produto and quantidade_produto > 0:
+                    status_bipado = 'COMPLETO'
+                elif quantidade_bipada > 0:
+                    status_bipado = 'PARCIAL'
+                else:
+                    status_bipado = 'PENDENTE'
+                resultado.append({
+                    'codigo_produto': codigo_produto,
+                    'codigo_barras': codigo_barras,
+                    'produto': descricao,
+                    'quantidade_produto': quantidade_produto,
+                    'unidade': unidade,
+                    'peso_bruto': peso_bruto,
+                    'quantidade_bipada': quantidade_bipada,
+                    'quantidade_falta': quantidade_falta,
+                    'quantidade_sobra': quantidade_sobra,
+                    'aviso_sobra': ('Bipou %s a mais' % quantidade_sobra) if quantidade_sobra > 0 else '',
+                    'status_bipado': status_bipado,
+                    'id_viagem': id_viagem_norm or id_viagem,
+                })
+            extras = conn.execute(
+                """SELECT codigo_barras, MAX(codigo_interno) as codigo_interno, MAX(produto) as produto,
+                          SUM(quantidade) as quantidade_bipada, MAX(unidade) as unidade, MAX(peso) as peso
+                   FROM produtos_bipados
+                   WHERE id_viagem = ? AND codigo_barras IS NOT NULL AND trim(codigo_barras) != ''
+                   GROUP BY codigo_barras""",
+                (id_viagem_norm or id_viagem,),
+            ).fetchall()
+            codigos_romaneio = {str(it.get('codigo_barras') or '').strip() for it in resultado}
+            codigos_prod_romaneio = {str(it.get('codigo_produto') or '').strip() for it in resultado}
+            for row in extras or []:
+                cb = ((row.get('codigo_barras') or '') if hasattr(row, 'get') else (row[0] if len(row) > 0 else '')).strip()
+                cod_prod = mapa_barras_to_codigo.get(cb) or ((row.get('codigo_interno') or '') if hasattr(row, 'get') else (row[1] if len(row) > 1 else '')).strip() or cb
+                if cb and cb not in codigos_romaneio and cod_prod not in codigos_prod_romaneio:
+                    qtd = int((row.get('quantidade_bipada') or 0) if hasattr(row, 'get') else (row[3] if len(row) > 3 else 0))
                     resultado.append({
-                        'codigo_produto': codigo_produto,
-                        'codigo_barras': codigo_barras,
-                        'produto': descricao,
-                        'quantidade_produto': quantidade_produto,
-                        'unidade': unidade,
-                        'peso_bruto': peso_bruto,
-                        'quantidade_bipada': quantidade_bipada,
-                        'quantidade_falta': quantidade_falta,
-                        'quantidade_sobra': quantidade_sobra,
-                        'aviso_sobra': ('Bipou %s a mais' % quantidade_sobra) if quantidade_sobra > 0 else '',
-                        'status_bipado': status_bipado,
+                        'codigo_produto': cod_prod or cb,
+                        'codigo_barras': cb,
+                        'produto': (row.get('produto') or '').strip() or 'Item adicionado manualmente',
+                        'quantidade_produto': qtd,
+                        'unidade': (row.get('unidade') or '').strip() or '-',
+                        'peso_bruto': (row.get('peso') or '').strip() or '-',
+                        'quantidade_bipada': qtd,
+                        'quantidade_falta': 0,
+                        'quantidade_sobra': 0,
+                        'aviso_sobra': '',
+                        'status_bipado': 'COMPLETO',
                         'id_viagem': id_viagem_norm or id_viagem,
                     })
-                extras = conn.execute(
-                    """SELECT codigo_barras, MAX(codigo_interno) as codigo_interno, MAX(produto) as produto,
-                              SUM(quantidade) as quantidade_bipada, MAX(unidade) as unidade, MAX(peso) as peso
-                       FROM produtos_bipados
-                       WHERE id_viagem = ? AND codigo_barras IS NOT NULL AND trim(codigo_barras) != ''
-                       GROUP BY codigo_barras""",
-                    (id_viagem_norm or id_viagem,),
-                ).fetchall()
-                codigos_romaneio = {str(it.get('codigo_barras') or '').strip() for it in resultado}
-                codigos_prod_romaneio = {str(it.get('codigo_produto') or '').strip() for it in resultado}
-                for row in extras or []:
-                    cb = (row.get('codigo_barras') or row[0] or '').strip()
-                    cod_prod = mapa_barras_to_codigo.get(cb) or (row.get('codigo_interno') or '').strip() or cb
-                    if cb and cb not in codigos_romaneio and cod_prod not in codigos_prod_romaneio:
-                        qtd = int(row.get('quantidade_bipada') or row[3] or 0)
-                        resultado.append({
-                            'codigo_produto': cod_prod or cb,
-                            'codigo_barras': cb,
-                            'produto': (row.get('produto') or '').strip() or 'Item adicionado manualmente',
-                            'quantidade_produto': qtd,
-                            'unidade': (row.get('unidade') or '').strip() or '-',
-                            'peso_bruto': (row.get('peso') or '').strip() or '-',
-                            'quantidade_bipada': qtd,
-                            'quantidade_falta': 0,
-                            'quantidade_sobra': 0,
-                            'aviso_sobra': '',
-                            'status_bipado': 'COMPLETO',
-                            'id_viagem': id_viagem_norm or id_viagem,
-                        })
-                meta = {'id_roteiro': '', 'placa': '', 'motorista': '', 'data_expedicao': ''}
-                if romaneio_rows and len(romaneio_rows) > 0:
-                    r0 = romaneio_rows[0]
-                    meta['id_roteiro'] = (r0.get('id_roteiro') or '').strip() or ''
-                    meta['placa'] = (r0.get('placa') or '').strip() or ''
-                    meta['motorista'] = (r0.get('motorista') or '').strip() or ''
-                    meta['data_expedicao'] = (r0.get('data_expedicao') or '').strip() or ''
-                conn.close()
+            meta = {'id_roteiro': '', 'identificador_rota': '', 'placa': '', 'motorista': '', 'data_expedicao': ''}
+            if romaneio_rows and len(romaneio_rows) > 0:
+                r0 = romaneio_rows[0]
+                meta['id_roteiro'] = (r0.get('id_roteiro') or '').strip() or ''
+                meta['identificador_rota'] = (r0.get('identificador_rota') or '').strip() or ''
+                meta['placa'] = (r0.get('placa') or '').strip() or ''
+                meta['motorista'] = (r0.get('motorista') or '').strip() or ''
+                meta['data_expedicao'] = (r0.get('data_expedicao') or '').strip() or ''
+            conn.close()
+            try:
                 _carregar_motivos_divergencia(resultado)
-                return jsonify({
-                    'lista': resultado,
-                    'id_roteiro': meta['id_roteiro'],
-                    'id_viagem': id_viagem_norm or id_viagem,
-                    'placa': meta['placa'],
-                    'motorista': meta['motorista'],
-                    'data_expedicao': meta['data_expedicao'],
-                })
+            except Exception:
+                pass
+            return jsonify({
+                'lista': resultado,
+                'id_roteiro': meta['id_roteiro'],
+                'id_viagem': id_viagem_norm or id_viagem,
+                'identificador_rota': meta['identificador_rota'],
+                'placa': meta['placa'],
+                'motorista': meta['motorista'],
+                'data_expedicao': meta['data_expedicao'],
+            })
         except Exception as e:
             try:
                 conn.close()
             except Exception:
                 pass
-            return jsonify({'erro': str(e)}), 500
+            return jsonify({'erro': 'Erro ao carregar conferência: %s' % str(e)}), 500
 
     # Dados vêm apenas do banco; não usar mais planilha
     return jsonify({'erro': 'Configure DATABASE_URL. Os dados vêm apenas do banco de dados.'}), 400
@@ -2349,6 +2364,7 @@ def _romaneio_linha_para_tuple_pg(ds, L):
         _int(L.get('row_index')),
         _str(L.get('id_roteiro')),
         _str(L.get('id_viagem')),
+        _str(L.get('identificador_rota')),
         _str(L.get('codigo_produto')),
         _str(L.get('descricao')),
         _int(L.get('quantidade')),
@@ -2377,6 +2393,13 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
         id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or '')
     if not id_roteiro:
         id_roteiro = str(viagem_full.get('roteiroId') or viagem_full.get('idRoteiro') or '')
+    if not id_roteiro:
+        id_roteiro = str(id_viagem)
+    identificador_rota = ''
+    if isinstance(roteiro_obj, dict):
+        identificador_rota = (roteiro_obj.get('identificador') or roteiro_obj.get('nome') or roteiro_obj.get('descricao') or '').strip()
+    if not identificador_rota:
+        identificador_rota = (viagem_full.get('identificadorRota') or viagem_full.get('identificador') or viagem_full.get('nome') or '').strip()
     entregas, meta_canhotos = obter_canhotos_viagem(token, id_viagem)
     placa = (meta_canhotos.get('veiculo') or meta_canhotos.get('veículo') or '').strip()
     motorista = (meta_canhotos.get('motoristaNome') or meta_canhotos.get('motorista_nome') or '').strip()
@@ -2435,6 +2458,7 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
                 'row_index': row_index,
                 'id_roteiro': id_roteiro or None,
                 'id_viagem': id_viagem,
+                'identificador_rota': identificador_rota or None,
                 'codigo_produto': codigo_produto or None,
                 'descricao': descricao or None,
                 'quantidade': quantidade,
@@ -2625,9 +2649,9 @@ def api_ravex_importar_romaneio():
         for L in linhas:
             conn.execute(
                 """INSERT INTO romaneio_por_item
-                   (dataset_id, row_index, id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
+                   (dataset_id, row_index, id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                     codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
                 _romaneio_linha_para_tuple_pg(ds, L),
             )
         if linhas:
@@ -2701,9 +2725,9 @@ def api_ravex_sincronizar_periodo():
                 for L in linhas:
                     conn.execute(
                         """INSERT INTO romaneio_por_item
-                           (dataset_id, row_index, id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
+                           (dataset_id, row_index, id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                             codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
                         _romaneio_linha_para_tuple_pg(ds, L),
                     )
                 if linhas:
@@ -2786,9 +2810,9 @@ def api_ravex_importar_lista():
                 for L in linhas:
                     conn.execute(
                         """INSERT INTO romaneio_por_item
-                           (dataset_id, row_index, id_roteiro, id_viagem, codigo_produto, descricao, quantidade, unidade, peso_bruto,
+                           (dataset_id, row_index, id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                             codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
                         _romaneio_linha_para_tuple_pg(ds, L),
                     )
                 if linhas:
@@ -3072,7 +3096,7 @@ def _carregar_motivos_divergencia(lista):
                     'SELECT motivo FROM divergencia_motivo WHERE id_viagem = ? AND codigo_produto = ?',
                     (id_norm, cod)
                 ).fetchone()
-                motivos[key] = (row[0] if row and row[0] else '').strip() if row else ''
+                motivos[key] = (row.get('motivo', '') if (row and hasattr(row, 'get')) else (row[0] if row and len(row) > 0 else '')).strip()
     conn.close()
     for item in lista:
         vid = (item.get('id_viagem') or '').strip()

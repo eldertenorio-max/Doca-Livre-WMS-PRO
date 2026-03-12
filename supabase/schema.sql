@@ -237,6 +237,7 @@ create table if not exists public.excel_romaneio_por_item (
   -- Campos principais (indexados)
   id_roteiro text,
   id_viagem text,
+  identificador_rota text,
   codigo_produto text,
   descricao text,
   quantidade integer,
