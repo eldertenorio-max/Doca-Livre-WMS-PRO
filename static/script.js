@@ -2094,7 +2094,7 @@ async function salvarResponsaveisViagem() {
     }
 }
 
-// Buscar Itens da Viagem (aceita ID do roteiro ou ID da viagem; quando DATABASE_URL, importa da API Ravex)
+// Buscar Itens da Viagem (lê da base de dados romaneio_por_item; não chama API Ravex)
 window.buscarItensViagem = async function() {
     const idInput = document.getElementById('id-viagem').value.trim();
     
@@ -2111,7 +2111,7 @@ window.buscarItensViagem = async function() {
     var errorActions = document.getElementById('ravex-error-actions');
     function showOverlay(msg) {
         if (overlayEl && overlayText) {
-            overlayText.textContent = msg || 'Puxando roteiro/viagem da API Ravex... Aguarde.';
+            overlayText.textContent = msg || 'Carregando conferência... Aguarde.';
             if (overlayBox) overlayBox.classList.remove('ravex-loading-box--error');
             if (barTrack) barTrack.style.display = '';
             if (errorActions) errorActions.style.display = 'none';
@@ -2121,48 +2121,27 @@ window.buscarItensViagem = async function() {
     function hideOverlay() {
         if (overlayEl) overlayEl.style.display = 'none';
     }
-    showOverlay('Puxando roteiro/viagem da API Ravex e carregando conferência... Aguarde.');
-    showMessage('Buscando itens...', 'success');
+    showOverlay('Carregando conferência da base de dados (romaneio por item)... Aguarde.');
+    showMessage('Buscando itens na base...', 'success');
     
     var idViagem = idInput;
     try {
-        const res = await fetch(API_BASE + '/ravex/importar-romaneio', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: idInput })
-        });
-        const data = await res.json().catch(function() { return {}; });
-        if (res.ok && data.ok && data.id_viagem) {
-            idViagem = data.id_viagem;
-            if (data.mensagem) showMessage(data.mensagem, 'success');
-            var setVal = function(id, val) {
-                var el = document.getElementById(id);
-                if (el) el.textContent = (val && String(val).trim()) ? val : '-';
-            };
-            setVal('display-id-roteiro', data.id_roteiro || '-');
-            setVal('display-id-viagem', data.id_viagem || idViagem);
-        } else if (res.status === 400 && data.erro && (data.erro.indexOf('Configure DATABASE_URL') >= 0 || data.erro.indexOf('Nenhum dataset') >= 0)) {
-            idViagem = idInput;
-        } else if (!res.ok && data.erro) {
-            let msg = data.erro;
-            if (data.diagnostico) msg += ' ' + data.diagnostico;
-            showMessage(msg, 'error');
-            hideOverlay();
-            if (overlayEl && overlayText) {
-                overlayText.textContent = msg;
-                if (overlayBox) overlayBox.classList.add('ravex-loading-box--error');
-                if (barTrack) barTrack.style.display = 'none';
-                if (errorActions) errorActions.style.display = 'block';
-                var okBtn = document.getElementById('ravex-overlay-ok');
-                if (okBtn) okBtn.onclick = function() { hideOverlay(); };
-            }
-            return;
-        }
+        await loadConferencia(idInput);
+        idViagem = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim()) || document.getElementById('id-viagem').value.trim() || idInput;
+        await loadPeriodoCarregamento(idViagem);
+        await loadViagemInfo(idViagem);
     } catch (e) {
-        idViagem = idInput;
         showMessage('Erro ao conectar. Tente novamente.', 'error');
+        if (overlayEl && overlayText) {
+            overlayText.textContent = 'Erro: ' + (e.message || 'Não foi possível carregar');
+            if (overlayBox) overlayBox.classList.add('ravex-loading-box--error');
+            if (barTrack) barTrack.style.display = 'none';
+            if (errorActions) errorActions.style.display = 'block';
+            var okBtn = document.getElementById('ravex-overlay-ok');
+            if (okBtn) okBtn.onclick = function() { hideOverlay(); };
+        }
+    } finally {
         hideOverlay();
-        return;
     }
     
     document.getElementById('id-viagem-hidden').value = idViagem;
@@ -2184,13 +2163,6 @@ window.buscarItensViagem = async function() {
     
     loadColaboradoresMotoristas();
     loadPlacas();
-    try {
-        await loadConferencia(idViagem);
-        await loadPeriodoCarregamento(idViagem);
-        await loadViagemInfo(idViagem);
-    } finally {
-        hideOverlay();
-    }
     
     setTimeout(() => {
         const docaSelect = document.getElementById('doca');
@@ -2432,6 +2404,10 @@ async function loadConferencia(idViagem = null) {
                 var elP = document.getElementById('viagem-placa'); if (elP) elP.value = (conferencia.placa && String(conferencia.placa).trim()) ? conferencia.placa : '';
                 var elM = document.getElementById('viagem-motorista'); if (elM) elM.value = (conferencia.motorista && String(conferencia.motorista).trim()) ? conferencia.motorista : '';
                 var elD = document.getElementById('data-expedicao'); if (elD) elD.textContent = (conferencia.data_expedicao && String(conferencia.data_expedicao).trim()) ? conferencia.data_expedicao : '-';
+                if (conferencia.id_viagem && String(conferencia.id_viagem).trim()) {
+                    var h = document.getElementById('id-viagem-hidden'); if (h) h.value = conferencia.id_viagem;
+                    var i = document.getElementById('id-viagem'); if (i) i.value = conferencia.id_viagem;
+                }
             }
             const conferenciaUI = agruparConferenciaPorCodigoProduto(listaParaUI);
             const tbody = document.getElementById('tbody-conferencia');
