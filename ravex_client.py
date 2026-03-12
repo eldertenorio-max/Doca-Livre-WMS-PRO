@@ -109,6 +109,39 @@ def obter_roteiro_por_id(token, roteiro_id):
     return _get(f"{RAVEX_BASE_URL}/api/roteiro/{rid}", token, 20)
 
 
+def obter_roteiro_por_periodo(token, data_inicial_iso, data_final_iso):
+    """
+    GET /api/roteiro/obter-roteiro-por-periodo?pDataInicial=<ISO>&pDataFinal=<ISO>.
+    Retorna lista de roteiros no período; cada um tem id, identificadorRota, viagemFaturada.id.
+    Usado quando a viagem não vem com identificadorRota/roteiro para achar o roteiro certo por viagemFaturada.id.
+    """
+    if not data_inicial_iso or not data_final_iso:
+        return []
+    try:
+        import requests
+        url = f"{RAVEX_BASE_URL}/api/roteiro/obter-roteiro-por-periodo"
+        r = requests.get(
+            url,
+            params={"pDataInicial": data_inicial_iso, "pDataFinal": data_final_iso},
+            headers=_headers(token),
+            timeout=60,
+            verify=False,
+        )
+        if r.status_code != 200:
+            return []
+        data = r.json()
+        if not data.get("success"):
+            return []
+        raw = data.get("data")
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, dict):
+            return raw.get("data") or raw.get("items") or raw.get("result") or []
+        return []
+    except Exception:
+        return []
+
+
 def obter_viagem_por_id(token, viagem_id):
     """GET /api/viagem-faturada/{id}. Retorna viagem completa."""
     if viagem_id is None or (isinstance(viagem_id, (int, float)) and int(viagem_id) <= 0):
