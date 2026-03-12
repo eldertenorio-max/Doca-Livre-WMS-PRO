@@ -5,3 +5,6 @@
 
 ALTER TABLE public.romaneio_por_item ADD COLUMN IF NOT EXISTS identificador_rota TEXT;
 -- ALTER TABLE public.excel_romaneio_por_item ADD COLUMN IF NOT EXISTS identificador_rota TEXT;
+
+-- Preenche id_roteiro onde estiver NULL usando id_viagem (dados antigos ou quando a API nao retornou roteiro).
+UPDATE public.romaneio_por_item SET id_roteiro = id_viagem WHERE id_roteiro IS NULL AND id_viagem IS NOT NULL;

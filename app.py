@@ -2456,7 +2456,7 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
             }
             linhas.append({
                 'row_index': row_index,
-                'id_roteiro': id_roteiro or None,
+                'id_roteiro': id_roteiro or id_viagem,
                 'id_viagem': id_viagem,
                 'identificador_rota': identificador_rota or None,
                 'codigo_produto': codigo_produto or None,
