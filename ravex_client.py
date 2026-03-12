@@ -134,7 +134,14 @@ def obter_roteiro_por_periodo(token, data_inicial_iso, data_final_iso):
             return []
         raw = data.get("data")
         if isinstance(raw, list):
-            return raw
+            # Se cada item for wrapper { data: roteiro }, extrair roteiro para id/identificadorRota/viagemFaturada
+            out = []
+            for item in raw:
+                if isinstance(item, dict) and item.get("data") is not None and item.get("viagemFaturada") is None:
+                    out.append(item["data"])
+                else:
+                    out.append(item)
+            return out
         if isinstance(raw, dict):
             return raw.get("data") or raw.get("items") or raw.get("result") or []
         return []

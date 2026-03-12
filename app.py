@@ -2434,9 +2434,56 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
     viagem_full = obter_viagem_por_id(token, id_viagem)
     if not viagem_full:
         return (None, [])
-    roteiro_obj = viagem_full.get('roteiro') or viagem_full.get('roteiroFaturado')
+    # Prioridade: obter-roteiro-por-periodo é a chamada que traz id e identificadorRota; usar primeiro quando possível
     id_roteiro = ''
-    if isinstance(roteiro_obj, dict):
+    identificador_rota = ''
+    if obter_roteiro_por_periodo:
+        data_ini = viagem_full.get('inicioDataHora') or viagem_full.get('dataInicioViagem') or viagem_full.get('dataHoraInicio') or ''
+        if isinstance(data_ini, str) and len(data_ini) >= 10:
+            dt = None
+            dt_str = data_ini.replace('Z', '').strip()
+            try:
+                if len(dt_str) >= 19:
+                    dt = datetime.strptime(dt_str[:19], '%Y-%m-%dT%H:%M:%S')
+                else:
+                    dt = datetime.strptime(dt_str[:10], '%Y-%m-%d')
+            except (ValueError, TypeError):
+                try:
+                    dt = datetime.strptime(dt_str[:10], '%Y-%m-%d')
+                except (ValueError, TypeError):
+                    pass
+            if dt is not None:
+                try:
+                    if len(dt_str) <= 10:
+                        inicio = (dt - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                        fim = (dt + timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                    else:
+                        inicio = (dt - timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                        fim = (dt + timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                    roteiros_periodo = obter_roteiro_por_periodo(token, inicio, fim)
+                    id_viagem_int = None
+                    try:
+                        id_viagem_int = int(id_viagem)
+                    except (TypeError, ValueError):
+                        pass
+                    for rot in (roteiros_periodo or []):
+                        if not isinstance(rot, dict):
+                            continue
+                        rot_obj = rot.get('data') if rot.get('viagemFaturada') is None and rot.get('data') else rot
+                        vf = rot_obj.get('viagemFaturada') or rot_obj.get('viagem_faturada')
+                        vf_id = vf.get('id') or vf.get('Id') if isinstance(vf, dict) else None
+                        if vf_id is None and isinstance(vf, (int, float)):
+                            vf_id = vf
+                        if vf_id is None:
+                            vf_id = rot_obj.get('viagemFaturadaId') or rot_obj.get('viagemFaturada_id') or rot_obj.get('viagem_faturada_id')
+                        if vf_id is not None and (vf_id == id_viagem_int or str(vf_id) == str(id_viagem).strip()):
+                            id_roteiro = str(rot_obj.get('id') or rot_obj.get('Id') or rot.get('id') or rot.get('Id') or '')
+                            identificador_rota = (rot_obj.get('identificadorRota') or rot_obj.get('identificador_rota') or rot_obj.get('identificador') or rot_obj.get('nome') or rot.get('identificadorRota') or rot.get('identificador_rota') or '').strip()
+                            break
+                except Exception:
+                    pass
+    roteiro_obj = viagem_full.get('roteiro') or viagem_full.get('roteiroFaturado')
+    if not id_roteiro and isinstance(roteiro_obj, dict):
         id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or roteiro_obj.get('roteiroId') or roteiro_obj.get('idRoteiro') or '')
     if not id_roteiro:
         id_roteiro = str(viagem_full.get('roteiroId') or viagem_full.get('idRoteiro') or viagem_full.get('roteiro_id') or viagem_full.get('id_roteiro') or '')
@@ -2458,11 +2505,13 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
                     id_roteiro = str(rot.get('id') or rot.get('Id') or '')
             if id_roteiro:
                 break
-    identificador_rota = ''
-    if isinstance(roteiro_obj, dict):
+    if not identificador_rota and isinstance(roteiro_obj, dict):
         identificador_rota = (roteiro_obj.get('identificadorRota') or roteiro_obj.get('identificador_rota') or roteiro_obj.get('identificador') or roteiro_obj.get('nome') or roteiro_obj.get('descricao') or '').strip()
     if not identificador_rota:
         identificador_rota = (viagem_full.get('identificadorRota') or viagem_full.get('identificador') or viagem_full.get('nome') or '').strip()
+    # Não usar identificador da viagem quando for código técnico (ex: 260306090310SWB3F77); legível é tipo "38 - GRU - BARRA FUNDA"
+    if identificador_rota and len(identificador_rota) >= 12 and ' - ' not in identificador_rota:
+        identificador_rota = ''
     # GET roteiro por id para completar identificador (igual BASE VIAGENS)
     if not identificador_rota and id_roteiro and obter_roteiro_por_id:
         try:
@@ -2472,34 +2521,68 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
                 identificador_rota = (roteiro_full.get('identificadorRota') or roteiro_full.get('identificador_rota') or roteiro_full.get('identificador') or roteiro_full.get('nome') or '').strip()
         except (TypeError, ValueError):
             pass
+    # Identificador legível tem formato tipo "38 - GRU - BARRA FUNDA"; código longo alfanumérico sem espaços/traços é inválido
+    identificador_invalido = (
+        identificador_rota and len(identificador_rota) >= 15 and ' - ' not in identificador_rota
+    )
     # Quando a viagem não vem com roteiro/identificadorRota: GET obter-roteiro-por-periodo e achar roteiro onde viagemFaturada.id == id_viagem
-    if (not id_roteiro or not identificador_rota) and obter_roteiro_por_periodo:
+    if (not id_roteiro or not identificador_rota or identificador_invalido) and obter_roteiro_por_periodo:
+        if identificador_invalido:
+            identificador_rota = ''  # não persistir código inválido; tentar de novo pela API
         data_ini = viagem_full.get('inicioDataHora') or viagem_full.get('dataInicioViagem') or viagem_full.get('dataHoraInicio') or ''
         if isinstance(data_ini, str) and len(data_ini) >= 10:
+            dt = None
+            dt_str = data_ini.replace('Z', '').strip()
             try:
-                dt_str = data_ini.replace('Z', '')[:19]
-                dt = datetime.strptime(dt_str, '%Y-%m-%dT%H:%M:%S')
-                inicio = (dt - timedelta(hours=12)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-                fim = (dt + timedelta(hours=12)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-                roteiros_periodo = obter_roteiro_por_periodo(token, inicio, fim)
-                id_viagem_int = None
+                if len(dt_str) >= 26 and '.' in dt_str:
+                    dt = datetime.strptime(dt_str[:26].ljust(26, '0')[:26], '%Y-%m-%dT%H:%M:%S.%f')
+                elif len(dt_str) >= 19:
+                    dt = datetime.strptime(dt_str[:19], '%Y-%m-%dT%H:%M:%S')
+                else:
+                    dt = datetime.strptime(dt_str[:10], '%Y-%m-%d')
+            except (ValueError, TypeError):
                 try:
-                    id_viagem_int = int(id_viagem)
-                except (TypeError, ValueError):
+                    if len(dt_str) >= 19:
+                        dt = datetime.strptime(dt_str[:19], '%Y-%m-%dT%H:%M:%S')
+                    else:
+                        dt = datetime.strptime(dt_str[:10], '%Y-%m-%d')
+                except (ValueError, TypeError):
+                    try:
+                        dt = datetime.strptime(dt_str[:10], '%Y-%m-%d')
+                    except (ValueError, TypeError):
+                        pass
+            if dt is not None:
+                try:
+                    if len(dt_str) <= 10:
+                        inicio = (dt - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                        fim = (dt + timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                    else:
+                        inicio = (dt - timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                        fim = (dt + timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                    roteiros_periodo = obter_roteiro_por_periodo(token, inicio, fim)
+                    id_viagem_int = None
+                    try:
+                        id_viagem_int = int(id_viagem)
+                    except (TypeError, ValueError):
+                        pass
+                    for rot in (roteiros_periodo or []):
+                        if not isinstance(rot, dict):
+                            continue
+                        rot_obj = rot.get('data') if rot.get('viagemFaturada') is None and rot.get('data') else rot
+                        vf = rot_obj.get('viagemFaturada') or rot_obj.get('viagem_faturada')
+                        vf_id = vf.get('id') or vf.get('Id') if isinstance(vf, dict) else None
+                        if vf_id is None and isinstance(vf, (int, float)):
+                            vf_id = vf
+                        if vf_id is None:
+                            vf_id = rot_obj.get('viagemFaturadaId') or rot_obj.get('viagemFaturada_id') or rot_obj.get('viagem_faturada_id')
+                        if vf_id is not None and (vf_id == id_viagem_int or str(vf_id) == str(id_viagem).strip()):
+                            if not id_roteiro:
+                                id_roteiro = str(rot_obj.get('id') or rot_obj.get('Id') or rot.get('id') or rot.get('Id') or '')
+                            if not identificador_rota:
+                                identificador_rota = (rot_obj.get('identificadorRota') or rot_obj.get('identificador_rota') or rot_obj.get('identificador') or rot_obj.get('nome') or rot.get('identificadorRota') or rot.get('identificador_rota') or '').strip()
+                            break
+                except Exception:
                     pass
-                for rot in (roteiros_periodo or []):
-                    if not isinstance(rot, dict):
-                        continue
-                    vf = rot.get('viagemFaturada') or rot.get('viagem_faturada')
-                    vf_id = vf.get('id') or vf.get('Id') if isinstance(vf, dict) else None
-                    if vf_id is not None and (vf_id == id_viagem_int or str(vf_id) == str(id_viagem).strip()):
-                        if not id_roteiro:
-                            id_roteiro = str(rot.get('id') or rot.get('Id') or '')
-                        if not identificador_rota:
-                            identificador_rota = (rot.get('identificadorRota') or rot.get('identificador_rota') or rot.get('identificador') or rot.get('nome') or '').strip()
-                        break
-            except Exception:
-                pass
     entregas, meta_canhotos = obter_canhotos_viagem(token, id_viagem)
     placa = (meta_canhotos.get('veiculo') or meta_canhotos.get('veículo') or '').strip()
     if not placa:
