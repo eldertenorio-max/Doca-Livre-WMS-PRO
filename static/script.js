@@ -1380,10 +1380,11 @@ async function loadPainelGraficos() {
 }
 
 // Carregar BASE da Planilha (todas as colunas, com filtros)
-async function loadBasePlanilha() {
+async function loadBasePlanilha(showLoadingState) {
     const thead = document.getElementById('thead-base');
     const tbody = document.getElementById('tbody-base');
-    if (thead && tbody) {
+    const isRefresh = tbody && tbody.rows.length > 0 && !(tbody.rows.length === 1 && tbody.rows[0].cells.length === 1 && tbody.rows[0].querySelector('.loading'));
+    if (thead && tbody && (showLoadingState === true || !isRefresh)) {
         tbody.innerHTML = '<tr><td colspan="6" class="loading">Carregando...</td></tr>';
     }
     const codigo = document.getElementById('filtro-base-codigo')?.value?.trim() || '';
@@ -1420,13 +1421,13 @@ function escapeHtml(text) {
 }
 
 function initFiltrosBase() {
-    document.getElementById('btn-filtrar-base')?.addEventListener('click', () => loadBasePlanilha());
+    document.getElementById('btn-filtrar-base')?.addEventListener('click', () => loadBasePlanilha(true));
     document.getElementById('btn-limpar-filtros-base')?.addEventListener('click', () => {
         const cod = document.getElementById('filtro-base-codigo');
         const desc = document.getElementById('filtro-base-descricao');
         if (cod) cod.value = '';
         if (desc) desc.value = '';
-        loadBasePlanilha();
+        loadBasePlanilha(true);
     });
 }
 
@@ -2824,12 +2825,13 @@ async function loadExtrato() {
         if (avisoDivergenteEl) avisoDivergenteEl.style.display = 'none';
         return;
     }
-    const [extrato, periodo, viagemInfo] = await Promise.all([
+    const [extratoResp, periodo, viagemInfo] = await Promise.all([
         fetchAPI(`/conferencia/${encodeURIComponent(idViagem)}`),
         fetchAPI(`/viagem/${encodeURIComponent(idViagem)}/periodo`),
         fetchAPI(`/viagem/${encodeURIComponent(idViagem)}/info`)
     ]);
-    if (!extrato || extrato.erro || extrato.length === 0) {
+    const extrato = (extratoResp && extratoResp.lista && Array.isArray(extratoResp.lista)) ? extratoResp.lista : [];
+    if (!extratoResp || extratoResp.erro || extrato.length === 0) {
         tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhum item encontrado para esta viagem. Bipe os itens na aba Conferência primeiro.</td></tr>';
         if (resumoEl) resumoEl.style.display = 'none';
         if (btnExcluir) btnExcluir.style.display = 'none';
@@ -2938,10 +2940,11 @@ async function loadExtrato() {
 }
 
 // Carregar Romaneio da Planilha (todas as colunas, com filtros por id_viagem, id_roteiro, codigo_cliente, codigo_produto, endereco, cidade)
-async function loadRomaneio() {
+async function loadRomaneio(showLoadingState) {
     const thead = document.getElementById('thead-romaneio');
     const tbody = document.getElementById('tbody-romaneio');
-    if (thead && tbody) {
+    const isRefresh = tbody && tbody.rows.length > 0 && !(tbody.rows.length === 1 && tbody.rows[0].cells.length === 1 && tbody.rows[0].querySelector('.loading'));
+    if (thead && tbody && (showLoadingState === true || !isRefresh)) {
         thead.innerHTML = '<tr><th>Carregando...</th></tr>';
         tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando...</td></tr>';
     }
@@ -2989,7 +2992,7 @@ window.limparFiltrosRomaneio = function() {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
-    loadRomaneio();
+    loadRomaneio(true);
 };
 
 // Atualizar Romaneio (função global para uso em onclick)
