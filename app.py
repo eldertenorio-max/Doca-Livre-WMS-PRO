@@ -2024,6 +2024,7 @@ def get_conferencia(id_viagem=None):
                         'id_viagem': id_viagem_norm or id_viagem,
                     })
             meta = {'id_roteiro': '', 'identificador_rota': '', 'placa': '', 'motorista': '', 'data_expedicao': ''}
+            id_para_lookup = id_viagem_norm or id_viagem
             if romaneio_rows and len(romaneio_rows) > 0:
                 r0 = romaneio_rows[0]
                 meta['id_roteiro'] = (r0.get('id_roteiro') or '').strip() or ''
@@ -2031,6 +2032,18 @@ def get_conferencia(id_viagem=None):
                 meta['placa'] = (r0.get('placa') or '').strip() or ''
                 meta['motorista'] = (r0.get('motorista') or '').strip() or ''
                 meta['data_expedicao'] = (r0.get('data_expedicao') or '').strip() or ''
+                id_para_lookup = (r0.get('id_viagem') or '').strip() or id_para_lookup
+            # Se placa/motorista vierem vazios do romaneio, completar com viagem_placa e viagem_motorista
+            if not meta['placa'] or not meta['motorista']:
+                try:
+                    rp = conn.execute("SELECT placa FROM viagem_placa WHERE id_viagem = ?", (id_para_lookup,)).fetchone()
+                    rm = conn.execute("SELECT motorista FROM viagem_motorista WHERE id_viagem = ?", (id_para_lookup,)).fetchone()
+                    if rp and not meta['placa']:
+                        meta['placa'] = (rp.get('placa') if hasattr(rp, 'get') else (rp[0] if len(rp) > 0 else '') or '').strip()
+                    if rm and not meta['motorista']:
+                        meta['motorista'] = (rm.get('motorista') if hasattr(rm, 'get') else (rm[0] if len(rm) > 0 else '') or '').strip()
+                except Exception:
+                    pass
             conn.close()
             try:
                 _carregar_motivos_divergencia(resultado)
