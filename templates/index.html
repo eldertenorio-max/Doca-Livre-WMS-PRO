@@ -651,6 +651,14 @@
                 </div>
 
                 <div id="importar-ravex-resultado" style="display: none; padding: 12px; border-radius: 8px; margin-top: 16px;"></div>
+
+                <!-- Modal de aviso concluído (centralizado, com OK) -->
+                <div id="ravex-modal-concluido" style="display: none; position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.4); align-items: center; justify-content: center;">
+                    <div style="background: #fff; border-radius: 12px; padding: 24px; max-width: 420px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); text-align: center;">
+                        <div id="ravex-modal-concluido-mensagem" style="background: #e8f5e9; border: 1px solid #4caf50; border-radius: 8px; padding: 16px; margin-bottom: 20px; color: #1b5e20;"></div>
+                        <button type="button" id="ravex-modal-concluido-ok" class="btn btn-primary" style="min-width: 100px;">OK</button>
+                    </div>
+                </div>
             </div>
 
             <!-- ABA RELATÓRIOS -->

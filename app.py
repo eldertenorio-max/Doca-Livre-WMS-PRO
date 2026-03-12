@@ -2336,6 +2336,25 @@ def get_conferencia(id_viagem=None):
         return jsonify({'erro': f'Erro ao ler planilha: {str(e)}'}), 500
 
 
+def _normalizar_cidade_nome(val):
+    """Extrai o nome da cidade por extenso. Se val for objeto/dict (ex: {id, nome, uf, codigoIbge}), retorna nome. Se for string JSON, parse e retorna nome. Caso contrário retorna a string."""
+    if val is None:
+        return ''
+    if isinstance(val, dict):
+        return (val.get('nome') or val.get('nomeCidade') or '').strip() or ''
+    if isinstance(val, str):
+        s = val.strip()
+        if s.startswith('{'):
+            try:
+                obj = json.loads(s)
+                if isinstance(obj, dict):
+                    return (obj.get('nome') or obj.get('nomeCidade') or '').strip() or ''
+            except Exception:
+                pass
+        return s
+    return str(val).strip()
+
+
 def _romaneio_data_para_json(val):
     """Converte campo 'data' do romaneio para string JSON (psycopg não adapta dict)."""
     if val is None:
@@ -2362,6 +2381,10 @@ def _romaneio_linha_para_tuple_pg(ds, L):
             return int(v)
         except (TypeError, ValueError):
             return 0
+    # cidade: gravar sempre como nome por extenso (não como objeto JSON)
+    cidade_val = L.get('cidade')
+    if cidade_val is not None and (isinstance(cidade_val, (dict, list)) or (isinstance(cidade_val, str) and cidade_val.strip().startswith('{'))):
+        cidade_val = _normalizar_cidade_nome(cidade_val)
     data_json = _romaneio_data_para_json(L.get('data'))
     return (
         str(ds),
@@ -2376,7 +2399,7 @@ def _romaneio_linha_para_tuple_pg(ds, L):
         _str(L.get('peso_bruto')),
         _str(L.get('codigo_cliente')),
         _str(L.get('endereco')),
-        _str(L.get('cidade')),
+        _str(cidade_val if cidade_val is not None else L.get('cidade')),
         _str(L.get('placa')),
         _str(L.get('motorista')),
         _str(L.get('data_expedicao')),
@@ -2478,6 +2501,7 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
         cliente_razao = (cliente.get('razaoSocial', '') or cliente.get('nome', '')) if isinstance(cliente, dict) else ''
         endereco = (cliente.get('endereco') or cliente.get('endereço') or cliente.get('logradouro') or '') if isinstance(cliente, dict) else ''
         cidade = (cliente.get('cidade') or '') if isinstance(cliente, dict) else ''
+        cidade = _normalizar_cidade_nome(cidade)
         if ref and isinstance(ref, dict):
             if not cliente_nome:
                 cliente_nome = ref.get('nome') or ref.get('razaoSocial') or ''
@@ -2486,7 +2510,7 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem):
             if not endereco:
                 endereco = ref.get('endereco') or ref.get('endereço') or ref.get('logradouro') or ''
             if not cidade:
-                cidade = ref.get('cidade') or ''
+                cidade = _normalizar_cidade_nome(ref.get('cidade'))
         codigo_cliente = (dados_ent.get('cnpj') or dados_ent.get('Cnpj') or '') if isinstance(dados_ent, dict) else ''
         if not codigo_cliente and isinstance(pedido, dict):
             codigo_cliente = (pedido.get('cnpj') or pedido.get('Cnpj') or '').strip()
@@ -3022,6 +3046,8 @@ def get_romaneio():
                 if not headers:
                     headers = [str(k) for k in data.keys()]
                 row_dict = {str(k): (v.strftime('%Y-%m-%d %H:%M:%S') if isinstance(v, datetime) else v) for k, v in data.items()}
+                if 'cidade' in row_dict:
+                    row_dict['cidade'] = _normalizar_cidade_nome(row_dict.get('cidade'))
                 rows.append(row_dict)
             return jsonify({'headers': headers or [], 'rows': rows})
         except Exception as e:

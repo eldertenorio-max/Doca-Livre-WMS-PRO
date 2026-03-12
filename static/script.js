@@ -232,6 +232,19 @@ function initForms() {
     // Aba Importar Ravex: puxar todos os roteiros por período
     const btnImportarRavex = document.getElementById('btn-importar-ravex-periodo');
     const resultadoImportarRavex = document.getElementById('importar-ravex-resultado');
+    const ravexModalConcluido = document.getElementById('ravex-modal-concluido');
+    const ravexModalConcluidoMensagem = document.getElementById('ravex-modal-concluido-mensagem');
+    const ravexModalConcluidoOk = document.getElementById('ravex-modal-concluido-ok');
+    function showRavexModalConcluido(htmlMessage) {
+        if (ravexModalConcluidoMensagem) ravexModalConcluidoMensagem.innerHTML = htmlMessage;
+        if (ravexModalConcluido) ravexModalConcluido.style.display = 'flex';
+        if (resultadoImportarRavex) resultadoImportarRavex.style.display = 'none';
+    }
+    if (ravexModalConcluidoOk && ravexModalConcluido) {
+        ravexModalConcluidoOk.addEventListener('click', function() {
+            ravexModalConcluido.style.display = 'none';
+        });
+    }
     function ravexLoadingShow(msg) {
         var el = document.getElementById('ravex-loading-overlay');
         var text = document.getElementById('ravex-loading-text');
@@ -301,9 +314,7 @@ function initForms() {
                 });
                 const data = await r.json().catch(function() { return {}; });
                 if (r.ok && data.ok) {
-                    resultadoImportarRavex.style.background = '#e8f5e9';
-                    resultadoImportarRavex.style.border = '1px solid #4caf50';
-                    resultadoImportarRavex.innerHTML = 'Sincronização concluída. Viagens processadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens gravados: <strong>' + (data.total_itens || 0) + '</strong>. Viagens listadas no período: ' + (data.viagens_listadas || 0) + (data.erros && data.erros.length ? '. Erros em algumas viagens: ' + data.erros.length : '') + '.';
+                    showRavexModalConcluido('Sincronização concluída. Viagens processadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens gravados: <strong>' + (data.total_itens || 0) + '</strong>. Viagens listadas no período: ' + (data.viagens_listadas || 0) + (data.erros && data.erros.length ? '. Erros em algumas viagens: ' + data.erros.length : '') + '.');
                     loadAllData();
                     ravexLoadingHide();
                 } else {
@@ -349,9 +360,7 @@ function initForms() {
                 });
                 const data = await r.json().catch(function() { return {}; });
                 if (r.ok && data.ok) {
-                    resultadoImportarRavex.style.background = '#e8f5e9';
-                    resultadoImportarRavex.style.border = '1px solid #4caf50';
-                    resultadoImportarRavex.innerHTML = 'Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.';
+                    showRavexModalConcluido('Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.');
                     loadAllData();
                     ravexLoadingHide();
                 } else {
@@ -400,9 +409,7 @@ function initForms() {
                 });
                 const data = await r.json().catch(function() { return {}; });
                 if (r.ok && data.ok) {
-                    resultadoImportarRavex.style.background = '#e8f5e9';
-                    resultadoImportarRavex.style.border = '1px solid #4caf50';
-                    resultadoImportarRavex.innerHTML = 'Lista processada. Viagens importadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>. IDs na lista: ' + (data.ids_recebidos || 0) + (data.erros && data.erros.length ? '. Erros: ' + data.erros.length : '') + '.';
+                    showRavexModalConcluido('Lista processada. Viagens importadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>. IDs na lista: ' + (data.ids_recebidos || 0) + (data.erros && data.erros.length ? '. Erros: ' + data.erros.length : '') + '.');
                     loadAllData();
                     ravexLoadingHide();
                 } else {
