@@ -1419,15 +1419,19 @@ def get_viagem_info(id_viagem):
         (id_norm,)
     ).fetchone()
     conn.close()
-    if row_p and row_p[0]:
-        info['placa'] = row_p[0].strip()
-    if row_m and row_m[0]:
-        info['motorista'] = row_m[0].strip()
+    if row_p:
+        placa_val = (row_p.get('placa') if hasattr(row_p, 'get') else (row_p[0] if len(row_p) > 0 else None)) or ''
+        if placa_val:
+            info['placa'] = placa_val.strip() if isinstance(placa_val, str) else str(placa_val).strip()
+    if row_m:
+        motorista_val = (row_m.get('motorista') if hasattr(row_m, 'get') else (row_m[0] if len(row_m) > 0 else None)) or ''
+        if motorista_val:
+            info['motorista'] = motorista_val.strip() if isinstance(motorista_val, str) else str(motorista_val).strip()
     if row_r:
-        info['coordenador'] = (row_r[0] or '').strip() or COORDENADOR_PADRAO
-        info['conferente'] = (row_r[1] or '').strip()
-        info['ajudante1'] = (row_r[2] or '').strip()
-        info['ajudante2'] = (row_r[3] or '').strip()
+        info['coordenador'] = (row_r.get('coordenador') if hasattr(row_r, 'get') else (row_r[0] if len(row_r) > 0 else None) or '').strip() or COORDENADOR_PADRAO
+        info['conferente'] = (row_r.get('conferente') if hasattr(row_r, 'get') else (row_r[1] if len(row_r) > 1 else None) or '').strip()
+        info['ajudante1'] = (row_r.get('ajudante1') if hasattr(row_r, 'get') else (row_r[2] if len(row_r) > 2 else None) or '').strip()
+        info['ajudante2'] = (row_r.get('ajudante2') if hasattr(row_r, 'get') else (row_r[3] if len(row_r) > 3 else None) or '').strip()
     else:
         info['coordenador'] = COORDENADOR_PADRAO
     return jsonify(info)
