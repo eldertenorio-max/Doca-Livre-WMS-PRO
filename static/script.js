@@ -287,10 +287,19 @@ function initForms() {
             if (okBtn) okBtn.onclick = function() { ravexLoadingHide(); };
         }
     }
+    function normalizarDataYYYYMMDD(val) {
+        if (!val || val.length < 10) return val;
+        if (val.charAt(4) === '-' && val.charAt(7) === '-') return val.substring(0, 10);
+        var m = val.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+        return val.substring(0, 10);
+    }
     if (btnImportarRavex && resultadoImportarRavex) {
         btnImportarRavex.addEventListener('click', async function() {
-            const dataInicio = (document.getElementById('importar-ravex-data-inicio') || {}).value || '';
-            const dataFim = (document.getElementById('importar-ravex-data-fim') || {}).value || '';
+            var rawInicio = (document.getElementById('importar-ravex-data-inicio') || {}).value || '';
+            var rawFim = (document.getElementById('importar-ravex-data-fim') || {}).value || '';
+            const dataInicio = normalizarDataYYYYMMDD(rawInicio);
+            const dataFim = normalizarDataYYYYMMDD(rawFim);
             if (!dataInicio || !dataFim) {
                 resultadoImportarRavex.style.display = 'block';
                 resultadoImportarRavex.style.background = '#fff3cd';

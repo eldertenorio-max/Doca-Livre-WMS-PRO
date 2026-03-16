@@ -143,7 +143,10 @@ def obter_roteiro_por_periodo(token, data_inicial_iso, data_final_iso):
                     out.append(item)
             return out
         if isinstance(raw, dict):
-            lst = raw.get("data") or raw.get("items") or raw.get("result") or raw.get("itens") or []
+            lst = (
+                raw.get("data") or raw.get("items") or raw.get("result") or raw.get("itens")
+                or raw.get("content") or raw.get("lista") or raw.get("roteiros") or []
+            )
             if isinstance(lst, list):
                 return lst
         # Algumas APIs devolvem a lista em data.items ou no primeiro nível
@@ -151,6 +154,10 @@ def obter_roteiro_por_periodo(token, data_inicial_iso, data_final_iso):
             return data.get("items")
         if isinstance(data.get("result"), list):
             return data.get("result")
+        if isinstance(data.get("roteiros"), list):
+            return data.get("roteiros")
+        if isinstance(data.get("content"), list):
+            return data.get("content")
         return []
     except Exception:
         return []

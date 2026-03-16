@@ -2441,6 +2441,21 @@ def _romaneio_linha_para_tuple_pg(ds, L):
     )
 
 
+def _normalizar_data_para_ravex(s):
+    """Converte data para YYYY-MM-DD. Aceita YYYY-MM-DD, DD/MM/YYYY ou DD-MM-YYYY."""
+    s = (s or '').strip()[:10]
+    if not s:
+        return ''
+    if len(s) == 10 and s[4] == '-' and s[7] == '-':
+        return s
+    import re
+    m = re.match(r'^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$', s)
+    if m:
+        d, mes, a = m.group(1).zfill(2), m.group(2).zfill(2), m.group(3)
+        return '%s-%s-%s' % (a, mes, d)
+    return s
+
+
 def _ravex_roteiros_por_periodo_para_romaneio(token, data_inicio, data_fim):
     """
     Chama /api/roteiro/obter-roteiro-por-periodo e retorna lista de dicts com id_viagem, id_roteiro, identificador_rota
@@ -2448,9 +2463,8 @@ def _ravex_roteiros_por_periodo_para_romaneio(token, data_inicio, data_fim):
     """
     if not obter_roteiro_por_periodo:
         return []
-    # API aceita YYYY-MM-DD
-    p_ini = (data_inicio or '')[:10].strip()
-    p_fim = (data_fim or '')[:10].strip()
+    p_ini = _normalizar_data_para_ravex(data_inicio)
+    p_fim = _normalizar_data_para_ravex(data_fim)
     if not p_ini or not p_fim:
         return []
     try:
