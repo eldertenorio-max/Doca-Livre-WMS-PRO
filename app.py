@@ -1945,14 +1945,19 @@ def get_conferencia(id_viagem=None):
             if not ds:
                 conn.close()
                 return jsonify({'erro': 'Nenhum dataset ativo. Importe a base primeiro.'}), 400
+            id_busca = (id_viagem_norm or id_viagem or '').strip()
             romaneio_rows = conn.execute(
                 """SELECT id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                               codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data
                        FROM romaneio_por_item
-                       WHERE dataset_id = ? AND (id_viagem = ? OR id_roteiro = ?)
+                       WHERE dataset_id = ? AND (TRIM(COALESCE(id_viagem::text, '')) = ? OR TRIM(COALESCE(id_roteiro::text, '')) = ?)
                        ORDER BY row_index""",
-                (str(ds), id_viagem_norm or id_viagem, id_viagem_norm or id_viagem),
+                (str(ds), id_busca, id_busca),
             ).fetchall()
+            id_para_bipados = id_busca
+            if romaneio_rows and len(romaneio_rows) > 0:
+                r0 = romaneio_rows[0]
+                id_para_bipados = str(r0.get('id_viagem') or '').strip() or id_busca
             base_rows = conn.execute(
                 "SELECT codigo_interno, ean, dun FROM base_codigo_barras WHERE dataset_id = ?",
                 (str(ds),),
@@ -1969,7 +1974,7 @@ def get_conferencia(id_viagem=None):
                     mapa_barras_to_codigo[barcode] = cod
             bipados = conn.execute(
                 'SELECT codigo_barras, SUM(quantidade) as quantidade_bipada FROM produtos_bipados WHERE id_viagem = ? GROUP BY codigo_barras',
-                (id_viagem_norm or id_viagem,),
+                (id_para_bipados,),
             ).fetchall()
             bipados_dict = {}
             for row in bipados or []:
@@ -2013,7 +2018,7 @@ def get_conferencia(id_viagem=None):
                     'quantidade_sobra': quantidade_sobra,
                     'aviso_sobra': ('Bipou %s a mais' % quantidade_sobra) if quantidade_sobra > 0 else '',
                     'status_bipado': status_bipado,
-                    'id_viagem': id_viagem_norm or id_viagem,
+                    'id_viagem': id_para_bipados,
                 })
             extras = conn.execute(
                 """SELECT codigo_barras, MAX(codigo_interno) as codigo_interno, MAX(produto) as produto,
@@ -2021,7 +2026,7 @@ def get_conferencia(id_viagem=None):
                    FROM produtos_bipados
                    WHERE id_viagem = ? AND codigo_barras IS NOT NULL AND trim(codigo_barras) != ''
                    GROUP BY codigo_barras""",
-                (id_viagem_norm or id_viagem,),
+                (id_para_bipados,),
             ).fetchall()
             codigos_romaneio = {str(it.get('codigo_barras') or '').strip() for it in resultado}
             codigos_prod_romaneio = {str(it.get('codigo_produto') or '').strip() for it in resultado}
@@ -2042,42 +2047,49 @@ def get_conferencia(id_viagem=None):
                         'quantidade_sobra': 0,
                         'aviso_sobra': '',
                         'status_bipado': 'COMPLETO',
-                        'id_viagem': id_viagem_norm or id_viagem,
+                        'id_viagem': id_para_bipados,
                     })
             meta = {'id_roteiro': '', 'identificador_rota': '', 'placa': '', 'motorista': '', 'data_expedicao': ''}
             id_para_lookup = id_viagem_norm or id_viagem
             if romaneio_rows and len(romaneio_rows) > 0:
                 r0 = romaneio_rows[0]
-                meta['id_roteiro'] = (r0.get('id_roteiro') or '').strip() or ''
-                meta['identificador_rota'] = (r0.get('identificador_rota') or '').strip() or ''
-                meta['placa'] = (r0.get('placa') or '').strip() or ''
-                meta['motorista'] = (r0.get('motorista') or '').strip() or ''
-                meta['data_expedicao'] = (r0.get('data_expedicao') or '').strip() or ''
-                id_para_lookup = (r0.get('id_viagem') or '').strip() or id_para_lookup
-            # Se placa/motorista vierem vazios do romaneio, completar com viagem_placa e viagem_motorista
-            if not meta['placa'] or not meta['motorista']:
-                try:
-                    rp = conn.execute("SELECT placa FROM viagem_placa WHERE id_viagem = ?", (id_para_lookup,)).fetchone()
-                    rm = conn.execute("SELECT motorista FROM viagem_motorista WHERE id_viagem = ?", (id_para_lookup,)).fetchone()
-                    if rp and not meta['placa']:
-                        meta['placa'] = (rp.get('placa') if hasattr(rp, 'get') else (rp[0] if len(rp) > 0 else '') or '').strip()
-                    if rm and not meta['motorista']:
-                        meta['motorista'] = (rm.get('motorista') if hasattr(rm, 'get') else (rm[0] if len(rm) > 0 else '') or '').strip()
-                except Exception:
-                    pass
+                meta['id_roteiro'] = str(r0.get('id_roteiro') or '').strip() or ''
+                meta['identificador_rota'] = str(r0.get('identificador_rota') or '').strip() or ''
+                meta['placa'] = str(r0.get('placa') or '').strip() or ''
+                meta['motorista'] = str(r0.get('motorista') or '').strip() or ''
+                meta['data_expedicao'] = str(r0.get('data_expedicao') or '').strip() or ''
+                id_para_lookup = str(r0.get('id_viagem') or '').strip() or id_para_lookup
+            # Se placa/motorista/identificador vierem vazios do romaneio, completar com viagem_placa e viagem_motorista
+            # Tentar primeiro pelo id_viagem canônico (id_para_lookup); se faltar, tentar pelo termo pesquisado (id_busca)
+            for id_tentar in [id_para_lookup, id_busca]:
+                if id_tentar and (not meta['placa'] or not meta['motorista']):
+                    try:
+                        if not meta['placa']:
+                            rp = conn.execute("SELECT placa FROM viagem_placa WHERE id_viagem = ?", (id_tentar,)).fetchone()
+                            if rp:
+                                meta['placa'] = str(rp.get('placa') if hasattr(rp, 'get') else (rp[0] if len(rp) > 0 else '') or '').strip()
+                        if not meta['motorista']:
+                            rm = conn.execute("SELECT motorista FROM viagem_motorista WHERE id_viagem = ?", (id_tentar,)).fetchone()
+                            if rm:
+                                meta['motorista'] = str(rm.get('motorista') if hasattr(rm, 'get') else (rm[0] if len(rm) > 0 else '') or '').strip()
+                    except Exception:
+                        pass
+                if meta['placa'] and meta['motorista']:
+                    break
             conn.close()
             try:
                 _carregar_motivos_divergencia(resultado)
             except Exception:
                 pass
+            id_viagem_resposta = str(id_para_bipados).strip() if id_para_bipados else ''
             return jsonify({
                 'lista': resultado,
-                'id_roteiro': meta['id_roteiro'],
-                'id_viagem': id_viagem_norm or id_viagem,
-                'identificador_rota': meta['identificador_rota'],
-                'placa': meta['placa'],
-                'motorista': meta['motorista'],
-                'data_expedicao': meta['data_expedicao'],
+                'id_roteiro': meta['id_roteiro'] or '',
+                'id_viagem': id_viagem_resposta,
+                'identificador_rota': meta['identificador_rota'] or '',
+                'placa': meta['placa'] or '',
+                'motorista': meta['motorista'] or '',
+                'data_expedicao': meta['data_expedicao'] or '',
             })
         except Exception as e:
             try:

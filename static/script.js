@@ -2542,7 +2542,7 @@ async function loadConferencia(idViagem = null) {
             return undefined;
         } else {
             const tbody = document.getElementById('tbody-conferencia');
-            tbody.innerHTML = '<tr><td colspan="12" class="loading">Erro ao carregar dados. Verifique se a planilha está no diretório.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" class="loading">Erro ao carregar dados. Verifique o ID (roteiro ou viagem) e se os dados foram importados pela aba Importar Ravex.</td></tr>';
             return undefined;
         }
     } catch (error) {
