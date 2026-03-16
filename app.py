@@ -2059,17 +2059,51 @@ def get_conferencia(id_viagem=None):
                 meta['motorista'] = str(r0.get('motorista') or '').strip() or ''
                 meta['data_expedicao'] = str(r0.get('data_expedicao') or '').strip() or ''
                 id_para_lookup = str(r0.get('id_viagem') or '').strip() or id_para_lookup
-            # Se placa/motorista/identificador vierem vazios do romaneio, completar com viagem_placa e viagem_motorista
-            # Tentar primeiro pelo id_viagem canônico (id_para_lookup); se faltar, tentar pelo termo pesquisado (id_busca)
+                # Se ainda faltar id_roteiro, identificador ou motorista, pegar de qualquer linha do romaneio que tenha
+                for r in romaneio_rows:
+                    if not meta['id_roteiro']:
+                        v = str(r.get('id_roteiro') or '').strip()
+                        if v:
+                            meta['id_roteiro'] = v
+                    if not meta['identificador_rota']:
+                        v = str(r.get('identificador_rota') or '').strip()
+                        if v:
+                            meta['identificador_rota'] = v
+                    if not meta['motorista']:
+                        v = str(r.get('motorista') or '').strip()
+                        if v:
+                            meta['motorista'] = v
+                    if not meta['placa']:
+                        v = str(r.get('placa') or '').strip()
+                        if v:
+                            meta['placa'] = v
+                    if meta['id_roteiro'] and meta['identificador_rota'] and meta['motorista'] and meta['placa']:
+                        break
+            # Se id_roteiro ou identificador_rota ainda vazios, buscar na tabela id_roteiros (registro por id_viagem)
+            if (not meta['id_roteiro'] or not meta['identificador_rota']) and id_para_bipados:
+                try:
+                    row_ir = conn.execute(
+                        """SELECT id_roteiro, identificador_rota FROM id_roteiros WHERE dataset_id = ? AND TRIM(COALESCE(id_viagem::text, '')) = ? LIMIT 1""",
+                        (str(ds), str(id_para_bipados).strip()),
+                    ).fetchone()
+                    if row_ir:
+                        if not meta['id_roteiro']:
+                            meta['id_roteiro'] = str(row_ir.get('id_roteiro') if hasattr(row_ir, 'get') else (row_ir[0] if len(row_ir) > 0 else '') or '').strip()
+                        if not meta['identificador_rota']:
+                            meta['identificador_rota'] = str(row_ir.get('identificador_rota') if hasattr(row_ir, 'get') else (row_ir[1] if len(row_ir) > 1 else '') or '').strip()
+                except Exception:
+                    pass
+            # Se placa/motorista vierem vazios, completar com viagem_placa e viagem_motorista (por id_viagem)
             for id_tentar in [id_para_lookup, id_busca]:
                 if id_tentar and (not meta['placa'] or not meta['motorista']):
                     try:
+                        id_t = str(id_tentar).strip()
                         if not meta['placa']:
-                            rp = conn.execute("SELECT placa FROM viagem_placa WHERE id_viagem = ?", (id_tentar,)).fetchone()
+                            rp = conn.execute("SELECT placa FROM viagem_placa WHERE TRIM(COALESCE(id_viagem::text, '')) = ?", (id_t,)).fetchone()
                             if rp:
                                 meta['placa'] = str(rp.get('placa') if hasattr(rp, 'get') else (rp[0] if len(rp) > 0 else '') or '').strip()
                         if not meta['motorista']:
-                            rm = conn.execute("SELECT motorista FROM viagem_motorista WHERE id_viagem = ?", (id_tentar,)).fetchone()
+                            rm = conn.execute("SELECT motorista FROM viagem_motorista WHERE TRIM(COALESCE(id_viagem::text, '')) = ?", (id_t,)).fetchone()
                             if rm:
                                 meta['motorista'] = str(rm.get('motorista') if hasattr(rm, 'get') else (rm[0] if len(rm) > 0 else '') or '').strip()
                     except Exception:
