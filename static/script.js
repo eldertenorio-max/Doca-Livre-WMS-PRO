@@ -1382,15 +1382,13 @@ async function loadPainelGraficos() {
 }
 
 // Carregar BASE da Planilha (todas as colunas, com filtros)
+// Não usa overlay full-screen para permitir trocar de aba enquanto carrega; loading só na área da tabela.
 async function loadBasePlanilha(showLoadingState) {
     const thead = document.getElementById('thead-base');
     const tbody = document.getElementById('tbody-base');
     const isRefresh = tbody && tbody.rows.length > 0 && !(tbody.rows.length === 1 && tbody.rows[0].cells.length === 1 && tbody.rows[0].querySelector('.loading'));
-    const showOverlay = thead && tbody && (showLoadingState === true || !isRefresh);
-    if (showOverlay && typeof window.ravexLoadingShow === 'function') {
-        window.ravexLoadingShow('Carregando BASE...');
-    }
-    if (thead && tbody && showOverlay) {
+    const showLoading = thead && tbody && (showLoadingState === true || !isRefresh);
+    if (thead && tbody && showLoading) {
         tbody.innerHTML = '<tr><td colspan="6" class="loading">Carregando...</td></tr>';
     }
     const codigo = document.getElementById('filtro-base-codigo')?.value?.trim() || '';
@@ -1419,9 +1417,7 @@ async function loadBasePlanilha(showLoadingState) {
             tbody.innerHTML = '<tr><td class="loading">' + (data && data.erro ? escapeHtml(data.erro) : 'Erro ao carregar dados. Configure DATABASE_URL para usar as tabelas.') + '</td></tr>';
         }
     } finally {
-        if (showOverlay && typeof window.ravexLoadingHide === 'function') {
-            window.ravexLoadingHide();
-        }
+        // Sem overlay: usuário pode trocar de aba enquanto carrega
     }
 }
 
@@ -2952,15 +2948,13 @@ async function loadExtrato() {
 }
 
 // Carregar Romaneio da Planilha (todas as colunas, com filtros por id_viagem, id_roteiro, codigo_cliente, codigo_produto, endereco, cidade)
+// Não usa overlay full-screen para permitir trocar de aba enquanto carrega; loading só na área da tabela.
 async function loadRomaneio(showLoadingState) {
     const thead = document.getElementById('thead-romaneio');
     const tbody = document.getElementById('tbody-romaneio');
     const isRefresh = tbody && tbody.rows.length > 0 && !(tbody.rows.length === 1 && tbody.rows[0].cells.length === 1 && tbody.rows[0].querySelector('.loading'));
-    const showOverlay = thead && tbody && (showLoadingState === true || !isRefresh);
-    if (showOverlay && typeof window.ravexLoadingShow === 'function') {
-        window.ravexLoadingShow('Carregando Romaneio por item...');
-    }
-    if (thead && tbody && showOverlay) {
+    const showLoading = thead && tbody && (showLoadingState === true || !isRefresh);
+    if (thead && tbody && showLoading) {
         thead.innerHTML = '<tr><th>Carregando...</th></tr>';
         tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando...</td></tr>';
     }
@@ -3002,9 +2996,7 @@ async function loadRomaneio(showLoadingState) {
             }).join('') + '</tr>';
         }).join('');
     } finally {
-        if (showOverlay && typeof window.ravexLoadingHide === 'function') {
-            window.ravexLoadingHide();
-        }
+        // Sem overlay: usuário pode trocar de aba enquanto carrega
     }
 }
 
