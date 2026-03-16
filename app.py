@@ -261,9 +261,9 @@ def init_db():
                 conn.execute('ALTER TABLE public.excel_romaneio_por_item ADD COLUMN identificador_rota TEXT')
             except Exception:
                 pass
-            # Tabela de roteiros (registro dos roteiros vindos da API por período)
+            # Tabela id_roteiros (registro dos roteiros vindos da API por período)
             conn.execute(
-                '''CREATE TABLE IF NOT EXISTS public.roteiros (
+                '''CREATE TABLE IF NOT EXISTS public.id_roteiros (
                     dataset_id uuid NOT NULL REFERENCES public.excel_datasets(dataset_id) ON DELETE CASCADE,
                     id_roteiro TEXT NOT NULL,
                     id_viagem TEXT NOT NULL,
@@ -274,8 +274,8 @@ def init_db():
                     PRIMARY KEY (dataset_id, id_roteiro)
                 )'''
             )
-            conn.execute('CREATE INDEX IF NOT EXISTS idx_roteiros_dataset ON public.roteiros (dataset_id)')
-            conn.execute('CREATE INDEX IF NOT EXISTS idx_roteiros_id_viagem ON public.roteiros (id_viagem) WHERE id_viagem IS NOT NULL')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_id_roteiros_dataset ON public.id_roteiros (dataset_id)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_id_roteiros_id_viagem ON public.id_roteiros (id_viagem) WHERE id_viagem IS NOT NULL')
             conn.commit()
             return
 
@@ -2996,7 +2996,7 @@ def api_ravex_sincronizar_periodo():
     total_itens = 0
     erros = []
     try:
-        # Registrar todos os roteiros do período na tabela roteiros
+        # Registrar todos os roteiros do período na tabela id_roteiros
         for r in roteiros_romaneio:
             id_roteiro = (r.get('id_roteiro') or '').strip()
             id_viagem_r = (r.get('id_viagem') or '').strip()
@@ -3007,7 +3007,7 @@ def api_ravex_sincronizar_periodo():
             if data_viagem is not None and isinstance(data_viagem, str) and len(data_viagem) < 10:
                 data_viagem = None
             conn.execute(
-                """INSERT INTO roteiros (dataset_id, id_roteiro, id_viagem, identificador_rota, data_viagem)
+                """INSERT INTO id_roteiros (dataset_id, id_roteiro, id_viagem, identificador_rota, data_viagem)
                    VALUES (?, ?, ?, ?, ?::timestamptz)
                    ON CONFLICT (dataset_id, id_roteiro) DO UPDATE SET
                      id_viagem = EXCLUDED.id_viagem,

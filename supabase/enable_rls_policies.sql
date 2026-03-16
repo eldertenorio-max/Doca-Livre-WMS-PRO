@@ -21,6 +21,7 @@ alter table public.romaneio enable row level security;
 alter table public.excel_datasets enable row level security;
 alter table public.base_codigo_barras enable row level security;
 alter table public.excel_romaneio_por_item enable row level security;
+alter table public.id_roteiros enable row level security;
 
 -- ============================================================
 -- 2. POLÍTICAS DE ACESSO (system interno - acesso total)
@@ -334,6 +335,19 @@ create policy "Permitir DELETE em excel_romaneio_por_item"
   on public.excel_romaneio_por_item
   for delete
   using (true);
+
+-- ============================================================
+-- 2.12. ID_ROTEIROS
+-- ============================================================
+
+create policy "Permitir SELECT em id_roteiros"
+  on public.id_roteiros for select using (true);
+create policy "Permitir INSERT em id_roteiros"
+  on public.id_roteiros for insert with check (true);
+create policy "Permitir UPDATE em id_roteiros"
+  on public.id_roteiros for update using (true);
+create policy "Permitir DELETE em id_roteiros"
+  on public.id_roteiros for delete using (true);
 
 -- ============================================================
 -- PRONTO! RLS habilitado em todas as tabelas

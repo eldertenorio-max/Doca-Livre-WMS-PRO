@@ -264,8 +264,8 @@ create index if not exists idx_excel_romaneio_id_viagem on public.excel_romaneio
 create index if not exists idx_excel_romaneio_codigo_produto on public.excel_romaneio_por_item (codigo_produto) where codigo_produto is not null;
 create index if not exists idx_excel_romaneio_roteiro_codigo on public.excel_romaneio_por_item (id_roteiro, codigo_produto);
 
--- Roteiros (registro dos roteiros da API Ravex por período / dataset)
-create table if not exists public.roteiros (
+-- id_roteiros (registro dos roteiros da API Ravex por período / dataset)
+create table if not exists public.id_roteiros (
   dataset_id uuid not null references public.excel_datasets(dataset_id) on delete cascade,
   id_roteiro text not null,
   id_viagem text not null,
@@ -275,9 +275,9 @@ create table if not exists public.roteiros (
   atualizado_em timestamptz not null default now(),
   primary key (dataset_id, id_roteiro)
 );
-comment on table public.roteiros is 'Roteiros obtidos da API Ravex (obter-roteiro-por-periodo) para o dataset ativo';
-create index if not exists idx_roteiros_dataset on public.roteiros (dataset_id);
-create index if not exists idx_roteiros_id_viagem on public.roteiros (id_viagem) where id_viagem is not null;
+comment on table public.id_roteiros is 'Roteiros obtidos da API Ravex (obter-roteiro-por-periodo) para o dataset ativo';
+create index if not exists idx_id_roteiros_dataset on public.id_roteiros (dataset_id);
+create index if not exists idx_id_roteiros_id_viagem on public.id_roteiros (id_viagem) where id_viagem is not null;
 
 -- ============================================================
 -- 6. TRIGGERS (atualização automática de timestamps)
