@@ -298,6 +298,12 @@ def init_db():
             )
             conn.execute('CREATE INDEX IF NOT EXISTS idx_id_roteiros_dataset ON public.id_roteiros (dataset_id)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_id_roteiros_id_viagem ON public.id_roteiros (id_viagem) WHERE id_viagem IS NOT NULL')
+            try:
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_romaneio_por_item_dataset_viagem ON public.romaneio_por_item (dataset_id, id_viagem)')
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_romaneio_por_item_dataset_roteiro ON public.romaneio_por_item (dataset_id, id_roteiro)')
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_romaneio_por_item_row_index ON public.romaneio_por_item (dataset_id, row_index)')
+            except Exception:
+                conn.rollback()
             conn.commit()
             return
 

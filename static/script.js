@@ -2305,9 +2305,10 @@ window.buscarItensViagem = async function() {
     var idViagem = idInput;
     try {
         await loadConferencia(idInput);
+        hideOverlay();
         idViagem = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim()) || document.getElementById('id-viagem').value.trim() || idInput;
-        await loadPeriodoCarregamento(idViagem);
-        await loadViagemInfo(idViagem);
+        loadPeriodoCarregamento(idViagem);
+        loadViagemInfo(idViagem);
     } catch (e) {
         showMessage('Erro ao conectar. Tente novamente.', 'error');
         if (overlayEl && overlayText) {
@@ -2441,7 +2442,7 @@ window.confirmarExcluirItem = async function() {
         if (result && result.success) {
             showMessage(result.mensagem || 'Item excluído da conferência.', 'success');
             await loadConferencia(idViagem);
-            await loadPeriodoCarregamento(idViagem);
+            loadPeriodoCarregamento(idViagem);
             loadEstatisticas();
         } else {
             showMessage(result?.erro || 'Não foi possível excluir o item', 'error');
@@ -2654,8 +2655,8 @@ async function loadConferencia(idViagem = null) {
                 const qtdProduto = item.quantidade_produto || 0;
                 const qtdFaltaParaBipar = Math.max(1, item.quantidade_falta || 0);
                 const botoesTirar = qtdBipada > 0 && codigoBarras !== '-' ? `
-                            <button type="button" class="btn btn-secondary" onclick="tirarBipado('${codigoBarrasEscapado}', 1)" style="padding: 4px 8px; font-size: 11px;" title="Remover 1 unidade bipada">➖ Tirar 1</button>
-                            <button type="button" class="btn btn-secondary" onclick="tirarBipado('${codigoBarrasEscapado}', 'tudo')" style="padding: 4px 8px; font-size: 11px;" title="Remover todas as unidades bipadas deste item">🗑️ Tirar tudo</button>
+                            <button type="button" class="btn btn-secondary" onclick="tirarBipado(this, '${codigoBarrasEscapado}', 1)" style="padding: 4px 8px; font-size: 11px;" title="Remover 1 unidade bipada">➖ Tirar 1</button>
+                            <button type="button" class="btn btn-secondary" onclick="tirarBipado(this, '${codigoBarrasEscapado}', 'tudo')" style="padding: 4px 8px; font-size: 11px;" title="Remover todas as unidades bipadas deste item">🗑️ Tirar tudo</button>
                         ` : '';
                 const produtoAttr = (item.produto || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                 const btnExcluir = codigoBarras !== '-' ? `<button type="button" class="btn btn-secondary" onclick="abrirModalExcluirItem(this)" data-codigo="${codigoBarrasEscapado.replace(/"/g, '&quot;')}" data-produto="${produtoAttr}" style="padding: 4px 8px; font-size: 11px; color: #c62828;" title="Excluir item da conferência">🗑️ Excluir</button>` : '';
@@ -2724,8 +2725,11 @@ async function loadConferencia(idViagem = null) {
     }
 }
 
-// Tirar itens bipados (quando bipou errado)
-window.tirarBipado = async function(codigoBarras, quantidade) {
+// Tirar itens bipados (quando bipou errado). Pode ser chamado como tirarBipado(codigo, qtd) ou tirarBipado(btn, codigo, qtd) para atualização imediata na linha.
+window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMaybe) {
+    var btn = (typeof btnOrCodigo === 'object' && btnOrCodigo && btnOrCodigo.nodeType) ? btnOrCodigo : null;
+    var codigoBarras = btn ? codigoBarrasOrQtd : btnOrCodigo;
+    var quantidade = btn ? quantidadeMaybe : codigoBarrasOrQtd;
     if (window._tirarBipadoEmAndamento) return;
     window._tirarBipadoEmAndamento = true;
     var cb = document.getElementById('codigo-barras');
@@ -2749,6 +2753,20 @@ window.tirarBipado = async function(codigoBarras, quantidade) {
         window._tirarBipadoEmAndamento = false;
         return;
     }
+    var row = btn ? btn.closest('tr') : null;
+    var cells = row && row.cells && row.cells.length >= 11 ? row.cells : null;
+    if (cells) {
+        var qtdBipada = parseInt(cells[9].textContent, 10) || 0;
+        var qtdFalta = parseInt(cells[10].textContent, 10) || 0;
+        var qtdProduto = parseInt(cells[5].textContent, 10) || 0;
+        if (qtd === 'tudo') {
+            cells[9].textContent = '0';
+            cells[10].textContent = String(qtdProduto);
+        } else {
+            cells[9].textContent = String(Math.max(0, qtdBipada - 1));
+            cells[10].textContent = String(qtdFalta + 1);
+        }
+    }
     try {
         const result = await fetchAPI('/conferencia/remover', {
             method: 'POST',
@@ -2757,7 +2775,7 @@ window.tirarBipado = async function(codigoBarras, quantidade) {
         if (result && result.success) {
             showMessage(result.mensagem || 'Item(s) removido(s).', 'success');
             await loadConferencia(idViagem);
-            await loadPeriodoCarregamento(idViagem);
+            loadPeriodoCarregamento(idViagem);
             loadEstatisticas();
         } else {
             showMessage(result?.erro || 'Não foi possível remover', 'error');
@@ -2783,7 +2801,6 @@ window.biparItem = async function(codigoBarras, produto, quantidadeFalta) {
         window._ultimoBipadoCodigo = (codigoBarras || '').toString().trim();
         await buscarProdutoNaPlanilha(codigoBarras);
         if (idViagem) {
-            await new Promise(function(r) { setTimeout(r, 400); });
             await loadConferencia(idViagem);
         }
     } finally {
