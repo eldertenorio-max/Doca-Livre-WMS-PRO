@@ -1,5 +1,9 @@
 from flask import Flask, render_template, request, jsonify, send_file, Response, redirect, url_for, session
 from datetime import datetime, timedelta, timezone
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
@@ -1272,19 +1276,37 @@ def get_periodo_viagem(id_viagem):
     """Retorna início e fim da bipagem/carregamento (data e hora) para a viagem."""
     if not id_viagem:
         return jsonify({'erro': 'ID do roteiro não informado'}), 400
+    id_norm = _normalizar_id_viagem(id_viagem)
     conn = get_db()
-    row = conn.execute(
-        'SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE id_viagem = ?',
-        (id_viagem.strip(),)
-    ).fetchone()
-    conn.close()
+    try:
+        if getattr(conn, 'kind', None) == 'pg':
+            row = conn.execute(
+                "SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE TRIM(COALESCE(id_viagem::text, '')) = ?",
+                (id_norm,)
+            ).fetchone()
+        else:
+            row = conn.execute(
+                'SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE id_viagem = ?',
+                (id_norm,)
+            ).fetchone()
+    finally:
+        conn.close()
     inicio = row['inicio'] if row and row['inicio'] else ''
     fim = row['fim'] if row and row['fim'] else ''
+    def _fmt(d):
+        if d is None:
+            return ''
+        if hasattr(d, 'strftime'):
+            return d.strftime('%d/%m/%Y %H:%M')
+        s = str(d).strip()
+        return s[:16] if len(s) > 16 else s
+    inicio_str = _fmt(inicio)
+    fim_str = _fmt(fim)
     return jsonify({
-        'inicio_bipagem': inicio,
-        'fim_bipagem': fim,
-        'inicio_carregamento': inicio,
-        'fim_carregamento': fim
+        'inicio_bipagem': inicio_str,
+        'fim_bipagem': fim_str,
+        'inicio_carregamento': inicio_str,
+        'fim_carregamento': fim_str
     })
 
 
@@ -1353,17 +1375,24 @@ def _formatar_data_celula(val):
 
 
 def _get_viagem_info_planilha(id_viagem):
-    """Busca data expedição, placa, motorista, id_roteiro: do banco. Sem planilha."""
+    """Busca data expedição, placa, motorista, id_roteiro, identificador_rota: do banco. Sem planilha."""
     id_viagem = (id_viagem or '').strip()
     result = {'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': '', 'id_roteiro': '', 'id_viagem': id_viagem}
     if not id_viagem:
         return result
+    id_norm = _normalizar_id_viagem(id_viagem)
     if _usa_banco_para_dados():
         conn = get_db()
         try:
             if getattr(conn, 'kind', None) == 'pg':
-                rp = conn.execute("SELECT placa FROM viagem_placa WHERE id_viagem = ?", (id_viagem,)).fetchone()
-                rm = conn.execute("SELECT motorista FROM viagem_motorista WHERE id_viagem = ?", (id_viagem,)).fetchone()
+                rp = conn.execute(
+                    "SELECT placa FROM viagem_placa WHERE TRIM(COALESCE(id_viagem::text, '')) = ?",
+                    (id_norm,)
+                ).fetchone()
+                rm = conn.execute(
+                    "SELECT motorista FROM viagem_motorista WHERE TRIM(COALESCE(id_viagem::text, '')) = ?",
+                    (id_norm,)
+                ).fetchone()
                 if rp:
                     result['placa'] = (rp.get('placa') or rp[0] or '').strip()
                 if rm:
@@ -1371,8 +1400,9 @@ def _get_viagem_info_planilha(id_viagem):
                 ds = _get_latest_dataset_id(conn)
                 if ds:
                     r = conn.execute(
-                        """SELECT data_expedicao, id_roteiro, identificador_rota FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ? LIMIT 1""",
-                        (str(ds), id_viagem),
+                        """SELECT data_expedicao, id_roteiro, identificador_rota FROM romaneio_por_item
+                           WHERE dataset_id = ? AND (TRIM(COALESCE(id_viagem::text, '')) = ? OR TRIM(COALESCE(id_roteiro::text, '')) = ?) LIMIT 1""",
+                        (str(ds), id_norm, id_norm),
                     ).fetchone()
                     if r:
                         if r.get('data_expedicao') or (r[0] if hasattr(r, '__getitem__') else None):
@@ -1381,6 +1411,16 @@ def _get_viagem_info_planilha(id_viagem):
                             result['id_roteiro'] = str(r.get('id_roteiro') or r[1] or '').strip()
                         if r.get('identificador_rota') is not None or (len(r) > 2 and r[2] is not None if hasattr(r, '__getitem__') else False):
                             result['identificador_rota'] = str(r.get('identificador_rota') or (r[2] if hasattr(r, '__getitem__') and len(r) > 2 else '') or '').strip()
+                    if not result['identificador_rota'] or not result['id_roteiro']:
+                        row_ir = conn.execute(
+                            """SELECT id_roteiro, identificador_rota FROM id_roteiros WHERE dataset_id = ? AND TRIM(COALESCE(id_viagem::text, '')) = ? LIMIT 1""",
+                            (str(ds), id_norm),
+                        ).fetchone()
+                        if row_ir:
+                            if not result['id_roteiro']:
+                                result['id_roteiro'] = str(row_ir.get('id_roteiro') if hasattr(row_ir, 'get') else (row_ir[0] if len(row_ir) > 0 else '') or '').strip()
+                            if not result['identificador_rota']:
+                                result['identificador_rota'] = str(row_ir.get('identificador_rota') if hasattr(row_ir, 'get') else (row_ir[1] if len(row_ir) > 1 else '') or '').strip()
             conn.close()
         except Exception:
             try:
@@ -2728,12 +2768,13 @@ def _romaneio_linha_para_tuple_pg(ds, L):
 
 
 def _registrar_importacao_ravex(conn, *, dataset_id, tipo, status, parametros=None, viagens_processadas=0, total_itens=0, erros=None):
-    """Registra no banco a execução de importações Ravex (para aba 'Baixados')."""
+    """Registra no banco a execução de importações Ravex (para aba 'Baixados'). Usa horário atual UTC para criado_em."""
     try:
         usuario = session.get('usuario', '') or None
+        agora_utc = datetime.now(timezone.utc)
         conn.execute(
-            """INSERT INTO ravex_importacoes (dataset_id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros)
-               VALUES (?, ?, ?, ?::jsonb, ?, ?, ?, ?::jsonb)""",
+            """INSERT INTO ravex_importacoes (dataset_id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em)
+               VALUES (?, ?, ?, ?::jsonb, ?, ?, ?, ?::jsonb, ?)""",
             (
                 str(dataset_id) if dataset_id else None,
                 str(tipo or ''),
@@ -2743,6 +2784,7 @@ def _registrar_importacao_ravex(conn, *, dataset_id, tipo, status, parametros=No
                 int(total_itens or 0),
                 usuario,
                 json.dumps(erros or []),
+                agora_utc,
             ),
         )
     except Exception:
@@ -3631,8 +3673,18 @@ def api_ravex_listar_importacoes():
             except Exception:
                 pass
             criado = _get('criado_em', 8)
-            if hasattr(criado, 'strftime'):
-                # Formato brasileiro: dia/mês/ano hora:minuto:segundo
+            if criado is not None and hasattr(criado, 'astimezone'):
+                # Exibir no fuso de São Paulo (horário em que o usuário baixou)
+                try:
+                    if getattr(criado, 'tzinfo', None) is None:
+                        criado = criado.replace(tzinfo=timezone.utc)
+                    if ZoneInfo:
+                        criado = criado.astimezone(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
+                    else:
+                        criado = criado.strftime('%d/%m/%Y %H:%M:%S')
+                except Exception:
+                    criado = criado.strftime('%d/%m/%Y %H:%M:%S') if hasattr(criado, 'strftime') else str(criado or '')
+            elif hasattr(criado, 'strftime'):
                 criado = criado.strftime('%d/%m/%Y %H:%M:%S')
             out.append({
                 'id': _get('id', 0),
