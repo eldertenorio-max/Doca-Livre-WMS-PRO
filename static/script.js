@@ -2441,7 +2441,7 @@ window.confirmarExcluirItem = async function() {
         });
         if (result && result.success) {
             showMessage(result.mensagem || 'Item excluído da conferência.', 'success');
-            await loadConferencia(idViagem);
+            loadConferencia(idViagem);
             loadPeriodoCarregamento(idViagem);
             loadEstatisticas();
         } else {
@@ -2660,7 +2660,7 @@ async function loadConferencia(idViagem = null) {
                         ` : '';
                 const produtoAttr = (item.produto || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                 const btnExcluir = codigoBarras !== '-' ? `<button type="button" class="btn btn-secondary" onclick="abrirModalExcluirItem(this)" data-codigo="${codigoBarrasEscapado.replace(/"/g, '&quot;')}" data-produto="${produtoAttr}" style="padding: 4px 8px; font-size: 11px; color: #c62828;" title="Excluir item da conferência">🗑️ Excluir</button>` : '';
-                const btnBipar = codigoBarras !== '-' ? `<button type="button" class="btn btn-primary" onclick="biparItem('${codigoBarras}', '${produtoEscapado}', ${qtdFaltaParaBipar})" style="padding: 6px 12px; font-size: 12px;">📱 Bipar</button>` : (item.quantidade_falta > 0 ? '<span style="color: #ff9800;" title="Adicione o código do produto ' + (item.codigo_produto || '') + ' na aba BASE da planilha com o código de barras correspondente.">⚠️ Sem código de barras</span>' : '');
+                const btnBipar = codigoBarras !== '-' ? `<button type="button" class="btn btn-primary" onclick="biparItem(this, '${codigoBarras}', '${produtoEscapado}', ${qtdFaltaParaBipar})" style="padding: 6px 12px; font-size: 12px;">📱 Bipar</button>` : (item.quantidade_falta > 0 ? '<span style="color: #ff9800;" title="Adicione o código do produto ' + (item.codigo_produto || '') + ' na aba BASE da planilha com o código de barras correspondente.">⚠️ Sem código de barras</span>' : '');
                 const motivoBruto = motivosEmEdicao[idViagem + '|' + (item.codigo_produto || '')] !== undefined ? motivosEmEdicao[idViagem + '|' + (item.codigo_produto || '')] : (item.motivo_divergencia || '');
                 const motivoVal = (motivoBruto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 const codigoProdutoEsc = (item.codigo_produto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -2774,7 +2774,7 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
         });
         if (result && result.success) {
             showMessage(result.mensagem || 'Item(s) removido(s).', 'success');
-            await loadConferencia(idViagem);
+            loadConferencia(idViagem);
             loadPeriodoCarregamento(idViagem);
             loadEstatisticas();
         } else {
@@ -2787,8 +2787,12 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
     }
 };
 
-// Bipar Item diretamente da lista — adiciona 1 na base e atualiza a tabela
-window.biparItem = async function(codigoBarras, produto, quantidadeFalta) {
+// Bipar Item diretamente da lista — adiciona 1 na base e atualiza a tabela. Pode ser biparItem(btn, codigo, produto, qtd) para atualização imediata na linha.
+window.biparItem = async function(btnOrCodigo, codigoBarrasOrProduto, produtoOrQtd, quantidadeFaltaMaybe) {
+    var btn = (typeof btnOrCodigo === 'object' && btnOrCodigo && btnOrCodigo.nodeType) ? btnOrCodigo : null;
+    var codigoBarras = btn ? codigoBarrasOrProduto : btnOrCodigo;
+    var produto = btn ? produtoOrQtd : codigoBarrasOrProduto;
+    var quantidadeFalta = btn ? quantidadeFaltaMaybe : produtoOrQtd;
     if (window._biparItemEmAndamento) return;
     window._biparItemEmAndamento = true;
     const idViagem = document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim();
@@ -2797,12 +2801,22 @@ window.biparItem = async function(codigoBarras, produto, quantidadeFalta) {
     document.getElementById('codigo-barras').value = codigoBarras;
     document.getElementById('produto-nome').value = produto;
     document.getElementById('quantidade').value = 1;
+    var row = btn ? btn.closest('tr') : null;
+    var cells = row && row.cells && row.cells.length >= 11 ? row.cells : null;
+    if (cells) {
+        var qtdBipada = parseInt(cells[9].textContent, 10) || 0;
+        var qtdFalta = parseInt(cells[10].textContent, 10) || 0;
+        cells[9].textContent = String(qtdBipada + 1);
+        cells[10].textContent = String(Math.max(0, qtdFalta - 1));
+    }
     try {
         window._ultimoBipadoCodigo = (codigoBarras || '').toString().trim();
         await buscarProdutoNaPlanilha(codigoBarras);
         if (idViagem) {
-            await loadConferencia(idViagem);
+            loadConferencia(idViagem);
         }
+    } catch (e) {
+        if (idViagem) loadConferencia(idViagem);
     } finally {
         window._biparItemEmAndamento = false;
     }
