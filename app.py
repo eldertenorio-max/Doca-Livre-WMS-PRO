@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, send_file, Response, redirect, url_for, session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
@@ -1143,7 +1143,7 @@ def add_produto():
             codigo_barras,
             data.get('produto', ''),
             qtd_bipar,
-            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            datetime.now(timezone.utc),
             data.get('veiculo', ''),
             data.get('status', 'PENDENTE'),
             id_viagem,
