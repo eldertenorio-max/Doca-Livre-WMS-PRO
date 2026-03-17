@@ -2598,6 +2598,17 @@ async function loadConferencia(idViagem = null) {
                     motivosEmEdicao[chave] = inp.value;
                 });
             }
+            var limitInfo = document.getElementById('conferencia-limit-info');
+            if (limitInfo) {
+                var totalR = conferencia.total_romaneio != null ? Number(conferencia.total_romaneio) : 0;
+                var limitR = conferencia.limit_romaneio != null ? Number(conferencia.limit_romaneio) : 0;
+                if (totalR > limitR && limitR > 0) {
+                    limitInfo.textContent = 'Mostrando at\u00e9 ' + limitR + ' de ' + totalR + ' itens do romaneio (carregamento r\u00e1pido).';
+                    limitInfo.style.display = 'block';
+                } else {
+                    limitInfo.style.display = 'none';
+                }
+            }
             if (conferenciaUI.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhum item encontrado para esta viagem no romaneio.</td></tr>';
                 atualizarTotaisConferenciaFromData([]);

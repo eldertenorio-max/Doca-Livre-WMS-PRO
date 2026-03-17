@@ -2133,22 +2133,42 @@ def get_conferencia(id_viagem=None):
                 conn.close()
                 return jsonify({'erro': 'Nenhum dataset ativo. Importe a base primeiro.'}), 400
             id_busca = (id_viagem_norm or id_viagem or '').strip()
+            try:
+                limit_romaneio = min(2000, max(500, int(request.args.get('limit', 1500))))
+            except (TypeError, ValueError):
+                limit_romaneio = 1500
+            total_romaneio = 0
+            try:
+                row_count = conn.execute(
+                    """SELECT COUNT(*) AS c FROM romaneio_por_item
+                       WHERE dataset_id = ? AND (TRIM(COALESCE(id_viagem::text, '')) = ? OR TRIM(COALESCE(id_roteiro::text, '')) = ?)""",
+                    (str(ds), id_busca, id_busca),
+                ).fetchone()
+                total_romaneio = int(row_count.get('c', 0) if row_count and hasattr(row_count, 'get') else (row_count[0] if row_count else 0))
+            except Exception:
+                pass
             romaneio_rows = conn.execute(
                 """SELECT id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
-                              codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data
+                              codigo_cliente, endereco, cidade, placa, motorista, data_expedicao
                        FROM romaneio_por_item
                        WHERE dataset_id = ? AND (TRIM(COALESCE(id_viagem::text, '')) = ? OR TRIM(COALESCE(id_roteiro::text, '')) = ?)
-                       ORDER BY row_index""",
-                (str(ds), id_busca, id_busca),
+                       ORDER BY row_index
+                       LIMIT ?""",
+                (str(ds), id_busca, id_busca, limit_romaneio),
             ).fetchall()
             id_para_bipados = id_busca
             if romaneio_rows and len(romaneio_rows) > 0:
                 r0 = romaneio_rows[0]
                 id_para_bipados = str(r0.get('id_viagem') or '').strip() or id_busca
-            base_rows = conn.execute(
-                "SELECT codigo_interno, ean, dun FROM base_codigo_barras WHERE dataset_id = ?",
-                (str(ds),),
-            ).fetchall()
+            codigos_produto_romaneio = list({(str(r.get('codigo_produto') or '').strip()) for r in (romaneio_rows or []) if (r.get('codigo_produto') or '').strip()})
+            if codigos_produto_romaneio:
+                placeholders = ','.join(['?' for _ in codigos_produto_romaneio])
+                base_rows = conn.execute(
+                    "SELECT codigo_interno, ean, dun FROM base_codigo_barras WHERE dataset_id = ? AND codigo_interno IN (" + placeholders + ")",
+                    [str(ds)] + codigos_produto_romaneio,
+                ).fetchall()
+            else:
+                base_rows = []
             mapa_codigo_barras = {}
             mapa_barras_to_codigo = {}
             for r in base_rows or []:
@@ -2311,6 +2331,8 @@ def get_conferencia(id_viagem=None):
                 'placa': meta['placa'] or '',
                 'motorista': meta['motorista'] or '',
                 'data_expedicao': meta['data_expedicao'] or '',
+                'total_romaneio': total_romaneio,
+                'limit_romaneio': limit_romaneio,
             })
         except Exception as e:
             try:
@@ -3826,28 +3848,54 @@ def update_romaneio():
     return jsonify({'success': True})
 
 def _carregar_motivos_divergencia(lista):
-    """Adiciona o campo 'motivo_divergencia' em cada item da lista (id_viagem + codigo_produto)."""
+    """Adiciona o campo 'motivo_divergencia' em cada item da lista (id_viagem + codigo_produto). Uma única query em vez de N."""
     if not lista:
         return lista
-    conn = get_db()
-    motivos = {}
+    pares = set()
     for item in lista:
         vid = (item.get('id_viagem') or '').strip()
         cod = (item.get('codigo_produto') or '').strip()
         if vid and cod:
             id_norm = _normalizar_id_viagem(vid)
-            key = (vid, cod)
-            if key not in motivos:
+            pares.add((id_norm, cod))
+    if not pares:
+        for item in lista:
+            item['motivo_divergencia'] = ''
+        return lista
+    conn = get_db()
+    motivos = {}
+    try:
+        if getattr(conn, 'kind', None) == 'pg' and len(pares) <= 2000:
+            placeholders = ','.join(['(?, ?)' for _ in pares])
+            params = []
+            for (id_norm, cod) in pares:
+                params.extend([id_norm, cod])
+            rows = conn.execute(
+                "SELECT id_viagem, codigo_produto, motivo FROM divergencia_motivo WHERE (id_viagem, codigo_produto) IN (VALUES " + placeholders + ")",
+                params,
+            ).fetchall()
+            for r in rows or []:
+                id_v = (r.get('id_viagem') or '').strip() if hasattr(r, 'get') else (r[0] or '').strip()
+                cod = (r.get('codigo_produto') or '').strip() if hasattr(r, 'get') else (r[1] or '').strip()
+                motivo = (r.get('motivo') or '').strip() if hasattr(r, 'get') else (r[2] or '').strip()
+                motivos[(id_v, cod)] = motivo
+        else:
+            for (id_norm, cod) in pares:
                 row = conn.execute(
                     'SELECT motivo FROM divergencia_motivo WHERE id_viagem = ? AND codigo_produto = ?',
-                    (id_norm, cod)
+                    (id_norm, cod),
                 ).fetchone()
-                motivos[key] = (row.get('motivo', '') if (row and hasattr(row, 'get')) else (row[0] if row and len(row) > 0 else '')).strip()
-    conn.close()
+                motivos[(id_norm, cod)] = (row.get('motivo', '') if (row and hasattr(row, 'get')) else (row[0] if row and len(row) > 0 else '')).strip()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
     for item in lista:
         vid = (item.get('id_viagem') or '').strip()
         cod = (item.get('codigo_produto') or '').strip()
-        item['motivo_divergencia'] = motivos.get((vid, cod), '') if (vid and cod) else ''
+        id_norm = _normalizar_id_viagem(vid) if vid else ''
+        item['motivo_divergencia'] = motivos.get((id_norm, cod), '') if (vid and cod) else ''
     return lista
 
 
