@@ -73,8 +73,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Fallback: atualizar a cada 10 segundos se o stream falhar (reduz carga no servidor)
-    setInterval(loadAllData, 10000);
 });
 
 // Sistema de Abas
@@ -1437,10 +1435,18 @@ async function loadBasePlanilha(showLoadingState) {
         tbody.innerHTML = '<tr><td colspan="6" class="loading">Carregando...</td></tr>';
     }
     const codigo = document.getElementById('filtro-base-codigo')?.value?.trim() || '';
+    const codInterno = document.getElementById('filtro-base-cod-interno')?.value?.trim() || '';
     const descricao = document.getElementById('filtro-base-descricao')?.value?.trim() || '';
+    const ean = document.getElementById('filtro-base-ean')?.value?.trim() || '';
+    const dun = document.getElementById('filtro-base-dun')?.value?.trim() || '';
+    const unidade = document.getElementById('filtro-base-unidade')?.value?.trim() || '';
     const params = new URLSearchParams();
     if (codigo) params.set('codigo_barras', codigo);
+    if (codInterno) params.set('codigo_interno', codInterno);
     if (descricao) params.set('descricao', descricao);
+    if (ean) params.set('ean', ean);
+    if (dun) params.set('dun', dun);
+    if (unidade) params.set('unidade', unidade);
     const url = '/base-planilha' + (params.toString() ? '?' + params.toString() : '');
     try {
         const data = await fetchAPI(url);
@@ -1457,7 +1463,8 @@ async function loadBasePlanilha(showLoadingState) {
                 tbody.innerHTML = data.rows.map(row => {
                     var cells = dataHeaders.map(h => `<td>${escapeHtml(row[h] != null ? String(row[h]) : '')}</td>`).join('');
                     var id = row._id != null ? row._id : '';
-                    cells += '<td><button type="button" class="btn-secondary btn-sm" data-base-edit-id="' + escapeHtml(String(id)) + '">Editar</button></td>';
+                    cells += '<td><button type="button" class="btn-secondary btn-sm" data-base-edit-id="' + escapeHtml(String(id)) + '">Editar</button> ';
+                    cells += '<button type="button" class="btn-danger btn-sm" data-base-delete-id="' + escapeHtml(String(id)) + '">Excluir</button></td>';
                     return '<tr>' + cells + '</tr>';
                 }).join('');
                 window._lastBaseHeaders = dataHeaders;
@@ -1468,6 +1475,11 @@ async function loadBasePlanilha(showLoadingState) {
                         var row = data.rows.find(function(r) { return String(r._id) === String(id); });
                         if (row) openModalBaseItem(row, dataHeaders);
                     });
+                });
+                tbody.querySelectorAll('[data-base-delete-id]').forEach(function(btn) {
+                    var id = btn.getAttribute('data-base-delete-id');
+                    if (!id) return;
+                    btn.addEventListener('click', function() { openModalExcluirBaseItem(id); });
                 });
             }
         } else if (data === null || (data && data.erro)) {
@@ -1490,9 +1502,17 @@ function initFiltrosBase() {
     document.getElementById('btn-filtrar-base')?.addEventListener('click', () => loadBasePlanilha(true));
     document.getElementById('btn-limpar-filtros-base')?.addEventListener('click', () => {
         const cod = document.getElementById('filtro-base-codigo');
+        const codInt = document.getElementById('filtro-base-cod-interno');
         const desc = document.getElementById('filtro-base-descricao');
+        const ean = document.getElementById('filtro-base-ean');
+        const dun = document.getElementById('filtro-base-dun');
+        const un = document.getElementById('filtro-base-unidade');
         if (cod) cod.value = '';
+        if (codInt) codInt.value = '';
         if (desc) desc.value = '';
+        if (ean) ean.value = '';
+        if (dun) dun.value = '';
+        if (un) un.value = '';
         loadBasePlanilha(true);
     });
     document.getElementById('btn-base-adicionar')?.addEventListener('click', function() {
@@ -1520,6 +1540,33 @@ function openModalBaseItem(row, headers) {
 function closeModalBaseItem() {
     var modal = document.getElementById('modal-base-item');
     if (modal) modal.style.display = 'none';
+}
+
+var _baseExcluirId = null;
+
+function openModalExcluirBaseItem(id) {
+    _baseExcluirId = id;
+    var modal = document.getElementById('modal-base-excluir');
+    if (modal) modal.style.display = 'block';
+}
+
+function closeModalExcluirBaseItem() {
+    _baseExcluirId = null;
+    var modal = document.getElementById('modal-base-excluir');
+    if (modal) modal.style.display = 'none';
+}
+
+async function confirmExcluirBaseItem() {
+    if (!_baseExcluirId) return;
+    var id = _baseExcluirId;
+    closeModalExcluirBaseItem();
+    var resp = await fetchAPI('/base-item/' + encodeURIComponent(id), { method: 'DELETE' });
+    if (resp && resp.erro) {
+        showMessage(resp.erro, 'error');
+        return;
+    }
+    showMessage(resp && resp.mensagem ? resp.mensagem : 'Registro excluído.', 'success');
+    loadBasePlanilha(true);
 }
 
 async function submitBaseItem(e) {
@@ -1552,6 +1599,12 @@ function initBaseItemModal() {
     document.getElementById('btn-base-item-cancelar')?.addEventListener('click', closeModalBaseItem);
     document.getElementById('modal-base-item')?.addEventListener('click', function(e) {
         if (e.target.id === 'modal-base-item') closeModalBaseItem();
+    });
+    document.getElementById('btn-base-excluir-confirmar')?.addEventListener('click', confirmExcluirBaseItem);
+    document.getElementById('modal-base-excluir-close')?.addEventListener('click', closeModalExcluirBaseItem);
+    document.getElementById('btn-base-excluir-cancelar')?.addEventListener('click', closeModalExcluirBaseItem);
+    document.getElementById('modal-base-excluir')?.addEventListener('click', function(e) {
+        if (e.target.id === 'modal-base-excluir') closeModalExcluirBaseItem();
     });
 }
 

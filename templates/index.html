@@ -220,13 +220,21 @@
             <!-- ABA BASE -->
             <div id="base" class="tab-content">
                 <h2>BASE - DADOS DA TABELA</h2>
-                <p class="info-text">Dados da tabela base de produtos (base_codigo_barras). Filtre por código de barras ou descrição.</p>
+                <p class="info-text">Dados da tabela base de produtos (base_codigo_barras). Filtre por código de barras, código interno, descrição, EAN, DUN ou unidade.</p>
                 
                 <div class="form-container" style="margin-bottom: 1rem;">
                     <label>Código de barras:</label>
                     <input type="text" id="filtro-base-codigo" placeholder="Filtrar por código de barras" style="max-width: 220px;">
+                    <label style="margin-left: 1rem;">Cód. interno:</label>
+                    <input type="text" id="filtro-base-cod-interno" placeholder="Filtrar por código interno" style="max-width: 160px;">
                     <label style="margin-left: 1rem;">Descrição:</label>
-                    <input type="text" id="filtro-base-descricao" placeholder="Filtrar por descrição" style="max-width: 220px;">
+                    <input type="text" id="filtro-base-descricao" placeholder="Filtrar por descrição" style="max-width: 220px; margin-top: 4px;">
+                    <label style="margin-left: 1rem;">EAN:</label>
+                    <input type="text" id="filtro-base-ean" placeholder="Filtrar por EAN" style="max-width: 140px;">
+                    <label style="margin-left: 1rem;">DUN:</label>
+                    <input type="text" id="filtro-base-dun" placeholder="Filtrar por DUN" style="max-width: 140px;">
+                    <label style="margin-left: 1rem;">Unidade:</label>
+                    <input type="text" id="filtro-base-unidade" placeholder="Filtrar por unidade" style="max-width: 90px;">
                     <button type="button" class="btn-primary" id="btn-filtrar-base">Filtrar</button>
                     <button type="button" class="btn-secondary" id="btn-limpar-filtros-base">Limpar</button>
                     <button type="button" class="btn-primary" id="btn-base-adicionar" style="margin-left: 0.5rem;">Adicionar produto</button>
@@ -243,6 +251,18 @@
                                 <button type="button" class="btn-secondary" id="btn-base-item-cancelar">Cancelar</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+                
+                <div id="modal-base-excluir" class="modal" style="display: none;">
+                    <div class="modal-content" style="max-width: 400px; border-top: 4px solid #c62828; background: #ffebee;">
+                        <span class="close" id="modal-base-excluir-close">&times;</span>
+                        <h3 style="color: #b71c1c; margin-top: 0;">Excluir registro</h3>
+                        <p style="color: #333;">Tem certeza que deseja excluir este produto da base?</p>
+                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                            <button type="button" class="btn-danger" id="btn-base-excluir-confirmar">Sim, excluir</button>
+                            <button type="button" class="btn-secondary" id="btn-base-excluir-cancelar">Cancelar</button>
+                        </div>
                     </div>
                 </div>
                 

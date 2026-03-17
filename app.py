@@ -854,7 +854,11 @@ def get_base_planilha():
             if not ds:
                 return jsonify({'headers': [], 'rows': []})
             filtro_codigo = request.args.get('codigo_barras', '').strip()
+            filtro_codigo_interno = request.args.get('codigo_interno', '').strip()
             filtro_descricao = request.args.get('descricao', '').strip()
+            filtro_ean = request.args.get('ean', '').strip()
+            filtro_dun = request.args.get('dun', '').strip()
+            filtro_unidade = request.args.get('unidade', '').strip()
             if getattr(conn, 'kind', None) == 'pg':
                 # Filtros no SQL quando a tabela tem colunas ean, dun, descricao (mais rápido)
                 try:
@@ -864,9 +868,21 @@ def get_base_planilha():
                         sql += """ AND (ean ILIKE ? OR dun ILIKE ? OR COALESCE(codigo_interno::text, '') ILIKE ?)"""
                         pct = '%' + filtro_codigo.replace('%', '\\%').replace('_', '\\_') + '%'
                         params.extend([pct, pct, pct])
+                    if filtro_codigo_interno:
+                        sql += """ AND COALESCE(codigo_interno, '') ILIKE ?"""
+                        params.append('%' + filtro_codigo_interno.replace('%', '\\%').replace('_', '\\_') + '%')
                     if filtro_descricao:
                         sql += """ AND COALESCE(descricao, '') ILIKE ?"""
                         params.append('%' + filtro_descricao.replace('%', '\\%').replace('_', '\\_') + '%')
+                    if filtro_ean:
+                        sql += """ AND COALESCE(ean, '') ILIKE ?"""
+                        params.append('%' + filtro_ean.replace('%', '\\%').replace('_', '\\_') + '%')
+                    if filtro_dun:
+                        sql += """ AND COALESCE(dun, '') ILIKE ?"""
+                        params.append('%' + filtro_dun.replace('%', '\\%').replace('_', '\\_') + '%')
+                    if filtro_unidade:
+                        sql += """ AND COALESCE(unidade, '') ILIKE ?"""
+                        params.append('%' + filtro_unidade.replace('%', '\\%').replace('_', '\\_') + '%')
                     sql += """ ORDER BY row_index LIMIT 2000"""
                     rows_raw = conn.execute(sql, params).fetchall()
                 except Exception:
@@ -874,14 +890,28 @@ def get_base_planilha():
                         """SELECT id, data FROM base_codigo_barras WHERE dataset_id = ? ORDER BY row_index LIMIT 2000""",
                         (str(ds),),
                     ).fetchall()
-                    if filtro_codigo or filtro_descricao:
-                        filtro_c, filtro_d = (filtro_codigo or '').upper(), (filtro_descricao or '').upper()
+                    if any([filtro_codigo, filtro_codigo_interno, filtro_descricao, filtro_ean, filtro_dun, filtro_unidade]):
+                        filtro_c = (filtro_codigo or '').upper()
+                        filtro_ci = (filtro_codigo_interno or '').upper()
+                        filtro_d = (filtro_descricao or '').upper()
+                        filtro_e = (filtro_ean or '').upper()
+                        filtro_du = (filtro_dun or '').upper()
+                        filtro_u = (filtro_unidade or '').upper()
                         out = []
                         for r in rows_raw:
                             data = r.get('data') if isinstance(r.get('data'), dict) else (json.loads(r['data']) if isinstance(r.get('data'), str) else {})
                             if not data: continue
-                            if filtro_c and not any(filtro_c in str(v or '').upper() for k, v in data.items() if k and ('ean' in k.lower() or 'dun' in k.lower() or 'codigo' in k.lower())): continue
-                            if filtro_d and filtro_d not in str(data.get('Descricao') or data.get('descricao') or '').upper(): continue
+                            txt_ean = str(data.get('Cod. EAN-13') or data.get('EAN-13') or data.get('ean') or '').upper()
+                            txt_dun = str(data.get('Cod. DUN-14') or data.get('DUN-14') or data.get('dun') or '').upper()
+                            txt_cod = str(data.get('Codigo') or data.get('codigo_interno') or '').upper()
+                            txt_desc = str(data.get('Descricao') or data.get('descricao') or '').upper()
+                            txt_un = str(data.get('Unidade') or data.get('unidade') or '').upper()
+                            if filtro_c and not (filtro_c in txt_ean or filtro_c in txt_dun or filtro_c in txt_cod): continue
+                            if filtro_ci and filtro_ci not in txt_cod: continue
+                            if filtro_d and filtro_d not in txt_desc: continue
+                            if filtro_e and filtro_e not in txt_ean: continue
+                            if filtro_du and filtro_du not in txt_dun: continue
+                            if filtro_u and filtro_u not in txt_un: continue
                             out.append(r)
                         rows_raw = out
             conn.close()
@@ -1006,6 +1036,32 @@ def api_base_item_update(item_id):
         conn.close()
         if n > 0:
             return jsonify({'ok': True, 'mensagem': 'Registro atualizado.'})
+        return jsonify({'erro': 'Registro não encontrado.'}), 404
+    except Exception as e:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@app.route('/api/base-item/<int:item_id>', methods=['DELETE'])
+def api_base_item_delete(item_id):
+    """Exclui um registro da base_codigo_barras."""
+    if not _usa_banco_para_dados():
+        return jsonify({'erro': 'Configure DATABASE_URL.'}), 400
+    conn = get_db()
+    try:
+        if getattr(conn, 'kind', None) != 'pg':
+            conn.close()
+            return jsonify({'erro': 'Excluir da base só disponível com Postgres.'}), 400
+        cur = conn.execute("""DELETE FROM base_codigo_barras WHERE id = ?""", (item_id,))
+        n = getattr(cur, 'rowcount', 0) or 0
+        conn.commit()
+        conn.close()
+        if n > 0:
+            return jsonify({'ok': True, 'mensagem': 'Registro excluído.'})
         return jsonify({'erro': 'Registro não encontrado.'}), 404
     except Exception as e:
         try:
@@ -3540,7 +3596,8 @@ def api_ravex_listar_importacoes():
                 pass
             criado = _get('criado_em', 8)
             if hasattr(criado, 'strftime'):
-                criado = criado.strftime('%Y-%m-%d %H:%M:%S')
+                # Formato brasileiro: dia/mês/ano hora:minuto:segundo
+                criado = criado.strftime('%d/%m/%Y %H:%M:%S')
             out.append({
                 'id': _get('id', 0),
                 'tipo': _get('tipo', 1),
