@@ -3398,14 +3398,20 @@ def api_ravex_listar_importacoes():
             limit_i = max(10, min(500, int(limit)))
         except Exception:
             limit_i = 200
-        rows = conn.execute(
-            """SELECT id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em
-               FROM ravex_importacoes
-               WHERE (dataset_id = ? OR ? IS NULL)
-               ORDER BY criado_em DESC
-               LIMIT ?""",
-            (str(ds) if ds else None, str(ds) if ds else None, limit_i),
-        ).fetchall()
+        if ds is not None:
+            sql = """SELECT id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em
+                     FROM ravex_importacoes
+                     WHERE dataset_id = ?
+                     ORDER BY criado_em DESC
+                     LIMIT ?"""
+            params = (str(ds), limit_i)
+        else:
+            sql = """SELECT id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em
+                     FROM ravex_importacoes
+                     ORDER BY criado_em DESC
+                     LIMIT ?"""
+            params = (limit_i,)
+        rows = conn.execute(sql, params).fetchall()
         conn.close()
         out = []
         for r in rows or []:
