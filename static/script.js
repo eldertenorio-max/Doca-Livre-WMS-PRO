@@ -135,7 +135,10 @@ function loadTabData(tab) {
 async function loadBaixadosRavex() {
     const tbody = document.getElementById('tbody-baixa-ravex');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="8" class="loading">Carregando...</td></tr>';
+    var jaTinhaDados = tbody.querySelector('tr:not(.loading)');
+    if (!jaTinhaDados) {
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Carregando...</td></tr>';
+    }
     const resp = await fetchAPI('/ravex/importacoes?limit=200');
     if (!resp || resp.erro) {
         tbody.innerHTML = '<tr><td colspan="8" class="loading" style="color:#c62828;">' + (resp && resp.erro ? escapeHtml(resp.erro) : 'Erro ao carregar histórico') + '</td></tr>';
