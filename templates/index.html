@@ -29,6 +29,7 @@
         <nav class="tabs">
             <button class="tab-button active" data-tab="painel">PAINEL</button>
             <button class="tab-button" data-tab="importar-ravex">IMPORTAR RAVEX</button>
+            <button class="tab-button" data-tab="baixa-ravex">BAIXADOS (RAVEX)</button>
             <button class="tab-button" data-tab="conferencia">CONFERÊNCIA</button>
             <button class="tab-button" data-tab="extrato">EXTRATO</button>
             <button class="tab-button" data-tab="base">BASE</button>
@@ -658,6 +659,31 @@
                         <div id="ravex-modal-concluido-mensagem" style="background: #e8f5e9; border: 1px solid #4caf50; border-radius: 8px; padding: 16px; margin-bottom: 20px; color: #1b5e20;"></div>
                         <button type="button" id="ravex-modal-concluido-ok" class="btn btn-primary" style="min-width: 100px;">OK</button>
                     </div>
+                </div>
+            </div>
+
+            <!-- ABA BAIXADOS (RAVEX) -->
+            <div id="baixa-ravex" class="tab-content">
+                <h2>BAIXADOS (RAVEX)</h2>
+                <p class="info-text">Histórico do que foi baixado/importado do Ravex (por período, por ID único ou por lista). Mostra o status, quantidade de viagens e itens gravados.</p>
+                <div style="overflow: auto;">
+                    <table class="data-table" id="tabela-baixa-ravex">
+                        <thead>
+                            <tr>
+                                <th>Data/Hora</th>
+                                <th>Tipo</th>
+                                <th>Status</th>
+                                <th>Parâmetros</th>
+                                <th>Viagens</th>
+                                <th>Itens</th>
+                                <th>Usuário</th>
+                                <th>Erros</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-baixa-ravex">
+                            <tr><td colspan="8" class="loading">Carregando...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 

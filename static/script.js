@@ -123,11 +123,43 @@ function loadTabData(tab) {
             return loadRomaneio();
         case 'importar-ravex':
             return Promise.resolve();
+        case 'baixa-ravex':
+            return loadBaixadosRavex();
         case 'divergencias':
             return loadDivergencias(false);
         default:
             return Promise.resolve();
     }
+}
+
+async function loadBaixadosRavex() {
+    const tbody = document.getElementById('tbody-baixa-ravex');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="8" class="loading">Carregando...</td></tr>';
+    const resp = await fetchAPI('/ravex/importacoes?limit=200');
+    if (!resp || resp.erro) {
+        tbody.innerHTML = '<tr><td colspan="8" class="loading" style="color:#c62828;">' + (resp && resp.erro ? escapeHtml(resp.erro) : 'Erro ao carregar histórico') + '</td></tr>';
+        return;
+    }
+    const rows = Array.isArray(resp.rows) ? resp.rows : [];
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Nenhuma importação registrada ainda.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => {
+        const params = r.parametros ? JSON.stringify(r.parametros) : '';
+        const erros = Array.isArray(r.erros) ? r.erros.length : 0;
+        return '<tr>'
+            + '<td>' + escapeHtml(String(r.criado_em || '')) + '</td>'
+            + '<td>' + escapeHtml(String(r.tipo || '')) + '</td>'
+            + '<td>' + escapeHtml(String(r.status || '')) + '</td>'
+            + '<td style="max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="' + escapeHtml(params) + '">' + escapeHtml(params) + '</td>'
+            + '<td><strong>' + escapeHtml(String(r.viagens_processadas || 0)) + '</strong></td>'
+            + '<td><strong>' + escapeHtml(String(r.total_itens || 0)) + '</strong></td>'
+            + '<td>' + escapeHtml(String(r.usuario || '')) + '</td>'
+            + '<td>' + (erros ? ('<span style="color:#c62828;font-weight:700;">' + erros + '</span>') : '0') + '</td>'
+            + '</tr>';
+    }).join('');
 }
 
 // Carregar todos os dados

@@ -261,6 +261,28 @@ def init_db():
                 conn.execute('ALTER TABLE public.excel_romaneio_por_item ADD COLUMN identificador_rota TEXT')
             except Exception:
                 pass
+            # Coluna importado_em no romaneio_por_item (para auditoria de importação Ravex)
+            try:
+                conn.execute('ALTER TABLE public.romaneio_por_item ADD COLUMN IF NOT EXISTS importado_em TIMESTAMPTZ')
+            except Exception:
+                pass
+            # Histórico de importações Ravex
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.ravex_importacoes (
+                    id BIGSERIAL PRIMARY KEY,
+                    dataset_id uuid REFERENCES public.excel_datasets(dataset_id) ON DELETE SET NULL,
+                    tipo TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'OK',
+                    parametros JSONB,
+                    viagens_processadas INTEGER NOT NULL DEFAULT 0,
+                    total_itens INTEGER NOT NULL DEFAULT 0,
+                    usuario TEXT,
+                    erros JSONB,
+                    criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )'''
+            )
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_ravex_importacoes_dataset ON public.ravex_importacoes (dataset_id)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_ravex_importacoes_criado_em ON public.ravex_importacoes (criado_em DESC)')
             # Tabela id_roteiros (registro dos roteiros vindos da API por período)
             conn.execute(
                 '''CREATE TABLE IF NOT EXISTS public.id_roteiros (
@@ -2465,7 +2487,23 @@ def _romaneio_linha_para_tuple_pg(ds, L):
     cidade_val = L.get('cidade')
     if cidade_val is not None and (isinstance(cidade_val, (dict, list)) or (isinstance(cidade_val, str) and cidade_val.strip().startswith('{'))):
         cidade_val = _normalizar_cidade_nome(cidade_val)
-    data_json = _romaneio_data_para_json(L.get('data'))
+    # Garantir que o JSON "data" carregue o campo importado_em para aparecer como coluna na UI
+    data_val = L.get('data')
+    importado_em_val = L.get('importado_em')
+    if importado_em_val:
+        try:
+            if isinstance(data_val, dict):
+                if 'importado_em' not in data_val:
+                    data_val = dict(data_val)
+                    data_val['importado_em'] = importado_em_val
+            elif isinstance(data_val, str) and data_val.strip().startswith('{'):
+                dtmp = json.loads(data_val)
+                if isinstance(dtmp, dict) and 'importado_em' not in dtmp:
+                    dtmp['importado_em'] = importado_em_val
+                    data_val = dtmp
+        except Exception:
+            pass
+    data_json = _romaneio_data_para_json(data_val)
     return (
         str(ds),
         _int(L.get('row_index')),
@@ -2483,8 +2521,31 @@ def _romaneio_linha_para_tuple_pg(ds, L):
         _str(L.get('placa')),
         _str(L.get('motorista')),
         _str(L.get('data_expedicao')),
+        _str(L.get('importado_em')),
         data_json,
     )
+
+
+def _registrar_importacao_ravex(conn, *, dataset_id, tipo, status, parametros=None, viagens_processadas=0, total_itens=0, erros=None):
+    """Registra no banco a execução de importações Ravex (para aba 'Baixados')."""
+    try:
+        usuario = session.get('usuario', '') or None
+        conn.execute(
+            """INSERT INTO ravex_importacoes (dataset_id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros)
+               VALUES (?, ?, ?, ?::jsonb, ?, ?, ?, ?::jsonb)""",
+            (
+                str(dataset_id) if dataset_id else None,
+                str(tipo or ''),
+                str(status or 'OK'),
+                json.dumps(parametros or {}),
+                int(viagens_processadas or 0),
+                int(total_itens or 0),
+                usuario,
+                json.dumps(erros or []),
+            ),
+        )
+    except Exception:
+        pass
 
 
 def _normalizar_data_para_ravex(s):
@@ -2986,25 +3047,50 @@ def api_ravex_importar_romaneio():
     if not ds:
         conn.close()
         return jsonify({'erro': 'Nenhum dataset ativo. Importe a base (planilha) primeiro.'}), 400
+    importado_em = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     try:
         conn.execute(
             """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
             (str(ds), id_viagem),
         )
         for L in linhas:
+            try:
+                L['importado_em'] = importado_em
+            except Exception:
+                pass
             conn.execute(
                 """INSERT INTO romaneio_por_item
                    (dataset_id, row_index, id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
-                    codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
+                    codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, importado_em, data)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
                 _romaneio_linha_para_tuple_pg(ds, L),
             )
         if linhas:
             _upsert_viagem_placa_motorista(conn, id_viagem, linhas[0].get('placa'), linhas[0].get('motorista'))
+        _registrar_importacao_ravex(
+            conn,
+            dataset_id=ds,
+            tipo='id_unico',
+            status='OK',
+            parametros={'id_viagem': id_viagem, 'id_roteiro': id_roteiro or id_roteiro_in or id_unico},
+            viagens_processadas=1,
+            total_itens=len(linhas),
+            erros=[],
+        )
         conn.commit()
         conn.close()
     except Exception as e:
         try:
+            _registrar_importacao_ravex(
+                conn,
+                dataset_id=ds,
+                tipo='id_unico',
+                status='ERRO',
+                parametros={'id_viagem': id_viagem, 'id_roteiro': id_roteiro or id_roteiro_in or id_unico},
+                viagens_processadas=0,
+                total_itens=0,
+                erros=[{'erro': str(e)}],
+            )
             conn.close()
         except Exception:
             pass
@@ -3092,12 +3178,17 @@ def api_ravex_sincronizar_periodo():
                     """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
                     (str(ds), id_viagem),
                 )
+                importado_em = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
                 for L in linhas:
+                    try:
+                        L['importado_em'] = importado_em
+                    except Exception:
+                        pass
                     conn.execute(
                         """INSERT INTO romaneio_por_item
                            (dataset_id, row_index, id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
-                            codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
+                            codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, importado_em, data)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
                         _romaneio_linha_para_tuple_pg(ds, L),
                     )
                 if linhas:
@@ -3106,9 +3197,29 @@ def api_ravex_sincronizar_periodo():
                 total_itens += len(linhas)
             except Exception as e:
                 erros.append({'id_viagem': id_viagem, 'erro': str(e)})
+        _registrar_importacao_ravex(
+            conn,
+            dataset_id=ds,
+            tipo='periodo',
+            status='OK' if not erros else 'OK_COM_ERROS',
+            parametros={'data_inicio': data_inicio, 'data_fim': data_fim},
+            viagens_processadas=viagens_processadas,
+            total_itens=total_itens,
+            erros=erros,
+        )
         conn.commit()
     except Exception as e:
         try:
+            _registrar_importacao_ravex(
+                conn,
+                dataset_id=ds,
+                tipo='periodo',
+                status='ERRO',
+                parametros={'data_inicio': data_inicio, 'data_fim': data_fim},
+                viagens_processadas=viagens_processadas,
+                total_itens=total_itens,
+                erros=erros + [{'erro': str(e)}],
+            )
             conn.rollback()
         except Exception:
             pass
@@ -3179,12 +3290,17 @@ def api_ravex_importar_lista():
                     """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
                     (str(ds), id_viagem),
                 )
+                importado_em = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
                 for L in linhas:
+                    try:
+                        L['importado_em'] = importado_em
+                    except Exception:
+                        pass
                     conn.execute(
                         """INSERT INTO romaneio_por_item
                            (dataset_id, row_index, id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
-                            codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, data)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
+                            codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, importado_em, data)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
                         _romaneio_linha_para_tuple_pg(ds, L),
                     )
                 if linhas:
@@ -3193,9 +3309,29 @@ def api_ravex_importar_lista():
                 total_itens += len(linhas)
             except Exception as e:
                 erros.append({'id': id_unico, 'erro': str(e)})
+        _registrar_importacao_ravex(
+            conn,
+            dataset_id=ds,
+            tipo='lista',
+            status='OK' if not erros else 'OK_COM_ERROS',
+            parametros={'ids_recebidos': len(ids)},
+            viagens_processadas=viagens_processadas,
+            total_itens=total_itens,
+            erros=erros,
+        )
         conn.commit()
     except Exception as e:
         try:
+            _registrar_importacao_ravex(
+                conn,
+                dataset_id=ds,
+                tipo='lista',
+                status='ERRO',
+                parametros={'ids_recebidos': len(ids)},
+                viagens_processadas=viagens_processadas,
+                total_itens=total_itens,
+                erros=erros + [{'erro': str(e)}],
+            )
             conn.rollback()
         except Exception:
             pass
@@ -3244,6 +3380,70 @@ def get_extrato():
         ''').fetchall()
     conn.close()
     return jsonify([dict(row) for row in produtos])
+
+
+@app.route('/api/ravex/importacoes', methods=['GET'])
+def api_ravex_listar_importacoes():
+    """Lista histórico do que foi baixado/importado do Ravex (para exibir na nova aba)."""
+    if not _usa_banco_para_dados():
+        return jsonify({'erro': 'Configure DATABASE_URL para usar histórico de importações.', 'rows': []}), 400
+    conn = get_db()
+    try:
+        if getattr(conn, 'kind', None) != 'pg':
+            conn.close()
+            return jsonify({'erro': 'Banco não é Postgres.', 'rows': []}), 400
+        ds = _get_latest_dataset_id(conn)
+        limit = request.args.get('limit', '200')
+        try:
+            limit_i = max(10, min(500, int(limit)))
+        except Exception:
+            limit_i = 200
+        rows = conn.execute(
+            """SELECT id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em
+               FROM ravex_importacoes
+               WHERE (dataset_id = ? OR ? IS NULL)
+               ORDER BY criado_em DESC
+               LIMIT ?""",
+            (str(ds) if ds else None, str(ds) if ds else None, limit_i),
+        ).fetchall()
+        conn.close()
+        out = []
+        for r in rows or []:
+            def _get(k, idx):
+                return (r.get(k) if hasattr(r, 'get') else (r[idx] if hasattr(r, '__getitem__') and len(r) > idx else None))
+            params = _get('parametros', 3)
+            errs = _get('erros', 7)
+            try:
+                if isinstance(params, str):
+                    params = json.loads(params)
+            except Exception:
+                pass
+            try:
+                if isinstance(errs, str):
+                    errs = json.loads(errs)
+            except Exception:
+                pass
+            criado = _get('criado_em', 8)
+            if hasattr(criado, 'strftime'):
+                criado = criado.strftime('%Y-%m-%d %H:%M:%S')
+            out.append({
+                'id': _get('id', 0),
+                'tipo': _get('tipo', 1),
+                'status': _get('status', 2),
+                'parametros': params or {},
+                'viagens_processadas': _get('viagens_processadas', 4) or 0,
+                'total_itens': _get('total_itens', 5) or 0,
+                'usuario': _get('usuario', 6) or '',
+                'erros': errs or [],
+                'criado_em': criado or '',
+            })
+        return jsonify({'ok': True, 'rows': out})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e), 'rows': []}), 500
 
 def _qual_coluna_filtro(header_str, tipo):
     """Retorna True se o cabeçalho corresponde ao tipo de filtro (data, pedido, nota_fiscal, cliente)."""
