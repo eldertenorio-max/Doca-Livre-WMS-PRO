@@ -2769,10 +2769,11 @@ window.tirarBipado = async function(codigoBarras, quantidade) {
     }
 };
 
-// Bipar Item diretamente da lista — uma única bipagem por clique
+// Bipar Item diretamente da lista — adiciona 1 na base e atualiza a tabela
 window.biparItem = async function(codigoBarras, produto, quantidadeFalta) {
     if (window._biparItemEmAndamento) return;
     window._biparItemEmAndamento = true;
+    const idViagem = document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim();
     const cb = document.getElementById('codigo-barras');
     if (cb) cb.value = '';
     document.getElementById('codigo-barras').value = codigoBarras;
@@ -2781,6 +2782,10 @@ window.biparItem = async function(codigoBarras, produto, quantidadeFalta) {
     try {
         window._ultimoBipadoCodigo = (codigoBarras || '').toString().trim();
         await buscarProdutoNaPlanilha(codigoBarras);
+        if (idViagem) {
+            await new Promise(function(r) { setTimeout(r, 400); });
+            await loadConferencia(idViagem);
+        }
     } finally {
         window._biparItemEmAndamento = false;
     }

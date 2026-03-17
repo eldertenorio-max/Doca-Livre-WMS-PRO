@@ -1215,8 +1215,13 @@ def remover_itens_bipados():
     if not id_viagem or not codigo_barras:
         return jsonify({'erro': 'id_viagem e codigo_barras são obrigatórios'}), 400
     conn = get_db()
-    conn.row_factory = sqlite3.Row
-    # Buscar registros do mais recente ao mais antigo
+
+    def _row_id(r):
+        return r.get('id') if hasattr(r, 'get') else (r[0] if len(r) > 0 else None)
+
+    def _row_qtd(r):
+        return r.get('quantidade') if hasattr(r, 'get') else (r[1] if len(r) > 1 else 0)
+
     rows = conn.execute(
         'SELECT id, quantidade FROM produtos_bipados WHERE id_viagem = ? AND codigo_barras = ? ORDER BY id DESC',
         (id_viagem, codigo_barras)
@@ -1225,7 +1230,7 @@ def remover_itens_bipados():
         conn.close()
         return jsonify({'success': True, 'mensagem': 'Nenhum item bipado para este produto nesta viagem.', 'removidos': 0})
     if quantidade == 'tudo' or quantidade == 'all':
-        qtd_remover = sum(r['quantidade'] for r in rows)
+        qtd_remover = sum(_row_qtd(r) for r in rows)
         conn.execute('DELETE FROM produtos_bipados WHERE id_viagem = ? AND codigo_barras = ?', (id_viagem, codigo_barras))
         conn.commit()
         conn.close()
@@ -1242,7 +1247,7 @@ def remover_itens_bipados():
     for row in rows:
         if removidos >= qtd_remover:
             break
-        rid, qtd = row['id'], row['quantidade']
+        rid, qtd = _row_id(row), _row_qtd(row)
         falta_remover = qtd_remover - removidos
         if qtd <= falta_remover:
             conn.execute('DELETE FROM produtos_bipados WHERE id = ?', (rid,))
