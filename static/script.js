@@ -51,6 +51,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initTabs();
     initForms();
     initFiltrosBase();
+    initBaseItemModal();
     // Primeira carga após um tick para a tela pintar antes (resposta mais rápida percebida)
     setTimeout(function() { loadAllData(); }, 0);
     initEventosStream();
@@ -1447,14 +1448,27 @@ async function loadBasePlanilha(showLoadingState) {
         if (!thead || !tbody) return;
 
         if (data && data.headers && Array.isArray(data.headers)) {
-            thead.innerHTML = '<tr>' + data.headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
-            const cols = data.headers.length;
+            var dataHeaders = data.headers.filter(function(h) { return h !== '_id'; });
+            thead.innerHTML = '<tr>' + dataHeaders.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '<th>Ações</th></tr>';
+            const cols = dataHeaders.length + 1;
             if (!data.rows || data.rows.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="' + cols + '" class="loading">Nenhum dado encontrado na base de produtos.</td></tr>';
             } else {
                 tbody.innerHTML = data.rows.map(row => {
-                    return '<tr>' + data.headers.map(h => `<td>${escapeHtml(row[h] != null ? String(row[h]) : '')}</td>`).join('') + '</tr>';
+                    var cells = dataHeaders.map(h => `<td>${escapeHtml(row[h] != null ? String(row[h]) : '')}</td>`).join('');
+                    var id = row._id != null ? row._id : '';
+                    cells += '<td><button type="button" class="btn-secondary btn-sm" data-base-edit-id="' + escapeHtml(String(id)) + '">Editar</button></td>';
+                    return '<tr>' + cells + '</tr>';
                 }).join('');
+                window._lastBaseHeaders = dataHeaders;
+                tbody.querySelectorAll('[data-base-edit-id]').forEach(function(btn) {
+                    var id = btn.getAttribute('data-base-edit-id');
+                    if (!id) return;
+                    btn.addEventListener('click', function() {
+                        var row = data.rows.find(function(r) { return String(r._id) === String(id); });
+                        if (row) openModalBaseItem(row, dataHeaders);
+                    });
+                });
             }
         } else if (data === null || (data && data.erro)) {
             thead.innerHTML = '<tr><th>Erro</th></tr>';
@@ -1480,6 +1494,64 @@ function initFiltrosBase() {
         if (cod) cod.value = '';
         if (desc) desc.value = '';
         loadBasePlanilha(true);
+    });
+    document.getElementById('btn-base-adicionar')?.addEventListener('click', function() {
+        var headers = window._lastBaseHeaders || ['Codigo', 'Descricao', 'Unidade', 'Cod. EAN-13', 'Cod. DUN-14', 'Peso Bruto'];
+        openModalBaseItem(null, headers);
+    });
+}
+
+function openModalBaseItem(row, headers) {
+    var modal = document.getElementById('modal-base-item');
+    var titulo = document.getElementById('modal-base-item-titulo');
+    var campos = document.getElementById('form-base-item-campos');
+    var form = document.getElementById('form-base-item');
+    if (!modal || !campos || !form) return;
+    form.dataset.baseEditId = row && row._id != null ? String(row._id) : '';
+    titulo.textContent = row ? 'Editar produto na base' : 'Cadastrar produto na base';
+    campos.innerHTML = (headers || []).map(function(h) {
+        var val = row && row[h] != null ? String(row[h]) : '';
+        var id = 'base-item-' + h.replace(/\s+/g, '_').replace(/\./g, '_');
+        return '<div class="form-group" style="margin-bottom: 0.5rem;"><label for="' + id + '">' + escapeHtml(h) + '</label><input type="text" id="' + id + '" name="' + escapeHtml(h) + '" value="' + escapeHtml(val) + '" style="width: 100%; max-width: 100%;"></div>';
+    }).join('');
+    modal.style.display = 'block';
+}
+
+function closeModalBaseItem() {
+    var modal = document.getElementById('modal-base-item');
+    if (modal) modal.style.display = 'none';
+}
+
+async function submitBaseItem(e) {
+    e.preventDefault();
+    var form = document.getElementById('form-base-item');
+    var campos = document.getElementById('form-base-item-campos');
+    if (!form || !campos) return;
+    var payload = {};
+    campos.querySelectorAll('input[name]').forEach(function(input) {
+        var name = input.getAttribute('name');
+        if (name) payload[name] = input.value.trim();
+    });
+    var editId = form.dataset.baseEditId || '';
+    var url = editId ? '/base-item/' + encodeURIComponent(editId) : '/base-item';
+    var method = editId ? 'PUT' : 'POST';
+    var resp = await fetchAPI(url, { method: method, body: JSON.stringify(payload) });
+    if (resp && resp.erro) {
+        showMessage(resp.erro, 'error');
+        return;
+    }
+    showMessage(resp && resp.mensagem ? resp.mensagem : (editId ? 'Atualizado.' : 'Cadastrado.'), 'success');
+    closeModalBaseItem();
+    loadBasePlanilha(true);
+}
+
+function initBaseItemModal() {
+    var form = document.getElementById('form-base-item');
+    form?.addEventListener('submit', submitBaseItem);
+    document.getElementById('modal-base-item-close')?.addEventListener('click', closeModalBaseItem);
+    document.getElementById('btn-base-item-cancelar')?.addEventListener('click', closeModalBaseItem);
+    document.getElementById('modal-base-item')?.addEventListener('click', function(e) {
+        if (e.target.id === 'modal-base-item') closeModalBaseItem();
     });
 }
 

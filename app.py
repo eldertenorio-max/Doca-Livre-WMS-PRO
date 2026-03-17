@@ -256,16 +256,16 @@ def init_db():
             try:
                 conn.execute('ALTER TABLE public.romaneio_por_item ADD COLUMN identificador_rota TEXT')
             except Exception:
-                pass
+                conn.rollback()
             try:
                 conn.execute('ALTER TABLE public.excel_romaneio_por_item ADD COLUMN identificador_rota TEXT')
             except Exception:
-                pass
+                conn.rollback()
             # Coluna importado_em no romaneio_por_item (para auditoria de importação Ravex)
             try:
                 conn.execute('ALTER TABLE public.romaneio_por_item ADD COLUMN IF NOT EXISTS importado_em TIMESTAMPTZ')
             except Exception:
-                pass
+                conn.rollback()
             # Histórico de importações Ravex
             conn.execute(
                 '''CREATE TABLE IF NOT EXISTS public.ravex_importacoes (
@@ -858,7 +858,7 @@ def get_base_planilha():
             if getattr(conn, 'kind', None) == 'pg':
                 # Filtros no SQL quando a tabela tem colunas ean, dun, descricao (mais rápido)
                 try:
-                    sql = """SELECT data FROM base_codigo_barras WHERE dataset_id = ?"""
+                    sql = """SELECT id, data FROM base_codigo_barras WHERE dataset_id = ?"""
                     params = [str(ds)]
                     if filtro_codigo:
                         sql += """ AND (ean ILIKE ? OR dun ILIKE ? OR COALESCE(codigo_interno::text, '') ILIKE ?)"""
@@ -871,7 +871,7 @@ def get_base_planilha():
                     rows_raw = conn.execute(sql, params).fetchall()
                 except Exception:
                     rows_raw = conn.execute(
-                        """SELECT data FROM base_codigo_barras WHERE dataset_id = ? ORDER BY row_index LIMIT 2000""",
+                        """SELECT id, data FROM base_codigo_barras WHERE dataset_id = ? ORDER BY row_index LIMIT 2000""",
                         (str(ds),),
                     ).fetchall()
                     if filtro_codigo or filtro_descricao:
@@ -894,6 +894,7 @@ def get_base_planilha():
                 if not headers:
                     headers = [str(k) for k in data.keys()]
                 row_dict = {str(k): (v.strftime('%Y-%m-%d %H:%M:%S') if isinstance(v, datetime) else v) for k, v in data.items()}
+                row_dict['_id'] = r.get('id')
                 rows.append(row_dict)
             return jsonify({'headers': headers or ['Codigo', 'Descricao', 'Unidade'], 'rows': rows})
         except Exception as e:
@@ -905,6 +906,114 @@ def get_base_planilha():
 
     # Sem planilha: dados vêm apenas do banco (DATABASE_URL)
     return jsonify({'headers': [], 'rows': [], 'erro': 'Configure DATABASE_URL. Base de produtos vem apenas do banco.'})
+
+
+def _base_item_payload_to_columns(payload):
+    """Extrai do payload (dict do frontend) os valores para colunas e para o JSONB data."""
+    if not payload or not isinstance(payload, dict):
+        return None, None
+    data = {str(k): (v.strftime('%Y-%m-%d %H:%M:%S') if isinstance(v, datetime) else v) for k, v in payload.items() if str(k) != '_id'}
+    codigo_interno = str(payload.get('Codigo') or payload.get('codigo_interno') or payload.get('Codigo Interno') or '').strip() or None
+    ean = str(payload.get('Cod. EAN-13') or payload.get('EAN-13') or payload.get('ean') or payload.get('EAN') or '').strip() or None
+    dun = str(payload.get('Cod. DUN-14') or payload.get('DUN-14') or payload.get('dun') or payload.get('DUN') or '').strip() or None
+    descricao = str(payload.get('Descricao') or payload.get('descricao') or payload.get('Descrição') or '').strip() or None
+    unidade = str(payload.get('Unidade') or payload.get('unidade') or '').strip() or None
+    peso = str(payload.get('Peso Bruto') or payload.get('Peso Líquido') or payload.get('Peso') or payload.get('peso') or '').strip() or None
+    if not data and not any([codigo_interno, ean, dun, descricao]):
+        return None, None
+    if not data:
+        data = {}
+    if codigo_interno is not None:
+        data['Codigo'] = codigo_interno
+    if descricao is not None:
+        data['Descricao'] = descricao
+    if unidade is not None:
+        data['Unidade'] = unidade
+    if ean is not None:
+        data['Cod. EAN-13'] = ean
+    if dun is not None:
+        data['Cod. DUN-14'] = dun
+    if peso is not None:
+        data['Peso Bruto'] = data.get('Peso Bruto') or peso
+    return (codigo_interno, ean, dun, descricao, unidade, peso), data
+
+
+@app.route('/api/base-item', methods=['POST'])
+def api_base_item_create():
+    """Cria um novo registro na base_codigo_barras (dataset ativo)."""
+    if not _usa_banco_para_dados():
+        return jsonify({'erro': 'Configure DATABASE_URL. Base de produtos vem apenas do banco.'}), 400
+    conn = get_db()
+    try:
+        if getattr(conn, 'kind', None) != 'pg':
+            conn.close()
+            return jsonify({'erro': 'Adicionar/editar base só disponível com Postgres (DATABASE_URL).'}), 400
+        ds = _get_latest_dataset_id(conn)
+        if not ds:
+            conn.close()
+            return jsonify({'erro': 'Nenhum dataset ativo. Importe uma planilha BASE primeiro.'}), 400
+        payload = request.get_json() or {}
+        cols, data = _base_item_payload_to_columns(payload)
+        if cols is None:
+            conn.close()
+            return jsonify({'erro': 'Dados inválidos. Informe ao menos código ou descrição.'}), 400
+        codigo_interno, ean, dun, descricao, unidade, peso = cols
+        next_row = conn.execute(
+            """SELECT COALESCE(MAX(row_index), 0) + 1 AS next_idx FROM base_codigo_barras WHERE dataset_id = ?""",
+            (str(ds),),
+        ).fetchone()
+        row_index = next_row['next_idx'] if next_row else 1
+        conn.execute(
+            """INSERT INTO base_codigo_barras (dataset_id, row_index, codigo_interno, ean, dun, descricao, unidade, peso, data)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (str(ds), row_index, codigo_interno, ean, dun, descricao, unidade, peso, json.dumps(data, ensure_ascii=False, default=str)),
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({'ok': True, 'mensagem': 'Produto cadastrado na base.'})
+    except Exception as e:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@app.route('/api/base-item/<int:item_id>', methods=['PUT'])
+def api_base_item_update(item_id):
+    """Atualiza um registro da base_codigo_barras."""
+    if not _usa_banco_para_dados():
+        return jsonify({'erro': 'Configure DATABASE_URL.'}), 400
+    conn = get_db()
+    try:
+        if getattr(conn, 'kind', None) != 'pg':
+            conn.close()
+            return jsonify({'erro': 'Editar base só disponível com Postgres.'}), 400
+        payload = request.get_json() or {}
+        cols, data = _base_item_payload_to_columns(payload)
+        if cols is None:
+            conn.close()
+            return jsonify({'erro': 'Dados inválidos.'}), 400
+        codigo_interno, ean, dun, descricao, unidade, peso = cols
+        cur = conn.execute(
+            """UPDATE base_codigo_barras SET codigo_interno = ?, ean = ?, dun = ?, descricao = ?, unidade = ?, peso = ?, data = ?
+               WHERE id = ?""",
+            (codigo_interno, ean, dun, descricao, unidade, peso, json.dumps(data, ensure_ascii=False, default=str), item_id),
+        )
+        n = getattr(cur, 'rowcount', 0) or 0
+        conn.commit()
+        conn.close()
+        if n > 0:
+            return jsonify({'ok': True, 'mensagem': 'Registro atualizado.'})
+        return jsonify({'erro': 'Registro não encontrado.'}), 404
+    except Exception as e:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
 
 
 def _normalizar_codigo_barras(codigo):

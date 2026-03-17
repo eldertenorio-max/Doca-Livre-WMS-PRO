@@ -229,6 +229,21 @@
                     <input type="text" id="filtro-base-descricao" placeholder="Filtrar por descrição" style="max-width: 220px;">
                     <button type="button" class="btn-primary" id="btn-filtrar-base">Filtrar</button>
                     <button type="button" class="btn-secondary" id="btn-limpar-filtros-base">Limpar</button>
+                    <button type="button" class="btn-primary" id="btn-base-adicionar" style="margin-left: 0.5rem;">Adicionar produto</button>
+                </div>
+                
+                <div id="modal-base-item" class="modal" style="display: none;">
+                    <div class="modal-content" style="max-width: 560px;">
+                        <span class="close" id="modal-base-item-close">&times;</span>
+                        <h3 id="modal-base-item-titulo">Cadastrar produto na base</h3>
+                        <form id="form-base-item">
+                            <div id="form-base-item-campos"></div>
+                            <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                                <button type="submit" class="btn-primary">Salvar</button>
+                                <button type="button" class="btn-secondary" id="btn-base-item-cancelar">Cancelar</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
                 
                 <div class="table-container table-container-base">
