@@ -2134,19 +2134,9 @@ def get_conferencia(id_viagem=None):
                 return jsonify({'erro': 'Nenhum dataset ativo. Importe a base primeiro.'}), 400
             id_busca = (id_viagem_norm or id_viagem or '').strip()
             try:
-                limit_romaneio = min(2000, max(500, int(request.args.get('limit', 1500))))
+                limit_romaneio = min(2000, max(200, int(request.args.get('limit', 400))))
             except (TypeError, ValueError):
-                limit_romaneio = 1500
-            total_romaneio = 0
-            try:
-                row_count = conn.execute(
-                    """SELECT COUNT(*) AS c FROM romaneio_por_item
-                       WHERE dataset_id = ? AND (TRIM(COALESCE(id_viagem::text, '')) = ? OR TRIM(COALESCE(id_roteiro::text, '')) = ?)""",
-                    (str(ds), id_busca, id_busca),
-                ).fetchone()
-                total_romaneio = int(row_count.get('c', 0) if row_count and hasattr(row_count, 'get') else (row_count[0] if row_count else 0))
-            except Exception:
-                pass
+                limit_romaneio = 400
             romaneio_rows = conn.execute(
                 """SELECT id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
                               codigo_cliente, endereco, cidade, placa, motorista, data_expedicao
@@ -2170,15 +2160,21 @@ def get_conferencia(id_viagem=None):
             else:
                 base_rows = []
             mapa_codigo_barras = {}
+            mapa_ean = {}
+            mapa_dun = {}
             mapa_barras_to_codigo = {}
             for r in base_rows or []:
                 cod = ((r.get('codigo_interno') or '') if hasattr(r, 'get') else (r[0] if len(r) > 0 else '')).strip() if r else ''
                 ean = ((r.get('ean') or '') if hasattr(r, 'get') else (r[1] if len(r) > 1 else '')).strip() if r else ''
                 dun = ((r.get('dun') or '') if hasattr(r, 'get') else (r[2] if len(r) > 2 else '')).strip() if r else ''
-                barcode = ean or dun
-                if cod and barcode:
-                    mapa_codigo_barras[cod] = barcode
-                    mapa_barras_to_codigo[barcode] = cod
+                if cod:
+                    if ean:
+                        mapa_ean[cod] = ean
+                        mapa_barras_to_codigo[ean] = cod
+                    if dun:
+                        mapa_dun[cod] = dun
+                        mapa_barras_to_codigo[dun] = cod
+                    mapa_codigo_barras[cod] = ean or dun
             bipados = conn.execute(
                 'SELECT codigo_barras, SUM(quantidade) as quantidade_bipada FROM produtos_bipados WHERE id_viagem = ? GROUP BY codigo_barras',
                 (id_para_bipados,),
@@ -2201,7 +2197,13 @@ def get_conferencia(id_viagem=None):
                 quantidade_produto = int(r.get('quantidade') or 0)
                 unidade = (r.get('unidade') or '').strip() or '-'
                 peso_bruto = (r.get('peso_bruto') or '').strip() or '-'
-                codigo_barras = mapa_codigo_barras.get(codigo_produto, '')
+                unidade_norm = unidade.upper() if unidade else ''
+                if unidade_norm in ('PT', 'UN'):
+                    codigo_barras = mapa_ean.get(codigo_produto) or mapa_codigo_barras.get(codigo_produto, '')
+                elif unidade_norm == 'CX':
+                    codigo_barras = mapa_dun.get(codigo_produto) or mapa_codigo_barras.get(codigo_produto, '')
+                else:
+                    codigo_barras = mapa_codigo_barras.get(codigo_produto, '')
                 quantidade_bipada = bipados_por_codigo.get(codigo_produto, 0) or bipados_dict.get(codigo_barras, 0)
                 quantidade_falta = max(0, quantidade_produto - quantidade_bipada)
                 quantidade_sobra = max(0, quantidade_bipada - quantidade_produto)
@@ -2323,6 +2325,7 @@ def get_conferencia(id_viagem=None):
             except Exception:
                 pass
             id_viagem_resposta = str(id_para_bipados).strip() if id_para_bipados else ''
+            total_romaneio = len(resultado)
             return jsonify({
                 'lista': resultado,
                 'id_roteiro': meta['id_roteiro'] or '',
