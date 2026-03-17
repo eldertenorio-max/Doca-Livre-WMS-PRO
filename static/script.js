@@ -2569,6 +2569,37 @@ function agruparConferenciaPorCodigoProduto(conferencia) {
     });
 }
 
+// Atualiza caixa "Gerar comprovante completo" (verde) vs "Gerar comprovante divergente" (laranja). Se conferenciaUI for passado, usa os dados; senão lê da tabela (DOM) para atualização imediata após Bipar/Tirar 1.
+function atualizarBoxesComprovante(conferenciaUI) {
+    var todosCompletos = false;
+    var temItens = false;
+    if (conferenciaUI && Array.isArray(conferenciaUI) && conferenciaUI.length > 0) {
+        temItens = true;
+        todosCompletos = conferenciaUI.every(function(item) { return (item.status_bipado || '') === 'COMPLETO'; });
+    } else {
+        var tbody = document.getElementById('tbody-conferencia');
+        if (tbody) {
+            var rows = tbody.querySelectorAll('tr');
+            todosCompletos = true;
+            for (var i = 0; i < rows.length; i++) {
+                var row = rows[i];
+                if (!row.cells || row.cells.length < 11 || row.querySelector('td[colspan]')) continue;
+                temItens = true;
+                var qtdFalta = parseInt(row.cells[10].textContent, 10) || 0;
+                var statusText = (row.cells[0].textContent || '').trim();
+                if (qtdFalta !== 0 || statusText.indexOf('EXCEDENTE') >= 0) {
+                    todosCompletos = false;
+                    break;
+                }
+            }
+        }
+    }
+    var boxCompleto = document.getElementById('conferencia-completa-box');
+    var boxDivergente = document.getElementById('conferencia-divergente-box');
+    if (boxCompleto) boxCompleto.style.display = (temItens && todosCompletos) ? 'block' : 'none';
+    if (boxDivergente) boxDivergente.style.display = (temItens && !todosCompletos) ? 'block' : 'none';
+}
+
 async function loadConferencia(idViagem = null) {
     if (!idViagem) {
         const idViagemInput = document.getElementById('id-viagem');
@@ -2708,13 +2739,7 @@ async function loadConferencia(idViagem = null) {
                 }, index * 20);
             });
             }
-            // Mostrar opção "Gerar comprovante" quando todos os itens estiverem COMPLETO (sem EXCEDENTE)
-            const todosCompletos = conferenciaUI.length > 0 && conferenciaUI.every(item => item.status_bipado === 'COMPLETO');
-            const boxCompleto = document.getElementById('conferencia-completa-box');
-            if (boxCompleto) boxCompleto.style.display = todosCompletos ? 'block' : 'none';
-            // Mostrar opção "Gerar comprovante divergente" quando há itens mas não todos completos
-            const boxDivergente = document.getElementById('conferencia-divergente-box');
-            if (boxDivergente) boxDivergente.style.display = (conferenciaUI.length > 0 && !todosCompletos) ? 'block' : 'none';
+            atualizarBoxesComprovante(conferenciaUI);
             return conferencia;
         } else if (conferencia && conferencia.erro) {
             const tbody = document.getElementById('tbody-conferencia');
@@ -2811,6 +2836,7 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
             var qtdProduto = parseInt(cells[5].textContent, 10) || 0;
             cells[9].textContent = '0';
             cells[10].textContent = String(qtdProduto);
+            atualizarBoxesComprovante();
         }
         try {
             const result = await fetchAPI('/conferencia/remover', {
@@ -2839,6 +2865,7 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
         if (qtdBipada <= 0) return;
         cells[9].textContent = String(Math.max(0, qtdBipada - 1));
         cells[10].textContent = String(qtdFalta + 1);
+        atualizarBoxesComprovante();
     }
     window._conferenciaPending.removes[codigoBarras] = (window._conferenciaPending.removes[codigoBarras] || 0) + 1;
     if (window._conferenciaPending.removeTimers[codigoBarras]) clearTimeout(window._conferenciaPending.removeTimers[codigoBarras]);
@@ -2871,6 +2898,7 @@ window.biparItem = function(btnOrCodigo, codigoBarrasOrProduto, produtoOrQtd, qu
         var qtdBipada = parseInt(cells[9].textContent, 10) || 0;
         cells[9].textContent = String(qtdBipada + 1);
         cells[10].textContent = String(qtdFaltaAtual - 1);
+        atualizarBoxesComprovante();
     }
     if (!window._conferenciaPending.adds[codigoBarras]) window._conferenciaPending.adds[codigoBarras] = { qtd: 0 };
     window._conferenciaPending.adds[codigoBarras].qtd += 1;
@@ -2881,16 +2909,28 @@ window.biparItem = function(btnOrCodigo, codigoBarrasOrProduto, produtoOrQtd, qu
     if (cb) cb.focus();
 }
 
-// Gerar comprovante de carregamento (vai para aba Extrato com a viagem atual)
+// Gerar comprovante de carregamento (vai para aba Extrato com a viagem atual e atualiza o extrato na hora)
 window.gerarComprovanteCarregamento = function() {
-    const idViagem = document.getElementById('id-viagem-hidden').value.trim();
+    const idViagem = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value || '').trim();
     if (!idViagem) {
         showMessage('Nenhuma viagem selecionada', 'error');
         return;
     }
-    document.getElementById('extrato-id-viagem').value = idViagem;
-    document.querySelector('.tab-button[data-tab="extrato"]').click();
-    loadExtrato();
+    const inputExtrato = document.getElementById('extrato-id-viagem');
+    const inputRelatorio = document.getElementById('relatorio-extrato-id-viagem');
+    if (inputExtrato) inputExtrato.value = idViagem;
+    if (inputRelatorio) inputRelatorio.value = idViagem;
+    // Trocar para aba Extrato (sem usar .click() para evitar chamar loadExtrato duas vezes)
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabContents = document.querySelectorAll('.tab-content');
+    tabButtons.forEach(function(btn) { btn.classList.remove('active'); });
+    tabContents.forEach(function(c) { c.classList.remove('active'); });
+    const btnExtrato = document.querySelector('.tab-button[data-tab="extrato"]');
+    const contentExtrato = document.getElementById('extrato');
+    if (btnExtrato) btnExtrato.classList.add('active');
+    if (contentExtrato) contentExtrato.classList.add('active');
+    // Carregar extrato com o ID já definido (atualização imediata)
+    loadExtrato(idViagem);
 };
 
 // Comprovante divergente: modal de confirmação
@@ -3088,13 +3128,21 @@ window.imprimirDivergencias = function() {
 };
 
 // Carregar Extrato (mesmas colunas da Conferência: status, código barras, código produto, produto, qtd produto, unidade, aviso, qtd bipada, qtd falta)
-async function loadExtrato() {
+// idViagemOpcional: quando passado (ex.: ao clicar em Gerar comprovante), usa esse ID e atualiza o input
+async function loadExtrato(idViagemOpcional) {
     const inputBusca = document.getElementById('extrato-id-viagem');
-    const idViagemHidden = document.getElementById('id-viagem-hidden');
-    let idViagem = inputBusca && inputBusca.value.trim();
-    if (!idViagem && idViagemHidden && idViagemHidden.value.trim()) {
-        idViagem = idViagemHidden.value.trim();
+    const inputRelatorio = document.getElementById('relatorio-extrato-id-viagem');
+    let idViagem = (idViagemOpcional && String(idViagemOpcional).trim()) ? String(idViagemOpcional).trim() : (inputBusca && inputBusca.value.trim());
+    if (!idViagem) {
+        const idViagemHidden = document.getElementById('id-viagem-hidden');
+        if (idViagemHidden && idViagemHidden.value.trim()) {
+            idViagem = idViagemHidden.value.trim();
+            if (inputBusca) inputBusca.value = idViagem;
+            if (inputRelatorio) inputRelatorio.value = idViagem;
+        }
+    } else {
         if (inputBusca) inputBusca.value = idViagem;
+        if (inputRelatorio) inputRelatorio.value = idViagem;
     }
     const tbody = document.getElementById('tbody-extrato');
     const resumoEl = document.getElementById('extrato-resumo');
@@ -3107,6 +3155,8 @@ async function loadExtrato() {
         if (avisoDivergenteEl) avisoDivergenteEl.style.display = 'none';
         return;
     }
+    tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando extrato...</td></tr>';
+    if (resumoEl) resumoEl.style.display = 'none';
     const [extratoResp, periodo, viagemInfo] = await Promise.all([
         fetchAPI(`/conferencia/${encodeURIComponent(idViagem)}`),
         fetchAPI(`/viagem/${encodeURIComponent(idViagem)}/periodo`),
