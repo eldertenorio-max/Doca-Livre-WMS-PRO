@@ -1143,7 +1143,7 @@ def add_produto():
             codigo_barras,
             data.get('produto', ''),
             qtd_bipar,
-            datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             data.get('veiculo', ''),
             data.get('status', 'PENDENTE'),
             id_viagem,
