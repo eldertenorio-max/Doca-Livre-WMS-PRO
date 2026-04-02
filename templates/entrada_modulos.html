@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escolher módulo — Controle de Carregamento</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
+</head>
+<body class="hub-page" id="hub-page">
+    <div class="hub-inner">
+        <div class="hub-logo-wrap">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Ultra Pão Alimentos">
+        </div>
+
+        <h1 class="hub-titulo">Controle de Carregamento</h1>
+
+        <p class="hub-desc">
+            Escolha <strong>Carregamento (expedição)</strong>, <strong>Devoluções</strong> ou <strong>Recebimento e expedição de terceiros</strong>. O mesmo painel abre no módulo selecionado.
+        </p>
+
+        <div class="hub-botoes">
+            <a class="hub-btn hub-btn--ouro" href="{{ url_for('painel') }}?modulo=carregamento">Carregamento (expedição)</a>
+            <a class="hub-btn hub-btn--azul" href="{{ url_for('painel') }}?modulo=devolucoes">Devoluções</a>
+            <a class="hub-btn hub-btn--verde" href="{{ url_for('painel') }}?modulo=terceiros">Recebimento e expedição de terceiros</a>
+        </div>
+
+        <div class="hub-rodape">
+            <button type="button" class="hub-link-tema" id="hub-toggle-tema" aria-pressed="false">Tema claro</button>
+            <p class="hub-sair">Logado como <strong>{{ usuario or '—' }}</strong> · <a href="/login?sair=1">Sair</a></p>
+        </div>
+    </div>
+    <script>
+(function () {
+    var page = document.getElementById('hub-page');
+    var btn = document.getElementById('hub-toggle-tema');
+    var key = 'hub_tema_claro';
+    function aplicar() {
+        var claro = localStorage.getItem(key) === '1';
+        page.classList.toggle('hub-tema-claro', claro);
+        if (btn) {
+            btn.setAttribute('aria-pressed', claro ? 'true' : 'false');
+            btn.textContent = claro ? 'Tema escuro' : 'Tema claro';
+        }
+    }
+    aplicar();
+    if (btn) {
+        btn.addEventListener('click', function () {
+            var cur = localStorage.getItem(key) === '1';
+            localStorage.setItem(key, cur ? '0' : '1');
+            aplicar();
+        });
+    }
+})();
+    </script>
+</body>
+</html>

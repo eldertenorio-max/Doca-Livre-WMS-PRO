@@ -692,7 +692,7 @@ def api_login():
         return jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})
     session['usuario'] = usuario
     session['usuario_id'] = row['id']
-    return jsonify({'ok': True, 'redirect': url_for('painel')})
+    return jsonify({'ok': True, 'redirect': url_for('entrada_modulos')})
 
 
 @app.route('/api/cadastrar', methods=['POST'])
@@ -756,6 +756,12 @@ def api_listar_usuarios():
 def raiz():
     """Raiz do site: sempre abre na página de login."""
     return redirect(url_for('login'))
+
+
+@app.route('/entrada')
+def entrada_modulos():
+    """Tela inicial pós-login: escolha do módulo (três botões)."""
+    return render_template('entrada_modulos.html', usuario=session.get('usuario', ''))
 
 
 @app.route('/painel')

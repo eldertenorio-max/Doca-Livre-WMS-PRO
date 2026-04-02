@@ -106,6 +106,12 @@ function initModulos() {
             mostrarModulo(mod);
         });
     });
+
+    var params = new URLSearchParams(window.location.search);
+    var modUrl = params.get('modulo');
+    if (modUrl && ['carregamento', 'devolucoes', 'terceiros'].indexOf(modUrl) !== -1) {
+        mostrarModulo(modUrl);
+    }
 }
 
 // Sistema de Abas

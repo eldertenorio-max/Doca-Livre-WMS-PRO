@@ -1,0 +1,171 @@
+/* Tela de escolha de módulos — estilo escuro (referência: painel mobile Ultra Pão) */
+:root {
+    --hub-bg: #141416;
+    --hub-text: #f5d76e;
+    --hub-muted: #e8c84a;
+}
+
+.hub-page.hub-tema-claro {
+    --hub-bg: #f0f2f5;
+    --hub-text: #1a237e;
+    --hub-muted: #3949ab;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+.hub-page {
+    margin: 0;
+    min-height: 100vh;
+    font-family: 'Outfit', 'Segoe UI', system-ui, sans-serif;
+    background: var(--hub-bg);
+    color: var(--hub-text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 18px 40px;
+    transition: background 0.25s ease, color 0.25s ease;
+}
+
+.hub-inner {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+}
+
+.hub-logo-wrap {
+    width: 140px;
+    border-radius: 14px;
+    border: 4px solid #d4a017;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(212, 160, 23, 0.35);
+}
+
+.hub-logo-wrap img {
+    display: block;
+    width: 100%;
+    height: auto;
+    vertical-align: middle;
+}
+
+.hub-titulo {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 800;
+    text-align: center;
+    line-height: 1.25;
+    letter-spacing: 0.02em;
+    color: var(--hub-text);
+    text-shadow: 0 0 24px rgba(245, 215, 110, 0.45), 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.hub-page.hub-tema-claro .hub-titulo {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.hub-desc {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: center;
+    line-height: 1.45;
+    color: var(--hub-muted);
+    max-width: 360px;
+}
+
+.hub-desc strong {
+    font-weight: 700;
+    color: var(--hub-text);
+}
+
+.hub-botoes {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 8px;
+}
+
+.hub-btn {
+    display: block;
+    width: 100%;
+    padding: 16px 20px;
+    border: none;
+    border-radius: 14px;
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 700;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.hub-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
+}
+
+.hub-btn:active {
+    transform: translateY(0);
+}
+
+/* Amarelo / ouro — Carregamento */
+.hub-btn--ouro {
+    background: linear-gradient(180deg, #ffe082 0%, #c9a227 100%);
+    color: #1a1a1a;
+}
+
+/* Azul — Devoluções */
+.hub-btn--azul {
+    background: linear-gradient(180deg, #64b5f6 0%, #1565c0 100%);
+    color: #fff;
+}
+
+/* Verde — Terceiros */
+.hub-btn--verde {
+    background: linear-gradient(180deg, #81c784 0%, #2e7d32 100%);
+    color: #fff;
+}
+
+.hub-rodape {
+    margin-top: 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.hub-link-tema {
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--hub-muted);
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.hub-link-tema:hover {
+    color: var(--hub-text);
+}
+
+.hub-sair {
+    font-size: 0.85rem;
+    color: var(--hub-muted);
+    opacity: 0.85;
+}
+
+.hub-sair a {
+    color: inherit;
+    font-weight: 600;
+}
