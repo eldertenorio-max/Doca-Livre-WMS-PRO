@@ -48,6 +48,7 @@ function initEventosStream() {
 
 // Inicialização
 document.addEventListener('DOMContentLoaded', function() {
+    initModulos();
     initTabs();
     initForms();
     initFiltrosBase();
@@ -74,6 +75,38 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
 });
+
+function initModulos() {
+    var botoes = document.querySelectorAll('.modulo-button');
+    var carreg = document.getElementById('modulo-carregamento');
+    var dev = document.getElementById('modulo-devolucoes');
+    var ter = document.getElementById('modulo-terceiros');
+    if (!botoes.length || !carreg) return;
+
+    function mostrarModulo(id) {
+        carreg.hidden = id !== 'carregamento';
+        if (dev) dev.hidden = id !== 'devolucoes';
+        if (ter) ter.hidden = id !== 'terceiros';
+        carreg.classList.toggle('modulo-area--ativo', id === 'carregamento');
+        if (dev) dev.classList.toggle('modulo-area--ativo', id === 'devolucoes');
+        if (ter) ter.classList.toggle('modulo-area--ativo', id === 'terceiros');
+        botoes.forEach(function(b) {
+            b.classList.toggle('active', b.getAttribute('data-modulo') === id);
+        });
+        if (id === 'carregamento') {
+            var activeTab = document.querySelector('.tab-content.active');
+            if (activeTab && activeTab.id) loadTabData(activeTab.id);
+        }
+    }
+
+    botoes.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var mod = btn.getAttribute('data-modulo');
+            if (!mod) return;
+            mostrarModulo(mod);
+        });
+    });
+}
 
 // Sistema de Abas
 function initTabs() {

@@ -25,6 +25,13 @@
             <a href="/login?sair=1" class="btn-sair" id="btn-sair" title="Sair">Sair</a>
         </header>
 
+        <nav class="modulos-bar" aria-label="Módulos do sistema">
+            <button type="button" class="modulo-button active" data-modulo="carregamento" title="Expedição e abas atuais do painel">Carregamento (expedição)</button>
+            <button type="button" class="modulo-button" data-modulo="devolucoes" title="Devoluções">Devoluções</button>
+            <button type="button" class="modulo-button" data-modulo="terceiros" title="Recebimento e expedição de terceiros">Recebimento e expedição de terceiros</button>
+        </nav>
+
+        <div id="modulo-carregamento" class="modulo-area modulo-area--ativo">
         <!-- Navegação por Abas (ordem: Painel, Importar Ravex, Conferência, Extrato, Base, Romaneio por item, Relatórios, Divergências) -->
         <nav class="tabs">
             <button class="tab-button active" data-tab="painel">PAINEL</button>
@@ -876,6 +883,21 @@
                 <!-- fim divergencias-para-imprimir -->
             </div>
         </main>
+        </div>
+
+        <div id="modulo-devolucoes" class="modulo-area modulo-placeholder" hidden>
+            <div class="modulo-placeholder-inner">
+                <h2 class="modulo-placeholder-titulo">Devoluções</h2>
+                <p class="modulo-placeholder-texto">Área reservada para o fluxo de devoluções. Conteúdo em desenvolvimento.</p>
+            </div>
+        </div>
+
+        <div id="modulo-terceiros" class="modulo-area modulo-placeholder" hidden>
+            <div class="modulo-placeholder-inner">
+                <h2 class="modulo-placeholder-titulo">Recebimento e expedição de terceiros</h2>
+                <p class="modulo-placeholder-texto">Área reservada para recebimento e expedição envolvendo terceiros. Conteúdo em desenvolvimento.</p>
+            </div>
+        </div>
     </div>
 
     <!-- Modal de aceite para zerar todos os itens -->

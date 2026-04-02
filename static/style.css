@@ -102,6 +102,80 @@ body {
     border-color: rgba(255,255,255,0.8);
 }
 
+.modulos-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    background: #e3ecf5;
+    border-bottom: 2px solid #b8c9dc;
+    padding: 0 6px;
+    flex-shrink: 0;
+}
+
+.modulo-button {
+    flex: 1 1 200px;
+    padding: 12px 14px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    color: #455a64;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+    border-bottom: 3px solid transparent;
+    line-height: 1.25;
+    text-align: center;
+}
+
+.modulo-button:hover {
+    background: rgba(54, 96, 146, 0.1);
+    color: #366092;
+}
+
+.modulo-button.active {
+    background: #fff;
+    color: #366092;
+    border-bottom-color: #366092;
+}
+
+#modulo-carregamento {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+#modulo-carregamento .content {
+    height: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.modulo-placeholder {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 36px 30px;
+    background: #fafbfc;
+}
+
+.modulo-placeholder-inner {
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+.modulo-placeholder-titulo {
+    color: #366092;
+    font-size: 1.35rem;
+    margin-bottom: 12px;
+}
+
+.modulo-placeholder-texto {
+    color: #555;
+    font-size: 15px;
+    line-height: 1.5;
+}
+
 .tabs {
     display: flex;
     background: #f5f5f5;
@@ -997,6 +1071,11 @@ h2 {
 
 /* Responsividade */
 @media (max-width: 768px) {
+    .modulo-button {
+        font-size: 11px;
+        padding: 10px 8px;
+    }
+
     .tabs {
         flex-direction: column;
     }
