@@ -211,33 +211,10 @@ a.modulo-button.active {
     min-height: 0;
 }
 
-.modulo-placeholder {
+.modulo-vazio {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    padding: 36px 30px;
     background: #fafbfc;
-}
-
-.modulo-placeholder-inner {
-    max-width: 720px;
-    margin: 0 auto;
-}
-
-.modulo-placeholder-titulo {
-    color: #366092;
-    font-size: 1.35rem;
-    margin-bottom: 12px;
-}
-
-.modulo-placeholder-texto {
-    color: #555;
-    font-size: 15px;
-    line-height: 1.5;
-}
-
-.container-entrada-modulos {
-    min-height: 100vh;
 }
 
 .tabs {

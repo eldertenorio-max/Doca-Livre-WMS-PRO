@@ -4,24 +4,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Controle de Carregamento — Módulos</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
 </head>
-<body>
-    <div class="container container-entrada-modulos">
-        <header class="header">
-            <h1>CONTROLE DE CARREGAMENTO ULTRAPÃO</h1>
-            <div class="header-perfil">
-                <span class="perfil-label">Logado como:</span>
-                <span class="perfil-usuario">{{ usuario or '—' }}</span>
-            </div>
-            <a href="/login?sair=1" class="btn-sair" title="Sair">Sair</a>
-        </header>
+<body class="hub-entrada-body">
+    <div class="hub-entrada-topstripe" aria-hidden="true"></div>
 
-        <nav class="modulos-bar" aria-label="Módulos do sistema">
-            <a class="modulo-button active" href="{{ url_for('painel') }}?modulo=carregamento">Carregamento (expedição)</a>
-            <a class="modulo-button" href="{{ url_for('painel') }}?modulo=devolucoes">Devoluções</a>
-            <a class="modulo-button" href="{{ url_for('painel') }}?modulo=terceiros">Recebimento e expedição de terceiros</a>
-        </nav>
+    <div class="hub-entrada-wrap">
+        <div class="hub-entrada-logo">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Ultra Pão Alimentos">
+        </div>
+
+        <h1 class="hub-entrada-titulo">Controle de Carregamento</h1>
+
+        <p class="hub-entrada-desc">
+            Escolha <strong>Carregamento (expedição)</strong>, <strong>Devoluções</strong> ou <strong>Recebimento e expedição de terceiros</strong>. O painel abre no módulo selecionado.
+        </p>
+
+        <div class="hub-entrada-botoes">
+            <a class="hub-entrada-btn hub-entrada-btn--1" href="{{ url_for('painel') }}?modulo=carregamento">Carregamento (expedição)</a>
+            <a class="hub-entrada-btn hub-entrada-btn--2" href="{{ url_for('painel') }}?modulo=devolucoes">Devoluções</a>
+            <a class="hub-entrada-btn hub-entrada-btn--3" href="{{ url_for('painel') }}?modulo=terceiros">Recebimento e expedição de terceiros</a>
+        </div>
+
+        <footer class="hub-entrada-rodape">
+            Logado como <strong>{{ usuario or '—' }}</strong>
+            ·
+            <a href="/login?sair=1">Sair</a>
+        </footer>
     </div>
 </body>
 </html>

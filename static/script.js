@@ -93,6 +93,10 @@ function initModulos() {
         botoes.forEach(function(b) {
             b.classList.toggle('active', b.getAttribute('data-modulo') === id);
         });
+        var btnAtualizar = document.getElementById('btn-atualizar-aba');
+        if (btnAtualizar) {
+            btnAtualizar.style.display = id === 'carregamento' ? '' : 'none';
+        }
         if (id === 'carregamento') {
             var activeTab = document.querySelector('.tab-content.active');
             if (activeTab && activeTab.id) loadTabData(activeTab.id);

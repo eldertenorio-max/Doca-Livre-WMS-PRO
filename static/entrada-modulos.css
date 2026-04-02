@@ -1,0 +1,130 @@
+/* Tela /entrada — layout hub (logo + botões verticais), cores alinhadas ao painel */
+
+body.hub-entrada-body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f0f2f5;
+    color: #37474f;
+}
+
+.hub-entrada-topstripe {
+    height: 8px;
+    background: linear-gradient(135deg, #366092 0%, #4a7ba7 100%);
+}
+
+.hub-entrada-wrap {
+    max-width: 440px;
+    margin: 0 auto;
+    padding: 32px 20px 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    min-height: calc(100vh - 8px);
+    box-sizing: border-box;
+}
+
+.hub-entrada-logo {
+    width: 140px;
+    border-radius: 12px;
+    border: 3px solid #366092;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 4px 18px rgba(54, 96, 146, 0.2);
+}
+
+.hub-entrada-logo img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.hub-entrada-titulo {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+    text-align: center;
+    color: #366092;
+    line-height: 1.25;
+}
+
+.hub-entrada-desc {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: center;
+    line-height: 1.45;
+    color: #546e7a;
+    max-width: 380px;
+}
+
+.hub-entrada-desc strong {
+    color: #366092;
+    font-weight: 700;
+}
+
+.hub-entrada-botoes {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 4px;
+}
+
+.hub-entrada-btn {
+    display: block;
+    width: 100%;
+    padding: 16px 20px;
+    border: none;
+    border-radius: 12px;
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 700;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 3px 12px rgba(54, 96, 146, 0.25);
+    color: #fff;
+}
+
+.hub-entrada-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(54, 96, 146, 0.35);
+}
+
+.hub-entrada-btn:active {
+    transform: translateY(0);
+}
+
+/* Mesma família de azuis do header / abas */
+.hub-entrada-btn--1 {
+    background: linear-gradient(180deg, #5a8ac4 0%, #366092 100%);
+}
+
+.hub-entrada-btn--2 {
+    background: linear-gradient(180deg, #6b9bd0 0%, #3d5f85 100%);
+}
+
+.hub-entrada-btn--3 {
+    background: linear-gradient(180deg, #4a7ba7 0%, #2d4a66 100%);
+}
+
+.hub-entrada-rodape {
+    margin-top: auto;
+    padding-top: 28px;
+    font-size: 0.88rem;
+    color: #78909c;
+    text-align: center;
+}
+
+.hub-entrada-rodape a {
+    color: #366092;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.hub-entrada-rodape a:hover {
+    text-decoration: underline;
+}
