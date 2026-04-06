@@ -1,6 +1,38 @@
 // Variáveis globais
 const API_BASE = '/api';
 
+window._getIdViagemAtivo = function() {
+    if (window._fluxoBipagemAtivo === 'devolucao') {
+        var el = document.getElementById('dev-id-viagem-hidden');
+        return el ? el.value.trim() : '';
+    }
+    var el2 = document.getElementById('id-viagem-hidden');
+    return el2 ? el2.value.trim() : '';
+};
+
+/** Campos do formulário de bipagem ativo: Conferência (carregamento) ou Bipar devoluções. */
+window._elBipagem = function(id) {
+    if (window._fluxoBipagemAtivo !== 'devolucao') return document.getElementById(id);
+    var map = {
+        'codigo-barras': 'dev-codigo-barras',
+        'produto-nome': 'dev-produto-nome',
+        'quantidade': 'dev-quantidade',
+        'veiculo': 'dev-veiculo',
+        'status': 'dev-status',
+        'doca': 'dev-doca',
+        'codigo-produto': 'dev-codigo-produto',
+        'id-viagem-hidden': 'dev-id-viagem-hidden',
+        'aviso-produto-fora-relacao': 'dev-aviso-produto-fora-relacao',
+    };
+    return document.getElementById(map[id] || id);
+};
+
+function reloadConferenciaAtiva(idViagem) {
+    if (!idViagem) return Promise.resolve();
+    var fl = (window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento';
+    return loadConferencia(idViagem, { fluxo: fl });
+}
+
 // Atualização em tempo real: stream de eventos (quando alguém bipa em qualquer dispositivo, todos atualizam)
 let _eventSource = null;
 let _ultimaChamadaLoadAllData = 0;
@@ -97,6 +129,8 @@ function initModulos() {
         if (btnAtualizar) {
             btnAtualizar.style.display = id === 'carregamento' ? '' : 'none';
         }
+        window._fluxoBipagemAtivo =
+            id === 'devolucoes' && document.getElementById('dev-id-viagem') ? 'devolucao' : 'carregamento';
         if (id === 'carregamento') {
             var activeTab = document.querySelector('.tab-content.active');
             if (activeTab && activeTab.id) loadTabData(activeTab.id);
@@ -231,6 +265,13 @@ function initForms() {
         e.preventDefault();
         await addProduto();
     });
+    const formProdutoDev = document.getElementById('form-produto-devolucao');
+    if (formProdutoDev) {
+        formProdutoDev.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            await addProduto();
+        });
+    }
     
     // Formulário de editar produto
     const editForm = document.getElementById('edit-form');
@@ -645,6 +686,118 @@ function initForms() {
             }
         });
     }
+    const devIdViagemInput = document.getElementById('dev-id-viagem');
+    if (devIdViagemInput) {
+        devIdViagemInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (typeof buscarItensViagemDevolucao === 'function') buscarItensViagemDevolucao();
+            }
+        });
+    }
+
+    function bindCampoBipagemDev(elId) {
+        var codigoInput = document.getElementById(elId);
+        if (!codigoInput) return;
+        var timeoutBusca;
+        codigoInput.addEventListener('input', function(e) {
+            var codigo = e.target.value.trim();
+            clearTimeout(timeoutBusca);
+            if (codigo.length >= 3 && codigo !== window.ultimoCodigoBuscado) {
+                timeoutBusca = setTimeout(function() {
+                    window.ultimoCodigoBuscado = codigo;
+                    buscarProdutoNaPlanilha(codigo);
+                }, 60);
+            }
+        });
+        codigoInput.addEventListener('blur', function(e) {
+            var dest = e.relatedTarget;
+            if (dest && (dest.tagName === 'BUTTON' || dest.type === 'submit' || (dest.getAttribute && dest.getAttribute('onclick')))) return;
+            setTimeout(function() {
+                var active = document.activeElement;
+                if (active && (active.tagName === 'BUTTON' || active.type === 'submit' || (active.getAttribute && active.getAttribute('onclick')))) return;
+                var codigo = (e.target && e.target.value) ? e.target.value.trim() : '';
+                if (codigo.length >= 3 && codigo !== window.ultimoCodigoBuscado) {
+                    window.ultimoCodigoBuscado = codigo;
+                    buscarProdutoNaPlanilha(codigo);
+                }
+            }, 0);
+        });
+        codigoInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(timeoutBusca);
+                var codigo = (e.target.value || '').trim();
+                if (codigo.length > 0) {
+                    window.ultimoCodigoBuscado = codigo;
+                    var qEl = window._elBipagem('quantidade');
+                    var qtdForm = parseInt(qEl && qEl.value, 10);
+                    var qtdEnter = (typeof qtdForm === 'number' && !isNaN(qtdForm) && qtdForm >= 1 && qtdForm <= 99999) ? qtdForm : 1;
+                    var atualizouEnter = atualizarQuantidadeBipadaNaTabela(codigo, qtdEnter, '');
+                    if (atualizouEnter) atualizarEstatisticasOtimista(qtdEnter, false);
+                    if (!window._pendingEnterUpdates) window._pendingEnterUpdates = [];
+                    window._pendingEnterUpdates.push({ codigo: codigo, qtd: qtdEnter, updated: !!atualizouEnter });
+                    e.target.value = '';
+                    focarCampoCodigoBarras();
+                    buscarProdutoNaPlanilha(codigo);
+                }
+            }
+        });
+        codigoInput.addEventListener('paste', function(e) {
+            setTimeout(function() {
+                var codigo = e.target.value.trim();
+                if (codigo.length >= 3) {
+                    window.ultimoCodigoBuscado = codigo;
+                    e.target.value = '';
+                    buscarProdutoNaPlanilha(codigo);
+                }
+            }, 50);
+        });
+    }
+    bindCampoBipagemDev('dev-codigo-barras');
+
+    var codigoProdutoDev = document.getElementById('dev-codigo-produto');
+    if (codigoProdutoDev) {
+        window.ultimoCodigoProdutoBuscadoDev = '';
+        var timeoutBuscaCodigoProdutoDev;
+        codigoProdutoDev.addEventListener('input', function(e) {
+            var codigo = e.target.value.trim();
+            clearTimeout(timeoutBuscaCodigoProdutoDev);
+            if (codigo.length >= 2 && codigo !== window.ultimoCodigoProdutoBuscadoDev) {
+                timeoutBuscaCodigoProdutoDev = setTimeout(function() {
+                    window.ultimoCodigoProdutoBuscadoDev = codigo;
+                    buscarProdutoPorCodigoProduto(codigo);
+                }, 60);
+            }
+        });
+        codigoProdutoDev.addEventListener('blur', function(e) {
+            var codigo = e.target.value.trim();
+            if (codigo.length >= 2 && codigo !== window.ultimoCodigoProdutoBuscadoDev) {
+                window.ultimoCodigoProdutoBuscadoDev = codigo;
+                buscarProdutoPorCodigoProduto(codigo);
+            }
+        });
+        codigoProdutoDev.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(timeoutBuscaCodigoProdutoDev);
+                var codigo = e.target.value.trim();
+                if (codigo.length >= 2) {
+                    window.ultimoCodigoProdutoBuscadoDev = codigo;
+                    buscarProdutoPorCodigoProduto(codigo);
+                }
+            }
+        });
+        codigoProdutoDev.addEventListener('paste', function() {
+            setTimeout(function() {
+                var codigo = codigoProdutoDev.value.trim();
+                if (codigo.length >= 2) {
+                    window.ultimoCodigoProdutoBuscadoDev = codigo;
+                    buscarProdutoPorCodigoProduto(codigo);
+                }
+            }, 50);
+        });
+    }
     
     // Focar no campo de código de barras ao pressionar qualquer tecla (quando estiver na aba conferencia e já tiver viagem selecionada)
     // Não redirecionar se o usuário estiver digitando em qualquer input/textarea/select (ex.: campo Motivo da divergência)
@@ -660,8 +813,14 @@ function initForms() {
         if (ehCampoDigitar(el) || ehCampoDigitar(active)) return;
         const codigoInput = document.getElementById('codigo-barras');
         const idViagem = document.getElementById('id-viagem-hidden');
-        if (codigoInput && document.getElementById('conferencia').classList.contains('active') && idViagem && idViagem.value) {
+        if (codigoInput && document.getElementById('conferencia') && document.getElementById('conferencia').classList.contains('active') && idViagem && idViagem.value) {
             codigoInput.focus();
+        }
+        var moduloDev = document.getElementById('modulo-devolucoes');
+        var devCb = document.getElementById('dev-codigo-barras');
+        var devHid = document.getElementById('dev-id-viagem-hidden');
+        if (moduloDev && !moduloDev.hidden && devCb && devHid && devHid.value.trim()) {
+            devCb.focus();
         }
     });
 }
@@ -683,7 +842,7 @@ async function produtoNaListaViagem(idViagem, codigoProduto, codigoBarras) {
 }
 
 function mostrarAvisoProdutoForaRelacao(mostrar) {
-    const aviso = document.getElementById('aviso-produto-fora-relacao');
+    const aviso = window._elBipagem('aviso-produto-fora-relacao');
     if (!aviso) return;
     if (mostrar) {
         aviso.style.display = 'block';
@@ -716,7 +875,7 @@ function agendarAtualizacoesPosBipagem(idViagem) {
 
 // Ao bipar: 1) foca o campo  2) leva só a barra de rolagem do bloco (main.content) para o topo
 function focarCampoCodigoBarras() {
-    var cb = document.getElementById('codigo-barras');
+    var cb = window._elBipagem('codigo-barras');
     if (cb && !cb.disabled) cb.focus();
     function rolarBlocoParaTopo() {
         var content = document.querySelector('main.content');
@@ -732,8 +891,8 @@ async function buscarProdutoNaPlanilha(codigoBarras, quantidadeParaAdicionarOpci
         return;
     }
     
-    const codigoInput = document.getElementById('codigo-barras');
-    const produtoNomeInput = document.getElementById('produto-nome');
+    const codigoInput = window._elBipagem('codigo-barras');
+    const produtoNomeInput = window._elBipagem('produto-nome');
     const codigoAtualNoCampo = codigoInput ? normalizarCodigoBarrasDuplicado((codigoInput.value || '').toString().trim()) : codigoBarras;
     if (codigoInput && codigoAtualNoCampo && codigoAtualNoCampo !== codigoBarras) return;
 
@@ -768,17 +927,17 @@ async function buscarProdutoNaPlanilha(codigoBarras, quantidadeParaAdicionarOpci
         if (seq !== window._buscaProdutoSeq) return;
         if (!aindaEhOCodigoAtual()) return;
         
-        const idViagem = document.getElementById('id-viagem-hidden').value.trim();
-        const docaEl = document.getElementById('doca');
+        const idViagem = window._getIdViagemAtivo();
+        const docaEl = window._elBipagem('doca');
         const doca = docaEl && docaEl.value ? docaEl.value.trim() : '';
-        const veiculoInput = document.getElementById('veiculo');
-        const statusSelect = document.getElementById('status');
-        const quantidadeInput = document.getElementById('quantidade');
+        const veiculoInput = window._elBipagem('veiculo');
+        const statusSelect = window._elBipagem('status');
+        const quantidadeInput = window._elBipagem('quantidade');
         
         if (resultado.encontrado && resultado.produto) {
             const produto = resultado.produto;
             
-            const codigoProdutoInput = document.getElementById('codigo-produto');
+            const codigoProdutoInput = window._elBipagem('codigo-produto');
             
             // Preencher formulário só para exibição (próximo bip pode já estar no campo; bipagem usa override)
             if (codigoProdutoInput && produto.codigo_produto !== undefined) {
@@ -850,7 +1009,8 @@ async function buscarProdutoNaPlanilha(codigoBarras, quantidadeParaAdicionarOpci
                 setTimeout(() => { codigoInput.style.borderColor = ''; codigoInput.style.backgroundColor = ''; }, 2000);
             }
             if (produtoNomeInput) produtoNomeInput.value = '';
-            document.getElementById('aviso-produto-fora-relacao').style.display = 'none';
+            var avisoFora = window._elBipagem('aviso-produto-fora-relacao');
+            if (avisoFora) avisoFora.style.display = 'none';
             if (idViagem) {
                 var qtdNaoEnc = 1;
                 if (quantidadeParaAdicionarOpcional !== undefined && quantidadeParaAdicionarOpcional !== null) {
@@ -913,9 +1073,9 @@ async function buscarProdutoNaPlanilha(codigoBarras, quantidadeParaAdicionarOpci
 // Buscar produto na planilha por Código do produto (busca automática igual ao código de barras)
 async function buscarProdutoPorCodigoProduto(codigoProduto) {
     if (!codigoProduto || codigoProduto.length < 2) return;
-    const codigoProdutoEl = document.getElementById('codigo-produto');
-    const codigoBarrasEl = document.getElementById('codigo-barras');
-    const produtoNomeInput = document.getElementById('produto-nome');
+    const codigoProdutoEl = window._elBipagem('codigo-produto');
+    const codigoBarrasEl = window._elBipagem('codigo-barras');
+    const produtoNomeInput = window._elBipagem('produto-nome');
     if (codigoProdutoEl) {
         codigoProdutoEl.style.borderColor = '#ffa500';
         codigoProdutoEl.style.backgroundColor = '#fff8e1';
@@ -933,9 +1093,9 @@ async function buscarProdutoPorCodigoProduto(codigoProduto) {
                 setTimeout(() => { produtoNomeInput.style.backgroundColor = ''; }, 2000);
             }
             // Manter Qtd. bipada em 1 para cada bip somar ao já bipado
-            const v = document.getElementById('veiculo');
+            const v = window._elBipagem('veiculo');
             if (v && p.veiculo) v.value = p.veiculo;
-            const s = document.getElementById('status');
+            const s = window._elBipagem('status');
             if (s && p.status) s.value = p.status;
             if (codigoProdutoEl) {
                 codigoProdutoEl.style.borderColor = '#4caf50';
@@ -943,14 +1103,15 @@ async function buscarProdutoPorCodigoProduto(codigoProduto) {
                 setTimeout(() => { codigoProdutoEl.style.borderColor = ''; codigoProdutoEl.style.backgroundColor = ''; }, 2000);
             }
             if (codigoBarrasEl) window.ultimoCodigoBuscado = (p.codigo_barras || '').trim();
-            const idViagem = document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim();
+            const idViagem = window._getIdViagemAtivo();
             if (idViagem && p.codigo_produto) {
                 const naLista = await produtoNaListaViagem(idViagem, p.codigo_produto, null);
                 mostrarAvisoProdutoForaRelacao(!naLista);
                 if (naLista) window.cadastrarExtraAoBipar = false;
             }
         } else {
-            document.getElementById('aviso-produto-fora-relacao').style.display = 'none';
+            var avisoElse = window._elBipagem('aviso-produto-fora-relacao');
+            if (avisoElse) avisoElse.style.display = 'none';
             if (codigoProdutoEl) {
                 codigoProdutoEl.style.borderColor = '#ff9800';
                 codigoProdutoEl.style.backgroundColor = '#fff3e0';
@@ -958,7 +1119,8 @@ async function buscarProdutoPorCodigoProduto(codigoProduto) {
             }
         }
     } catch (err) {
-        document.getElementById('aviso-produto-fora-relacao').style.display = 'none';
+        var avisoErr = window._elBipagem('aviso-produto-fora-relacao');
+        if (avisoErr) avisoErr.style.display = 'none';
         if (codigoProdutoEl) {
             codigoProdutoEl.style.borderColor = '#f44336';
             codigoProdutoEl.style.backgroundColor = '#ffebee';
@@ -1688,19 +1850,19 @@ async function addProduto(forcarAdicionar, dadosOverride) {
         status = dadosOverride.status || 'PENDENTE';
         idViagem = (dadosOverride.id_viagem || '').trim();
     } else {
-        const inputCodigo = document.getElementById('codigo-barras');
+        const inputCodigo = window._elBipagem('codigo-barras');
         codigoBarras = (inputCodigo && inputCodigo.value || '').trim();
         codigoBarras = normalizarCodigoBarrasDuplicado(codigoBarras);
         // Não limpar o campo aqui: só limpar após sucesso, para não aparecer modal com campo vazio
-        produto = document.getElementById('produto-nome').value.trim();
-        let qRaw = parseInt(document.getElementById('quantidade').value, 10);
+        produto = (window._elBipagem('produto-nome') && window._elBipagem('produto-nome').value || '').trim();
+        let qRaw = parseInt(window._elBipagem('quantidade') && window._elBipagem('quantidade').value, 10);
         quantidade = (typeof qRaw === 'number' && !isNaN(qRaw) && qRaw >= 1 && qRaw <= 99999) ? qRaw : 1;
-        veiculo = document.getElementById('veiculo').value.trim();
-        status = document.getElementById('status').value;
-        idViagem = document.getElementById('id-viagem-hidden').value.trim();
+        veiculo = (window._elBipagem('veiculo') && window._elBipagem('veiculo').value || '').trim();
+        status = (window._elBipagem('status') && window._elBipagem('status').value) || 'PENDENTE';
+        idViagem = window._getIdViagemAtivo();
     }
     
-    let doca = (dadosOverride && dadosOverride.doca !== undefined) ? String(dadosOverride.doca).trim() : (document.getElementById('doca') && document.getElementById('doca').value || '').trim();
+    let doca = (dadosOverride && dadosOverride.doca !== undefined) ? String(dadosOverride.doca).trim() : (window._elBipagem('doca') && window._elBipagem('doca').value || '').trim();
     
     if (!codigoBarras) {
         showMessage('Código de barras é obrigatório', 'error');
@@ -1709,17 +1871,25 @@ async function addProduto(forcarAdicionar, dadosOverride) {
     if (!idViagem) {
         showMessage('Por favor, selecione uma viagem primeiro', 'error');
         if (!dadosOverride) {
-            document.getElementById('codigo-barras').value = codigoBarras;
-            document.getElementById('codigo-barras').focus();
+            var cbNv = window._elBipagem('codigo-barras');
+            if (cbNv) { cbNv.value = codigoBarras; cbNv.focus(); }
         }
         return;
     }
     
     const docasValidas = ['1', '2', '3', '4'];
+    if (window._fluxoBipagemAtivo === 'devolucao' && (!doca || !docasValidas.includes(doca))) {
+        doca = '1';
+        var docaDev = window._elBipagem('doca');
+        if (docaDev) docaDev.value = '1';
+    }
     if (!doca || !docasValidas.includes(doca)) {
         showMessage('Selecione a doca antes de bipar', 'error');
-        if (!dadosOverride) document.getElementById('codigo-barras').value = codigoBarras;
-        const codigoInput = document.getElementById('codigo-barras');
+        if (!dadosOverride) {
+            var cbDoca = window._elBipagem('codigo-barras');
+            if (cbDoca) cbDoca.value = codigoBarras;
+        }
+        const codigoInput = window._elBipagem('codigo-barras');
         if (codigoInput) codigoInput.focus();
         return;
     }
@@ -1731,7 +1901,8 @@ async function addProduto(forcarAdicionar, dadosOverride) {
         veiculo: veiculo,
         status: status,
         id_viagem: idViagem,
-        doca: doca
+        doca: doca,
+        fluxo: (typeof window._fluxoBipagemAtivo === 'string' && window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento'
     };
     if (forcarAdicionar) {
         payload.forcar_adicionar = true;
@@ -1744,16 +1915,18 @@ async function addProduto(forcarAdicionar, dadosOverride) {
         }
     }
 
-    const codigoProdutoEl = document.getElementById('codigo-produto');
+    const codigoProdutoEl = window._elBipagem('codigo-produto');
     const codigoProdutoParaTabela = dadosOverride && (dadosOverride.codigo_interno !== undefined || dadosOverride.codigo_produto !== undefined)
         ? String(dadosOverride.codigo_interno || dadosOverride.codigo_produto || '').trim()
         : (codigoProdutoEl && codigoProdutoEl.value) ? codigoProdutoEl.value.trim() : '';
     if (!dadosOverride) {
         atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdutoParaTabela);
         atualizarEstatisticasOtimista(quantidade, false);
-        document.getElementById('quantidade').value = 1;
+        var qEl = window._elBipagem('quantidade');
+        if (qEl) qEl.value = 1;
     }
-    document.getElementById('id-viagem-hidden').value = idViagem;
+    var hidV = window._elBipagem('id-viagem-hidden');
+    if (hidV) hidV.value = idViagem;
     if (window.ultimoCodigoBuscado) window.ultimoCodigoBuscado = '';
     focarCampoCodigoBarras();
 
@@ -1767,12 +1940,16 @@ async function addProduto(forcarAdicionar, dadosOverride) {
         atualizarQuantidadeBipadaNaTabela(codigoBarras, -quantidade, codigoProdutoParaTabela);
         atualizarEstatisticasOtimista(quantidade, true);
         if (!dadosOverride) {
-            document.getElementById('codigo-barras').value = codigoBarras;
-            document.getElementById('produto-nome').value = produto;
-            document.getElementById('quantidade').value = quantidade;
+            var cbF = window._elBipagem('codigo-barras');
+            if (cbF) cbF.value = codigoBarras;
+            var pnF = window._elBipagem('produto-nome');
+            if (pnF) pnF.value = produto;
+            var qF = window._elBipagem('quantidade');
+            if (qF) qF.value = quantidade;
             if (codigoProdutoEl) codigoProdutoEl.value = codigoProdutoParaTabela;
         }
-        document.getElementById('id-viagem-hidden').value = idViagem;
+        var hidF = window._elBipagem('id-viagem-hidden');
+        if (hidF) hidF.value = idViagem;
         focarCampoCodigoBarras();
         return;
     }
@@ -1781,12 +1958,16 @@ async function addProduto(forcarAdicionar, dadosOverride) {
         atualizarQuantidadeBipadaNaTabela(codigoBarras, -quantidade, codigoProdutoParaTabela);
         atualizarEstatisticasOtimista(quantidade, true);
         if (!dadosOverride) {
-            document.getElementById('codigo-barras').value = codigoBarras;
-            document.getElementById('produto-nome').value = produto;
-            document.getElementById('quantidade').value = quantidade;
+            var cbP = window._elBipagem('codigo-barras');
+            if (cbP) cbP.value = codigoBarras;
+            var pnP = window._elBipagem('produto-nome');
+            if (pnP) pnP.value = produto;
+            var qP = window._elBipagem('quantidade');
+            if (qP) qP.value = quantidade;
             if (codigoProdutoEl) codigoProdutoEl.value = codigoProdutoParaTabela;
         }
-        document.getElementById('id-viagem-hidden').value = idViagem;
+        var hidP = window._elBipagem('id-viagem-hidden');
+        if (hidP) hidP.value = idViagem;
         if (window.cadastrarExtraAoBipar) {
             window.cadastrarExtraAoBipar = false;
             const dadosOverride = {
@@ -1810,12 +1991,16 @@ async function addProduto(forcarAdicionar, dadosOverride) {
         atualizarQuantidadeBipadaNaTabela(codigoBarras, -quantidade, codigoProdutoParaTabela);
         atualizarEstatisticasOtimista(quantidade, true);
         if (!dadosOverride) {
-            document.getElementById('codigo-barras').value = codigoBarras;
-            document.getElementById('produto-nome').value = produto;
-            document.getElementById('quantidade').value = quantidade;
+            var cbE = window._elBipagem('codigo-barras');
+            if (cbE) cbE.value = codigoBarras;
+            var pnE = window._elBipagem('produto-nome');
+            if (pnE) pnE.value = produto;
+            var qE = window._elBipagem('quantidade');
+            if (qE) qE.value = quantidade;
             if (codigoProdutoEl) codigoProdutoEl.value = codigoProdutoParaTabela;
         }
-        document.getElementById('id-viagem-hidden').value = idViagem;
+        var hidE = window._elBipagem('id-viagem-hidden');
+        if (hidE) hidE.value = idViagem;
         showMessage(result.mensagem, 'error');
         focarCampoCodigoBarras();
         return;
@@ -1825,12 +2010,12 @@ async function addProduto(forcarAdicionar, dadosOverride) {
         if (document.getElementById('modal-cadastro-item')) document.getElementById('modal-cadastro-item').style.display = 'none';
         // Limpar e focar só quando não veio de override (para não apagar o próximo código já digitado)
         if (!dadosOverride) {
-            const qtdEl = document.getElementById('quantidade');
+            const qtdEl = window._elBipagem('quantidade');
             if (qtdEl) qtdEl.value = '1';
-            const cb = document.getElementById('codigo-barras');
+            const cb = window._elBipagem('codigo-barras');
             if (cb) cb.value = '';
             if (codigoProdutoEl) codigoProdutoEl.value = '';
-            const pn = document.getElementById('produto-nome');
+            const pn = window._elBipagem('produto-nome');
             if (pn) pn.value = '';
         }
         agendarAtualizacoesPosBipagem(idViagem);
@@ -1840,7 +2025,7 @@ async function addProduto(forcarAdicionar, dadosOverride) {
 
 // codigoProdutoOpcional: quando bipamos EAN ou DUN, a linha na tabela pode mostrar outro código; usar código do produto para achar a linha
 function atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdutoOpcional) {
-    const tbody = document.getElementById('tbody-conferencia');
+    const tbody = document.getElementById(window._fluxoBipagemAtivo === 'devolucao' ? 'dev-tbody-conferencia' : 'tbody-conferencia');
     if (!tbody || (!codigoBarras && !codigoProdutoOpcional)) return false;
     const rows = tbody.querySelectorAll('tr');
     const delta = parseInt(quantidade, 10) || 0;
@@ -1924,10 +2109,11 @@ function atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdu
 }
 
 function atualizarTotaisConferenciaFromDOM() {
-    const elTotal = document.getElementById('conferencia-total-itens');
-    const elBipado = document.getElementById('conferencia-total-bipado');
+    const isDev = window._fluxoBipagemAtivo === 'devolucao';
+    const elTotal = document.getElementById(isDev ? 'dev-conferencia-total-itens' : 'conferencia-total-itens');
+    const elBipado = document.getElementById(isDev ? 'dev-conferencia-total-bipado' : 'conferencia-total-bipado');
     if (!elTotal || !elBipado) return;
-    const tbody = document.getElementById('tbody-conferencia');
+    const tbody = document.getElementById(isDev ? 'dev-tbody-conferencia' : 'tbody-conferencia');
     if (!tbody) return;
     let totalItens = 0, totalBipado = 0, totalFalta = 0;
     let temExcedente = false;
@@ -1943,16 +2129,18 @@ function atualizarTotaisConferenciaFromDOM() {
     });
     elTotal.textContent = 'Total: ' + totalItens;
     elBipado.textContent = 'Bipado: ' + totalBipado;
-    atualizarStatusResumoConferencia(totalItens, totalBipado, totalFalta, temExcedente);
+    atualizarStatusResumoConferencia(totalItens, totalBipado, totalFalta, temExcedente, isDev ? 'devolucao' : 'carregamento');
 }
 
-function atualizarTotaisConferenciaFromData(conferenciaArray) {
-    const elTotal = document.getElementById('conferencia-total-itens');
-    const elBipado = document.getElementById('conferencia-total-bipado');
+function atualizarTotaisConferenciaFromData(conferenciaArray, fluxoTab) {
+    fluxoTab = fluxoTab || 'carregamento';
+    const isDev = fluxoTab === 'devolucao';
+    const elTotal = document.getElementById(isDev ? 'dev-conferencia-total-itens' : 'conferencia-total-itens');
+    const elBipado = document.getElementById(isDev ? 'dev-conferencia-total-bipado' : 'conferencia-total-bipado');
     if (!elTotal || !elBipado || !conferenciaArray || !conferenciaArray.length) {
         if (elTotal) elTotal.textContent = 'Total: 0';
         if (elBipado) elBipado.textContent = 'Bipado: 0';
-        atualizarStatusResumoConferencia(0, 0, 0, false);
+        atualizarStatusResumoConferencia(0, 0, 0, false, fluxoTab);
         return;
     }
     let totalItens = 0;
@@ -1970,11 +2158,12 @@ function atualizarTotaisConferenciaFromData(conferenciaArray) {
     for (const k in bipadoPorChave) totalBipado += bipadoPorChave[k];
     elTotal.textContent = 'Total: ' + totalItens;
     elBipado.textContent = 'Bipado: ' + totalBipado;
-    atualizarStatusResumoConferencia(totalItens, totalBipado, totalFalta, temExcedente);
+    atualizarStatusResumoConferencia(totalItens, totalBipado, totalFalta, temExcedente, fluxoTab);
 }
 
-function atualizarStatusResumoConferencia(totalItens, totalBipado, totalFalta, temExcedente) {
-    const elStatus = document.getElementById('conferencia-resumo-status');
+function atualizarStatusResumoConferencia(totalItens, totalBipado, totalFalta, temExcedente, fluxoTab) {
+    fluxoTab = fluxoTab || 'carregamento';
+    const elStatus = document.getElementById(fluxoTab === 'devolucao' ? 'dev-conferencia-resumo-status' : 'conferencia-resumo-status');
     if (!elStatus) return;
     elStatus.classList.remove('status-faltando', 'status-completo', 'status-excedente', 'status-sem-itens');
     if (!totalItens || totalItens <= 0) {
@@ -2405,6 +2594,74 @@ window.buscarItensViagem = async function() {
     }, 300);
 }
 
+// Buscar viagem no painel Devoluções (mesmo romaneio; bipagens separadas por fluxo devolução)
+window.buscarItensViagemDevolucao = async function() {
+    var idInputEl = document.getElementById('dev-id-viagem');
+    var idInput = idInputEl ? idInputEl.value.trim() : '';
+    if (!idInput) {
+        showMessage('Por favor, digite o ID do roteiro ou o ID da viagem', 'error');
+        if (idInputEl) idInputEl.focus();
+        return;
+    }
+    window._fluxoBipagemAtivo = 'devolucao';
+    var overlayEl = document.getElementById('ravex-loading-overlay');
+    var overlayText = document.getElementById('ravex-loading-text');
+    var overlayBox = document.getElementById('ravex-loading-box');
+    var barTrack = document.getElementById('ravex-loading-bar-track');
+    var errorActions = document.getElementById('ravex-error-actions');
+    function showOverlay(msg) {
+        if (overlayEl && overlayText) {
+            overlayText.textContent = msg || 'Carregando devolução... Aguarde.';
+            if (overlayBox) overlayBox.classList.remove('ravex-loading-box--error');
+            if (barTrack) barTrack.style.display = '';
+            if (errorActions) errorActions.style.display = 'none';
+            overlayEl.style.display = 'flex';
+        }
+    }
+    function hideOverlay() {
+        if (overlayEl) overlayEl.style.display = 'none';
+    }
+    showOverlay('Carregando romaneio da viagem (contagem de devolução)... Aguarde.');
+    showMessage('Buscando itens na base...', 'success');
+    var idViagem = idInput;
+    try {
+        await loadConferencia(idInput, { fluxo: 'devolucao' });
+        hideOverlay();
+        idViagem = (document.getElementById('dev-id-viagem-hidden') && document.getElementById('dev-id-viagem-hidden').value.trim()) || (idInputEl && idInputEl.value.trim()) || idInput;
+    } catch (e) {
+        showMessage('Erro ao conectar. Tente novamente.', 'error');
+        if (overlayEl && overlayText) {
+            overlayText.textContent = 'Erro: ' + (e.message || 'Não foi possível carregar');
+            if (overlayBox) overlayBox.classList.add('ravex-loading-box--error');
+            if (barTrack) barTrack.style.display = 'none';
+            if (errorActions) errorActions.style.display = 'block';
+            var okBtn = document.getElementById('ravex-overlay-ok');
+            if (okBtn) okBtn.onclick = function() { hideOverlay(); };
+        }
+    } finally {
+        hideOverlay();
+    }
+    var hid = document.getElementById('dev-id-viagem-hidden');
+    if (hid) hid.value = idViagem;
+    if (idInputEl) idInputEl.value = idViagem;
+    var formBip = document.getElementById('dev-form-bipagem-container');
+    if (formBip) formBip.classList.remove('conferencia-blocos-bloqueado');
+    var bloco4Wrap = document.getElementById('dev-conferencia-bloco-4-wrapper');
+    if (bloco4Wrap) bloco4Wrap.classList.remove('conferencia-blocos-bloqueado');
+    var tituloWrap = document.getElementById('dev-titulo-lista-wrapper');
+    if (tituloWrap) tituloWrap.style.display = 'flex';
+    var tabelaC = document.getElementById('dev-tabela-conferencia-container');
+    if (tabelaC) tabelaC.style.display = 'block';
+    setTimeout(function() {
+        var docaSelect = document.getElementById('dev-doca');
+        var codigoBarrasInput = document.getElementById('dev-codigo-barras');
+        var docaVal = docaSelect ? docaSelect.value.trim() : '';
+        var docaOk = ['1', '2', '3', '4'].indexOf(docaVal) !== -1;
+        if (docaSelect && !docaOk) docaSelect.focus();
+        else if (codigoBarrasInput) codigoBarrasInput.focus();
+    }, 300);
+};
+
 // Limpar apenas os campos do formulário da seção 4. CONFERÊNCIA (não apaga dados bipados)
 window.limparCamposConferencia = function() {
     const codigoBarras = document.getElementById('codigo-barras');
@@ -2425,9 +2682,28 @@ window.limparCamposConferencia = function() {
     window.cadastrarExtraAoBipar = false;
 };
 
+window.limparCamposDevolucao = function() {
+    var codigoBarras = document.getElementById('dev-codigo-barras');
+    var codigoProduto = document.getElementById('dev-codigo-produto');
+    var produtoNome = document.getElementById('dev-produto-nome');
+    var quantidade = document.getElementById('dev-quantidade');
+    var veiculo = document.getElementById('dev-veiculo');
+    var status = document.getElementById('dev-status');
+    if (codigoBarras) codigoBarras.value = '';
+    if (codigoProduto) codigoProduto.value = '';
+    if (produtoNome) produtoNome.value = '';
+    if (quantidade) quantidade.value = '1';
+    if (veiculo) veiculo.value = '';
+    if (status) status.value = 'PENDENTE';
+    if (codigoBarras) codigoBarras.focus();
+    var aviso = document.getElementById('dev-aviso-produto-fora-relacao');
+    if (aviso) aviso.style.display = 'none';
+    window.cadastrarExtraAoBipar = false;
+};
+
 // Abrir modal de aceite para zerar todos os itens
 window.abrirModalZerarItens = function() {
-    const idViagem = document.getElementById('id-viagem-hidden').value.trim();
+    const idViagem = window._getIdViagemAtivo();
     if (!idViagem) {
         showMessage('Selecione uma viagem primeiro', 'error');
         return;
@@ -2480,7 +2756,7 @@ window.fecharModalExcluirItem = function() {
 
 window.confirmarExcluirItem = async function() {
     const codigoBarras = document.getElementById('modal-excluir-item-codigo').value.trim();
-    const idViagem = document.getElementById('id-viagem-hidden').value.trim();
+    const idViagem = window._getIdViagemAtivo();
     if (!codigoBarras || !idViagem) {
         showMessage('Dados inválidos para excluir', 'error');
         return;
@@ -2489,11 +2765,16 @@ window.confirmarExcluirItem = async function() {
     try {
         const result = await fetchAPI('/conferencia/remover', {
             method: 'POST',
-            body: JSON.stringify({ id_viagem: idViagem, codigo_barras: codigoBarras, quantidade: 'tudo' })
+            body: JSON.stringify({
+                id_viagem: idViagem,
+                codigo_barras: codigoBarras,
+                quantidade: 'tudo',
+                fluxo: (window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento'
+            })
         });
         if (result && result.success) {
             showMessage(result.mensagem || 'Item excluído da conferência.', 'success');
-            loadConferencia(idViagem);
+            reloadConferenciaAtiva(idViagem);
             loadPeriodoCarregamento(idViagem);
             loadEstatisticas();
         } else {
@@ -2506,25 +2787,29 @@ window.confirmarExcluirItem = async function() {
 
 // Executar zerar todos os itens (após aceite)
 async function executarZerarItens() {
-    const idViagem = document.getElementById('id-viagem-hidden').value.trim();
+    const idViagem = window._getIdViagemAtivo();
     const aceite = document.getElementById('aceite-zerar-itens');
     if (!aceite || !aceite.checked) return;
     fecharModalZerarItens();
+    var fluxoQ = (window._fluxoBipagemAtivo === 'devolucao') ? '?fluxo=devolucao' : '';
     try {
-        const result = await fetchAPI(`/conferencia/${encodeURIComponent(idViagem)}/zerar`, {
+        const result = await fetchAPI(`/conferencia/${encodeURIComponent(idViagem)}/zerar` + fluxoQ, {
             method: 'DELETE'
         });
         if (result && result.success) {
             showMessage(result.mensagem || 'Todos os itens foram zerados. Pode bipar novamente.', 'success');
-            await loadConferencia(idViagem);
+            await reloadConferenciaAtiva(idViagem);
             await loadPeriodoCarregamento(idViagem);
             loadEstatisticas();
-            document.getElementById('codigo-barras').value = '';
-            const cpZ = document.getElementById('codigo-produto');
+            var cbZ = window._elBipagem('codigo-barras');
+            if (cbZ) cbZ.value = '';
+            var cpZ = window._elBipagem('codigo-produto');
             if (cpZ) cpZ.value = '';
-            document.getElementById('produto-nome').value = '';
-            document.getElementById('quantidade').value = '1';
-            document.getElementById('codigo-barras').focus();
+            var pnZ = window._elBipagem('produto-nome');
+            if (pnZ) pnZ.value = '';
+            var qZ = window._elBipagem('quantidade');
+            if (qZ) qZ.value = '1';
+            if (cbZ) cbZ.focus();
             if (window.ultimoCodigoBuscado) window.ultimoCodigoBuscado = '';
         } else {
             showMessage('Não foi possível zerar os itens', 'error');
@@ -2613,7 +2898,8 @@ function agruparConferenciaPorCodigoProduto(conferencia) {
 }
 
 // Atualiza caixa "Gerar comprovante completo" (verde) vs "Gerar comprovante divergente" (laranja). Se conferenciaUI for passado, usa os dados; senão lê da tabela (DOM) para atualização imediata após Bipar/Tirar 1.
-function atualizarBoxesComprovante(conferenciaUI) {
+function atualizarBoxesComprovante(conferenciaUI, fluxoTab) {
+    if (fluxoTab === 'devolucao') return;
     var todosCompletos = false;
     var temItens = false;
     if (conferenciaUI && Array.isArray(conferenciaUI) && conferenciaUI.length > 0) {
@@ -2643,36 +2929,59 @@ function atualizarBoxesComprovante(conferenciaUI) {
     if (boxDivergente) boxDivergente.style.display = (temItens && !todosCompletos) ? 'block' : 'none';
 }
 
-async function loadConferencia(idViagem = null) {
+async function loadConferencia(idViagem = null, opts) {
+    opts = opts || {};
+    const fluxoTab = opts.fluxo || 'carregamento';
+    const isDev = fluxoTab === 'devolucao';
+    function L(id) {
+        if (!isDev) return document.getElementById(id);
+        const map = {
+            'tbody-conferencia': 'dev-tbody-conferencia',
+            'conferencia-limit-info': 'dev-conferencia-limit-info',
+            'titulo-lista-wrapper': 'dev-titulo-lista-wrapper',
+            'tabela-conferencia-container': 'dev-tabela-conferencia-container',
+            'display-id-roteiro': 'dev-display-id-roteiro',
+            'display-id-viagem': 'dev-display-id-viagem',
+            'viagem-identificador-rota': 'dev-viagem-identificador-rota',
+            'viagem-placa': 'dev-viagem-placa',
+            'viagem-motorista': 'dev-viagem-motorista',
+            'data-expedicao': 'dev-data-expedicao',
+            'id-viagem-hidden': 'dev-id-viagem-hidden',
+            'id-viagem': 'dev-id-viagem',
+        };
+        return document.getElementById(map[id] || ('dev-' + id));
+    }
     if (!idViagem) {
-        const idViagemInput = document.getElementById('id-viagem');
+        const idViagemInput = L('id-viagem');
         if (idViagemInput) {
             idViagem = idViagemInput.value.trim();
         }
     }
-    
+
     if (!idViagem) {
         return;
     }
-    
+
     try {
-        const conferencia = await fetchAPI(`/conferencia/${encodeURIComponent(idViagem)}?_=${Date.now()}`);
+        var q = '?_=' + Date.now();
+        if (isDev) q += '&fluxo=devolucao';
+        const conferencia = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + q);
         if (conferencia && !conferencia.erro) {
             const listaParaUI = Array.isArray(conferencia.lista) ? conferencia.lista : (Array.isArray(conferencia) ? conferencia : []);
             if (conferencia.id_roteiro !== undefined || conferencia.id_viagem !== undefined || conferencia.identificador_rota !== undefined || conferencia.placa !== undefined || conferencia.motorista !== undefined || conferencia.data_expedicao !== undefined) {
-                var elR = document.getElementById('display-id-roteiro'); if (elR) elR.textContent = (conferencia.id_roteiro && String(conferencia.id_roteiro).trim()) ? conferencia.id_roteiro : '-';
-                var elV = document.getElementById('display-id-viagem'); if (elV) elV.textContent = (conferencia.id_viagem && String(conferencia.id_viagem).trim()) ? conferencia.id_viagem : (idViagem || '-');
-                var elIdRota = document.getElementById('viagem-identificador-rota'); if (elIdRota) elIdRota.textContent = (conferencia.identificador_rota && String(conferencia.identificador_rota).trim()) ? conferencia.identificador_rota : '-';
-                var elP = document.getElementById('viagem-placa'); if (elP) elP.value = (conferencia.placa && String(conferencia.placa).trim()) ? conferencia.placa : '';
-                var elM = document.getElementById('viagem-motorista'); if (elM) elM.value = (conferencia.motorista && String(conferencia.motorista).trim()) ? conferencia.motorista : '';
-                var elD = document.getElementById('data-expedicao'); if (elD) elD.textContent = (conferencia.data_expedicao && String(conferencia.data_expedicao).trim()) ? conferencia.data_expedicao : '-';
+                var elR = L('display-id-roteiro'); if (elR) elR.textContent = (conferencia.id_roteiro && String(conferencia.id_roteiro).trim()) ? conferencia.id_roteiro : '-';
+                var elV = L('display-id-viagem'); if (elV) elV.textContent = (conferencia.id_viagem && String(conferencia.id_viagem).trim()) ? conferencia.id_viagem : (idViagem || '-');
+                var elIdRota = L('viagem-identificador-rota'); if (elIdRota) elIdRota.textContent = (conferencia.identificador_rota && String(conferencia.identificador_rota).trim()) ? conferencia.identificador_rota : '-';
+                var elP = L('viagem-placa'); if (elP) elP.value = (conferencia.placa && String(conferencia.placa).trim()) ? conferencia.placa : '';
+                var elM = L('viagem-motorista'); if (elM) elM.value = (conferencia.motorista && String(conferencia.motorista).trim()) ? conferencia.motorista : '';
+                var elD = L('data-expedicao'); if (elD) elD.textContent = (conferencia.data_expedicao && String(conferencia.data_expedicao).trim()) ? conferencia.data_expedicao : '-';
                 if (conferencia.id_viagem && String(conferencia.id_viagem).trim()) {
-                    var h = document.getElementById('id-viagem-hidden'); if (h) h.value = conferencia.id_viagem;
-                    var i = document.getElementById('id-viagem'); if (i) i.value = conferencia.id_viagem;
+                    var h = L('id-viagem-hidden'); if (h) h.value = conferencia.id_viagem;
+                    var i = L('id-viagem'); if (i) i.value = conferencia.id_viagem;
                 }
             }
             const conferenciaUI = agruparConferenciaPorCodigoProduto(listaParaUI);
-            const tbody = document.getElementById('tbody-conferencia');
+            const tbody = L('tbody-conferencia');
             // Preservar texto que o usuário está digitando nos campos Motivo ao atualizar a tabela (ex.: refresh a cada 5s)
             const motivosEmEdicao = {};
             if (tbody) {
@@ -2682,7 +2991,7 @@ async function loadConferencia(idViagem = null) {
                     motivosEmEdicao[chave] = inp.value;
                 });
             }
-            var limitInfo = document.getElementById('conferencia-limit-info');
+            var limitInfo = L('conferencia-limit-info');
             if (limitInfo) {
                 var totalR = conferencia.total_romaneio != null ? Number(conferencia.total_romaneio) : 0;
                 var limitR = conferencia.limit_romaneio != null ? Number(conferencia.limit_romaneio) : 0;
@@ -2693,9 +3002,13 @@ async function loadConferencia(idViagem = null) {
                     limitInfo.style.display = 'none';
                 }
             }
+            if (!tbody) {
+                showMessage('Não foi possível atualizar a tabela.', 'error');
+                return undefined;
+            }
             if (conferenciaUI.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhum item encontrado para esta viagem no romaneio.</td></tr>';
-                atualizarTotaisConferenciaFromData([]);
+                atualizarTotaisConferenciaFromData([], fluxoTab);
             } else {
             // Ordenar: item bipado por último no topo; itens COMPLETO no final
             const ultimoCodigo = (window._ultimoBipadoCodigo || '').toString().trim();
@@ -2771,7 +3084,7 @@ async function loadConferencia(idViagem = null) {
                 </tr>
             `;
             }).join('');
-            atualizarTotaisConferenciaFromData(conferenciaOrdenada);
+            atualizarTotaisConferenciaFromData(conferenciaOrdenada, fluxoTab);
             // Adicionar animação de atualização
             const rows = tbody.querySelectorAll('tr');
             rows.forEach((row, index) => {
@@ -2782,21 +3095,36 @@ async function loadConferencia(idViagem = null) {
                 }, index * 20);
             });
             }
-            atualizarBoxesComprovante(conferenciaUI);
+            var tituloWrap = L('titulo-lista-wrapper');
+            var tabContainer = L('tabela-conferencia-container');
+            if (tituloWrap) tituloWrap.style.display = 'flex';
+            if (tabContainer) tabContainer.style.display = 'block';
+            var btnZ = isDev ? document.getElementById('dev-btn-zerar-bipados') : document.getElementById('btn-voltar-bipar');
+            if (btnZ) btnZ.style.display = 'inline-block';
+            atualizarBoxesComprovante(conferenciaUI, fluxoTab);
             return conferencia;
         } else if (conferencia && conferencia.erro) {
-            const tbody = document.getElementById('tbody-conferencia');
-            tbody.innerHTML = `<tr><td colspan="12" class="loading" style="color: #f44336;">Erro: ${conferencia.erro}</td></tr>`;
+            const tbodyE = L('tbody-conferencia');
+            if (tbodyE) tbodyE.innerHTML = `<tr><td colspan="12" class="loading" style="color: #f44336;">Erro: ${conferencia.erro}</td></tr>`;
             showMessage(conferencia.erro, 'error');
             return undefined;
         } else {
-            const tbody = document.getElementById('tbody-conferencia');
-            tbody.innerHTML = '<tr><td colspan="12" class="loading">Erro ao carregar dados. Verifique o ID (roteiro ou viagem) e se os dados foram importados pela aba Importar Ravex.</td></tr>';
+            const tbodyE = L('tbody-conferencia');
+            if (tbodyE) tbodyE.innerHTML = '<tr><td colspan="12" class="loading">Erro ao carregar dados. Verifique o ID (roteiro ou viagem) e se os dados foram importados pela aba Importar Ravex.</td></tr>';
             return undefined;
         }
     } catch (error) {
-        const tbody = document.getElementById('tbody-conferencia');
-        tbody.innerHTML = '<tr><td colspan="12" class="loading" style="color: #f44336;">Erro ao buscar itens da viagem.</td></tr>';
+        const fluxoTab2 = (opts && opts.fluxo) || 'carregamento';
+        const isDev2 = fluxoTab2 === 'devolucao';
+        function L2(id) {
+            if (!isDev2) return document.getElementById(id);
+            const map = {
+                'tbody-conferencia': 'dev-tbody-conferencia',
+            };
+            return document.getElementById(map[id] || ('dev-' + id));
+        }
+        const tbodyE = L2('tbody-conferencia');
+        if (tbodyE) tbodyE.innerHTML = '<tr><td colspan="12" class="loading" style="color: #f44336;">Erro ao buscar itens da viagem.</td></tr>';
         showMessage('Erro ao buscar itens da viagem', 'error');
         return undefined;
     }
@@ -2807,7 +3135,7 @@ if (typeof window._conferenciaPending !== 'object') {
     window._conferenciaPending = { removes: {}, removeTimers: {}, adds: {}, addTimers: {}, DEBOUNCE_MS: 700 };
 }
 function _flushRemove(codigoBarras) {
-    var idViagem = document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim();
+    var idViagem = (window._getIdViagemAtivo && window._getIdViagemAtivo()) || (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim());
     if (!idViagem || !codigoBarras) return;
     var n = window._conferenciaPending.removes[codigoBarras];
     if (n == null || n <= 0) return;
@@ -2818,24 +3146,29 @@ function _flushRemove(codigoBarras) {
     }
     fetchAPI('/conferencia/remover', {
         method: 'POST',
-        body: JSON.stringify({ id_viagem: idViagem, codigo_barras: codigoBarras, quantidade: n })
+        body: JSON.stringify({
+            id_viagem: idViagem,
+            codigo_barras: codigoBarras,
+            quantidade: n,
+            fluxo: (window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento'
+        })
     }).then(function(result) {
         if (result && result.success) {
             showMessage(result.mensagem || n + ' unidade(s) removida(s).', 'success');
-            loadConferencia(idViagem);
+            reloadConferenciaAtiva(idViagem);
             loadPeriodoCarregamento(idViagem);
             loadEstatisticas();
         } else {
             showMessage(result && result.erro ? result.erro : 'Não foi possível remover', 'error');
-            loadConferencia(idViagem);
+            reloadConferenciaAtiva(idViagem);
         }
     }).catch(function() {
         showMessage('Erro ao remover item', 'error');
-        loadConferencia(idViagem);
+        reloadConferenciaAtiva(idViagem);
     });
 }
 function _flushAdd(codigoBarras) {
-    var idViagem = document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim();
+    var idViagem = window._getIdViagemAtivo && window._getIdViagemAtivo();
     if (!idViagem || !codigoBarras) return;
     var entry = window._conferenciaPending.adds[codigoBarras];
     if (!entry || !entry.qtd || entry.qtd <= 0) return;
@@ -2847,9 +3180,9 @@ function _flushAdd(codigoBarras) {
     }
     window._ultimoBipadoCodigo = (codigoBarras || '').toString().trim();
     buscarProdutoNaPlanilha(codigoBarras, qtd, true).then(function() {
-        setTimeout(function() { loadConferencia(idViagem); }, 400);
+        setTimeout(function() { reloadConferenciaAtiva(idViagem); }, 400);
     }).catch(function() {
-        loadConferencia(idViagem);
+        reloadConferenciaAtiva(idViagem);
     });
 }
 
@@ -2858,9 +3191,9 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
     var btn = (typeof btnOrCodigo === 'object' && btnOrCodigo && btnOrCodigo.nodeType) ? btnOrCodigo : null;
     var codigoBarras = btn ? codigoBarrasOrQtd : btnOrCodigo;
     var quantidade = btn ? quantidadeMaybe : codigoBarrasOrQtd;
-    var cb = document.getElementById('codigo-barras');
+    var cb = document.getElementById(window._fluxoBipagemAtivo === 'devolucao' ? 'dev-codigo-barras' : 'codigo-barras');
     if (cb) cb.value = '';
-    const idViagem = document.getElementById('id-viagem-hidden').value.trim();
+    const idViagem = window._getIdViagemAtivo();
     if (!idViagem) {
         showMessage('Nenhuma viagem selecionada', 'error');
         return;
@@ -2884,20 +3217,25 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
         try {
             const result = await fetchAPI('/conferencia/remover', {
                 method: 'POST',
-                body: JSON.stringify({ id_viagem: idViagem, codigo_barras: codigoBarras, quantidade: 'tudo' })
+                body: JSON.stringify({
+                    id_viagem: idViagem,
+                    codigo_barras: codigoBarras,
+                    quantidade: 'tudo',
+                    fluxo: (window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento'
+                })
             });
             if (result && result.success) {
                 showMessage(result.mensagem || 'Item(s) removido(s).', 'success');
-                loadConferencia(idViagem);
+                reloadConferenciaAtiva(idViagem);
                 loadPeriodoCarregamento(idViagem);
                 loadEstatisticas();
             } else {
                 showMessage(result && result.erro ? result.erro : 'Não foi possível remover', 'error');
-                loadConferencia(idViagem);
+                reloadConferenciaAtiva(idViagem);
             }
         } catch (e) {
             showMessage('Erro ao remover item', 'error');
-            loadConferencia(idViagem);
+            reloadConferenciaAtiva(idViagem);
         }
         return;
     }
@@ -2923,16 +3261,17 @@ window.biparItem = function(btnOrCodigo, codigoBarrasOrProduto, produtoOrQtd, qu
     var codigoBarras = btn ? codigoBarrasOrProduto : btnOrCodigo;
     var produto = btn ? produtoOrQtd : codigoBarrasOrProduto;
     var quantidadeFalta = btn ? quantidadeFaltaMaybe : produtoOrQtd;
-    const idViagem = document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim();
+    const idViagem = window._getIdViagemAtivo();
     if (!idViagem) {
         showMessage('Nenhuma viagem selecionada', 'error');
         return;
     }
-    var cb = document.getElementById('codigo-barras');
+    var dev = window._fluxoBipagemAtivo === 'devolucao';
+    var cb = document.getElementById(dev ? 'dev-codigo-barras' : 'codigo-barras');
     if (cb) cb.value = '';
-    document.getElementById('codigo-barras').value = codigoBarras;
-    document.getElementById('produto-nome').value = produto;
-    document.getElementById('quantidade').value = 1;
+    document.getElementById(dev ? 'dev-codigo-barras' : 'codigo-barras').value = codigoBarras;
+    document.getElementById(dev ? 'dev-produto-nome' : 'produto-nome').value = produto;
+    document.getElementById(dev ? 'dev-quantidade' : 'quantidade').value = 1;
     var row = btn ? btn.closest('tr') : null;
     var cells = row && row.cells && row.cells.length >= 11 ? row.cells : null;
     var qtdFaltaAtual = cells ? (parseInt(cells[10].textContent, 10) || 0) : 0;

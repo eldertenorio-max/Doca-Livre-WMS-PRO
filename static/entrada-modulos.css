@@ -1,4 +1,26 @@
-/* Tela /entrada — layout hub (logo + botões verticais), cores alinhadas ao painel */
+/* Tela /entrada — hub com logo, título e botões; animações de entrada + hover */
+
+@keyframes hub-logo-in {
+    from {
+        opacity: 0;
+        transform: scale(0.88) translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes hub-fade-up {
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 
 body.hub-entrada-body {
     margin: 0;
@@ -14,24 +36,34 @@ body.hub-entrada-body {
 }
 
 .hub-entrada-wrap {
-    max-width: 440px;
+    max-width: min(94vw, 760px);
+    width: 100%;
     margin: 0 auto;
-    padding: 32px 20px 40px;
+    padding: clamp(32px, 6vh, 56px) clamp(22px, 5vw, 44px) clamp(40px, 7vh, 64px);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 22px;
+    gap: clamp(24px, 3.5vh, 34px);
     min-height: calc(100vh - 8px);
     box-sizing: border-box;
 }
 
 .hub-entrada-logo {
-    width: 140px;
-    border-radius: 12px;
+    width: min(280px, 58vw);
+    max-width: 100%;
+    border-radius: 14px;
     border: 3px solid #366092;
     overflow: hidden;
     background: #fff;
-    box-shadow: 0 4px 18px rgba(54, 96, 146, 0.2);
+    box-shadow: 0 6px 24px rgba(54, 96, 146, 0.22);
+    animation: hub-logo-in 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    transform-origin: center top;
+    transition: transform 0.35s ease, box-shadow 0.35s ease;
+}
+
+.hub-entrada-logo:hover {
+    transform: scale(1.04);
+    box-shadow: 0 10px 32px rgba(54, 96, 146, 0.32);
 }
 
 .hub-entrada-logo img {
@@ -42,21 +74,31 @@ body.hub-entrada-body {
 
 .hub-entrada-titulo {
     margin: 0;
-    font-size: 1.35rem;
+    font-size: clamp(1.65rem, 4.5vw, 2.35rem);
     font-weight: 700;
     text-align: center;
     color: #366092;
-    line-height: 1.25;
+    line-height: 1.2;
+    opacity: 0;
+    animation: hub-fade-up 0.65s ease-out 0.12s forwards;
+    transition: transform 0.35s ease, text-shadow 0.35s ease;
+}
+
+.hub-entrada-titulo:hover {
+    transform: scale(1.03);
+    text-shadow: 0 4px 20px rgba(54, 96, 146, 0.15);
 }
 
 .hub-entrada-desc {
     margin: 0;
-    font-size: 0.9rem;
+    font-size: clamp(1.05rem, 2.4vw, 1.22rem);
     font-weight: 500;
     text-align: center;
-    line-height: 1.45;
+    line-height: 1.5;
     color: #546e7a;
-    max-width: 380px;
+    max-width: 52ch;
+    opacity: 0;
+    animation: hub-fade-up 0.65s ease-out 0.28s forwards;
 }
 
 .hub-entrada-desc strong {
@@ -68,63 +110,116 @@ body.hub-entrada-body {
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    margin-top: 4px;
+    gap: clamp(18px, 2.8vh, 24px);
+    margin-top: 8px;
 }
 
 .hub-entrada-btn {
     display: block;
     width: 100%;
-    padding: 16px 20px;
+    padding: clamp(22px, 3.2vh, 30px) clamp(26px, 4.5vw, 40px);
+    min-height: 68px;
     border: none;
-    border-radius: 12px;
+    border-radius: 16px;
     font-family: inherit;
-    font-size: 1rem;
+    font-size: clamp(1.12rem, 2.5vw, 1.35rem);
     font-weight: 700;
     text-align: center;
     text-decoration: none;
     cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-    box-shadow: 0 3px 12px rgba(54, 96, 146, 0.25);
+    box-shadow: 0 4px 16px rgba(54, 96, 146, 0.28);
     color: #fff;
+    opacity: 0;
+    transform: translateY(12px);
+    animation: hub-fade-up 0.55s ease-out forwards;
+    transition:
+        transform 0.22s ease,
+        box-shadow 0.22s ease,
+        filter 0.22s ease;
 }
 
-.hub-entrada-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(54, 96, 146, 0.35);
-}
-
-.hub-entrada-btn:active {
-    transform: translateY(0);
-}
-
-/* Mesma família de azuis do header / abas */
 .hub-entrada-btn--1 {
+    animation-delay: 0.42s;
     background: linear-gradient(180deg, #5a8ac4 0%, #366092 100%);
 }
 
 .hub-entrada-btn--2 {
+    animation-delay: 0.54s;
     background: linear-gradient(180deg, #6b9bd0 0%, #3d5f85 100%);
 }
 
 .hub-entrada-btn--3 {
+    animation-delay: 0.66s;
     background: linear-gradient(180deg, #4a7ba7 0%, #2d4a66 100%);
+}
+
+.hub-entrada-btn:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 10px 28px rgba(54, 96, 146, 0.4);
+    filter: brightness(1.05);
+}
+
+.hub-entrada-btn:active {
+    transform: translateY(-1px) scale(1.01);
 }
 
 .hub-entrada-rodape {
     margin-top: auto;
-    padding-top: 28px;
-    font-size: 0.88rem;
+    padding-top: clamp(24px, 4vh, 36px);
+    font-size: clamp(0.95rem, 2.1vw, 1.08rem);
     color: #78909c;
     text-align: center;
+    opacity: 0;
+    animation: hub-fade-up 0.5s ease-out 0.85s forwards;
 }
 
 .hub-entrada-rodape a {
     color: #366092;
     font-weight: 600;
     text-decoration: none;
+    transition: color 0.2s ease;
 }
 
 .hub-entrada-rodape a:hover {
     text-decoration: underline;
+}
+
+/* Sem animações (usuário pediu remover) */
+.hub-entrada-logo,
+.hub-entrada-titulo,
+.hub-entrada-desc,
+.hub-entrada-btn,
+.hub-entrada-rodape {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hub-entrada-logo,
+    .hub-entrada-titulo,
+    .hub-entrada-desc,
+    .hub-entrada-btn,
+    .hub-entrada-rodape {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
+
+    .hub-entrada-btn {
+        transform: none;
+    }
+
+    .hub-entrada-logo:hover {
+        transform: none;
+    }
+
+    .hub-entrada-titulo:hover {
+        transform: none;
+        text-shadow: none;
+    }
+
+    .hub-entrada-btn:hover {
+        transform: translateY(-2px);
+    }
 }

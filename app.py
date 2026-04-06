@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, Response, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, send_file, Response, redirect, url_for, session, g
 from datetime import datetime, timedelta, timezone
 try:
     from zoneinfo import ZoneInfo
@@ -258,6 +258,13 @@ def init_db():
             conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_codigo ON public.produtos_bipados(codigo_barras)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_viagem_codigo ON public.produtos_bipados(id_viagem, codigo_barras)')
             try:
+                conn.execute("ALTER TABLE public.produtos_bipados ADD COLUMN IF NOT EXISTS fluxo TEXT DEFAULT 'carregamento'")
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            try:
                 conn.execute('ALTER TABLE public.romaneio_por_item ADD COLUMN identificador_rota TEXT')
             except Exception:
                 conn.rollback()
@@ -332,6 +339,7 @@ def init_db():
             'ALTER TABLE produtos_bipados ADD COLUMN unidade TEXT',
             'ALTER TABLE produtos_bipados ADD COLUMN peso TEXT',
             'ALTER TABLE produtos_bipados ADD COLUMN usuario_bipagem TEXT',
+            "ALTER TABLE produtos_bipados ADD COLUMN fluxo TEXT DEFAULT 'carregamento'",
         ):
             try:
                 conn.execute(col_sql)
@@ -1107,14 +1115,25 @@ def add_produto():
     """Adiciona um novo produto bipado. Se não estiver cadastrado na conferência, retorna produto_nao_cadastrado para o frontend perguntar se deseja adicionar."""
     data = request.json or {}
     forcar_adicionar = data.get('forcar_adicionar', False)
+    fluxo = (data.get('fluxo') or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     conn = get_db()
     codigo_barras = _normalizar_codigo_barras(data.get('codigo_barras', '') or '')
     id_viagem = (data.get('id_viagem') or '').strip()
 
     if id_viagem and not forcar_adicionar:
-        ret = get_conferencia(id_viagem)
+        g.conferencia_fluxo = fluxo
+        try:
+            ret = get_conferencia(id_viagem)
+        finally:
+            try:
+                del g.conferencia_fluxo
+            except Exception:
+                pass
         resp = ret[0] if isinstance(ret, tuple) else ret
-        lista = resp.get_json() if hasattr(resp, 'get_json') else []
+        body = resp.get_json() if hasattr(resp, 'get_json') else {}
+        lista = body.get('lista') if isinstance(body, dict) else body
         if isinstance(lista, list):
             codigos_conferencia = {str(item.get('codigo_barras') or '').strip() for item in lista}
             if codigo_barras and codigo_barras not in codigos_conferencia:
@@ -1126,6 +1145,8 @@ def add_produto():
                 })
 
     doca = (data.get('doca') or '').strip()
+    if fluxo == 'devolucao' and doca not in ('1', '2', '3', '4'):
+        doca = '1'
     if doca not in ('1', '2', '3', '4'):
         return jsonify({'success': False, 'mensagem': 'Selecione a doca (1, 2, 3 ou 4) antes de bipar.'}), 400
     codigo_interno = (data.get('codigo_interno') or '').strip()
@@ -1153,8 +1174,8 @@ def add_produto():
     qtd_bipar = max(1, min(99999, qtd_bipar))
     conn.execute(
         '''INSERT INTO produtos_bipados 
-           (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca, codigo_interno, codigo_dun, unidade, peso, usuario_bipagem)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+           (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca, codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         (
             codigo_barras,
             data.get('produto', ''),
@@ -1168,7 +1189,8 @@ def add_produto():
             codigo_dun,
             unidade,
             peso,
-            usuario_logado
+            usuario_logado,
+            fluxo,
         )
     )
     conn.commit()
@@ -1213,8 +1235,14 @@ def zerar_bipagem_viagem(id_viagem):
     """Remove todos os registros de bipagem da viagem para permitir bipar novamente"""
     if not id_viagem:
         return jsonify({'erro': 'ID do roteiro não informado'}), 400
+    fluxo = (request.args.get('fluxo') or (request.json or {}).get('fluxo') or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     conn = get_db()
-    conn.execute('DELETE FROM produtos_bipados WHERE id_viagem = ?', (id_viagem.strip(),))
+    conn.execute(
+        "DELETE FROM produtos_bipados WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ?",
+        (id_viagem.strip(), fluxo),
+    )
     conn.commit()
     conn.close()
     _broadcast_atualizar()
@@ -1228,6 +1256,9 @@ def remover_itens_bipados():
     id_viagem = (data.get('id_viagem') or '').strip()
     codigo_barras = (data.get('codigo_barras') or '').strip()
     quantidade = data.get('quantidade', 1)
+    fluxo = (data.get('fluxo') or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     if not id_viagem or not codigo_barras:
         return jsonify({'erro': 'id_viagem e codigo_barras são obrigatórios'}), 400
     conn = get_db()
@@ -1239,15 +1270,18 @@ def remover_itens_bipados():
         return r.get('quantidade') if hasattr(r, 'get') else (r[1] if len(r) > 1 else 0)
 
     rows = conn.execute(
-        'SELECT id, quantidade FROM produtos_bipados WHERE id_viagem = ? AND codigo_barras = ? ORDER BY id DESC',
-        (id_viagem, codigo_barras)
+        "SELECT id, quantidade FROM produtos_bipados WHERE id_viagem = ? AND codigo_barras = ? AND COALESCE(fluxo, 'carregamento') = ? ORDER BY id DESC",
+        (id_viagem, codigo_barras, fluxo),
     ).fetchall()
     if not rows:
         conn.close()
         return jsonify({'success': True, 'mensagem': 'Nenhum item bipado para este produto nesta viagem.', 'removidos': 0})
     if quantidade == 'tudo' or quantidade == 'all':
         qtd_remover = sum(_row_qtd(r) for r in rows)
-        conn.execute('DELETE FROM produtos_bipados WHERE id_viagem = ? AND codigo_barras = ?', (id_viagem, codigo_barras))
+        conn.execute(
+            "DELETE FROM produtos_bipados WHERE id_viagem = ? AND codigo_barras = ? AND COALESCE(fluxo, 'carregamento') = ?",
+            (id_viagem, codigo_barras, fluxo),
+        )
         conn.commit()
         conn.close()
         _broadcast_atualizar()
@@ -2177,6 +2211,11 @@ def get_conferencia(id_viagem=None):
     
     id_viagem = (id_viagem or '').strip()
     id_viagem_norm = _normalizar_id_viagem(id_viagem)
+    fluxo_req = getattr(g, 'conferencia_fluxo', None)
+    if fluxo_req is None:
+        fluxo_req = request.args.get('fluxo', 'carregamento') if request else 'carregamento'
+    if fluxo_req not in ('carregamento', 'devolucao'):
+        fluxo_req = 'carregamento'
 
     # Quando DATABASE_URL está definido: ler do banco (romaneio_por_item)
     if _usa_banco_para_dados():
@@ -2233,8 +2272,8 @@ def get_conferencia(id_viagem=None):
                         mapa_barras_to_codigo[dun] = cod
                     mapa_codigo_barras[cod] = ean or dun
             bipados = conn.execute(
-                'SELECT codigo_barras, SUM(quantidade) as quantidade_bipada FROM produtos_bipados WHERE id_viagem = ? GROUP BY codigo_barras',
-                (id_para_bipados,),
+                "SELECT codigo_barras, SUM(quantidade) as quantidade_bipada FROM produtos_bipados WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ? GROUP BY codigo_barras",
+                (id_para_bipados, fluxo_req),
             ).fetchall()
             bipados_dict = {}
             for row in bipados or []:
@@ -2290,9 +2329,9 @@ def get_conferencia(id_viagem=None):
                 """SELECT codigo_barras, MAX(codigo_interno) as codigo_interno, MAX(produto) as produto,
                           SUM(quantidade) as quantidade_bipada, MAX(unidade) as unidade, MAX(peso) as peso
                    FROM produtos_bipados
-                   WHERE id_viagem = ? AND codigo_barras IS NOT NULL AND trim(codigo_barras) != ''
+                   WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ? AND codigo_barras IS NOT NULL AND trim(codigo_barras) != ''
                    GROUP BY codigo_barras""",
-                (id_para_bipados,),
+                (id_para_bipados, fluxo_req),
             ).fetchall()
             codigos_romaneio = {str(it.get('codigo_barras') or '').strip() for it in resultado}
             codigos_prod_romaneio = {str(it.get('codigo_produto') or '').strip() for it in resultado}

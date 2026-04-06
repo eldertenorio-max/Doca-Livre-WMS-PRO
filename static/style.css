@@ -215,6 +215,35 @@ a.modulo-button.active {
     flex: 1;
     min-height: 0;
     background: #fafbfc;
+    display: flex;
+    flex-direction: column;
+}
+
+.modulo-vazio-conteudo {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(48px, 8vh, 80px) clamp(28px, 5vw, 48px);
+    min-height: min(68vh, 560px);
+    text-align: center;
+}
+
+.modulo-vazio-titulo {
+    font-size: clamp(1.55rem, 3.2vw, 2.15rem);
+    font-weight: 700;
+    color: #455a64;
+    margin: 0 0 clamp(14px, 2vh, 20px) 0;
+    letter-spacing: -0.02em;
+}
+
+.modulo-vazio-sub {
+    font-size: clamp(1.08rem, 2.2vw, 1.28rem);
+    color: #78909c;
+    margin: 0;
+    max-width: min(92vw, 580px);
+    line-height: 1.55;
 }
 
 .tabs {
