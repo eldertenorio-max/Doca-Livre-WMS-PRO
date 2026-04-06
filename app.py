@@ -765,6 +765,18 @@ class CompatConn:
         return self._conn.close()
 
 
+def _tbl_terceiros_documentos(conn):
+    return 'public.terceiros_documentos' if getattr(conn, 'kind', None) == 'pg' else 'terceiros_documentos'
+
+
+def _tbl_terceiros_documento_itens(conn):
+    return 'public.terceiros_documento_itens' if getattr(conn, 'kind', None) == 'pg' else 'terceiros_documento_itens'
+
+
+def _tbl_terceiros_documento_eventos(conn):
+    return 'public.terceiros_documento_eventos' if getattr(conn, 'kind', None) == 'pg' else 'terceiros_documento_eventos'
+
+
 def _usa_banco_para_dados():
     """True quando DATABASE_URL está definido: app usa apenas o banco (dados subidos por código), não a planilha."""
     return bool((os.environ.get('DATABASE_URL') or '').strip())
@@ -6542,7 +6554,7 @@ def _valor_bool_texto(valor):
 
 def _registrar_evento_terceiros(conn, documento_id, evento, valor_anterior='', valor_novo='', usuario='', detalhes=''):
     conn.execute(
-        '''INSERT INTO terceiros_documento_eventos (documento_id, evento, valor_anterior, valor_novo, usuario, criado_em, detalhes)
+        '''INSERT INTO ''' + _tbl_terceiros_documento_eventos(conn) + ''' (documento_id, evento, valor_anterior, valor_novo, usuario, criado_em, detalhes)
            VALUES (?, ?, ?, ?, ?, ?, ?)''',
         (documento_id, evento, valor_anterior or '', valor_novo or '', usuario or '', _agora_iso(), detalhes or '')
     )
@@ -6551,7 +6563,7 @@ def _registrar_evento_terceiros(conn, documento_id, evento, valor_anterior='', v
 def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_texto, xml_data, usuario):
     if getattr(conn, 'kind', None) == 'pg':
         row = conn.execute(
-            '''INSERT INTO terceiros_documentos (
+            '''INSERT INTO ''' + _tbl_terceiros_documentos(conn) + ''' (
                    area, chave_nfe, numero_nf, serie_nf, data_emissao, remetente_nome, remetente_cnpj,
                    destinatario_nome, destinatario_cnpj, previsao_chegada, arquivo_nome, xml_conteudo,
                    criado_em, criado_por, atualizado_em, atualizado_por
@@ -6566,7 +6578,7 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
         documento_id = int(row['id'])
     else:
         conn.execute(
-            '''INSERT INTO terceiros_documentos (
+            '''INSERT INTO ''' + _tbl_terceiros_documentos(conn) + ''' (
                    area, chave_nfe, numero_nf, serie_nf, data_emissao, remetente_nome, remetente_cnpj,
                    destinatario_nome, destinatario_cnpj, previsao_chegada, arquivo_nome, xml_conteudo,
                    criado_em, criado_por, atualizado_em, atualizado_por
@@ -6581,7 +6593,7 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
         documento_id = int(conn.execute('SELECT last_insert_rowid() as id').fetchone()['id'])
     for item in xml_data.get('itens') or []:
         conn.execute(
-            '''INSERT INTO terceiros_documento_itens (
+            '''INSERT INTO ''' + _tbl_terceiros_documento_itens(conn) + ''' (
                    documento_id, n_item, codigo_ean, codigo_produto_xml, descricao_xml, unidade_xml,
                    quantidade_xml, codigo_produto_base, codigo_barras_base, descricao_base,
                    quantidade_bipada, status_bipagem, atualizado_em, atualizado_por
@@ -6598,12 +6610,12 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
 
 
 def _carregar_documento_terceiros(conn, documento_id):
-    row = conn.execute('SELECT * FROM terceiros_documentos WHERE id = ?', (documento_id,)).fetchone()
+    row = conn.execute('SELECT * FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,)).fetchone()
     if not row:
         return None
     doc = dict(row) if hasattr(row, 'keys') else {}
-    itens_rows = conn.execute('SELECT * FROM terceiros_documento_itens WHERE documento_id = ? ORDER BY n_item, id', (documento_id,)).fetchall()
-    eventos_rows = conn.execute('SELECT * FROM terceiros_documento_eventos WHERE documento_id = ? ORDER BY criado_em DESC, id DESC', (documento_id,)).fetchall()
+    itens_rows = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE documento_id = ? ORDER BY n_item, id', (documento_id,)).fetchall()
+    eventos_rows = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_eventos(conn) + ' WHERE documento_id = ? ORDER BY criado_em DESC, id DESC', (documento_id,)).fetchall()
     itens = []
     for r in itens_rows or []:
         item = dict(r) if hasattr(r, 'keys') else {}
@@ -6677,8 +6689,8 @@ def api_terceiros_documentos():
                       COUNT(i.id) as total_itens,
                       COALESCE(SUM(i.quantidade_xml), 0) as quantidade_total_xml,
                       COALESCE(SUM(i.quantidade_bipada), 0) as quantidade_total_bipada
-               FROM terceiros_documentos d
-               LEFT JOIN terceiros_documento_itens i ON i.documento_id = d.id
+               FROM ''' + _tbl_terceiros_documentos(conn) + ''' d
+               LEFT JOIN ''' + _tbl_terceiros_documento_itens(conn) + ''' i ON i.documento_id = d.id
                WHERE d.area = ?
                GROUP BY d.id
                ORDER BY d.criado_em DESC, d.id DESC''',
@@ -6741,7 +6753,7 @@ def api_terceiros_bipar_item(documento_id):
     conn = get_db()
     usuario = session.get('usuario', '')
     try:
-        item = conn.execute('SELECT * FROM terceiros_documento_itens WHERE id = ? AND documento_id = ?', (item_id, documento_id)).fetchone()
+        item = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE id = ? AND documento_id = ?', (item_id, documento_id)).fetchone()
         if not item:
             return jsonify({'ok': False, 'erro': 'Item não encontrado.'}), 404
         item_d = dict(item) if hasattr(item, 'keys') else {}
@@ -6754,14 +6766,14 @@ def api_terceiros_bipar_item(documento_id):
         qtd_bipada = float(item_d.get('quantidade_bipada') or 0) + quantidade
         status = _status_bipagem_terceiros(item_d.get('quantidade_xml') or 0, qtd_bipada)
         conn.execute(
-            '''UPDATE terceiros_documento_itens
+            '''UPDATE ''' + _tbl_terceiros_documento_itens(conn) + '''
                SET quantidade_bipada = ?, status_bipagem = ?, codigo_produto_base = ?, codigo_barras_base = ?,
                    descricao_base = ?, ultimo_ean_bipado = ?, atualizado_em = ?, atualizado_por = ?
                WHERE id = ?''',
             (qtd_bipada, status, base.get('codigo_produto_base') or '', base.get('codigo_barras_base') or '', base.get('descricao_base') or '', codigo_ean, _agora_iso(), usuario, item_id)
         )
         _registrar_evento_terceiros(conn, documento_id, 'bipagem_item', str(item_d.get('quantidade_bipada') or 0), str(qtd_bipada), usuario, 'item_id=%s' % item_id)
-        conn.execute('UPDATE terceiros_documentos SET atualizado_em = ?, atualizado_por = ? WHERE id = ?', (_agora_iso(), usuario, documento_id))
+        conn.execute('UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET atualizado_em = ?, atualizado_por = ? WHERE id = ?', (_agora_iso(), usuario, documento_id))
         conn.commit()
         return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
     except Exception as e:
@@ -6781,7 +6793,7 @@ def api_terceiros_status(documento_id):
         return jsonify({'ok': False, 'erro': 'Campo inválido.'}), 400
     conn = get_db()
     try:
-        row = conn.execute('SELECT * FROM terceiros_documentos WHERE id = ?', (documento_id,)).fetchone()
+        row = conn.execute('SELECT * FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,)).fetchone()
         if not row:
             return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
         doc = dict(row) if hasattr(row, 'keys') else {}
@@ -6789,7 +6801,7 @@ def api_terceiros_status(documento_id):
         if campo == 'recebimento_concluido':
             novo_bool = 1 if str(valor).strip().lower() in ('1', 'true', 'sim', 's', 'yes') else 0
             conn.execute(
-                'UPDATE terceiros_documentos SET recebimento_concluido = ?, recebimento_concluido_em = ?, recebimento_concluido_por = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+                'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET recebimento_concluido = ?, recebimento_concluido_em = ?, recebimento_concluido_por = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
                 (novo_bool, agora, usuario, agora, usuario, documento_id)
             )
             _registrar_evento_terceiros(conn, documento_id, campo, str(doc.get('recebimento_concluido') or 0), str(novo_bool), usuario)
@@ -6800,7 +6812,7 @@ def api_terceiros_status(documento_id):
             campo_em = campo + '_em'
             campo_por = campo + '_por'
             conn.execute(
-                'UPDATE terceiros_documentos SET ' + campo + ' = ?, ' + campo_em + ' = ?, ' + campo_por + ' = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+                'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET ' + campo + ' = ?, ' + campo_em + ' = ?, ' + campo_por + ' = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
                 (valor_norm, agora, usuario, agora, usuario, documento_id)
             )
             _registrar_evento_terceiros(conn, documento_id, campo, str(doc.get(campo) or ''), valor_norm, usuario)
@@ -6822,13 +6834,13 @@ def api_terceiros_motorista(documento_id):
     usuario = session.get('usuario', '')
     conn = get_db()
     try:
-        row = conn.execute('SELECT motorista_carreta FROM terceiros_documentos WHERE id = ?', (documento_id,)).fetchone()
+        row = conn.execute('SELECT motorista_carreta FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,)).fetchone()
         if not row:
             return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
         valor_antigo = (row['motorista_carreta'] or '') if hasattr(row, 'keys') else (row[0] or '')
         agora = _agora_iso()
         conn.execute(
-            'UPDATE terceiros_documentos SET motorista_carreta = ?, motorista_carreta_em = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+            'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET motorista_carreta = ?, motorista_carreta_em = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
             (motorista, agora, agora, usuario, documento_id)
         )
         _registrar_evento_terceiros(conn, documento_id, 'motorista_carreta', valor_antigo, motorista, usuario)
