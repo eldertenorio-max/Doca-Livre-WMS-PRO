@@ -244,6 +244,10 @@ async function loadBaixadosRavex() {
 
 // Carregar todos os dados
 function loadAllData() {
+    var moduloCarreg = document.getElementById('modulo-carregamento');
+    if (moduloCarreg && moduloCarreg.hidden) {
+        return;
+    }
     const activeTab = document.querySelector('.tab-content.active');
     const activeId = activeTab ? activeTab.id : '';
     if (activeId === 'painel') {

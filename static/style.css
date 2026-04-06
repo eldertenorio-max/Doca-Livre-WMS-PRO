@@ -154,6 +154,10 @@ body {
     min-height: 0;
 }
 
+.modulo-area[hidden] {
+    display: none !important;
+}
+
 #modulo-carregamento .content {
     height: auto;
     flex: 1;
