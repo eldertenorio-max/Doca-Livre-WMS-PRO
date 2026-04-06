@@ -74,7 +74,7 @@ body.hub-entrada-body {
 
 .hub-entrada-titulo {
     margin: 0;
-    font-size: clamp(1.9rem, 5.2vw, 2.75rem);
+    font-size: clamp(2.15rem, 5.8vw, 3.15rem);
     font-weight: 700;
     text-align: center;
     color: #366092;
@@ -91,12 +91,12 @@ body.hub-entrada-body {
 
 .hub-entrada-desc {
     margin: 0;
-    font-size: clamp(1.05rem, 2.4vw, 1.22rem);
+    font-size: clamp(1.28rem, 3.2vw, 1.68rem);
     font-weight: 500;
     text-align: center;
-    line-height: 1.5;
+    line-height: 1.6;
     color: #546e7a;
-    max-width: 52ch;
+    max-width: 46ch;
     opacity: 0;
     animation: hub-fade-up 0.65s ease-out 0.28s forwards;
 }
@@ -117,12 +117,12 @@ body.hub-entrada-body {
 .hub-entrada-btn {
     display: block;
     width: 100%;
-    padding: clamp(24px, 3.5vh, 34px) clamp(28px, 5vw, 44px);
-    min-height: 76px;
+    padding: clamp(26px, 3.8vh, 38px) clamp(30px, 5.2vw, 48px);
+    min-height: 84px;
     border: none;
     border-radius: 16px;
     font-family: inherit;
-    font-size: clamp(1.28rem, 3vw, 1.55rem);
+    font-size: clamp(1.42rem, 3.4vw, 1.8rem);
     font-weight: 700;
     line-height: 1.25;
     text-align: center;
@@ -167,7 +167,7 @@ body.hub-entrada-body {
 .hub-entrada-rodape {
     margin-top: auto;
     padding-top: clamp(24px, 4vh, 36px);
-    font-size: clamp(1.05rem, 2.3vw, 1.2rem);
+    font-size: clamp(1.12rem, 2.5vw, 1.3rem);
     color: #78909c;
     text-align: center;
     opacity: 0;
