@@ -130,8 +130,7 @@ function initModulos() {
         if (btnAtualizar) {
             btnAtualizar.style.display = id === 'carregamento' ? '' : 'none';
         }
-        window._fluxoBipagemAtivo =
-            id === 'devolucoes' && document.getElementById('dev-id-viagem') ? 'devolucao' : 'carregamento';
+        window._fluxoBipagemAtivo = id === 'devolucoes' ? 'devolucao' : 'carregamento';
         if (id === 'carregamento') {
             var activeTab = document.querySelector('.tab-content.active');
             if (activeTab && activeTab.id) loadTabData(activeTab.id);

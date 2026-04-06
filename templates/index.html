@@ -880,7 +880,173 @@
         </main>
         </div>
 
-        <div id="modulo-devolucoes" class="modulo-area modulo-vazio" hidden aria-label="Devoluções"></div>
+        <div id="modulo-devolucoes" class="modulo-area modulo-devolucoes" hidden aria-label="Devoluções">
+            <div class="devolucoes-conteudo">
+                <nav class="devolucoes-subtabs" aria-label="Abas de devoluções">
+                    <button type="button" class="devolucoes-subtab active">Conferência de devoluções</button>
+                </nav>
+
+                <div id="devolucoes-panel-bipar" class="devolucoes-panel">
+                    <h2 class="devolucoes-titulo-principal">CONFERÊNCIA DE DEVOLUÇÕES - BIPAGEM DO RETORNO DA VIAGEM</h2>
+
+                    <div class="conferencia-blocos-grid">
+                        <div class="conferencia-bloco form-container" style="background: #e3f2fd; border-left: 4px solid #2196F3;">
+                            <h3 style="margin-top: 0; color: #1976D2;">1. SELECIONE O ROTEIRO</h3>
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="dev-id-viagem">ID Roteiro ou Viagem *</label>
+                                    <div class="input-com-lupa">
+                                        <input type="text" id="dev-id-viagem" placeholder="Digite o ID do roteiro ou da viagem e pressione Enter ou clique na lupa" style="font-size: 16px; font-weight: bold;">
+                                        <span class="input-lupa" onclick="buscarItensViagemDevolucao()" title="Buscar itens do roteiro">🔍</span>
+                                    </div>
+                                    <small style="color: #666; font-size: 12px;">Usa o mesmo roteiro/viagem do carregamento, mas aqui a contagem é só do <strong>retorno</strong> (devoluções).</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <form id="form-produto-devolucao" class="product-form conferencia-form-grid">
+                            <div id="dev-form-bipagem-container" class="conferencia-form-wrapper conferencia-blocos-bloqueado">
+                                <div class="conferencia-blocos-overlay" id="dev-conferencia-blocos-overlay">
+                                    <span>Digite o ID do roteiro acima, pressione Enter ou clique na lupa para habilitar.</span>
+                                </div>
+
+                                <div class="conferencia-bloco conferencia-bloco-2 form-container" style="background: #e8f5e9; border-left: 4px solid #388E3C;">
+                                    <input type="hidden" id="dev-id-viagem-hidden">
+                                    <h3 style="margin-top: 0; color: #388E3C;">2. DADOS DA ROTA</h3>
+                                    <div class="form-row bloco2-linha-topo">
+                                        <div class="form-group">
+                                            <label for="dev-viagem-placa">Placa</label>
+                                            <input type="text" id="dev-viagem-placa" placeholder="Placa" readonly style="font-weight: bold; color: #333; max-width: 140px;">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="dev-viagem-motorista">Motorista</label>
+                                            <input type="text" id="dev-viagem-motorista" placeholder="Motorista" readonly style="font-weight: bold; color: #333; max-width: 100%;">
+                                        </div>
+                                    </div>
+                                    <div class="form-row bloco2-linha-identificador">
+                                        <div class="form-group identificador-rota-group" style="flex: 1; min-width: 100%;">
+                                            <label>Identificador da rota</label>
+                                            <div id="dev-viagem-identificador-rota" class="identificador-rota-destaque">-</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="conferencia-bloco conferencia-bloco-3 form-container" style="background: #fff8e1; border-left: 4px solid #1976D2;">
+                                    <h3 style="margin-top: 0; color: #1976D2;">3. REFERÊNCIA DA DEVOLUÇÃO</h3>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="dev-doca">Doca *</label>
+                                            <select id="dev-doca">
+                                                <option value="">Selecione a doca</option>
+                                                <option value="1">Doca 1</option>
+                                                <option value="2">Doca 2</option>
+                                                <option value="3">Doca 3</option>
+                                                <option value="4">Doca 4</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label style="color: #666;">ID Roteiro</label>
+                                            <div id="dev-display-id-roteiro" style="font-weight: bold; color: #1565c0;">-</div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label style="color: #666;">ID Viagem</label>
+                                            <div id="dev-display-id-viagem" style="font-weight: bold; color: #2e7d32;">-</div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label style="color: #666;">Data expedição</label>
+                                            <div id="dev-data-expedicao" style="font-weight: bold;">-</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="dev-conferencia-bloco-4-wrapper" class="conferencia-bloco-4-wrapper conferencia-blocos-bloqueado">
+                                <div class="conferencia-blocos-overlay">
+                                    <span>Digite o ID do roteiro acima, pressione Enter ou clique na lupa para habilitar.</span>
+                                </div>
+                                <div class="conferencia-bloco conferencia-bloco-4 form-container">
+                                    <h3 class="conferencia-bloco-4-titulo">4. CONFERÊNCIA DE DEVOLUÇÕES</h3>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="dev-codigo-barras">Código de Barras *</label>
+                                            <input type="text" id="dev-codigo-barras" placeholder="Digite ou escaneie">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="dev-codigo-produto">Código produto</label>
+                                            <input type="text" id="dev-codigo-produto" placeholder="Código produto">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="dev-produto-nome">Produto</label>
+                                            <input type="text" id="dev-produto-nome" readonly>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="dev-quantidade">Qtd. bipada</label>
+                                            <input type="number" id="dev-quantidade" value="1" min="1" max="99999" step="1">
+                                        </div>
+                                    </div>
+                                    <div id="dev-aviso-produto-fora-relacao" style="display: none; margin-bottom: 8px; padding: 8px; background: #fff3e0; border: 1px solid #ff9800; border-radius: 6px; color: #e65100; font-size: 12px;">
+                                        <strong>⚠️ Produto não está na relação desta viagem.</strong> Deseja cadastrar ao bipar?
+                                    </div>
+                                    <div class="form-row conferencia-bloco4-acoes-row">
+                                        <div class="form-group">
+                                            <label for="dev-veiculo">Veículo</label>
+                                            <input type="text" id="dev-veiculo">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="dev-status">Status</label>
+                                            <select id="dev-status">
+                                                <option value="PENDENTE">PENDENTE</option>
+                                                <option value="CARREGADO">CARREGADO</option>
+                                            </select>
+                                        </div>
+                                        <div class="conferencia-btns-grupo">
+                                            <button type="submit" class="btn btn-primary btn-bloco4 btn-bloco4-bipar">✅ Bipar devolução</button>
+                                            <button type="button" class="btn btn-secondary btn-bloco4" onclick="limparCamposDevolucao()" title="Limpar campos">🧹 Limpar campos</button>
+                                            <button type="button" class="btn btn-danger btn-bloco4 btn-bloco4-zerar" id="dev-btn-zerar-bipados" onclick="abrirModalZerarItens()" style="display: none;" title="Zerar todos os itens bipados">🗑️ Zerar devoluções</button>
+                                        </div>
+                                        <div class="conferencia-resumo-group">
+                                            <div class="conferencia-resumo-rapido">
+                                                <div id="dev-conferencia-totais-bloco" class="conferencia-totais-bloco">
+                                                    <span id="dev-conferencia-total-itens">Total: 0</span>
+                                                    <span id="dev-conferencia-total-bipado">Bipado: 0</span>
+                                                </div>
+                                                <span id="dev-conferencia-resumo-status" class="conferencia-resumo-status status-sem-itens">Sem itens</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div id="dev-titulo-lista-wrapper" style="display: none; margin-top: 0; margin-bottom: 6px; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <h3 id="dev-titulo-lista" style="margin: 0;">ITENS DA VIAGEM - STATUS DE BIPAGEM DAS DEVOLUÇÕES</h3>
+                    </div>
+                    <div id="dev-conferencia-limit-info" style="display: none; margin-bottom: 8px; color: #666; font-size: 13px;"></div>
+                    <div class="table-container" id="dev-tabela-conferencia-container" style="display: none;">
+                        <table id="dev-tabela-conferencia" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Motivo</th>
+                                    <th>Código de Barras</th>
+                                    <th>Código do Produto</th>
+                                    <th>Produto</th>
+                                    <th>Quantidade do Produto</th>
+                                    <th>Unidade</th>
+                                    <th>Peso Bruto</th>
+                                    <th>Aviso</th>
+                                    <th>Qtd. Bipada</th>
+                                    <th>Qtd. Falta</th>
+                                    <th>Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dev-tbody-conferencia"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div id="modulo-terceiros" class="modulo-area modulo-vazio" hidden aria-label="Recebimento e expedição de terceiros"></div>
     </div>
