@@ -720,15 +720,25 @@ def api_cadastrar():
         return jsonify({'ok': False, 'erro': 'As senhas não coincidem.'})
     conn = get_db()
     try:
+        existente = conn.execute('SELECT 1 FROM usuarios WHERE usuario = ?', (usuario,)).fetchone()
+        if existente:
+            return jsonify({'ok': False, 'erro': 'Este usuário já existe.'})
         conn.execute(
             'INSERT INTO usuarios (usuario, senha_hash, criado_em) VALUES (?, ?, ?)',
             (usuario, generate_password_hash(senha, method='pbkdf2:sha256'), datetime.now().isoformat())
         )
         conn.commit()
     except sqlite3.IntegrityError:
-        conn.close()
+        conn.rollback()
         return jsonify({'ok': False, 'erro': 'Este usuário já existe.'})
-    conn.close()
+    except Exception as e:
+        conn.rollback()
+        msg = str(e or '').lower()
+        if 'unique' in msg or 'duplicate key' in msg or 'usuarios_usuario_key' in msg:
+            return jsonify({'ok': False, 'erro': 'Este usuário já existe.'})
+        return jsonify({'ok': False, 'erro': f'Erro ao cadastrar usuário: {str(e)}'}), 500
+    finally:
+        conn.close()
     adicionar_usuario_ao_config(usuario, senha)
     return jsonify({'ok': True, 'mensagem': 'Cadastro realizado. Faça login.'})
 
@@ -1317,17 +1327,20 @@ def get_periodo_viagem(id_viagem):
     if not id_viagem:
         return jsonify({'erro': 'ID do roteiro não informado'}), 400
     id_norm = _normalizar_id_viagem(id_viagem)
+    fluxo = (request.args.get('fluxo') or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     conn = get_db()
     try:
         if getattr(conn, 'kind', None) == 'pg':
             row = conn.execute(
-                "SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE TRIM(COALESCE(id_viagem::text, '')) = ?",
-                (id_norm,)
+                "SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE TRIM(COALESCE(id_viagem::text, '')) = ? AND COALESCE(fluxo, 'carregamento') = ?",
+                (id_norm, fluxo)
             ).fetchone()
         else:
             row = conn.execute(
-                'SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE id_viagem = ?',
-                (id_norm,)
+                "SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ?",
+                (id_norm, fluxo)
             ).fetchone()
     finally:
         conn.close()
@@ -3642,6 +3655,9 @@ def api_ravex_importar_lista():
 def get_extrato():
     """Retorna itens da carga agrupados (sem repetir): um por produto com quantidade total"""
     id_viagem = request.args.get('id_viagem')
+    fluxo = (request.args.get('fluxo') or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     conn = get_db()
     if id_viagem:
         produtos = conn.execute('''
@@ -3651,10 +3667,10 @@ def get_extrato():
                    MAX(veiculo) AS veiculo,
                    MAX(status) AS status
             FROM produtos_bipados
-            WHERE id_viagem = ?
+            WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ?
             GROUP BY id_viagem, codigo_barras, produto
             ORDER BY produto
-        ''', (id_viagem.strip(),)).fetchall()
+        ''', (id_viagem.strip(), fluxo)).fetchall()
     else:
         produtos = conn.execute('''
             SELECT id_viagem, codigo_barras, produto,
@@ -3663,9 +3679,10 @@ def get_extrato():
                    MAX(veiculo) AS veiculo,
                    MAX(status) AS status
             FROM produtos_bipados
+            WHERE COALESCE(fluxo, 'carregamento') = ?
             GROUP BY id_viagem, codigo_barras, produto
             ORDER BY id_viagem, produto
-        ''').fetchall()
+        ''', (fluxo,)).fetchall()
     conn.close()
     return jsonify([dict(row) for row in produtos])
 
@@ -4016,11 +4033,15 @@ def get_divergencias():
     Sem id_viagem: retorna divergências de TODOS os roteiros (cada item inclui id_viagem).
     Com id_viagem: retorna apenas divergências daquele roteiro. Inclui motivo_divergencia."""
     id_viagem = request.args.get('id_viagem', '').strip()
+    fluxo = (request.args.get('fluxo') or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     todas = []
 
     if id_viagem:
         # Um roteiro só
-        result = get_conferencia(id_viagem)
+        with app.test_request_context(query_string={'fluxo': fluxo}):
+            result = get_conferencia(id_viagem)
         resp = result[0] if isinstance(result, tuple) else result
         status_code = result[1] if isinstance(result, tuple) and len(result) > 1 else 200
         data = resp.get_json()
@@ -4037,13 +4058,15 @@ def get_divergencias():
     # Todos os roteiros: buscar id_viagem distintos que têm bipagem
     conn = get_db()
     rows = conn.execute(
-        "SELECT DISTINCT id_viagem FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != '' ORDER BY id_viagem"
+        "SELECT DISTINCT id_viagem FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != '' AND COALESCE(fluxo, 'carregamento') = ? ORDER BY id_viagem",
+        (fluxo,)
     ).fetchall()
     conn.close()
     ids_viagens = [row[0] for row in rows if row[0]]
 
     for vid in ids_viagens:
-        result = get_conferencia(vid)
+        with app.test_request_context(query_string={'fluxo': fluxo}):
+            result = get_conferencia(vid)
         resp = result[0] if isinstance(result, tuple) else result
         data = resp.get_json() if hasattr(resp, 'get_json') else None
         if isinstance(data, dict) and data.get('erro'):
@@ -4089,16 +4112,21 @@ def salvar_motivo_divergencia():
     return jsonify({'success': True, 'motivo': motivo})
 
 
-def _get_lista_divergencias_todas():
+def _get_lista_divergencias_todas(fluxo='carregamento'):
     """Retorna lista de itens divergentes de todos os roteiros (para exportação Excel). Inclui motivo_divergencia."""
+    fluxo = (fluxo or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     todas = []
     conn = get_db()
     rows = conn.execute(
-        "SELECT DISTINCT id_viagem FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != '' ORDER BY id_viagem"
+        "SELECT DISTINCT id_viagem FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != '' AND COALESCE(fluxo, 'carregamento') = ? ORDER BY id_viagem",
+        (fluxo,)
     ).fetchall()
     conn.close()
     for vid in [row[0] for row in rows if row[0]]:
-        result = get_conferencia(vid)
+        with app.test_request_context(query_string={'fluxo': fluxo}):
+            result = get_conferencia(vid)
         resp = result[0] if isinstance(result, tuple) else result
         data = resp.get_json() if hasattr(resp, 'get_json') else None
         if isinstance(data, dict) and data.get('erro'):
@@ -4144,14 +4172,17 @@ def _get_viagem_info_dict(id_viagem):
     return info
 
 
-def _get_periodo_dict(id_viagem):
+def _get_periodo_dict(id_viagem, fluxo='carregamento'):
     """Retorna dict com início e fim do carregamento."""
     if not id_viagem:
         return {'inicio_carregamento': '', 'fim_carregamento': ''}
+    fluxo = (fluxo or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     conn = get_db()
     row = conn.execute(
-        'SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE id_viagem = ?',
-        (id_viagem.strip(),)
+        "SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ?",
+        (id_viagem.strip(), fluxo)
     ).fetchone()
     conn.close()
     inicio = row['inicio'] if row and row['inicio'] else ''
@@ -4164,11 +4195,14 @@ def export_divergencias_excel():
     """Gera Excel: tipo=itens (só itens divergentes), tipo=roteiros (só dados dos roteiros), tipo=completo (página: roteiros + itens)."""
     from openpyxl import Workbook
     tipo = request.args.get('tipo', 'completo').strip().lower()
+    fluxo = (request.args.get('fluxo') or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     if tipo not in ('itens', 'roteiros', 'completo'):
         tipo = 'completo'
     data_exp_inicio = request.args.get('data_expedicao_inicio', '').strip()
     data_exp_fim = request.args.get('data_expedicao_fim', '').strip()
-    divergencias = _get_lista_divergencias_todas()
+    divergencias = _get_lista_divergencias_todas(fluxo)
     ids_filtro = _get_id_viagens_por_data_expedicao(data_exp_inicio, data_exp_fim)
     if ids_filtro is not None and len(ids_filtro) > 0:
         divergencias = [d for d in divergencias if (d.get('id_viagem') or '').strip() in ids_filtro]
@@ -4306,6 +4340,9 @@ def export_relatorio_bipados():
     from openpyxl import Workbook
     data_inicio = request.args.get('data_inicio', '').strip()
     data_fim = request.args.get('data_fim', '').strip()
+    fluxo = (request.args.get('fluxo') or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     ids_filtro = _get_id_viagens_por_data_expedicao(data_inicio, data_fim)
     conn = get_db()
     sql = '''
@@ -4314,9 +4351,13 @@ def export_relatorio_bipados():
         LEFT JOIN viagem_responsaveis r ON p.id_viagem = r.id_viagem
     '''
     params = []
+    conditions = ["COALESCE(p.fluxo, 'carregamento') = ?"]
+    params = [fluxo]
     if ids_filtro is not None and len(ids_filtro) > 0:
-        sql += ' WHERE p.id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
-        params = list(ids_filtro)
+        conditions.append('p.id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')')
+        params.extend(list(ids_filtro))
+    if conditions:
+        sql += ' WHERE ' + ' AND '.join(conditions)
     sql += ' ORDER BY p.data_hora DESC, p.id DESC'
     rows = conn.execute(sql, params).fetchall()
     conn.close()
@@ -4415,19 +4456,22 @@ def _relatorio_bipados_periodo(data_inicio, data_fim, data_expedicao_inicio=None
     return wb
 
 
-def _relatorio_resumo_roteiro(data_expedicao_inicio=None, data_expedicao_fim=None):
+def _relatorio_resumo_roteiro(data_expedicao_inicio=None, data_expedicao_fim=None, fluxo='carregamento'):
     """Uma linha por viagem: ID Roteiro, Placa, Motorista, Data expedição, Início/Fim, Duração (min), Total itens, Faltas, Responsáveis."""
     from openpyxl import Workbook
+    fluxo = (fluxo or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
     conn = get_db()
     sql = '''
         SELECT id_viagem, SUM(quantidade) as total_bipados, MIN(data_hora) as inicio, MAX(data_hora) as fim
-        FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != ''
+        FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != '' AND COALESCE(fluxo, 'carregamento') = ?
     '''
-    params = []
+    params = [fluxo]
     if ids_filtro is not None and len(ids_filtro) > 0:
         sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
-        params = list(ids_filtro)
+        params.extend(list(ids_filtro))
     sql += ' GROUP BY id_viagem ORDER BY MAX(data_hora) DESC'
     rows = conn.execute(sql, params).fetchall()
     conn.close()
@@ -4447,7 +4491,8 @@ def _relatorio_resumo_roteiro(data_expedicao_inicio=None, data_expedicao_fim=Non
     total_faltas_map = {}
     for v in viagens[:300]:
         try:
-            ret = get_conferencia(v['id_viagem'])
+            with app.test_request_context(query_string={'fluxo': fluxo}):
+                ret = get_conferencia(v['id_viagem'])
             resp = ret[0] if isinstance(ret, tuple) else ret
             data = resp.get_json() if hasattr(resp, 'get_json') else []
             total_faltas_map[v['id_viagem']] = sum((item.get('quantidade_falta') or 0) for item in (data if isinstance(data, list) else []))
@@ -4462,7 +4507,7 @@ def _relatorio_resumo_roteiro(data_expedicao_inicio=None, data_expedicao_fim=Non
         ws.cell(row=1, column=col, value=h).font = header_font
     for row_idx, v in enumerate(viagens, 2):
         info = _get_viagem_info_dict(v.get('id_viagem') or '')
-        periodo = _get_periodo_dict(v.get('id_viagem') or '')
+        periodo = _get_periodo_dict(v.get('id_viagem') or '', fluxo)
         faltas = total_faltas_map.get(v['id_viagem'], 0)
         ws.cell(row=row_idx, column=1, value=v.get('id_viagem') or '')
         ws.cell(row=row_idx, column=2, value=info.get('placa') or '')
@@ -4588,18 +4633,21 @@ def _relatorio_itens_mais_bipados(data_expedicao_inicio=None, data_expedicao_fim
     return wb
 
 
-def _relatorio_resumo_produto(data_expedicao_inicio=None, data_expedicao_fim=None):
+def _relatorio_resumo_produto(data_expedicao_inicio=None, data_expedicao_fim=None, fluxo='carregamento'):
     """Por produto: total bipado, em quantas viagens, primeira e última data."""
     from openpyxl import Workbook
+    fluxo = (fluxo or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
     conn = get_db()
     sql = '''SELECT codigo_barras, produto, SUM(quantidade) as total,
                COUNT(DISTINCT id_viagem) as num_viagens, MIN(data_hora) as primeira, MAX(data_hora) as ultima
-        FROM produtos_bipados'''
-    params = []
+        FROM produtos_bipados WHERE COALESCE(fluxo, 'carregamento') = ?'''
+    params = [fluxo]
     if ids_filtro is not None and len(ids_filtro) > 0:
-        sql += ' WHERE id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
-        params = list(ids_filtro)
+        sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
+        params.extend(list(ids_filtro))
     sql += ' GROUP BY codigo_barras ORDER BY total DESC'
     rows = conn.execute(sql, params).fetchall()
     conn.close()
@@ -4619,11 +4667,11 @@ def _relatorio_resumo_produto(data_expedicao_inicio=None, data_expedicao_fim=Non
     return wb
 
 
-def _relatorio_roteiros_divergencia(data_expedicao_inicio=None, data_expedicao_fim=None):
+def _relatorio_roteiros_divergencia(data_expedicao_inicio=None, data_expedicao_fim=None, fluxo='carregamento'):
     """Roteiros que têm divergência, com totais de faltas e sobras. Inclui conferente do roteiro."""
     from openpyxl import Workbook
     ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
-    divergencias = _get_lista_divergencias_todas()
+    divergencias = _get_lista_divergencias_todas(fluxo)
     if ids_filtro is not None and len(ids_filtro) > 0:
         divergencias = [d for d in divergencias if (d.get('id_viagem') or '').strip() in ids_filtro]
     by_roteiro = {}
@@ -4804,7 +4852,8 @@ def export_relatorio_bipados_periodo():
 def export_relatorio_resumo_roteiro():
     de = request.args.get('data_expedicao_inicio', '').strip()
     ate = request.args.get('data_expedicao_fim', '').strip()
-    wb = _relatorio_resumo_roteiro(de, ate)
+    fluxo = (request.args.get('fluxo') or 'carregamento').strip().lower()
+    wb = _relatorio_resumo_roteiro(de, ate, fluxo)
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -4848,7 +4897,8 @@ def export_relatorio_itens_mais_bipados():
 def export_relatorio_resumo_produto():
     de = request.args.get('data_expedicao_inicio', '').strip()
     ate = request.args.get('data_expedicao_fim', '').strip()
-    wb = _relatorio_resumo_produto(de, ate)
+    fluxo = (request.args.get('fluxo') or 'carregamento').strip().lower()
+    wb = _relatorio_resumo_produto(de, ate, fluxo)
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -4859,7 +4909,8 @@ def export_relatorio_resumo_produto():
 def export_relatorio_roteiros_divergencia():
     de = request.args.get('data_expedicao_inicio', '').strip()
     ate = request.args.get('data_expedicao_fim', '').strip()
-    wb = _relatorio_roteiros_divergencia(de, ate)
+    fluxo = (request.args.get('fluxo') or 'carregamento').strip().lower()
+    wb = _relatorio_roteiros_divergencia(de, ate, fluxo)
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -4964,10 +5015,14 @@ def export_relatorio_extrato_excel():
     """Gera Excel com o extrato (comprovante) da carga de um roteiro: mesmas colunas da aba Extrato."""
     from openpyxl import Workbook
     id_viagem = (request.args.get('id_viagem') or '').strip()
+    fluxo = (request.args.get('fluxo') or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
     if not id_viagem:
         return jsonify({'erro': 'Informe o ID do roteiro (id_viagem)'}), 400
     try:
-        result = get_conferencia(id_viagem)
+        with app.test_request_context(query_string={'fluxo': fluxo}):
+            result = get_conferencia(id_viagem)
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
     resp = result[0] if isinstance(result, tuple) else result
@@ -6043,6 +6098,152 @@ def get_painel_completo():
             'carros_mais_peso': [],
             'romaneio': {},
             'erro': str(e)
+        }), 200
+
+
+@app.route('/api/devolucoes/painel', methods=['GET'])
+def get_painel_devolucoes():
+    """Resumo do painel de devoluções, separado por fluxo=devolucao."""
+    conn = get_db()
+    if getattr(conn, 'kind', None) != 'pg':
+        conn.row_factory = sqlite3.Row
+    try:
+        fluxo = 'devolucao'
+        row_stats = conn.execute('''
+        SELECT
+            COUNT(*) AS total_bipados,
+            COALESCE(SUM(quantidade), 0) AS soma_quantidades,
+            COUNT(DISTINCT codigo_barras) AS total_unicos,
+            COUNT(DISTINCT CASE WHEN id_viagem IS NOT NULL AND trim(COALESCE(id_viagem,'')) != '' THEN id_viagem END) AS total_viagens,
+            COUNT(DISTINCT CASE WHEN doca IS NOT NULL AND trim(COALESCE(doca,'')) != '' THEN doca END) AS total_docas,
+            COUNT(DISTINCT CASE WHEN usuario_bipagem IS NOT NULL AND trim(COALESCE(usuario_bipagem,'')) != '' THEN usuario_bipagem END) AS total_usuarios
+        FROM produtos_bipados
+        WHERE COALESCE(fluxo, 'carregamento') = ?
+        ''', (fluxo,)).fetchone()
+
+        viagens_rows = conn.execute('''
+        SELECT
+            id_viagem,
+            COUNT(*) AS registros,
+            COALESCE(SUM(quantidade), 0) AS qtd_devolvida,
+            COUNT(DISTINCT codigo_barras) AS itens_unicos,
+            MIN(data_hora) AS inicio,
+            MAX(data_hora) AS fim
+        FROM produtos_bipados
+        WHERE COALESCE(fluxo, 'carregamento') = ?
+          AND id_viagem IS NOT NULL
+          AND trim(COALESCE(id_viagem,'')) != ''
+        GROUP BY id_viagem
+        ORDER BY MAX(data_hora) DESC
+        LIMIT 30
+        ''', (fluxo,)).fetchall()
+
+        itens_rows = conn.execute('''
+        SELECT produto, codigo_barras, COALESCE(SUM(quantidade), 0) AS total
+        FROM produtos_bipados
+        WHERE COALESCE(fluxo, 'carregamento') = ?
+        GROUP BY codigo_barras, produto
+        ORDER BY total DESC
+        LIMIT 20
+        ''', (fluxo,)).fetchall()
+
+        veiculos_rows = conn.execute('''
+        SELECT veiculo, COUNT(*) AS registros, COALESCE(SUM(quantidade), 0) AS total
+        FROM produtos_bipados
+        WHERE COALESCE(fluxo, 'carregamento') = ?
+          AND veiculo IS NOT NULL
+          AND trim(COALESCE(veiculo,'')) != ''
+        GROUP BY veiculo
+        ORDER BY total DESC, registros DESC
+        LIMIT 20
+        ''', (fluxo,)).fetchall()
+
+        docas_rows = conn.execute('''
+        SELECT doca, COUNT(*) AS registros, COALESCE(SUM(quantidade), 0) AS total
+        FROM produtos_bipados
+        WHERE COALESCE(fluxo, 'carregamento') = ?
+          AND doca IS NOT NULL
+          AND trim(COALESCE(doca,'')) != ''
+        GROUP BY doca
+        ORDER BY total DESC, registros DESC
+        ''', (fluxo,)).fetchall()
+
+        usuarios_rows = conn.execute('''
+        SELECT usuario_bipagem, COUNT(*) AS registros, COALESCE(SUM(quantidade), 0) AS total
+        FROM produtos_bipados
+        WHERE COALESCE(fluxo, 'carregamento') = ?
+          AND usuario_bipagem IS NOT NULL
+          AND trim(COALESCE(usuario_bipagem,'')) != ''
+        GROUP BY usuario_bipagem
+        ORDER BY total DESC, registros DESC
+        LIMIT 20
+        ''', (fluxo,)).fetchall()
+
+        def _safe(r, key, default=0):
+            try:
+                val = r[key]
+            except Exception:
+                return default
+            return default if val is None else val
+
+        viagens = []
+        for r in viagens_rows:
+            inicio, fim = _safe(r, 'inicio', ''), _safe(r, 'fim', '')
+            d_min = None
+            if inicio and fim:
+                t0, t1 = _parse_datetime(inicio), _parse_datetime(fim)
+                if t0 and t1:
+                    d_min = max(0, int((t1 - t0).total_seconds() / 60))
+            viagens.append({
+                'id_viagem': _safe(r, 'id_viagem', ''),
+                'registros': _safe(r, 'registros', 0),
+                'qtd_devolvida': _safe(r, 'qtd_devolvida', 0),
+                'itens_unicos': _safe(r, 'itens_unicos', 0),
+                'inicio': inicio,
+                'fim': fim,
+                'duracao_minutos': d_min,
+            })
+
+        conn.close()
+        return jsonify({
+            'estatisticas': {
+                'total_bipados': _safe(row_stats, 'total_bipados', 0),
+                'soma_quantidades': _safe(row_stats, 'soma_quantidades', 0),
+                'total_unicos': _safe(row_stats, 'total_unicos', 0),
+                'total_viagens': _safe(row_stats, 'total_viagens', 0),
+                'total_docas': _safe(row_stats, 'total_docas', 0),
+                'total_usuarios': _safe(row_stats, 'total_usuarios', 0),
+            },
+            'viagens': viagens,
+            'top_itens': [{'produto': _safe(r, 'produto', ''), 'codigo_barras': _safe(r, 'codigo_barras', ''), 'total': _safe(r, 'total', 0)} for r in itens_rows],
+            'veiculos': [{'veiculo': _safe(r, 'veiculo', ''), 'registros': _safe(r, 'registros', 0), 'total': _safe(r, 'total', 0)} for r in veiculos_rows],
+            'docas': [{'doca': _safe(r, 'doca', ''), 'registros': _safe(r, 'registros', 0), 'total': _safe(r, 'total', 0)} for r in docas_rows],
+            'usuarios': [{'usuario': _safe(r, 'usuario_bipagem', ''), 'registros': _safe(r, 'registros', 0), 'total': _safe(r, 'total', 0)} for r in usuarios_rows],
+        })
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({
+            'estatisticas': {
+                'total_bipados': 0,
+                'soma_quantidades': 0,
+                'total_unicos': 0,
+                'total_viagens': 0,
+                'total_docas': 0,
+                'total_usuarios': 0,
+            },
+            'viagens': [],
+            'top_itens': [],
+            'veiculos': [],
+            'docas': [],
+            'usuarios': [],
+            'erro': str(e),
         }), 200
 
 

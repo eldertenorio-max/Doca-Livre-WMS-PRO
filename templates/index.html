@@ -883,8 +883,135 @@
         <div id="modulo-devolucoes" class="modulo-area modulo-devolucoes" hidden aria-label="Devoluções">
             <div class="devolucoes-conteudo">
                 <nav class="devolucoes-subtabs" aria-label="Abas de devoluções">
-                    <button type="button" class="devolucoes-subtab active">Conferência de devoluções</button>
+                    <button type="button" class="devolucoes-subtab active" data-dev-tab="painel">Painel</button>
+                    <button type="button" class="devolucoes-subtab" data-dev-tab="conferencia">Conferência de devoluções</button>
+                    <button type="button" class="devolucoes-subtab" data-dev-tab="extrato">Extrato</button>
+                    <button type="button" class="devolucoes-subtab" data-dev-tab="relatorios">Relatórios</button>
+                    <button type="button" class="devolucoes-subtab" data-dev-tab="divergencias">Divergências</button>
                 </nav>
+
+                <div id="devolucoes-panel-painel" class="devolucoes-panel devolucoes-panel-active">
+                    <div class="painel-titulo">
+                        <span class="painel-titulo-icon">↩️</span>
+                        <h2 class="painel-titulo-texto">Painel de Devoluções</h2>
+                        <p class="painel-titulo-sub">Visão geral do retorno bipado nas viagens</p>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>Registros de devolução</h3>
+                            <p class="stat-number" id="dev-stat-bipados">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Soma das quantidades</h3>
+                            <p class="stat-number" id="dev-stat-soma-quantidades">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Itens únicos</h3>
+                            <p class="stat-number" id="dev-stat-unicos">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Viagens com retorno</h3>
+                            <p class="stat-number" id="dev-stat-viagens">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Docas usadas</h3>
+                            <p class="stat-number" id="dev-stat-docas">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Usuários bipando</h3>
+                            <p class="stat-number" id="dev-stat-usuarios">0</p>
+                        </div>
+                    </div>
+
+                    <h2 style="margin-top: 30px;">VIAGENS COM DEVOLUÇÕES</h2>
+                    <div class="table-container" style="margin-bottom: 24px;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID Viagem</th>
+                                    <th>Início</th>
+                                    <th>Fim</th>
+                                    <th>Duração (min)</th>
+                                    <th>Registros</th>
+                                    <th>Qtd. devolvida</th>
+                                    <th>Itens únicos</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dev-tbody-painel-viagens">
+                                <tr><td colspan="7" class="loading">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="romaneio-charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-bottom: 24px;">
+                        <div class="table-container">
+                            <h3 style="margin-bottom: 10px;">Itens mais devolvidos</h3>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Produto</th>
+                                        <th>Código de barras</th>
+                                        <th>Qtd.</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dev-tbody-painel-itens">
+                                    <tr><td colspan="3" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="table-container">
+                            <h3 style="margin-bottom: 10px;">Veículos com mais devoluções</h3>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Veículo</th>
+                                        <th>Registros</th>
+                                        <th>Qtd.</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dev-tbody-painel-veiculos">
+                                    <tr><td colspan="3" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="romaneio-charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px;">
+                        <div class="table-container">
+                            <h3 style="margin-bottom: 10px;">Resumo por doca</h3>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Doca</th>
+                                        <th>Registros</th>
+                                        <th>Qtd.</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dev-tbody-painel-docas">
+                                    <tr><td colspan="3" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="table-container">
+                            <h3 style="margin-bottom: 10px;">Usuários com mais bipagens de retorno</h3>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Usuário</th>
+                                        <th>Registros</th>
+                                        <th>Qtd.</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dev-tbody-painel-usuarios">
+                                    <tr><td colspan="3" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
 
                 <div id="devolucoes-panel-bipar" class="devolucoes-panel">
                     <h2 class="devolucoes-titulo-principal">CONFERÊNCIA DE DEVOLUÇÕES - BIPAGEM DO RETORNO DA VIAGEM</h2>
@@ -1043,6 +1170,151 @@
                             </thead>
                             <tbody id="dev-tbody-conferencia"></tbody>
                         </table>
+                    </div>
+                </div>
+
+                <div id="devolucoes-panel-extrato" class="devolucoes-panel">
+                    <h2 class="devolucoes-titulo-principal">EXTRATO DE DEVOLUÇÕES</h2>
+                    <p class="info-text">Relação completa do retorno bipado por roteiro/viagem.</p>
+
+                    <div class="form-container extrato-busca-bar" style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 20px;">
+                        <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
+                            <label for="dev-extrato-id-viagem">Buscar por ID do roteiro/viagem</label>
+                            <input type="text" id="dev-extrato-id-viagem" placeholder="Digite o ID e clique em Buscar">
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="buscarExtratoDevolucaoPorViagem()">🔍 Buscar</button>
+                        <button type="button" class="btn btn-secondary" onclick="imprimirExtratoDevolucao()">🖨️ Imprimir</button>
+                    </div>
+
+                    <div id="dev-extrato-para-imprimir">
+                        <h2 class="extrato-titulo-impressao">EXTRATO - DEVOLUÇÕES</h2>
+                        <div id="dev-extrato-resumo" class="form-container extrato-resumo-box" style="margin-bottom: 20px; display: none;">
+                            <h3 class="extrato-resumo-titulo" style="margin-top: 0; margin-bottom: 16px;">Resumo das devoluções</h3>
+                            <div class="extrato-resumo-grid">
+                                <section class="extrato-resumo-grupo">
+                                    <h4 class="extrato-resumo-grupo-titulo">Identificação</h4>
+                                    <div class="extrato-resumo-linha"><span class="extrato-resumo-label">ID Roteiro:</span> <span id="dev-extrato-id-viagem-display">-</span></div>
+                                    <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Identificador da rota:</span> <span id="dev-extrato-identificador-rota">-</span></div>
+                                    <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Data de expedição:</span> <span id="dev-extrato-data-expedicao">-</span></div>
+                                </section>
+                                <section class="extrato-resumo-grupo">
+                                    <h4 class="extrato-resumo-grupo-titulo">Veículo</h4>
+                                    <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Placa:</span> <span id="dev-extrato-placa">-</span></div>
+                                    <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Motorista:</span> <span id="dev-extrato-motorista">-</span></div>
+                                </section>
+                                <section class="extrato-resumo-grupo">
+                                    <h4 class="extrato-resumo-grupo-titulo">Totais</h4>
+                                    <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Total de itens:</span> <span id="dev-extrato-total-itens">0</span></div>
+                                    <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Total quantidade:</span> <span id="dev-extrato-total-qtd">0</span></div>
+                                    <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Peso total:</span> <span id="dev-extrato-peso-total">-</span></div>
+                                </section>
+                                <section class="extrato-resumo-grupo">
+                                    <h4 class="extrato-resumo-grupo-titulo">Período do retorno</h4>
+                                    <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Início:</span> <span id="dev-extrato-inicio-carregamento">-</span></div>
+                                    <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Fim:</span> <span id="dev-extrato-fim-carregamento">-</span></div>
+                                </section>
+                            </div>
+                        </div>
+
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Motivo</th>
+                                        <th>Código de Barras</th>
+                                        <th>Código do Produto</th>
+                                        <th>Produto</th>
+                                        <th>Quantidade do Produto</th>
+                                        <th>Unidade</th>
+                                        <th>Peso Bruto</th>
+                                        <th>Aviso</th>
+                                        <th>Qtd. Bipada</th>
+                                        <th>Qtd. Falta</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dev-tbody-extrato">
+                                    <tr><td colspan="11" class="loading">Digite o ID do roteiro/viagem e clique em Buscar.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="devolucoes-panel-relatorios" class="devolucoes-panel">
+                    <h2 class="devolucoes-titulo-principal">RELATÓRIOS DE DEVOLUÇÕES</h2>
+                    <p class="info-text">Exportações do fluxo de retorno/devolução.</p>
+
+                    <div class="form-container relatorios-secao" style="background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                        <h3 style="margin-top: 0; color: #1565c0;">Filtro por data de expedição (opcional)</h3>
+                        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <label for="dev-relatorio-data-expedicao-inicio">De:</label>
+                            <input type="date" id="dev-relatorio-data-expedicao-inicio">
+                            <label for="dev-relatorio-data-expedicao-fim">Até:</label>
+                            <input type="date" id="dev-relatorio-data-expedicao-fim">
+                        </div>
+                    </div>
+
+                    <div class="form-container relatorios-secao">
+                        <h3 style="margin-top: 0; color: #366092;">Extrato</h3>
+                        <div class="relatorios-lista">
+                            <div class="relatorio-item">
+                                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                    <label for="dev-relatorio-extrato-id-viagem">ID do roteiro:</label>
+                                    <input type="text" id="dev-relatorio-extrato-id-viagem" placeholder="Ex.: 12345" style="width: 140px;">
+                                    <button type="button" class="btn btn-primary" onclick="exportarExtratoDevolucaoExcel()">📥 Exportar extrato em Excel</button>
+                                </div>
+                                <span>Planilha com o extrato das devoluções do roteiro.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-container relatorios-secao">
+                        <h3 style="margin-top: 0; color: #366092;">Bipagem de retorno</h3>
+                        <div class="relatorios-lista">
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioDevolucoesBipadas()">📥 Tudo que foi bipado no retorno</button>
+                                <span>Planilha com todos os registros do fluxo de devoluções.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioDevolucoesResumoRoteiro()">📥 Resumo por roteiro</button>
+                                <span>Uma linha por viagem com totais do retorno.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioDevolucoesResumoProduto()">📥 Resumo por produto</button>
+                                <span>Ranking e totalizações dos itens devolvidos.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-secondary" onclick="exportarDivergenciasDevolucaoExcel('itens')">📥 Itens divergentes</button>
+                                <span>Planilha só com itens divergentes do retorno.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-secondary" onclick="exportarDivergenciasDevolucaoExcel('roteiros')">📥 Dados dos roteiros com divergência</button>
+                                <span>Resumo dos roteiros que tiveram divergência na devolução.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioDevolucoesRoteirosDivergencia()">📥 Roteiros com divergência</button>
+                                <span>Totais de faltas e sobras no fluxo de devolução.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="devolucoes-panel-divergencias" class="devolucoes-panel">
+                    <h2 class="devolucoes-titulo-principal">DIVERGÊNCIAS DE DEVOLUÇÕES</h2>
+                    <p class="info-text">Itens que ainda faltam bipar no retorno ou que foram bipados a mais. <span id="dev-divergencias-contagem"></span></p>
+                    <div style="margin-bottom: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+                        <button type="button" class="btn btn-primary" onclick="loadDivergenciasDevolucao(true)">🔄 Atualizar divergências</button>
+                        <button type="button" class="btn btn-secondary" onclick="exportarDivergenciasDevolucaoExcel('itens')">📥 Itens divergentes</button>
+                        <button type="button" class="btn btn-secondary" onclick="exportarDivergenciasDevolucaoExcel('roteiros')">📥 Dados dos roteiros</button>
+                        <button type="button" class="btn btn-secondary" onclick="exportarDivergenciasDevolucaoExcel('completo')">📥 Página completa</button>
+                    </div>
+
+                    <div id="dev-divergencias-para-imprimir">
+                        <h3 class="divergencias-titulo-impressao" style="display: none; margin-bottom: 12px;">DIVERGÊNCIAS - DEVOLUÇÕES</h3>
+                        <div id="dev-divergencias-conteudo">
+                            <p class="loading">Carregando divergências de devoluções...</p>
+                        </div>
                     </div>
                 </div>
             </div>

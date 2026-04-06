@@ -82,9 +82,11 @@ function initEventosStream() {
 document.addEventListener('DOMContentLoaded', function() {
     initModulos();
     initTabs();
+    initDevolucoesTabs();
     initForms();
     initFiltrosBase();
     initBaseItemModal();
+    initNavegacaoRapida();
     // Primeira carga após um tick para a tela pintar antes (resposta mais rápida percebida)
     setTimeout(function() { loadAllData(); }, 0);
     initEventosStream();
@@ -107,6 +109,35 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
 });
+
+function initNavegacaoRapida() {
+    var linkInicio = document.querySelector('.header-link-inicio');
+    if (!linkInicio) return;
+    var href = linkInicio.getAttribute('href') || '/entrada';
+
+    try {
+        var prefetch = document.createElement('link');
+        prefetch.rel = 'prefetch';
+        prefetch.href = href;
+        prefetch.as = 'document';
+        document.head.appendChild(prefetch);
+    } catch (e) {}
+
+    var navegar = function() {
+        try {
+            if (_eventSource) {
+                _eventSource.close();
+                _eventSource = null;
+            }
+        } catch (e) {}
+        window.location.assign(href);
+    };
+
+    linkInicio.addEventListener('click', function(e) {
+        e.preventDefault();
+        navegar();
+    });
+}
 
 function initModulos() {
     var carreg = document.getElementById('modulo-carregamento');
@@ -134,6 +165,11 @@ function initModulos() {
         if (id === 'carregamento') {
             var activeTab = document.querySelector('.tab-content.active');
             if (activeTab && activeTab.id) loadTabData(activeTab.id);
+        } else if (id === 'devolucoes') {
+            var painelDev = document.getElementById('devolucoes-panel-painel');
+            if (painelDev && painelDev.classList.contains('devolucoes-panel-active')) {
+                loadPainelDevolucoes();
+            }
         }
     }
 
@@ -150,6 +186,38 @@ function initModulos() {
     if (modUrl && ['carregamento', 'devolucoes', 'terceiros'].indexOf(modUrl) !== -1) {
         mostrarModulo(modUrl);
     }
+}
+
+function initDevolucoesTabs() {
+    var botoes = document.querySelectorAll('.devolucoes-subtab[data-dev-tab]');
+    var painel = document.getElementById('devolucoes-panel-painel');
+    var conferencia = document.getElementById('devolucoes-panel-bipar');
+    var extrato = document.getElementById('devolucoes-panel-extrato');
+    var relatorios = document.getElementById('devolucoes-panel-relatorios');
+    var divergencias = document.getElementById('devolucoes-panel-divergencias');
+    if (!botoes.length || !painel || !conferencia || !extrato || !relatorios || !divergencias) return;
+
+    function mostrarDevTab(tab) {
+        botoes.forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-dev-tab') === tab);
+        });
+        painel.classList.toggle('devolucoes-panel-active', tab === 'painel');
+        conferencia.classList.toggle('devolucoes-panel-active', tab === 'conferencia');
+        extrato.classList.toggle('devolucoes-panel-active', tab === 'extrato');
+        relatorios.classList.toggle('devolucoes-panel-active', tab === 'relatorios');
+        divergencias.classList.toggle('devolucoes-panel-active', tab === 'divergencias');
+        if (tab === 'painel') loadPainelDevolucoes();
+        if (tab === 'extrato') loadExtratoDevolucao();
+        if (tab === 'divergencias') loadDivergenciasDevolucao(false);
+    }
+
+    botoes.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            mostrarDevTab(btn.getAttribute('data-dev-tab') || 'painel');
+        });
+    });
+
+    mostrarDevTab('painel');
 }
 
 // Sistema de Abas
@@ -245,6 +313,15 @@ async function loadBaixadosRavex() {
 function loadAllData() {
     var moduloCarreg = document.getElementById('modulo-carregamento');
     if (moduloCarreg && moduloCarreg.hidden) {
+        var moduloDev = document.getElementById('modulo-devolucoes');
+        if (moduloDev && !moduloDev.hidden) {
+            var painelDev = document.getElementById('devolucoes-panel-painel');
+            var extratoDev = document.getElementById('devolucoes-panel-extrato');
+            var divergenciasDev = document.getElementById('devolucoes-panel-divergencias');
+            if (painelDev && painelDev.classList.contains('devolucoes-panel-active')) loadPainelDevolucoes();
+            if (extratoDev && extratoDev.classList.contains('devolucoes-panel-active')) loadExtratoDevolucao();
+            if (divergenciasDev && divergenciasDev.classList.contains('devolucoes-panel-active')) loadDivergenciasDevolucao(true);
+        }
         return;
     }
     const activeTab = document.querySelector('.tab-content.active');
@@ -259,6 +336,79 @@ function loadAllData() {
     }
     loadEstatisticas();
     loadTabData(activeId);
+}
+
+async function loadPainelDevolucoes() {
+    const data = await fetchAPI('/devolucoes/painel');
+    if (!data) return;
+    if (data.erro) showMessage('Painel de devoluções: ' + data.erro, 'error');
+
+    const stats = data.estatisticas || {};
+    const set = function(id, val) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val != null && val !== '' ? val : '0';
+    };
+    set('dev-stat-bipados', stats.total_bipados ?? 0);
+    set('dev-stat-soma-quantidades', stats.soma_quantidades ?? 0);
+    set('dev-stat-unicos', stats.total_unicos ?? 0);
+    set('dev-stat-viagens', stats.total_viagens ?? 0);
+    set('dev-stat-docas', stats.total_docas ?? 0);
+    set('dev-stat-usuarios', stats.total_usuarios ?? 0);
+
+    const preencherTabela = function(tbodyId, rows, emptyMsg, renderRow) {
+        const tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        if (!rows || !rows.length) {
+            const cols = tbodyId === 'dev-tbody-painel-viagens' ? 7 : 3;
+            tbody.innerHTML = '<tr><td colspan="' + cols + '" class="loading">' + escapeHtml(emptyMsg) + '</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(renderRow).join('');
+    };
+
+    preencherTabela('dev-tbody-painel-viagens', data.viagens || [], 'Nenhuma viagem com devolução ainda.', function(v) {
+        return '<tr>'
+            + '<td><strong>' + escapeHtml(v.id_viagem || '-') + '</strong></td>'
+            + '<td>' + escapeHtml(v.inicio || '-') + '</td>'
+            + '<td>' + escapeHtml(v.fim || '-') + '</td>'
+            + '<td>' + (v.duracao_minutos != null ? v.duracao_minutos : '-') + '</td>'
+            + '<td>' + (v.registros ?? 0) + '</td>'
+            + '<td><strong>' + (v.qtd_devolvida ?? 0) + '</strong></td>'
+            + '<td>' + (v.itens_unicos ?? 0) + '</td>'
+            + '</tr>';
+    });
+
+    preencherTabela('dev-tbody-painel-itens', data.top_itens || [], 'Nenhum item devolvido ainda.', function(i) {
+        return '<tr>'
+            + '<td>' + escapeHtml(i.produto || '-') + '</td>'
+            + '<td>' + escapeHtml(i.codigo_barras || '-') + '</td>'
+            + '<td><strong>' + (i.total ?? 0) + '</strong></td>'
+            + '</tr>';
+    });
+
+    preencherTabela('dev-tbody-painel-veiculos', data.veiculos || [], 'Nenhum veículo com devolução ainda.', function(v) {
+        return '<tr>'
+            + '<td>' + escapeHtml(v.veiculo || '-') + '</td>'
+            + '<td>' + (v.registros ?? 0) + '</td>'
+            + '<td><strong>' + (v.total ?? 0) + '</strong></td>'
+            + '</tr>';
+    });
+
+    preencherTabela('dev-tbody-painel-docas', data.docas || [], 'Nenhuma doca usada ainda.', function(d) {
+        return '<tr>'
+            + '<td>' + escapeHtml(d.doca || '-') + '</td>'
+            + '<td>' + (d.registros ?? 0) + '</td>'
+            + '<td><strong>' + (d.total ?? 0) + '</strong></td>'
+            + '</tr>';
+    });
+
+    preencherTabela('dev-tbody-painel-usuarios', data.usuarios || [], 'Nenhum usuário com devolução ainda.', function(u) {
+        return '<tr>'
+            + '<td>' + escapeHtml(u.usuario || '-') + '</td>'
+            + '<td>' + (u.registros ?? 0) + '</td>'
+            + '<td><strong>' + (u.total ?? 0) + '</strong></td>'
+            + '</tr>';
+    });
 }
 
 // Inicializar formulários
@@ -3414,6 +3564,22 @@ function appendParamsDataExpedicao(url) {
     return url + (url.indexOf('?') >= 0 ? '&' : '?') + qs;
 }
 
+function getParamsDataExpedicaoDevolucao() {
+    const de = (document.getElementById('dev-relatorio-data-expedicao-inicio') && document.getElementById('dev-relatorio-data-expedicao-inicio').value || '').trim();
+    const ate = (document.getElementById('dev-relatorio-data-expedicao-fim') && document.getElementById('dev-relatorio-data-expedicao-fim').value || '').trim();
+    const p = new URLSearchParams();
+    p.set('fluxo', 'devolucao');
+    if (de) p.set('data_expedicao_inicio', de);
+    if (ate) p.set('data_expedicao_fim', ate);
+    return p.toString();
+}
+
+function appendParamsDevolucao(url) {
+    const qs = getParamsDataExpedicaoDevolucao();
+    if (!qs) return url;
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + qs;
+}
+
 // Helper: baixar relatório por URL
 function downloadRelatorio(url, nomeArquivo) {
     const a = document.createElement('a');
@@ -3495,6 +3661,78 @@ window.gerarRelatorioResponsaveisViagem = function() {
 
 window.gerarRelatorioRomaneioGuarulhos = function() {
     downloadRelatorio(appendParamsDataExpedicao(API_BASE + '/relatorios/excel/romaneio_guarulhos'), 'relatorio_romaneio_cd_guarulhos.xlsx');
+};
+
+window.exportarExtratoDevolucaoExcel = function() {
+    const idViagem = (document.getElementById('dev-relatorio-extrato-id-viagem') && document.getElementById('dev-relatorio-extrato-id-viagem').value || '').trim();
+    if (!idViagem) {
+        showMessage('Digite o ID do roteiro para exportar o extrato de devolução', 'error');
+        return;
+    }
+    let url = API_BASE + '/relatorios/excel/extrato?id_viagem=' + encodeURIComponent(idViagem);
+    url = appendParamsDevolucao(url);
+    fetch(url).then(function(r) {
+        if (!r.ok) {
+            return r.json().then(function(d) { showMessage(d.erro || 'Erro ao exportar extrato de devolução', 'error'); }).catch(function() { showMessage('Erro ao exportar extrato de devolução', 'error'); });
+        }
+        return r.blob();
+    }).then(function(blob) {
+        if (!blob || blob.type.indexOf('sheet') === -1) return;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'extrato_devolucao_roteiro_' + idViagem.replace(/[/\\]/g, '_') + '.xlsx';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+        showMessage('Download do extrato de devolução iniciado.', 'success');
+    });
+};
+
+window.gerarRelatorioDevolucoesBipadas = function() {
+    downloadRelatorio(appendParamsDevolucao(API_BASE + '/relatorios/excel/bipados'), 'relatorio_devolucoes_bipadas.xlsx');
+};
+
+window.gerarRelatorioDevolucoesResumoRoteiro = function() {
+    downloadRelatorio(appendParamsDevolucao(API_BASE + '/relatorios/excel/resumo_roteiro'), 'relatorio_devolucoes_resumo_por_roteiro.xlsx');
+};
+
+window.gerarRelatorioDevolucoesResumoProduto = function() {
+    downloadRelatorio(appendParamsDevolucao(API_BASE + '/relatorios/excel/resumo_produto'), 'relatorio_devolucoes_resumo_por_produto.xlsx');
+};
+
+window.gerarRelatorioDevolucoesRoteirosDivergencia = function() {
+    downloadRelatorio(appendParamsDevolucao(API_BASE + '/relatorios/excel/roteiros_divergencia'), 'relatorio_devolucoes_roteiros_com_divergencia.xlsx');
+};
+
+window.exportarDivergenciasDevolucaoExcel = function(tipo) {
+    let url = API_BASE + '/divergencias/excel?tipo=' + encodeURIComponent(tipo || 'completo');
+    url = appendParamsDevolucao(url);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = tipo === 'itens' ? 'divergencias_devolucao_itens.xlsx' : tipo === 'roteiros' ? 'divergencias_devolucao_roteiros.xlsx' : 'divergencias_devolucao_pagina_completa.xlsx';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showMessage('Download do Excel de devoluções iniciado.', 'success');
+};
+
+window.buscarExtratoDevolucaoPorViagem = function() {
+    loadExtratoDevolucao();
+};
+
+window.imprimirExtratoDevolucao = function() {
+    const tbody = document.getElementById('dev-tbody-extrato');
+    if (!tbody || !tbody.querySelector('tr')) {
+        showMessage('Busque um extrato de devolução antes de imprimir.', 'error');
+        return;
+    }
+    document.body.classList.remove('print-divergencias');
+    document.body.classList.add('print-extrato');
+    window.print();
+    setTimeout(function() { document.body.classList.remove('print-extrato'); }, 500);
 };
 
 // Imprimir divergências (área: dados do roteiro + itens por roteiro)
@@ -3657,6 +3895,95 @@ async function loadExtrato(idViagemOpcional) {
     if (avisoDivergenteEl) avisoDivergenteEl.style.display = temDivergencia ? 'block' : 'none';
 }
 
+async function loadExtratoDevolucao(idViagemOpcional) {
+    const inputBusca = document.getElementById('dev-extrato-id-viagem');
+    const inputRelatorio = document.getElementById('dev-relatorio-extrato-id-viagem');
+    let idViagem = (idViagemOpcional && String(idViagemOpcional).trim()) ? String(idViagemOpcional).trim() : (inputBusca && inputBusca.value.trim());
+    if (!idViagem) {
+        const idViagemHidden = document.getElementById('dev-id-viagem-hidden');
+        if (idViagemHidden && idViagemHidden.value.trim()) {
+            idViagem = idViagemHidden.value.trim();
+            if (inputBusca) inputBusca.value = idViagem;
+            if (inputRelatorio) inputRelatorio.value = idViagem;
+        }
+    } else {
+        if (inputBusca) inputBusca.value = idViagem;
+        if (inputRelatorio) inputRelatorio.value = idViagem;
+    }
+
+    const tbody = document.getElementById('dev-tbody-extrato');
+    const resumoEl = document.getElementById('dev-extrato-resumo');
+    if (!tbody) return;
+    if (!idViagem) {
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Digite o ID do roteiro e clique em Buscar para ver o extrato das devoluções.</td></tr>';
+        if (resumoEl) resumoEl.style.display = 'none';
+        return;
+    }
+
+    tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando extrato de devoluções...</td></tr>';
+    if (resumoEl) resumoEl.style.display = 'none';
+
+    const [extratoResp, periodo, viagemInfo] = await Promise.all([
+        fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '?fluxo=devolucao'),
+        fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/periodo?fluxo=devolucao'),
+        fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/info')
+    ]);
+    const extrato = (extratoResp && extratoResp.lista && Array.isArray(extratoResp.lista)) ? extratoResp.lista : [];
+    if (!extratoResp || extratoResp.erro || extrato.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhum item encontrado para esta viagem no fluxo de devoluções.</td></tr>';
+        if (resumoEl) resumoEl.style.display = 'none';
+        return;
+    }
+
+    let totalQtdBipada = 0;
+    let pesoTotal = 0;
+    extrato.forEach(function(item) {
+        totalQtdBipada += parseInt(item.quantidade_bipada) || 0;
+        const p = item.peso_bruto;
+        if (p != null && p !== '' && p !== '-') {
+            const num = parseFloat(String(p).replace(',', '.').replace(/\s/g, ''));
+            if (!isNaN(num)) pesoTotal += num;
+        }
+    });
+
+    if (resumoEl) {
+        resumoEl.style.display = 'block';
+        const set = function(id, val) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = (val != null && String(val).trim() !== '') ? String(val).trim() : '-';
+        };
+        set('dev-extrato-total-itens', extrato.length);
+        set('dev-extrato-total-qtd', totalQtdBipada);
+        set('dev-extrato-peso-total', pesoTotal > 0 ? pesoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '-');
+        set('dev-extrato-id-viagem-display', idViagem);
+        set('dev-extrato-data-expedicao', viagemInfo && viagemInfo.data_expedicao);
+        set('dev-extrato-placa', viagemInfo && viagemInfo.placa);
+        set('dev-extrato-identificador-rota', viagemInfo && viagemInfo.identificador_rota);
+        set('dev-extrato-motorista', viagemInfo && viagemInfo.motorista);
+        set('dev-extrato-inicio-carregamento', periodo && (periodo.inicio_carregamento || periodo.inicio_bipagem));
+        set('dev-extrato-fim-carregamento', periodo && (periodo.fim_carregamento || periodo.fim_bipagem));
+    }
+
+    tbody.innerHTML = extrato.map(function(item) {
+        const statusClass = item.status_bipado === 'COMPLETO' ? 'status-OK' : item.status_bipado === 'EXCEDENTE' ? 'status-EXCEDENTE' : item.status_bipado === 'PARCIAL' ? 'status-SOBRA' : 'status-FALTA';
+        const statusText = item.status_bipado === 'COMPLETO' ? '✅ COMPLETO' : item.status_bipado === 'EXCEDENTE' ? '📦 EXCEDENTE' : item.status_bipado === 'PARCIAL' ? '⚠️ PARCIAL' : '❌ PENDENTE';
+        const motivo = (item.motivo_divergencia || '').trim();
+        return '<tr>'
+            + '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>'
+            + '<td>' + (motivo ? escHtml(motivo) : '-') + '</td>'
+            + '<td><strong>' + escHtml(item.codigo_barras || '-') + '</strong></td>'
+            + '<td><strong style="color: #1976D2;">' + escHtml(item.codigo_produto || '-') + '</strong></td>'
+            + '<td>' + escHtml(item.produto || '-') + '</td>'
+            + '<td><strong>' + (item.quantidade_produto || 0) + '</strong></td>'
+            + '<td>' + escHtml(item.unidade || '-') + '</td>'
+            + '<td>' + ((item.peso_bruto != null && item.peso_bruto !== '') ? escHtml(item.peso_bruto) : '-') + '</td>'
+            + '<td style="color: #d32f2f; font-weight: bold;">' + escHtml(item.aviso_sobra || '') + '</td>'
+            + '<td><strong style="color: ' + ((item.quantidade_bipada || 0) > 0 ? '#4caf50' : '#666') + '">' + (item.quantidade_bipada || 0) + '</strong></td>'
+            + '<td><strong style="color: ' + ((item.quantidade_falta || 0) > 0 ? '#f44336' : '#4caf50') + '">' + (item.quantidade_falta || 0) + '</strong></td>'
+            + '</tr>';
+    }).join('');
+}
+
 // Carregar Romaneio da Planilha (todas as colunas, com filtros por id_viagem, id_roteiro, codigo_cliente, codigo_produto, endereco, cidade)
 // Não usa overlay full-screen para permitir trocar de aba enquanto carrega; loading só na área da tabela.
 async function loadRomaneio(showLoadingState) {
@@ -3752,6 +4079,7 @@ function unescapeHtml(s) {
 
 // Evitar recarregar a aba Divergências toda vez que trocar de aba (só carrega na 1ª vez ou ao clicar em Atualizar)
 let divergenciasJaCarregado = false;
+let divergenciasDevolucaoJaCarregado = false;
 
 // Carregar Divergências de TODOS os roteiros: para cada roteiro, exibir DADOS DO ROTEIRO + ITENS DIVERGENTES
 // force = true: sempre recarrega (botão Atualizar). force = false/undefined: só carrega se ainda não carregou.
@@ -3888,6 +4216,84 @@ async function loadDivergencias(force) {
     }
     conteudoEl.innerHTML = fragmentos.join('');
     divergenciasJaCarregado = true;
+}
+
+async function loadDivergenciasDevolucao(force) {
+    const conteudoEl = document.getElementById('dev-divergencias-conteudo');
+    if (!conteudoEl) return;
+    if (!force && divergenciasDevolucaoJaCarregado) return;
+    if (force) divergenciasDevolucaoJaCarregado = false;
+    conteudoEl.innerHTML = '<p class="loading">Carregando divergências de devoluções...</p>';
+    let divergencias;
+    try {
+        divergencias = await fetchAPI('/divergencias?fluxo=devolucao');
+    } catch (e) {
+        divergenciasDevolucaoJaCarregado = false;
+        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">Erro ao carregar. Clique em Atualizar para tentar novamente.</p>';
+        return;
+    }
+    if (!divergencias || divergencias.length === 0) {
+        const contagemEl = document.getElementById('dev-divergencias-contagem');
+        if (contagemEl) contagemEl.textContent = '';
+        conteudoEl.innerHTML = '<p class="loading">Nenhuma divergência em devoluções.</p>';
+        divergenciasDevolucaoJaCarregado = true;
+        return;
+    }
+    const porRoteiro = {};
+    divergencias.forEach(function(d) {
+        const id = d.id_viagem || '-';
+        if (!porRoteiro[id]) porRoteiro[id] = [];
+        porRoteiro[id].push(d);
+    });
+    const idsOrdenados = Object.keys(porRoteiro).sort();
+    const contagemEl = document.getElementById('dev-divergencias-contagem');
+    if (contagemEl) contagemEl.textContent = '(' + divergencias.length + ' item(ns) em ' + idsOrdenados.length + ' roteiro(s)).';
+    const fragmentos = [];
+    for (const idViagem of idsOrdenados) {
+        const itens = porRoteiro[idViagem];
+        let viagemInfo = {};
+        let periodo = {};
+        try {
+            const dados = await Promise.all([
+                fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/info'),
+                fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/periodo?fluxo=devolucao')
+            ]);
+            viagemInfo = dados[0] || {};
+            periodo = dados[1] || {};
+        } catch (e) {}
+        const v = function(x) { return (x != null && String(x).trim() !== '') ? escHtml(x) : '-'; };
+        fragmentos.push(
+            '<div class="divergencias-roteiro-bloco" data-id-viagem="' + escHtml(idViagem) + '">'
+            + '<h3 class="divergencias-roteiro-titulo">Roteiro: ' + escHtml(idViagem) + '</h3>'
+            + '<div class="extrato-resumo-box divergencias-dados-roteiro">'
+            + '<h4 style="margin: 0 0 12px 0; font-size: 14px; color: #1976D2;">DADOS DO RETORNO</h4>'
+            + '<div class="extrato-resumo-grid">'
+            + '<section class="extrato-resumo-grupo"><h4 class="extrato-resumo-grupo-titulo">Identificação</h4><div class="extrato-resumo-linha"><span class="extrato-resumo-label">ID Roteiro:</span> ' + v(idViagem) + '</div><div class="extrato-resumo-linha"><span class="extrato-resumo-label">Identificador da rota:</span> ' + v(viagemInfo.identificador_rota) + '</div><div class="extrato-resumo-linha"><span class="extrato-resumo-label">Data de expedição:</span> ' + v(viagemInfo.data_expedicao) + '</div></section>'
+            + '<section class="extrato-resumo-grupo"><h4 class="extrato-resumo-grupo-titulo">Veículo</h4><div class="extrato-resumo-linha"><span class="extrato-resumo-label">Placa:</span> ' + v(viagemInfo.placa) + '</div><div class="extrato-resumo-linha"><span class="extrato-resumo-label">Motorista:</span> ' + v(viagemInfo.motorista) + '</div></section>'
+            + '<section class="extrato-resumo-grupo"><h4 class="extrato-resumo-grupo-titulo">Período do retorno</h4><div class="extrato-resumo-linha"><span class="extrato-resumo-label">Início:</span> ' + v(periodo.inicio_carregamento || periodo.inicio_bipagem) + '</div><div class="extrato-resumo-linha"><span class="extrato-resumo-label">Fim:</span> ' + v(periodo.fim_carregamento || periodo.fim_bipagem) + '</div></section>'
+            + '</div></div>'
+            + '<div class="table-container"><table class="data-table tabela-divergencias-roteiro"><thead><tr><th>Status</th><th>Código de Barras</th><th>Código do Produto</th><th>Produto</th><th>Qtd. Romaneio</th><th>Qtd. Bipada</th><th>Qtd. Falta</th><th>Qtd. Sobra</th><th>Aviso</th></tr></thead><tbody>'
+            + itens.map(function(item) {
+                const statusClass = item.status_bipado === 'COMPLETO' ? 'status-OK' : item.status_bipado === 'EXCEDENTE' ? 'status-EXCEDENTE' : item.status_bipado === 'PARCIAL' ? 'status-SOBRA' : 'status-FALTA';
+                const statusText = item.status_bipado === 'COMPLETO' ? '✅ COMPLETO' : item.status_bipado === 'EXCEDENTE' ? '📦 EXCEDENTE' : item.status_bipado === 'PARCIAL' ? '⚠️ PARCIAL' : '❌ PENDENTE';
+                const qtdSobra = item.quantidade_sobra != null ? item.quantidade_sobra : 0;
+                return '<tr>'
+                    + '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>'
+                    + '<td><strong>' + escHtml(item.codigo_barras || '-') + '</strong></td>'
+                    + '<td><strong style="color: #1976D2;">' + escHtml(item.codigo_produto || '-') + '</strong></td>'
+                    + '<td>' + escHtml(item.produto || '-') + '</td>'
+                    + '<td><strong>' + (item.quantidade_produto ?? 0) + '</strong></td>'
+                    + '<td><strong style="color: ' + ((item.quantidade_bipada || 0) > 0 ? '#4caf50' : '#666') + '">' + (item.quantidade_bipada ?? 0) + '</strong></td>'
+                    + '<td><strong style="color: ' + ((item.quantidade_falta || 0) > 0 ? '#f44336' : '#4caf50') + '">' + (item.quantidade_falta ?? 0) + '</strong></td>'
+                    + '<td><strong style="color: ' + (qtdSobra > 0 ? '#ff9800' : '#4caf50') + '">' + qtdSobra + '</strong></td>'
+                    + '<td style="color: #d32f2f; font-weight: bold;">' + escHtml(item.aviso_sobra || '') + '</td>'
+                    + '</tr>';
+            }).join('')
+            + '</tbody></table></div></div>'
+        );
+    }
+    conteudoEl.innerHTML = fragmentos.join('');
+    divergenciasDevolucaoJaCarregado = true;
 }
 
 // Salvar motivo da divergência (chamado no onblur do input na aba Divergências)
