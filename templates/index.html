@@ -26,12 +26,6 @@
             <a href="/login?sair=1" class="btn-sair" id="btn-sair" title="Sair">Sair</a>
         </header>
 
-        <nav class="modulos-bar" aria-label="Módulos do sistema">
-            <button type="button" class="modulo-button active" data-modulo="carregamento" title="Expedição e abas atuais do painel">Carregamento (expedição)</button>
-            <button type="button" class="modulo-button" data-modulo="devolucoes" title="Devoluções">Devoluções</button>
-            <button type="button" class="modulo-button" data-modulo="terceiros" title="Recebimento e expedição de terceiros">Recebimento e expedição de terceiros</button>
-        </nav>
-
         <div id="modulo-carregamento" class="modulo-area modulo-area--ativo">
         <!-- Navegação por Abas (ordem: Painel, Importar Ravex, Conferência, Extrato, Base, Romaneio por item, Relatórios, Divergências) -->
         <nav class="tabs">
@@ -886,19 +880,9 @@
         </main>
         </div>
 
-        <div id="modulo-devolucoes" class="modulo-area modulo-vazio" hidden aria-label="Devoluções">
-            <div class="modulo-vazio-conteudo">
-                <p class="modulo-vazio-titulo">Devoluções</p>
-                <p class="modulo-vazio-sub">Módulo em desenvolvimento — a dinâmica será implementada aqui.</p>
-            </div>
-        </div>
+        <div id="modulo-devolucoes" class="modulo-area modulo-vazio" hidden aria-label="Devoluções"></div>
 
-        <div id="modulo-terceiros" class="modulo-area modulo-vazio" hidden aria-label="Recebimento e expedição de terceiros">
-            <div class="modulo-vazio-conteudo">
-                <p class="modulo-vazio-titulo">Recebimento e expedição de terceiros</p>
-                <p class="modulo-vazio-sub">Módulo em desenvolvimento — a dinâmica será implementada aqui.</p>
-            </div>
-        </div>
+        <div id="modulo-terceiros" class="modulo-area modulo-vazio" hidden aria-label="Recebimento e expedição de terceiros"></div>
     </div>
 
     <!-- Modal de aceite para zerar todos os itens -->

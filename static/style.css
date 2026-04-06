@@ -147,57 +147,6 @@ body {
     border-color: rgba(255,255,255,0.8);
 }
 
-.modulos-bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0;
-    background: #e3ecf5;
-    border-top: 4px solid #284b73;
-    border-bottom: 2px solid #b8c9dc;
-    padding: 0 6px;
-    flex-shrink: 0;
-}
-
-.modulo-button {
-    flex: 1 1 200px;
-    padding: 12px 14px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 700;
-    color: #455a64;
-    transition: background 0.2s, color 0.2s, border-color 0.2s;
-    border-bottom: 3px solid transparent;
-    line-height: 1.25;
-    text-align: center;
-    font-family: inherit;
-}
-
-a.modulo-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-decoration: none;
-    color: #455a64;
-    box-sizing: border-box;
-}
-
-a.modulo-button.active {
-    color: #366092;
-}
-
-.modulo-button:hover {
-    background: rgba(54, 96, 146, 0.1);
-    color: #366092;
-}
-
-.modulo-button.active {
-    background: #fff;
-    color: #366092;
-    border-bottom-color: #366092;
-}
-
 #modulo-carregamento {
     display: flex;
     flex-direction: column;
@@ -244,6 +193,11 @@ a.modulo-button.active {
     margin: 0;
     max-width: min(92vw, 580px);
     line-height: 1.55;
+}
+
+#modulo-devolucoes.modulo-vazio:not([hidden]),
+#modulo-terceiros.modulo-vazio:not([hidden]) {
+    min-height: calc(100vh - 96px);
 }
 
 .tabs {
@@ -1141,11 +1095,6 @@ h2 {
 
 /* Responsividade */
 @media (max-width: 768px) {
-    .modulo-button {
-        font-size: 11px;
-        padding: 10px 8px;
-    }
-
     .tabs {
         flex-direction: column;
     }

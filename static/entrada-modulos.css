@@ -74,7 +74,7 @@ body.hub-entrada-body {
 
 .hub-entrada-titulo {
     margin: 0;
-    font-size: clamp(1.65rem, 4.5vw, 2.35rem);
+    font-size: clamp(1.9rem, 5.2vw, 2.75rem);
     font-weight: 700;
     text-align: center;
     color: #366092;
@@ -117,13 +117,14 @@ body.hub-entrada-body {
 .hub-entrada-btn {
     display: block;
     width: 100%;
-    padding: clamp(22px, 3.2vh, 30px) clamp(26px, 4.5vw, 40px);
-    min-height: 68px;
+    padding: clamp(24px, 3.5vh, 34px) clamp(28px, 5vw, 44px);
+    min-height: 76px;
     border: none;
     border-radius: 16px;
     font-family: inherit;
-    font-size: clamp(1.12rem, 2.5vw, 1.35rem);
+    font-size: clamp(1.28rem, 3vw, 1.55rem);
     font-weight: 700;
+    line-height: 1.25;
     text-align: center;
     text-decoration: none;
     cursor: pointer;
@@ -166,7 +167,7 @@ body.hub-entrada-body {
 .hub-entrada-rodape {
     margin-top: auto;
     padding-top: clamp(24px, 4vh, 36px);
-    font-size: clamp(0.95rem, 2.1vw, 1.08rem);
+    font-size: clamp(1.05rem, 2.3vw, 1.2rem);
     color: #78909c;
     text-align: center;
     opacity: 0;

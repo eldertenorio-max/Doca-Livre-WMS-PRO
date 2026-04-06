@@ -109,11 +109,12 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initModulos() {
-    var botoes = document.querySelectorAll('.modulo-button');
     var carreg = document.getElementById('modulo-carregamento');
     var dev = document.getElementById('modulo-devolucoes');
     var ter = document.getElementById('modulo-terceiros');
-    if (!botoes.length || !carreg) return;
+    if (!carreg) return;
+
+    var botoes = document.querySelectorAll('.modulo-button');
 
     function mostrarModulo(id) {
         carreg.hidden = id !== 'carregamento';
