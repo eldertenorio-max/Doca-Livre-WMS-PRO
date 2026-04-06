@@ -409,6 +409,8 @@ async function loadPainelDevolucoes() {
             + '<td><strong>' + (u.total ?? 0) + '</strong></td>'
             + '</tr>';
     });
+
+    renderPainelDevolucoesCharts(data);
 }
 
 // Inicializar formulários
@@ -1622,6 +1624,10 @@ let chartRomaneioRoteirosVeiculos = null;
 let chartRomaneioQtdItens = null;
 let chartRomaneioPesoCarro = null;
 let chartRomaneioPesoTotal = null;
+let devChartItensMaisDevolvidos = null;
+let devChartVeiculosDevolucoes = null;
+let devChartDocasDevolucoes = null;
+let devChartUsuariosDevolucoes = null;
 
 function destroyCharts() {
     if (chartTempoCarregamento) { chartTempoCarregamento.destroy(); chartTempoCarregamento = null; }
@@ -1635,6 +1641,124 @@ function destroyCharts() {
     if (chartRomaneioQtdItens) { chartRomaneioQtdItens.destroy(); chartRomaneioQtdItens = null; }
     if (chartRomaneioPesoCarro) { chartRomaneioPesoCarro.destroy(); chartRomaneioPesoCarro = null; }
     if (chartRomaneioPesoTotal) { chartRomaneioPesoTotal.destroy(); chartRomaneioPesoTotal = null; }
+}
+
+function destroyPainelDevolucoesCharts() {
+    if (devChartItensMaisDevolvidos) { devChartItensMaisDevolvidos.destroy(); devChartItensMaisDevolvidos = null; }
+    if (devChartVeiculosDevolucoes) { devChartVeiculosDevolucoes.destroy(); devChartVeiculosDevolucoes = null; }
+    if (devChartDocasDevolucoes) { devChartDocasDevolucoes.destroy(); devChartDocasDevolucoes = null; }
+    if (devChartUsuariosDevolucoes) { devChartUsuariosDevolucoes.destroy(); devChartUsuariosDevolucoes = null; }
+}
+
+function renderPainelDevolucoesCharts(data) {
+    destroyPainelDevolucoesCharts();
+    if (typeof Chart === 'undefined') return;
+
+    const topItens = (data.top_itens || []).slice(0, 8);
+    const veiculos = (data.veiculos || []).slice(0, 8);
+    const docas = (data.docas || []).slice(0, 8);
+    const usuarios = (data.usuarios || []).slice(0, 8);
+    const cores = ['#366092', '#5c6bc0', '#26a69a', '#42a5f5', '#7e57c2', '#ef5350', '#ffa726', '#66bb6a'];
+    const optsPadrao = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: false }
+        }
+    };
+
+    const ctxItens = document.getElementById('dev-chart-itens-mais-devolvidos');
+    if (ctxItens && topItens.length > 0) {
+        devChartItensMaisDevolvidos = new Chart(ctxItens, {
+            type: 'bar',
+            data: {
+                labels: topItens.map(function(i) { return i.produto || i.codigo_barras || 'Item'; }),
+                datasets: [{
+                    label: 'Quantidade devolvida',
+                    data: topItens.map(function(i) { return i.total || 0; }),
+                    backgroundColor: '#5c6bc0',
+                    borderColor: '#3949ab',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                ...optsPadrao,
+                indexAxis: 'y',
+                scales: {
+                    x: { beginAtZero: true, title: { display: true, text: 'Quantidade' } }
+                }
+            }
+        });
+    }
+
+    const ctxVeiculos = document.getElementById('dev-chart-veiculos-devolucoes');
+    if (ctxVeiculos && veiculos.length > 0) {
+        devChartVeiculosDevolucoes = new Chart(ctxVeiculos, {
+            type: 'bar',
+            data: {
+                labels: veiculos.map(function(v) { return v.veiculo || 'Sem veículo'; }),
+                datasets: [{
+                    label: 'Quantidade devolvida',
+                    data: veiculos.map(function(v) { return v.total || 0; }),
+                    backgroundColor: '#2e7d32',
+                    borderColor: '#1b5e20',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                ...optsPadrao,
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Quantidade' } }
+                }
+            }
+        });
+    }
+
+    const ctxDocas = document.getElementById('dev-chart-docas-devolucoes');
+    if (ctxDocas && docas.length > 0) {
+        devChartDocasDevolucoes = new Chart(ctxDocas, {
+            type: 'doughnut',
+            data: {
+                labels: docas.map(function(d) { return d.doca || 'Sem doca'; }),
+                datasets: [{
+                    data: docas.map(function(d) { return d.total || 0; }),
+                    backgroundColor: cores.slice(0, docas.length),
+                    borderColor: '#ffffff',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+
+    const ctxUsuarios = document.getElementById('dev-chart-usuarios-devolucoes');
+    if (ctxUsuarios && usuarios.length > 0) {
+        devChartUsuariosDevolucoes = new Chart(ctxUsuarios, {
+            type: 'pie',
+            data: {
+                labels: usuarios.map(function(u) { return u.usuario || 'Sem usuário'; }),
+                datasets: [{
+                    data: usuarios.map(function(u) { return u.total || 0; }),
+                    backgroundColor: cores.slice(0, usuarios.length),
+                    borderColor: '#ffffff',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
 }
 
 async function loadPainelGraficos() {
