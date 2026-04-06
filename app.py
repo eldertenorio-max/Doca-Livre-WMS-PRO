@@ -13,6 +13,8 @@ import threading
 import queue
 import json
 import importlib.util
+import re
+import xml.etree.ElementTree as ET
 import openpyxl
 from openpyxl.styles import Font
 from io import BytesIO
@@ -104,7 +106,8 @@ def _broadcast_atualizar():
 # Configuração do banco de dados e upload (pasta gravável)
 DB_NAME = os.path.join(_BASE_DIR, 'controle_carregamento.db')
 UPLOAD_FOLDER = os.path.join(_BASE_DIR, 'uploads')
-ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+ALLOWED_SPREADSHEET_EXTENSIONS = {'xlsx', 'xls'}
+ALLOWED_XML_EXTENSIONS = {'xml'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -253,10 +256,82 @@ def init_db():
                     PRIMARY KEY (id_viagem, codigo_produto)
                 )'''
             )
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.terceiros_documentos (
+                    id BIGSERIAL PRIMARY KEY,
+                    area TEXT NOT NULL CHECK (area IN ('recebimento', 'expedicao')),
+                    chave_nfe TEXT,
+                    numero_nf TEXT,
+                    serie_nf TEXT,
+                    data_emissao TEXT,
+                    remetente_nome TEXT,
+                    remetente_cnpj TEXT,
+                    destinatario_nome TEXT,
+                    destinatario_cnpj TEXT,
+                    previsao_chegada TEXT,
+                    arquivo_nome TEXT,
+                    xml_conteudo TEXT,
+                    recebimento_concluido BOOLEAN NOT NULL DEFAULT FALSE,
+                    recebimento_concluido_em TIMESTAMPTZ,
+                    recebimento_concluido_por TEXT,
+                    nota_lancada TEXT,
+                    nota_lancada_em TIMESTAMPTZ,
+                    nota_lancada_por TEXT,
+                    enviar_para_mg TEXT,
+                    enviar_para_mg_em TIMESTAMPTZ,
+                    enviar_para_mg_por TEXT,
+                    motorista_carreta TEXT,
+                    motorista_carreta_em TIMESTAMPTZ,
+                    carga_recebida_mg TEXT,
+                    carga_recebida_mg_em TIMESTAMPTZ,
+                    carga_recebida_mg_por TEXT,
+                    criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    criado_por TEXT,
+                    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    atualizado_por TEXT
+                )'''
+            )
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.terceiros_documento_itens (
+                    id BIGSERIAL PRIMARY KEY,
+                    documento_id BIGINT NOT NULL REFERENCES public.terceiros_documentos(id) ON DELETE CASCADE,
+                    n_item INTEGER,
+                    codigo_ean TEXT,
+                    codigo_produto_xml TEXT,
+                    descricao_xml TEXT,
+                    unidade_xml TEXT,
+                    quantidade_xml NUMERIC(14,3) NOT NULL DEFAULT 0,
+                    codigo_produto_base TEXT,
+                    codigo_barras_base TEXT,
+                    descricao_base TEXT,
+                    quantidade_bipada NUMERIC(14,3) NOT NULL DEFAULT 0,
+                    status_bipagem TEXT NOT NULL DEFAULT 'PENDENTE',
+                    ultimo_ean_bipado TEXT,
+                    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    atualizado_por TEXT
+                )'''
+            )
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.terceiros_documento_eventos (
+                    id BIGSERIAL PRIMARY KEY,
+                    documento_id BIGINT NOT NULL REFERENCES public.terceiros_documentos(id) ON DELETE CASCADE,
+                    evento TEXT NOT NULL,
+                    valor_anterior TEXT,
+                    valor_novo TEXT,
+                    usuario TEXT,
+                    criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    detalhes TEXT
+                )'''
+            )
             # Índices
             conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_id_viagem ON public.produtos_bipados(id_viagem)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_codigo ON public.produtos_bipados(codigo_barras)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_viagem_codigo ON public.produtos_bipados(id_viagem, codigo_barras)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documentos_area ON public.terceiros_documentos(area, criado_em DESC)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documentos_chave ON public.terceiros_documentos(chave_nfe)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_itens_documento ON public.terceiros_documento_itens(documento_id)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_itens_ean ON public.terceiros_documento_itens(codigo_ean)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_eventos_documento ON public.terceiros_documento_eventos(documento_id, criado_em DESC)')
             try:
                 conn.execute("ALTER TABLE public.produtos_bipados ADD COLUMN IF NOT EXISTS fluxo TEXT DEFAULT 'carregamento'")
             except Exception:
@@ -442,6 +517,75 @@ def init_db():
                 atualizado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )'''
         )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS terceiros_documentos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                area TEXT NOT NULL,
+                chave_nfe TEXT,
+                numero_nf TEXT,
+                serie_nf TEXT,
+                data_emissao TEXT,
+                remetente_nome TEXT,
+                remetente_cnpj TEXT,
+                destinatario_nome TEXT,
+                destinatario_cnpj TEXT,
+                previsao_chegada TEXT,
+                arquivo_nome TEXT,
+                xml_conteudo TEXT,
+                recebimento_concluido INTEGER NOT NULL DEFAULT 0,
+                recebimento_concluido_em TEXT,
+                recebimento_concluido_por TEXT,
+                nota_lancada TEXT,
+                nota_lancada_em TEXT,
+                nota_lancada_por TEXT,
+                enviar_para_mg TEXT,
+                enviar_para_mg_em TEXT,
+                enviar_para_mg_por TEXT,
+                motorista_carreta TEXT,
+                motorista_carreta_em TEXT,
+                carga_recebida_mg TEXT,
+                carga_recebida_mg_em TEXT,
+                carga_recebida_mg_por TEXT,
+                criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                criado_por TEXT,
+                atualizado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                atualizado_por TEXT
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS terceiros_documento_itens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                documento_id INTEGER NOT NULL,
+                n_item INTEGER,
+                codigo_ean TEXT,
+                codigo_produto_xml TEXT,
+                descricao_xml TEXT,
+                unidade_xml TEXT,
+                quantidade_xml REAL NOT NULL DEFAULT 0,
+                codigo_produto_base TEXT,
+                codigo_barras_base TEXT,
+                descricao_base TEXT,
+                quantidade_bipada REAL NOT NULL DEFAULT 0,
+                status_bipagem TEXT NOT NULL DEFAULT 'PENDENTE',
+                ultimo_ean_bipado TEXT,
+                atualizado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                atualizado_por TEXT,
+                FOREIGN KEY (documento_id) REFERENCES terceiros_documentos(id) ON DELETE CASCADE
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS terceiros_documento_eventos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                documento_id INTEGER NOT NULL,
+                evento TEXT NOT NULL,
+                valor_anterior TEXT,
+                valor_novo TEXT,
+                usuario TEXT,
+                criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                detalhes TEXT,
+                FOREIGN KEY (documento_id) REFERENCES terceiros_documentos(id) ON DELETE CASCADE
+            )'''
+        )
         conn.commit()
 
         conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_id_viagem ON produtos_bipados(id_viagem)')
@@ -451,6 +595,11 @@ def init_db():
         conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_placas_placa ON placas(placa)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_codigo ON produtos_bipados(codigo_barras)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_viagem_codigo ON produtos_bipados(id_viagem, codigo_barras)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documentos_area ON terceiros_documentos(area, criado_em DESC)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documentos_chave ON terceiros_documentos(chave_nfe)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_itens_documento ON terceiros_documento_itens(documento_id)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_itens_ean ON terceiros_documento_itens(codigo_ean)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_eventos_documento ON terceiros_documento_eventos(documento_id, criado_em DESC)')
         conn.commit()
     finally:
         try:
@@ -5063,7 +5212,12 @@ def export_relatorio_extrato_excel():
 
 def allowed_file(filename):
     """Verifica se o arquivo tem extensão permitida"""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_SPREADSHEET_EXTENSIONS
+
+
+def allowed_xml_file(filename):
+    """Verifica se o arquivo XML tem extensão permitida."""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_XML_EXTENSIONS
 
 def encontrar_planilha():
     """Encontra a planilha Excel no diretório do app, na pasta do exe (quando instalado) ou no diretório atual"""
@@ -6245,6 +6399,446 @@ def get_painel_devolucoes():
             'usuarios': [],
             'erro': str(e),
         }), 200
+
+
+def _agora_iso():
+    return datetime.now().isoformat(timespec='seconds')
+
+
+def _fmt_datahora_br(valor):
+    if not valor:
+        return ''
+    if hasattr(valor, 'strftime'):
+        return valor.strftime('%d/%m/%Y %H:%M:%S')
+    dt = _parse_datetime(valor)
+    if dt:
+        return dt.strftime('%d/%m/%Y %H:%M:%S')
+    return str(valor)
+
+
+def _fmt_data_br(valor):
+    if not valor:
+        return ''
+    dt = _parse_datetime(valor)
+    if dt:
+        return dt.strftime('%d/%m/%Y')
+    s = str(valor).strip()
+    return s[:10] if len(s) >= 10 else s
+
+
+def _somente_digitos(valor):
+    return re.sub(r'\D+', '', str(valor or ''))
+
+
+def _texto_xml(elem):
+    return (elem.text or '').strip() if elem is not None and elem.text is not None else ''
+
+
+def _find_first(parent, paths, ns):
+    if parent is None:
+        return ''
+    for path in paths:
+        el = parent.find(path, ns)
+        if el is not None and _texto_xml(el):
+            return _texto_xml(el)
+    return ''
+
+
+def _parse_decimal(valor):
+    if valor is None:
+        return 0.0
+    s = str(valor).strip().replace(',', '.')
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _status_bipagem_terceiros(qtd_xml, qtd_bipada):
+    qtd_xml = float(qtd_xml or 0)
+    qtd_bipada = float(qtd_bipada or 0)
+    if qtd_bipada <= 0:
+        return 'PENDENTE'
+    if qtd_bipada < qtd_xml:
+        return 'PARCIAL'
+    if qtd_bipada == qtd_xml:
+        return 'COMPLETO'
+    return 'EXCEDENTE'
+
+
+def _resolver_item_base_por_ean(codigo_ean):
+    codigo_busca = str(codigo_ean or '').strip()
+    if not codigo_busca:
+        return None
+    resultado = buscar_produto_na_planilha(codigo_busca)
+    if not resultado:
+        return None
+    return {
+        'codigo_produto_base': (resultado.get('codigo_produto') or '').strip(),
+        'codigo_barras_base': (resultado.get('codigo_barras') or '').strip(),
+        'descricao_base': (resultado.get('produto') or '').strip(),
+    }
+
+
+def _parse_nfe_xml(xml_texto):
+    try:
+        root = ET.fromstring(xml_texto)
+    except Exception as e:
+        raise ValueError('XML inválido: %s' % str(e))
+    ns_uri = ''
+    if root.tag.startswith('{') and '}' in root.tag:
+        ns_uri = root.tag[1:].split('}', 1)[0]
+    ns = {'nfe': ns_uri} if ns_uri else {}
+    infnfe = root.find('.//nfe:infNFe', ns) if ns else root.find('.//infNFe')
+    if infnfe is None:
+        infnfe = root
+    emit = infnfe.find('nfe:emit', ns) if ns else infnfe.find('emit')
+    dest = infnfe.find('nfe:dest', ns) if ns else infnfe.find('dest')
+    ide = infnfe.find('nfe:ide', ns) if ns else infnfe.find('ide')
+    total = infnfe.find('nfe:total', ns) if ns else infnfe.find('total')
+
+    itens = []
+    dets = infnfe.findall('nfe:det', ns) if ns else infnfe.findall('det')
+    for idx, det in enumerate(dets, 1):
+        prod = det.find('nfe:prod', ns) if ns else det.find('prod')
+        if prod is None:
+            continue
+        codigo_ean = _find_first(prod, ['nfe:cEAN', 'cEAN', 'nfe:cEANTrib', 'cEANTrib'], ns)
+        codigo_produto_xml = _find_first(prod, ['nfe:cProd', 'cProd'], ns)
+        descricao_xml = _find_first(prod, ['nfe:xProd', 'xProd'], ns)
+        unidade_xml = _find_first(prod, ['nfe:uCom', 'uCom', 'nfe:uTrib', 'uTrib'], ns)
+        quantidade_xml = _parse_decimal(_find_first(prod, ['nfe:qCom', 'qCom', 'nfe:qTrib', 'qTrib'], ns))
+        base = _resolver_item_base_por_ean(codigo_ean)
+        itens.append({
+            'n_item': idx,
+            'codigo_ean': codigo_ean,
+            'codigo_produto_xml': codigo_produto_xml,
+            'descricao_xml': descricao_xml,
+            'unidade_xml': unidade_xml,
+            'quantidade_xml': quantidade_xml,
+            'codigo_produto_base': (base or {}).get('codigo_produto_base', ''),
+            'codigo_barras_base': (base or {}).get('codigo_barras_base', ''),
+            'descricao_base': (base or {}).get('descricao_base', ''),
+        })
+
+    return {
+        'chave_nfe': (infnfe.attrib.get('Id') or '').replace('NFe', '').strip(),
+        'numero_nf': _find_first(ide, ['nfe:nNF', 'nNF'], ns),
+        'serie_nf': _find_first(ide, ['nfe:serie', 'serie'], ns),
+        'data_emissao': _find_first(ide, ['nfe:dhEmi', 'dhEmi', 'nfe:dEmi', 'dEmi'], ns),
+        'remetente_nome': _find_first(emit, ['nfe:xNome', 'xNome'], ns),
+        'remetente_cnpj': _find_first(emit, ['nfe:CNPJ', 'CNPJ', 'nfe:CPF', 'CPF'], ns),
+        'destinatario_nome': _find_first(dest, ['nfe:xNome', 'xNome'], ns),
+        'destinatario_cnpj': _find_first(dest, ['nfe:CNPJ', 'CNPJ', 'nfe:CPF', 'CPF'], ns),
+        'valor_total_xml': _find_first(total, ['nfe:ICMSTot/nfe:vNF', 'ICMSTot/vNF'], ns),
+        'itens': itens,
+    }
+
+
+def _valor_bool_texto(valor):
+    txt = (valor or '').strip().lower()
+    return txt if txt in ('sim', 'nao') else ''
+
+
+def _registrar_evento_terceiros(conn, documento_id, evento, valor_anterior='', valor_novo='', usuario='', detalhes=''):
+    conn.execute(
+        '''INSERT INTO terceiros_documento_eventos (documento_id, evento, valor_anterior, valor_novo, usuario, criado_em, detalhes)
+           VALUES (?, ?, ?, ?, ?, ?, ?)''',
+        (documento_id, evento, valor_anterior or '', valor_novo or '', usuario or '', _agora_iso(), detalhes or '')
+    )
+
+
+def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_texto, xml_data, usuario):
+    if getattr(conn, 'kind', None) == 'pg':
+        row = conn.execute(
+            '''INSERT INTO terceiros_documentos (
+                   area, chave_nfe, numero_nf, serie_nf, data_emissao, remetente_nome, remetente_cnpj,
+                   destinatario_nome, destinatario_cnpj, previsao_chegada, arquivo_nome, xml_conteudo,
+                   criado_em, criado_por, atualizado_em, atualizado_por
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id''',
+            (
+                area, xml_data.get('chave_nfe') or '', xml_data.get('numero_nf') or '', xml_data.get('serie_nf') or '',
+                xml_data.get('data_emissao') or '', xml_data.get('remetente_nome') or '', _somente_digitos(xml_data.get('remetente_cnpj') or ''),
+                xml_data.get('destinatario_nome') or '', _somente_digitos(xml_data.get('destinatario_cnpj') or ''),
+                previsao_chegada or '', arquivo_nome or '', xml_texto, _agora_iso(), usuario or '', _agora_iso(), usuario or ''
+            )
+        ).fetchone()
+        documento_id = int(row['id'])
+    else:
+        conn.execute(
+            '''INSERT INTO terceiros_documentos (
+                   area, chave_nfe, numero_nf, serie_nf, data_emissao, remetente_nome, remetente_cnpj,
+                   destinatario_nome, destinatario_cnpj, previsao_chegada, arquivo_nome, xml_conteudo,
+                   criado_em, criado_por, atualizado_em, atualizado_por
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (
+                area, xml_data.get('chave_nfe') or '', xml_data.get('numero_nf') or '', xml_data.get('serie_nf') or '',
+                xml_data.get('data_emissao') or '', xml_data.get('remetente_nome') or '', _somente_digitos(xml_data.get('remetente_cnpj') or ''),
+                xml_data.get('destinatario_nome') or '', _somente_digitos(xml_data.get('destinatario_cnpj') or ''),
+                previsao_chegada or '', arquivo_nome or '', xml_texto, _agora_iso(), usuario or '', _agora_iso(), usuario or ''
+            )
+        )
+        documento_id = int(conn.execute('SELECT last_insert_rowid() as id').fetchone()['id'])
+    for item in xml_data.get('itens') or []:
+        conn.execute(
+            '''INSERT INTO terceiros_documento_itens (
+                   documento_id, n_item, codigo_ean, codigo_produto_xml, descricao_xml, unidade_xml,
+                   quantidade_xml, codigo_produto_base, codigo_barras_base, descricao_base,
+                   quantidade_bipada, status_bipagem, atualizado_em, atualizado_por
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (
+                documento_id, item.get('n_item') or 0, item.get('codigo_ean') or '', item.get('codigo_produto_xml') or '',
+                item.get('descricao_xml') or '', item.get('unidade_xml') or '', item.get('quantidade_xml') or 0,
+                item.get('codigo_produto_base') or '', item.get('codigo_barras_base') or '', item.get('descricao_base') or '',
+                0, 'PENDENTE', _agora_iso(), usuario or ''
+            )
+        )
+    _registrar_evento_terceiros(conn, documento_id, 'upload_xml', '', area, usuario, arquivo_nome or '')
+    return documento_id
+
+
+def _carregar_documento_terceiros(conn, documento_id):
+    row = conn.execute('SELECT * FROM terceiros_documentos WHERE id = ?', (documento_id,)).fetchone()
+    if not row:
+        return None
+    doc = dict(row) if hasattr(row, 'keys') else {}
+    itens_rows = conn.execute('SELECT * FROM terceiros_documento_itens WHERE documento_id = ? ORDER BY n_item, id', (documento_id,)).fetchall()
+    eventos_rows = conn.execute('SELECT * FROM terceiros_documento_eventos WHERE documento_id = ? ORDER BY criado_em DESC, id DESC', (documento_id,)).fetchall()
+    itens = []
+    for r in itens_rows or []:
+        item = dict(r) if hasattr(r, 'keys') else {}
+        qtd_xml = float(item.get('quantidade_xml') or 0)
+        qtd_bipada = float(item.get('quantidade_bipada') or 0)
+        item['quantidade_falta'] = max(0.0, qtd_xml - qtd_bipada)
+        item['quantidade_sobra'] = max(0.0, qtd_bipada - qtd_xml)
+        item['status_bipagem'] = _status_bipagem_terceiros(qtd_xml, qtd_bipada)
+        itens.append(item)
+    doc['itens'] = itens
+    doc['eventos'] = [dict(r) if hasattr(r, 'keys') else {} for r in (eventos_rows or [])]
+    doc['resumo'] = {
+        'total_itens': len(itens),
+        'quantidade_total_xml': round(sum(float(i.get('quantidade_xml') or 0) for i in itens), 3),
+        'quantidade_total_bipada': round(sum(float(i.get('quantidade_bipada') or 0) for i in itens), 3),
+        'itens_com_pendencia': sum(1 for i in itens if i.get('status_bipagem') != 'COMPLETO'),
+    }
+    return doc
+
+
+@app.route('/api/terceiros/upload-xml', methods=['POST'])
+def api_terceiros_upload_xml():
+    area = (request.form.get('area') or '').strip().lower()
+    previsao = (request.form.get('previsao_chegada') or '').strip()
+    if area not in ('recebimento', 'expedicao'):
+        return jsonify({'ok': False, 'erro': 'Área inválida.'}), 400
+    if not previsao:
+        return jsonify({'ok': False, 'erro': 'Informe a previsão de chegada.'}), 400
+    arquivos = request.files.getlist('files')
+    if not arquivos:
+        return jsonify({'ok': False, 'erro': 'Nenhum XML enviado.'}), 400
+    conn = get_db()
+    usuario = session.get('usuario', '')
+    criados, erros = [], []
+    try:
+        for arquivo in arquivos:
+            nome = secure_filename(arquivo.filename or '')
+            if not nome:
+                erros.append('Arquivo sem nome.')
+                continue
+            if not allowed_xml_file(nome):
+                erros.append('%s: formato não permitido.' % nome)
+                continue
+            xml_texto = arquivo.read().decode('utf-8', errors='ignore')
+            if not xml_texto.strip():
+                erros.append('%s: XML vazio.' % nome)
+                continue
+            try:
+                xml_data = _parse_nfe_xml(xml_texto)
+                criados.append(_criar_documento_terceiros(conn, area, previsao, nome, xml_texto, xml_data, usuario))
+            except Exception as e:
+                erros.append('%s: %s' % (nome, str(e)))
+        conn.commit()
+        return jsonify({'ok': True, 'criados': criados, 'total_criados': len(criados), 'erros': erros})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'ok': False, 'erro': str(e), 'criados': criados, 'erros': erros}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/terceiros/documentos', methods=['GET'])
+def api_terceiros_documentos():
+    area = (request.args.get('area') or '').strip().lower()
+    if area not in ('recebimento', 'expedicao'):
+        return jsonify({'erro': 'Área inválida.', 'rows': []}), 400
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            '''SELECT d.*,
+                      COUNT(i.id) as total_itens,
+                      COALESCE(SUM(i.quantidade_xml), 0) as quantidade_total_xml,
+                      COALESCE(SUM(i.quantidade_bipada), 0) as quantidade_total_bipada
+               FROM terceiros_documentos d
+               LEFT JOIN terceiros_documento_itens i ON i.documento_id = d.id
+               WHERE d.area = ?
+               GROUP BY d.id
+               ORDER BY d.criado_em DESC, d.id DESC''',
+            (area,)
+        ).fetchall()
+        out = []
+        for r in rows or []:
+            row = dict(r) if hasattr(r, 'keys') else {}
+            out.append({
+                'id': row.get('id'),
+                'area': row.get('area') or '',
+                'numero_nf': row.get('numero_nf') or '',
+                'serie_nf': row.get('serie_nf') or '',
+                'chave_nfe': row.get('chave_nfe') or '',
+                'data_emissao': _fmt_data_br(row.get('data_emissao') or ''),
+                'remetente_nome': row.get('remetente_nome') or '',
+                'destinatario_nome': row.get('destinatario_nome') or '',
+                'previsao_chegada': row.get('previsao_chegada') or '',
+                'recebimento_concluido': bool(row.get('recebimento_concluido')),
+                'nota_lancada': row.get('nota_lancada') or '',
+                'enviar_para_mg': row.get('enviar_para_mg') or '',
+                'motorista_carreta': row.get('motorista_carreta') or '',
+                'carga_recebida_mg': row.get('carga_recebida_mg') or '',
+                'total_itens': int(row.get('total_itens') or 0),
+                'quantidade_total_xml': float(row.get('quantidade_total_xml') or 0),
+                'quantidade_total_bipada': float(row.get('quantidade_total_bipada') or 0),
+                'criado_em': _fmt_datahora_br(row.get('criado_em') or ''),
+            })
+        return jsonify({'rows': out})
+    finally:
+        conn.close()
+
+
+@app.route('/api/terceiros/documentos/<int:documento_id>', methods=['GET'])
+def api_terceiros_documento_detalhe(documento_id):
+    conn = get_db()
+    try:
+        doc = _carregar_documento_terceiros(conn, documento_id)
+        if not doc:
+            return jsonify({'erro': 'Documento não encontrado.'}), 404
+        for campo in ('recebimento_concluido_em', 'nota_lancada_em', 'enviar_para_mg_em', 'motorista_carreta_em', 'carga_recebida_mg_em', 'criado_em', 'atualizado_em'):
+            doc[campo] = _fmt_datahora_br(doc.get(campo) or '')
+        for ev in doc.get('eventos') or []:
+            ev['criado_em'] = _fmt_datahora_br(ev.get('criado_em') or '')
+        return jsonify(doc)
+    finally:
+        conn.close()
+
+
+@app.route('/api/terceiros/documentos/<int:documento_id>/bipar', methods=['POST'])
+def api_terceiros_bipar_item(documento_id):
+    data = request.get_json() or {}
+    item_id = int(data.get('item_id') or 0)
+    codigo_ean = (data.get('codigo_ean') or '').strip()
+    quantidade = _parse_decimal(data.get('quantidade') or 1)
+    if not item_id or not codigo_ean:
+        return jsonify({'ok': False, 'erro': 'Item e EAN são obrigatórios.'}), 400
+    if quantidade <= 0:
+        quantidade = 1
+    conn = get_db()
+    usuario = session.get('usuario', '')
+    try:
+        item = conn.execute('SELECT * FROM terceiros_documento_itens WHERE id = ? AND documento_id = ?', (item_id, documento_id)).fetchone()
+        if not item:
+            return jsonify({'ok': False, 'erro': 'Item não encontrado.'}), 404
+        item_d = dict(item) if hasattr(item, 'keys') else {}
+        ean_esperado = (item_d.get('codigo_ean') or '').strip()
+        if ean_esperado and codigo_ean != ean_esperado:
+            return jsonify({'ok': False, 'erro': 'EAN diferente do item do XML.'}), 400
+        base = _resolver_item_base_por_ean(codigo_ean)
+        if not base:
+            return jsonify({'ok': False, 'erro': 'EAN não encontrado na base de produtos.'}), 400
+        qtd_bipada = float(item_d.get('quantidade_bipada') or 0) + quantidade
+        status = _status_bipagem_terceiros(item_d.get('quantidade_xml') or 0, qtd_bipada)
+        conn.execute(
+            '''UPDATE terceiros_documento_itens
+               SET quantidade_bipada = ?, status_bipagem = ?, codigo_produto_base = ?, codigo_barras_base = ?,
+                   descricao_base = ?, ultimo_ean_bipado = ?, atualizado_em = ?, atualizado_por = ?
+               WHERE id = ?''',
+            (qtd_bipada, status, base.get('codigo_produto_base') or '', base.get('codigo_barras_base') or '', base.get('descricao_base') or '', codigo_ean, _agora_iso(), usuario, item_id)
+        )
+        _registrar_evento_terceiros(conn, documento_id, 'bipagem_item', str(item_d.get('quantidade_bipada') or 0), str(qtd_bipada), usuario, 'item_id=%s' % item_id)
+        conn.execute('UPDATE terceiros_documentos SET atualizado_em = ?, atualizado_por = ? WHERE id = ?', (_agora_iso(), usuario, documento_id))
+        conn.commit()
+        return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'ok': False, 'erro': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/terceiros/documentos/<int:documento_id>/status', methods=['POST'])
+def api_terceiros_status(documento_id):
+    data = request.get_json() or {}
+    campo = (data.get('campo') or '').strip()
+    valor = (data.get('valor') or '').strip()
+    usuario = session.get('usuario', '')
+    if campo not in ('recebimento_concluido', 'nota_lancada', 'enviar_para_mg', 'carga_recebida_mg'):
+        return jsonify({'ok': False, 'erro': 'Campo inválido.'}), 400
+    conn = get_db()
+    try:
+        row = conn.execute('SELECT * FROM terceiros_documentos WHERE id = ?', (documento_id,)).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
+        doc = dict(row) if hasattr(row, 'keys') else {}
+        agora = _agora_iso()
+        if campo == 'recebimento_concluido':
+            novo_bool = 1 if str(valor).strip().lower() in ('1', 'true', 'sim', 's', 'yes') else 0
+            conn.execute(
+                'UPDATE terceiros_documentos SET recebimento_concluido = ?, recebimento_concluido_em = ?, recebimento_concluido_por = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+                (novo_bool, agora, usuario, agora, usuario, documento_id)
+            )
+            _registrar_evento_terceiros(conn, documento_id, campo, str(doc.get('recebimento_concluido') or 0), str(novo_bool), usuario)
+        else:
+            valor_norm = _valor_bool_texto(valor)
+            if not valor_norm:
+                return jsonify({'ok': False, 'erro': 'Use sim ou nao.'}), 400
+            campo_em = campo + '_em'
+            campo_por = campo + '_por'
+            conn.execute(
+                'UPDATE terceiros_documentos SET ' + campo + ' = ?, ' + campo_em + ' = ?, ' + campo_por + ' = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+                (valor_norm, agora, usuario, agora, usuario, documento_id)
+            )
+            _registrar_evento_terceiros(conn, documento_id, campo, str(doc.get(campo) or ''), valor_norm, usuario)
+        conn.commit()
+        return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'ok': False, 'erro': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/terceiros/documentos/<int:documento_id>/motorista', methods=['POST'])
+def api_terceiros_motorista(documento_id):
+    data = request.get_json() or {}
+    motorista = (data.get('motorista') or '').strip()
+    if not motorista:
+        return jsonify({'ok': False, 'erro': 'Informe o motorista da carreta.'}), 400
+    usuario = session.get('usuario', '')
+    conn = get_db()
+    try:
+        row = conn.execute('SELECT motorista_carreta FROM terceiros_documentos WHERE id = ?', (documento_id,)).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
+        valor_antigo = (row['motorista_carreta'] or '') if hasattr(row, 'keys') else (row[0] or '')
+        agora = _agora_iso()
+        conn.execute(
+            'UPDATE terceiros_documentos SET motorista_carreta = ?, motorista_carreta_em = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+            (motorista, agora, agora, usuario, documento_id)
+        )
+        _registrar_evento_terceiros(conn, documento_id, 'motorista_carreta', valor_antigo, motorista, usuario)
+        conn.commit()
+        return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'ok': False, 'erro': str(e)}), 500
+    finally:
+        conn.close()
 
 
 @app.route('/api/estatisticas', methods=['GET'])

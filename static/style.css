@@ -210,6 +210,28 @@ body {
     display: block;
 }
 
+.terceiros-subtab {
+    text-transform: uppercase;
+}
+
+#modulo-terceiros .stats-grid {
+    margin-bottom: 0;
+}
+
+#modulo-terceiros .stat-card h3 {
+    font-size: 13px;
+}
+
+#modulo-terceiros .info-text {
+    line-height: 1.45;
+}
+
+#modulo-terceiros small.info-text {
+    display: block;
+    margin-top: 8px;
+    color: #607d8b;
+}
+
 .modulo-vazio-conteudo {
     flex: 1;
     display: flex;

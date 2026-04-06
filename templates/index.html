@@ -1339,7 +1339,296 @@
             </div>
         </div>
 
-        <div id="modulo-terceiros" class="modulo-area modulo-vazio" hidden aria-label="Recebimento e expedição de terceiros"></div>
+        <div id="modulo-terceiros" class="modulo-area modulo-devolucoes" hidden aria-label="Recebimento e expedição de terceiros">
+            <div class="devolucoes-conteudo">
+                <nav class="tabs devolucoes-subtabs" aria-label="Abas do módulo de terceiros">
+                    <button type="button" class="tab-button terceiros-subtab active" data-ter-tab="recebimento">RECEBIMENTO</button>
+                    <button type="button" class="tab-button terceiros-subtab" data-ter-tab="expedicao">EXPEDIÇÃO DE TERCEIROS</button>
+                </nav>
+
+                <div id="terceiros-panel-recebimento" class="devolucoes-panel devolucoes-panel-active">
+                    <div class="painel-titulo">
+                        <span class="painel-titulo-icon">📦</span>
+                        <h2 class="painel-titulo-texto">Recebimento</h2>
+                        <p class="painel-titulo-sub">Upload de XML, conferência por bipagem e acompanhamento do processo</p>
+                    </div>
+
+                    <div class="conferencia-blocos-grid">
+                        <div class="conferencia-bloco form-container" style="background: #e3f2fd; border-left: 4px solid #1976D2;">
+                            <h3 style="margin-top: 0; color: #1976D2;">1. ENVIAR XMLS DE RECEBIMENTO</h3>
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="ter-recebimento-previsao">Previsão de chegada *</label>
+                                    <input type="datetime-local" id="ter-recebimento-previsao">
+                                </div>
+                                <div class="form-group" style="flex: 2;">
+                                    <label for="ter-recebimento-xml">XMLs da nota fiscal *</label>
+                                    <input type="file" id="ter-recebimento-xml" multiple accept=".xml">
+                                </div>
+                                <div class="form-group" style="align-self: flex-end;">
+                                    <button type="button" class="btn btn-primary" id="btn-ter-recebimento-upload">📤 Subir XMLs</button>
+                                </div>
+                            </div>
+                            <div id="ter-recebimento-upload-resultado" class="info-text" style="margin-top: 10px;"></div>
+                        </div>
+                    </div>
+
+                    <div class="conferencia-blocos-grid">
+                        <div class="conferencia-bloco form-container">
+                            <h3 style="margin-top: 0; color: #366092;">2. NOTAS DE RECEBIMENTO</h3>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>NF</th>
+                                            <th>Remetente</th>
+                                            <th>Destinatário</th>
+                                            <th>Previsão</th>
+                                            <th>Itens</th>
+                                            <th>Bipado</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ter-tbody-recebimento-documentos">
+                                        <tr><td colspan="7" class="loading">Carregando...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="conferencia-bloco form-container">
+                            <h3 style="margin-top: 0; color: #366092;">3. DETALHE DA NOTA</h3>
+                            <div id="ter-recebimento-detalhe-vazio" class="info-text">Selecione uma nota para visualizar os itens e os status.</div>
+                            <div id="ter-recebimento-detalhe" style="display: none;">
+                                <div class="stats-grid" style="margin-bottom: 16px;">
+                                    <div class="stat-card"><h3>NF</h3><p class="stat-number" id="ter-rec-stat-nf">-</p></div>
+                                    <div class="stat-card"><h3>Total XML</h3><p class="stat-number" id="ter-rec-stat-qtd-xml">0</p></div>
+                                    <div class="stat-card"><h3>Total bipado</h3><p class="stat-number" id="ter-rec-stat-qtd-bipada">0</p></div>
+                                    <div class="stat-card"><h3>Pendências</h3><p class="stat-number" id="ter-rec-stat-pendencias">0</p></div>
+                                </div>
+
+                                <div class="form-container" style="margin-bottom: 16px;">
+                                    <h4 style="margin-top: 0; color: #1976D2;">Dados da nota</h4>
+                                    <div class="form-row">
+                                        <div class="form-group"><label>Remetente</label><div id="ter-rec-remetente" class="info-text">-</div></div>
+                                        <div class="form-group"><label>Destinatário</label><div id="ter-rec-destinatario" class="info-text">-</div></div>
+                                        <div class="form-group"><label>Previsão</label><div id="ter-rec-previsao" class="info-text">-</div></div>
+                                    </div>
+                                </div>
+
+                                <div class="table-container" style="margin-bottom: 16px;">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Item</th>
+                                                <th>EAN</th>
+                                                <th>Descrição XML</th>
+                                                <th>Base</th>
+                                                <th>Qtd. XML</th>
+                                                <th>Qtd. bipada</th>
+                                                <th>Status</th>
+                                                <th>Bipar EAN</th>
+                                                <th>Ação</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="ter-tbody-recebimento-itens">
+                                            <tr><td colspan="9" class="loading">Selecione uma nota.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div class="form-container">
+                                    <h4 style="margin-top: 0; color: #1976D2;">Status operacionais</h4>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>Recebimento concluído</label>
+                                            <button type="button" class="btn btn-primary" id="btn-ter-rec-concluir">Marcar concluído</button>
+                                            <small id="ter-rec-concluido-meta" class="info-text"></small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="ter-rec-nota-lancada">Nota fiscal foi lançada?</label>
+                                            <select id="ter-rec-nota-lancada">
+                                                <option value="">Selecione</option>
+                                                <option value="sim">Sim</option>
+                                                <option value="nao">Não</option>
+                                            </select>
+                                            <small id="ter-rec-nota-lancada-meta" class="info-text"></small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="ter-rec-enviar-mg">Enviar carga para MG?</label>
+                                            <select id="ter-rec-enviar-mg">
+                                                <option value="">Selecione</option>
+                                                <option value="sim">Sim</option>
+                                                <option value="nao">Não</option>
+                                            </select>
+                                            <small id="ter-rec-enviar-mg-meta" class="info-text"></small>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="ter-rec-motorista">Motorista da carreta</label>
+                                            <input type="text" id="ter-rec-motorista" placeholder="Digite o nome do motorista">
+                                            <button type="button" class="btn btn-secondary" id="btn-ter-rec-motorista" style="margin-top: 10px;">Salvar motorista</button>
+                                            <small id="ter-rec-motorista-meta" class="info-text"></small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="ter-rec-recebida-mg">Carga recebida em MG?</label>
+                                            <select id="ter-rec-recebida-mg">
+                                                <option value="">Selecione</option>
+                                                <option value="sim">Sim</option>
+                                                <option value="nao">Não</option>
+                                            </select>
+                                            <small id="ter-rec-recebida-mg-meta" class="info-text"></small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="terceiros-panel-expedicao" class="devolucoes-panel">
+                    <div class="painel-titulo">
+                        <span class="painel-titulo-icon">🚚</span>
+                        <h2 class="painel-titulo-texto">Expedição de Terceiros</h2>
+                        <p class="painel-titulo-sub">Mesmo fluxo operacional, separado da área de recebimento</p>
+                    </div>
+
+                    <div class="conferencia-blocos-grid">
+                        <div class="conferencia-bloco form-container" style="background: #fff8e1; border-left: 4px solid #f57c00;">
+                            <h3 style="margin-top: 0; color: #e65100;">1. ENVIAR XMLS DE EXPEDIÇÃO</h3>
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="ter-expedicao-previsao">Previsão de chegada *</label>
+                                    <input type="datetime-local" id="ter-expedicao-previsao">
+                                </div>
+                                <div class="form-group" style="flex: 2;">
+                                    <label for="ter-expedicao-xml">XMLs da nota fiscal *</label>
+                                    <input type="file" id="ter-expedicao-xml" multiple accept=".xml">
+                                </div>
+                                <div class="form-group" style="align-self: flex-end;">
+                                    <button type="button" class="btn btn-primary" id="btn-ter-expedicao-upload">📤 Subir XMLs</button>
+                                </div>
+                            </div>
+                            <div id="ter-expedicao-upload-resultado" class="info-text" style="margin-top: 10px;"></div>
+                        </div>
+                    </div>
+
+                    <div class="conferencia-blocos-grid">
+                        <div class="conferencia-bloco form-container">
+                            <h3 style="margin-top: 0; color: #366092;">2. NOTAS DE EXPEDIÇÃO</h3>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>NF</th>
+                                            <th>Remetente</th>
+                                            <th>Destinatário</th>
+                                            <th>Previsão</th>
+                                            <th>Itens</th>
+                                            <th>Bipado</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ter-tbody-expedicao-documentos">
+                                        <tr><td colspan="7" class="loading">Carregando...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="conferencia-bloco form-container">
+                            <h3 style="margin-top: 0; color: #366092;">3. DETALHE DA NOTA</h3>
+                            <div id="ter-expedicao-detalhe-vazio" class="info-text">Selecione uma nota para visualizar os itens e os status.</div>
+                            <div id="ter-expedicao-detalhe" style="display: none;">
+                                <div class="stats-grid" style="margin-bottom: 16px;">
+                                    <div class="stat-card"><h3>NF</h3><p class="stat-number" id="ter-exp-stat-nf">-</p></div>
+                                    <div class="stat-card"><h3>Total XML</h3><p class="stat-number" id="ter-exp-stat-qtd-xml">0</p></div>
+                                    <div class="stat-card"><h3>Total bipado</h3><p class="stat-number" id="ter-exp-stat-qtd-bipada">0</p></div>
+                                    <div class="stat-card"><h3>Pendências</h3><p class="stat-number" id="ter-exp-stat-pendencias">0</p></div>
+                                </div>
+
+                                <div class="form-container" style="margin-bottom: 16px;">
+                                    <h4 style="margin-top: 0; color: #1976D2;">Dados da nota</h4>
+                                    <div class="form-row">
+                                        <div class="form-group"><label>Remetente</label><div id="ter-exp-remetente" class="info-text">-</div></div>
+                                        <div class="form-group"><label>Destinatário</label><div id="ter-exp-destinatario" class="info-text">-</div></div>
+                                        <div class="form-group"><label>Previsão</label><div id="ter-exp-previsao" class="info-text">-</div></div>
+                                    </div>
+                                </div>
+
+                                <div class="table-container" style="margin-bottom: 16px;">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Item</th>
+                                                <th>EAN</th>
+                                                <th>Descrição XML</th>
+                                                <th>Base</th>
+                                                <th>Qtd. XML</th>
+                                                <th>Qtd. bipada</th>
+                                                <th>Status</th>
+                                                <th>Bipar EAN</th>
+                                                <th>Ação</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="ter-tbody-expedicao-itens">
+                                            <tr><td colspan="9" class="loading">Selecione uma nota.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div class="form-container">
+                                    <h4 style="margin-top: 0; color: #1976D2;">Status operacionais</h4>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>Recebimento concluído</label>
+                                            <button type="button" class="btn btn-primary" id="btn-ter-exp-concluir">Marcar concluído</button>
+                                            <small id="ter-exp-concluido-meta" class="info-text"></small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="ter-exp-nota-lancada">Nota fiscal foi lançada?</label>
+                                            <select id="ter-exp-nota-lancada">
+                                                <option value="">Selecione</option>
+                                                <option value="sim">Sim</option>
+                                                <option value="nao">Não</option>
+                                            </select>
+                                            <small id="ter-exp-nota-lancada-meta" class="info-text"></small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="ter-exp-enviar-mg">Enviar carga para MG?</label>
+                                            <select id="ter-exp-enviar-mg">
+                                                <option value="">Selecione</option>
+                                                <option value="sim">Sim</option>
+                                                <option value="nao">Não</option>
+                                            </select>
+                                            <small id="ter-exp-enviar-mg-meta" class="info-text"></small>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="ter-exp-motorista">Motorista da carreta</label>
+                                            <input type="text" id="ter-exp-motorista" placeholder="Digite o nome do motorista">
+                                            <button type="button" class="btn btn-secondary" id="btn-ter-exp-motorista" style="margin-top: 10px;">Salvar motorista</button>
+                                            <small id="ter-exp-motorista-meta" class="info-text"></small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="ter-exp-recebida-mg">Carga recebida em MG?</label>
+                                            <select id="ter-exp-recebida-mg">
+                                                <option value="">Selecione</option>
+                                                <option value="sim">Sim</option>
+                                                <option value="nao">Não</option>
+                                            </select>
+                                            <small id="ter-exp-recebida-mg-meta" class="info-text"></small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Modal de aceite para zerar todos os itens -->

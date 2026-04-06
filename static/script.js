@@ -83,6 +83,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initModulos();
     initTabs();
     initDevolucoesTabs();
+    initTerceirosTabs();
     initForms();
     initFiltrosBase();
     initBaseItemModal();
@@ -109,6 +110,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
 });
+
+let _terceirosTabAtiva = 'recebimento';
+let _terceirosDocAtual = {
+    recebimento: null,
+    expedicao: null
+};
 
 function initNavegacaoRapida() {
     var linkInicio = document.querySelector('.header-link-inicio');
@@ -170,6 +177,8 @@ function initModulos() {
             if (painelDev && painelDev.classList.contains('devolucoes-panel-active')) {
                 loadPainelDevolucoes();
             }
+        } else if (id === 'terceiros') {
+            loadTerceirosDocumentos(_terceirosTabAtiva || 'recebimento');
         }
     }
 
@@ -218,6 +227,31 @@ function initDevolucoesTabs() {
     });
 
     mostrarDevTab('painel');
+}
+
+function initTerceirosTabs() {
+    var botoes = document.querySelectorAll('.terceiros-subtab[data-ter-tab]');
+    var recebimento = document.getElementById('terceiros-panel-recebimento');
+    var expedicao = document.getElementById('terceiros-panel-expedicao');
+    if (!botoes.length || !recebimento || !expedicao) return;
+
+    function mostrarTerTab(tab) {
+        _terceirosTabAtiva = tab === 'expedicao' ? 'expedicao' : 'recebimento';
+        botoes.forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-ter-tab') === _terceirosTabAtiva);
+        });
+        recebimento.classList.toggle('devolucoes-panel-active', _terceirosTabAtiva === 'recebimento');
+        expedicao.classList.toggle('devolucoes-panel-active', _terceirosTabAtiva === 'expedicao');
+        loadTerceirosDocumentos(_terceirosTabAtiva);
+    }
+
+    botoes.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            mostrarTerTab(btn.getAttribute('data-ter-tab') || 'recebimento');
+        });
+    });
+
+    mostrarTerTab('recebimento');
 }
 
 // Sistema de Abas
@@ -411,6 +445,262 @@ async function loadPainelDevolucoes() {
     });
 
     renderPainelDevolucoesCharts(data);
+}
+
+function getTerceirosPrefixo(area) {
+    return area === 'expedicao' ? 'ter-exp' : 'ter-rec';
+}
+
+function getTerceirosAreaApi(area) {
+    return area === 'expedicao' ? 'expedicao' : 'recebimento';
+}
+
+async function uploadXmlTerceiros(area) {
+    var prefixo = area === 'expedicao' ? 'ter-expedicao' : 'ter-recebimento';
+    var previsaoEl = document.getElementById(prefixo + '-previsao');
+    var filesEl = document.getElementById(prefixo + '-xml');
+    var resultadoEl = document.getElementById(prefixo + '-upload-resultado');
+    if (!previsaoEl || !filesEl || !resultadoEl) return;
+    if (!previsaoEl.value.trim()) {
+        resultadoEl.textContent = 'Informe a previsão de chegada.';
+        return;
+    }
+    if (!filesEl.files || !filesEl.files.length) {
+        resultadoEl.textContent = 'Selecione ao menos um XML.';
+        return;
+    }
+    var form = new FormData();
+    form.append('area', getTerceirosAreaApi(area));
+    form.append('previsao_chegada', previsaoEl.value.trim());
+    Array.prototype.forEach.call(filesEl.files, function(file) {
+        form.append('files', file);
+    });
+    resultadoEl.textContent = 'Enviando XMLs...';
+    try {
+        const resp = await fetch(API_BASE + '/terceiros/upload-xml', {
+            method: 'POST',
+            body: form,
+            credentials: 'same-origin'
+        });
+        const data = await resp.json().catch(function() { return {}; });
+        if (!resp.ok || !data.ok) {
+            resultadoEl.textContent = (data && data.erro) ? data.erro : 'Erro ao enviar XMLs.';
+            return;
+        }
+        resultadoEl.textContent = 'Upload concluído. ' + (data.total_criados || 0) + ' nota(s) criada(s).' + ((data.erros && data.erros.length) ? ' Erros: ' + data.erros.join(' | ') : '');
+        filesEl.value = '';
+        loadTerceirosDocumentos(area);
+        showMessage('XMLs processados com sucesso.', 'success');
+    } catch (e) {
+        resultadoEl.textContent = 'Erro ao enviar XMLs.';
+    }
+}
+
+async function loadTerceirosDocumentos(area) {
+    area = area === 'expedicao' ? 'expedicao' : 'recebimento';
+    var tbodyId = area === 'expedicao' ? 'ter-tbody-expedicao-documentos' : 'ter-tbody-recebimento-documentos';
+    var tbody = document.getElementById(tbodyId);
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading">Carregando...</td></tr>';
+    const resp = await fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi(area)));
+    if (!tbody) return;
+    if (!resp || resp.erro) {
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">' + escapeHtml((resp && resp.erro) || 'Erro ao carregar documentos.') + '</td></tr>';
+        return;
+    }
+    const rows = Array.isArray(resp.rows) ? resp.rows : [];
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Nenhuma nota enviada ainda.</td></tr>';
+        resetTerceirosDetalhe(area);
+        return;
+    }
+    tbody.innerHTML = rows.map(function(row) {
+        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+        return '<tr>'
+            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
+            + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
+            + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
+            + '<td><button type="button" class="btn btn-primary btn-sm" data-ter-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(area) + '">Abrir</button></td>'
+            + '</tr>';
+    }).join('');
+    tbody.querySelectorAll('[data-ter-doc]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = parseInt(btn.getAttribute('data-ter-doc') || '0', 10);
+            var areaBtn = btn.getAttribute('data-ter-area') || area;
+            if (id) loadTerceirosDocumentoDetalhe(areaBtn, id);
+        });
+    });
+}
+
+function resetTerceirosDetalhe(area) {
+    var prefixo = getTerceirosPrefixo(area);
+    var vazio = document.getElementById(area === 'expedicao' ? 'ter-expedicao-detalhe-vazio' : 'ter-recebimento-detalhe-vazio');
+    var detalhe = document.getElementById(area === 'expedicao' ? 'ter-expedicao-detalhe' : 'ter-recebimento-detalhe');
+    if (vazio) vazio.style.display = 'block';
+    if (detalhe) detalhe.style.display = 'none';
+    _terceirosDocAtual[area] = null;
+    ['nf', 'qtd-xml', 'qtd-bipada', 'pendencias'].forEach(function(suf) {
+        var el = document.getElementById(prefixo + '-stat-' + suf);
+        if (el) el.textContent = suf === 'nf' ? '-' : '0';
+    });
+    ['remetente', 'destinatario', 'previsao', 'concluido-meta', 'nota-lancada-meta', 'enviar-mg-meta', 'motorista-meta', 'recebida-mg-meta'].forEach(function(suf) {
+        var el = document.getElementById(prefixo + '-' + suf);
+        if (el) el.textContent = '-';
+    });
+    var tbody = document.getElementById(area === 'expedicao' ? 'ter-tbody-expedicao-itens' : 'ter-tbody-recebimento-itens');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">Selecione uma nota.</td></tr>';
+}
+
+function preencherMetaTerceiros(prefixo, campoBase, valor, usuario, datahora) {
+    var el = document.getElementById(prefixo + '-' + campoBase);
+    if (!el) return;
+    var partes = [];
+    if (valor) partes.push(String(valor));
+    if (usuario) partes.push('por ' + usuario);
+    if (datahora) partes.push('em ' + datahora);
+    el.textContent = partes.length ? partes.join(' ') : '-';
+}
+
+async function loadTerceirosDocumentoDetalhe(area, documentoId) {
+    area = area === 'expedicao' ? 'expedicao' : 'recebimento';
+    const prefixo = getTerceirosPrefixo(area);
+    const vazio = document.getElementById(area === 'expedicao' ? 'ter-expedicao-detalhe-vazio' : 'ter-recebimento-detalhe-vazio');
+    const detalhe = document.getElementById(area === 'expedicao' ? 'ter-expedicao-detalhe' : 'ter-recebimento-detalhe');
+    const tbody = document.getElementById(area === 'expedicao' ? 'ter-tbody-expedicao-itens' : 'ter-tbody-recebimento-itens');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando detalhe...</td></tr>';
+    const doc = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId));
+    if (!doc || doc.erro) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml((doc && doc.erro) || 'Erro ao carregar.') + '</td></tr>';
+        return;
+    }
+    _terceirosDocAtual[area] = doc.id;
+    if (vazio) vazio.style.display = 'none';
+    if (detalhe) detalhe.style.display = 'block';
+    var statNf = document.getElementById(prefixo + '-stat-nf');
+    var statXml = document.getElementById(prefixo + '-stat-qtd-xml');
+    var statBip = document.getElementById(prefixo + '-stat-qtd-bipada');
+    var statPend = document.getElementById(prefixo + '-stat-pendencias');
+    if (statNf) statNf.textContent = (doc.numero_nf || '-') + (doc.serie_nf ? ('/' + doc.serie_nf) : '');
+    if (statXml) statXml.textContent = String((doc.resumo && doc.resumo.quantidade_total_xml) || 0);
+    if (statBip) statBip.textContent = String((doc.resumo && doc.resumo.quantidade_total_bipada) || 0);
+    if (statPend) statPend.textContent = String((doc.resumo && doc.resumo.itens_com_pendencia) || 0);
+    var remetente = document.getElementById(prefixo + '-remetente');
+    var destinatario = document.getElementById(prefixo + '-destinatario');
+    var previsao = document.getElementById(prefixo + '-previsao');
+    if (remetente) remetente.textContent = doc.remetente_nome || '-';
+    if (destinatario) destinatario.textContent = doc.destinatario_nome || '-';
+    if (previsao) previsao.textContent = doc.previsao_chegada || '-';
+    var notaLancadaEl = document.getElementById(prefixo + '-nota-lancada');
+    var enviarMgEl = document.getElementById(prefixo + '-enviar-mg');
+    var recebidaMgEl = document.getElementById(prefixo + '-recebida-mg');
+    var motoristaEl = document.getElementById(prefixo + '-motorista');
+    if (notaLancadaEl) notaLancadaEl.value = doc.nota_lancada || '';
+    if (enviarMgEl) enviarMgEl.value = doc.enviar_para_mg || '';
+    if (recebidaMgEl) recebidaMgEl.value = doc.carga_recebida_mg || '';
+    if (motoristaEl) motoristaEl.value = doc.motorista_carreta || '';
+    preencherMetaTerceiros(prefixo, 'concluido-meta', doc.recebimento_concluido ? 'Concluído' : '', doc.recebimento_concluido_por || '', doc.recebimento_concluido_em || '');
+    preencherMetaTerceiros(prefixo, 'nota-lancada-meta', doc.nota_lancada || '', doc.nota_lancada_por || '', doc.nota_lancada_em || '');
+    preencherMetaTerceiros(prefixo, 'enviar-mg-meta', doc.enviar_para_mg || '', doc.enviar_para_mg_por || '', doc.enviar_para_mg_em || '');
+    preencherMetaTerceiros(prefixo, 'motorista-meta', doc.motorista_carreta || '', '', doc.motorista_carreta_em || '');
+    preencherMetaTerceiros(prefixo, 'recebida-mg-meta', doc.carga_recebida_mg || '', doc.carga_recebida_mg_por || '', doc.carga_recebida_mg_em || '');
+
+    if (!tbody) return;
+    const itens = Array.isArray(doc.itens) ? doc.itens : [];
+    if (!itens.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhum item encontrado no XML.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = itens.map(function(item) {
+        var baseEncontrada = item.codigo_produto_base || item.descricao_base;
+        var baseHtml = baseEncontrada
+            ? ('<span style="color:#2e7d32;font-weight:700;">' + escapeHtml(item.codigo_produto_base || item.descricao_base || 'Encontrado') + '</span>')
+            : '<span style="color:#c62828;font-weight:700;">Não encontrado</span>';
+        return '<tr>'
+            + '<td>' + escapeHtml(String(item.n_item || '-')) + '</td>'
+            + '<td>' + escapeHtml(item.codigo_ean || '-') + '</td>'
+            + '<td>' + escapeHtml(item.descricao_xml || '-') + '</td>'
+            + '<td>' + baseHtml + '</td>'
+            + '<td><strong>' + escapeHtml(String(item.quantidade_xml || 0)) + '</strong></td>'
+            + '<td>' + escapeHtml(String(item.quantidade_bipada || 0)) + '</td>'
+            + '<td>' + escapeHtml(item.status_bipagem || 'PENDENTE') + '</td>'
+            + '<td><input type="text" id="' + prefixo + '-ean-item-' + item.id + '" value="' + escapeHtml(item.codigo_ean || '') + '" placeholder="EAN" style="width: 100%; min-width: 120px;"></td>'
+            + '<td><button type="button" class="btn btn-primary btn-sm" data-ter-bipar-item="' + escapeHtml(String(item.id)) + '" data-ter-area="' + escapeHtml(area) + '">Bipar</button></td>'
+            + '</tr>';
+    }).join('');
+    tbody.querySelectorAll('[data-ter-bipar-item]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var itemId = parseInt(btn.getAttribute('data-ter-bipar-item') || '0', 10);
+            var areaBtn = btn.getAttribute('data-ter-area') || area;
+            if (itemId) biparItemTerceiros(areaBtn, itemId);
+        });
+    });
+}
+
+async function biparItemTerceiros(area, itemId) {
+    area = area === 'expedicao' ? 'expedicao' : 'recebimento';
+    var documentoId = _terceirosDocAtual[area];
+    if (!documentoId) return;
+    var prefixo = getTerceirosPrefixo(area);
+    var input = document.getElementById(prefixo + '-ean-item-' + itemId);
+    var codigo = input ? input.value.trim() : '';
+    if (!codigo) {
+        showMessage('Digite o EAN do item para bipar.', 'warning');
+        return;
+    }
+    var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/bipar', {
+        method: 'POST',
+        body: JSON.stringify({ item_id: itemId, codigo_ean: codigo, quantidade: 1 })
+    });
+    if (!resp || !resp.ok) {
+        showMessage((resp && resp.erro) || 'Erro ao bipar item.', 'error');
+        return;
+    }
+    showMessage('Item bipado com sucesso.', 'success');
+    await loadTerceirosDocumentoDetalhe(area, documentoId);
+    await loadTerceirosDocumentos(area);
+}
+
+async function atualizarStatusTerceiros(area, campo, valor) {
+    area = area === 'expedicao' ? 'expedicao' : 'recebimento';
+    var documentoId = _terceirosDocAtual[area];
+    if (!documentoId) return;
+    var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
+        method: 'POST',
+        body: JSON.stringify({ campo: campo, valor: valor })
+    });
+    if (!resp || !resp.ok) {
+        showMessage((resp && resp.erro) || 'Erro ao atualizar status.', 'error');
+        return;
+    }
+    showMessage('Status atualizado.', 'success');
+    await loadTerceirosDocumentoDetalhe(area, documentoId);
+    await loadTerceirosDocumentos(area);
+}
+
+async function salvarMotoristaTerceiros(area) {
+    area = area === 'expedicao' ? 'expedicao' : 'recebimento';
+    var documentoId = _terceirosDocAtual[area];
+    if (!documentoId) return;
+    var prefixo = getTerceirosPrefixo(area);
+    var input = document.getElementById(prefixo + '-motorista');
+    var motorista = input ? input.value.trim() : '';
+    if (!motorista) {
+        showMessage('Digite o motorista da carreta.', 'warning');
+        return;
+    }
+    var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/motorista', {
+        method: 'POST',
+        body: JSON.stringify({ motorista: motorista })
+    });
+    if (!resp || !resp.ok) {
+        showMessage((resp && resp.erro) || 'Erro ao salvar motorista.', 'error');
+        return;
+    }
+    showMessage('Motorista salvo.', 'success');
+    await loadTerceirosDocumentoDetalhe(area, documentoId);
+    await loadTerceirosDocumentos(area);
 }
 
 // Inicializar formulários
@@ -979,6 +1269,36 @@ function initForms() {
             devCb.focus();
         }
     });
+
+    const btnTerRecebUpload = document.getElementById('btn-ter-recebimento-upload');
+    if (btnTerRecebUpload) btnTerRecebUpload.addEventListener('click', function() { uploadXmlTerceiros('recebimento'); });
+    const btnTerExpUpload = document.getElementById('btn-ter-expedicao-upload');
+    if (btnTerExpUpload) btnTerExpUpload.addEventListener('click', function() { uploadXmlTerceiros('expedicao'); });
+
+    const btnTerRecConcluir = document.getElementById('btn-ter-rec-concluir');
+    if (btnTerRecConcluir) btnTerRecConcluir.addEventListener('click', function() { atualizarStatusTerceiros('recebimento', 'recebimento_concluido', 'sim'); });
+    const btnTerExpConcluir = document.getElementById('btn-ter-exp-concluir');
+    if (btnTerExpConcluir) btnTerExpConcluir.addEventListener('click', function() { atualizarStatusTerceiros('expedicao', 'recebimento_concluido', 'sim'); });
+
+    [
+        ['ter-rec-nota-lancada', 'recebimento', 'nota_lancada'],
+        ['ter-rec-enviar-mg', 'recebimento', 'enviar_para_mg'],
+        ['ter-rec-recebida-mg', 'recebimento', 'carga_recebida_mg'],
+        ['ter-exp-nota-lancada', 'expedicao', 'nota_lancada'],
+        ['ter-exp-enviar-mg', 'expedicao', 'enviar_para_mg'],
+        ['ter-exp-recebida-mg', 'expedicao', 'carga_recebida_mg']
+    ].forEach(function(cfg) {
+        var elStatus = document.getElementById(cfg[0]);
+        if (!elStatus) return;
+        elStatus.addEventListener('change', function() {
+            if (elStatus.value) atualizarStatusTerceiros(cfg[1], cfg[2], elStatus.value);
+        });
+    });
+
+    const btnTerRecMotorista = document.getElementById('btn-ter-rec-motorista');
+    if (btnTerRecMotorista) btnTerRecMotorista.addEventListener('click', function() { salvarMotoristaTerceiros('recebimento'); });
+    const btnTerExpMotorista = document.getElementById('btn-ter-exp-motorista');
+    if (btnTerExpMotorista) btnTerExpMotorista.addEventListener('click', function() { salvarMotoristaTerceiros('expedicao'); });
 }
 
 // Verifica se o produto está na relação de itens da viagem
