@@ -188,52 +188,11 @@ body {
 }
 
 .devolucoes-subtabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
     margin-bottom: 16px;
-    padding: 10px;
-    background: #e3ecf5;
-    border: 1px solid #c8d7e6;
-    border-radius: 12px;
 }
 
 .devolucoes-subtab {
-    width: 100%;
-    min-height: 48px;
-    padding: 12px 18px;
-    border: 1px solid #c3d3e2;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.68);
-    font-size: 14px;
-    font-weight: 700;
-    color: #455a64;
-    cursor: pointer;
-    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
-}
-
-.devolucoes-subtab:hover {
-    background: rgba(255, 255, 255, 0.92);
-    border-color: #9eb6cf;
-}
-
-.devolucoes-subtab.active {
-    background: #fff;
-    color: #366092;
-    border-color: #366092;
-    box-shadow: 0 6px 16px rgba(54, 96, 146, 0.14);
-}
-
-@media (max-width: 980px) {
-    .devolucoes-subtabs {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
-@media (max-width: 620px) {
-    .devolucoes-subtabs {
-        grid-template-columns: 1fr;
-    }
+    text-transform: uppercase;
 }
 
 .devolucoes-titulo-principal {
