@@ -232,6 +232,113 @@ body {
     color: #607d8b;
 }
 
+#modulo-terceiros .terceiros-panel-unico {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+#modulo-terceiros .terceiros-upload-grid {
+    display: block;
+    margin-bottom: 0;
+}
+
+#modulo-terceiros .terceiros-upload-bloco {
+    max-width: 920px;
+    width: 100%;
+    padding: 16px 18px;
+}
+
+#modulo-terceiros .terceiros-upload-bloco .form-row {
+    gap: 16px;
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+#modulo-terceiros .terceiros-upload-bloco .form-group {
+    min-width: 220px;
+}
+
+#modulo-terceiros .terceiros-upload-bloco .btn {
+    width: 100%;
+    margin-top: 0;
+    min-width: 190px;
+}
+
+#modulo-terceiros .terceiros-conteudo-grid {
+    display: grid;
+    grid-template-columns: minmax(360px, 520px) minmax(520px, 1fr);
+    gap: 18px;
+    align-items: start;
+    margin-bottom: 0;
+}
+
+#modulo-terceiros .terceiros-lista-bloco,
+#modulo-terceiros .terceiros-detalhe-bloco {
+    padding: 16px 18px;
+}
+
+#modulo-terceiros .terceiros-lista-bloco {
+    min-width: 0;
+}
+
+#modulo-terceiros .terceiros-detalhe-bloco {
+    min-width: 0;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .table-container,
+#modulo-terceiros .terceiros-detalhe-bloco .table-container {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .data-table {
+    min-width: 760px;
+}
+
+#modulo-terceiros .terceiros-detalhe-bloco .data-table {
+    min-width: 980px;
+}
+
+#modulo-terceiros .terceiros-detalhe-bloco .stats-grid {
+    grid-template-columns: repeat(4, minmax(130px, 1fr));
+    gap: 12px;
+}
+
+#modulo-terceiros .terceiros-detalhe-bloco .form-container {
+    padding: 14px 16px;
+}
+
+#modulo-terceiros .terceiros-detalhe-bloco .btn {
+    margin-top: 10px;
+}
+
+@media (max-width: 1180px) {
+    #modulo-terceiros .terceiros-conteudo-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #modulo-terceiros .terceiros-upload-bloco {
+        max-width: none;
+    }
+}
+
+@media (max-width: 768px) {
+    #modulo-terceiros .terceiros-upload-bloco,
+    #modulo-terceiros .terceiros-lista-bloco,
+    #modulo-terceiros .terceiros-detalhe-bloco {
+        padding: 14px;
+    }
+
+    #modulo-terceiros .terceiros-upload-bloco .form-group {
+        min-width: 100%;
+    }
+
+    #modulo-terceiros .terceiros-detalhe-bloco .stats-grid {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+    }
+}
+
 .modulo-vazio-conteudo {
     flex: 1;
     display: flex;
