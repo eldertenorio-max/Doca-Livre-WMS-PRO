@@ -777,6 +777,158 @@ def _tbl_terceiros_documento_eventos(conn):
     return 'public.terceiros_documento_eventos' if getattr(conn, 'kind', None) == 'pg' else 'terceiros_documento_eventos'
 
 
+def _ensure_terceiros_schema(conn):
+    if getattr(conn, 'kind', None) == 'pg':
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS public.terceiros_documentos (
+                id BIGSERIAL PRIMARY KEY,
+                area TEXT NOT NULL CHECK (area IN ('recebimento', 'expedicao')),
+                chave_nfe TEXT,
+                numero_nf TEXT,
+                serie_nf TEXT,
+                data_emissao TEXT,
+                remetente_nome TEXT,
+                remetente_cnpj TEXT,
+                destinatario_nome TEXT,
+                destinatario_cnpj TEXT,
+                previsao_chegada TEXT,
+                arquivo_nome TEXT,
+                xml_conteudo TEXT,
+                recebimento_concluido BOOLEAN NOT NULL DEFAULT FALSE,
+                recebimento_concluido_em TIMESTAMPTZ,
+                recebimento_concluido_por TEXT,
+                nota_lancada TEXT,
+                nota_lancada_em TIMESTAMPTZ,
+                nota_lancada_por TEXT,
+                enviar_para_mg TEXT,
+                enviar_para_mg_em TIMESTAMPTZ,
+                enviar_para_mg_por TEXT,
+                motorista_carreta TEXT,
+                motorista_carreta_em TIMESTAMPTZ,
+                carga_recebida_mg TEXT,
+                carga_recebida_mg_em TIMESTAMPTZ,
+                carga_recebida_mg_por TEXT,
+                criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                criado_por TEXT,
+                atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                atualizado_por TEXT
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS public.terceiros_documento_itens (
+                id BIGSERIAL PRIMARY KEY,
+                documento_id BIGINT NOT NULL REFERENCES public.terceiros_documentos(id) ON DELETE CASCADE,
+                n_item INTEGER,
+                codigo_ean TEXT,
+                codigo_produto_xml TEXT,
+                descricao_xml TEXT,
+                unidade_xml TEXT,
+                quantidade_xml NUMERIC(14,3) NOT NULL DEFAULT 0,
+                codigo_produto_base TEXT,
+                codigo_barras_base TEXT,
+                descricao_base TEXT,
+                quantidade_bipada NUMERIC(14,3) NOT NULL DEFAULT 0,
+                status_bipagem TEXT NOT NULL DEFAULT 'PENDENTE',
+                ultimo_ean_bipado TEXT,
+                atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                atualizado_por TEXT
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS public.terceiros_documento_eventos (
+                id BIGSERIAL PRIMARY KEY,
+                documento_id BIGINT NOT NULL REFERENCES public.terceiros_documentos(id) ON DELETE CASCADE,
+                evento TEXT NOT NULL,
+                valor_anterior TEXT,
+                valor_novo TEXT,
+                usuario TEXT,
+                criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                detalhes TEXT
+            )'''
+        )
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documentos_area ON public.terceiros_documentos(area, criado_em DESC)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documentos_chave ON public.terceiros_documentos(chave_nfe)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_itens_documento ON public.terceiros_documento_itens(documento_id)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_itens_ean ON public.terceiros_documento_itens(codigo_ean)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_eventos_documento ON public.terceiros_documento_eventos(documento_id, criado_em DESC)')
+    else:
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS terceiros_documentos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                area TEXT NOT NULL,
+                chave_nfe TEXT,
+                numero_nf TEXT,
+                serie_nf TEXT,
+                data_emissao TEXT,
+                remetente_nome TEXT,
+                remetente_cnpj TEXT,
+                destinatario_nome TEXT,
+                destinatario_cnpj TEXT,
+                previsao_chegada TEXT,
+                arquivo_nome TEXT,
+                xml_conteudo TEXT,
+                recebimento_concluido INTEGER NOT NULL DEFAULT 0,
+                recebimento_concluido_em TEXT,
+                recebimento_concluido_por TEXT,
+                nota_lancada TEXT,
+                nota_lancada_em TEXT,
+                nota_lancada_por TEXT,
+                enviar_para_mg TEXT,
+                enviar_para_mg_em TEXT,
+                enviar_para_mg_por TEXT,
+                motorista_carreta TEXT,
+                motorista_carreta_em TEXT,
+                carga_recebida_mg TEXT,
+                carga_recebida_mg_em TEXT,
+                carga_recebida_mg_por TEXT,
+                criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                criado_por TEXT,
+                atualizado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                atualizado_por TEXT
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS terceiros_documento_itens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                documento_id INTEGER NOT NULL,
+                n_item INTEGER,
+                codigo_ean TEXT,
+                codigo_produto_xml TEXT,
+                descricao_xml TEXT,
+                unidade_xml TEXT,
+                quantidade_xml REAL NOT NULL DEFAULT 0,
+                codigo_produto_base TEXT,
+                codigo_barras_base TEXT,
+                descricao_base TEXT,
+                quantidade_bipada REAL NOT NULL DEFAULT 0,
+                status_bipagem TEXT NOT NULL DEFAULT 'PENDENTE',
+                ultimo_ean_bipado TEXT,
+                atualizado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                atualizado_por TEXT,
+                FOREIGN KEY (documento_id) REFERENCES terceiros_documentos(id) ON DELETE CASCADE
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS terceiros_documento_eventos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                documento_id INTEGER NOT NULL,
+                evento TEXT NOT NULL,
+                valor_anterior TEXT,
+                valor_novo TEXT,
+                usuario TEXT,
+                criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                detalhes TEXT,
+                FOREIGN KEY (documento_id) REFERENCES terceiros_documentos(id) ON DELETE CASCADE
+            )'''
+        )
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documentos_area ON terceiros_documentos(area, criado_em DESC)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documentos_chave ON terceiros_documentos(chave_nfe)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_itens_documento ON terceiros_documento_itens(documento_id)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_itens_ean ON terceiros_documento_itens(codigo_ean)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_eventos_documento ON terceiros_documento_eventos(documento_id, criado_em DESC)')
+    conn.commit()
+
+
 def _usa_banco_para_dados():
     """True quando DATABASE_URL está definido: app usa apenas o banco (dados subidos por código), não a planilha."""
     return bool((os.environ.get('DATABASE_URL') or '').strip())
@@ -6651,6 +6803,7 @@ def api_terceiros_upload_xml():
     usuario = session.get('usuario', '')
     criados, erros = [], []
     try:
+        _ensure_terceiros_schema(conn)
         for arquivo in arquivos:
             nome = secure_filename(arquivo.filename or '')
             if not nome:
@@ -6684,6 +6837,7 @@ def api_terceiros_documentos():
         return jsonify({'erro': 'Área inválida.', 'rows': []}), 400
     conn = get_db()
     try:
+        _ensure_terceiros_schema(conn)
         rows = conn.execute(
             '''SELECT d.*,
                       COUNT(i.id) as total_itens,
@@ -6728,6 +6882,7 @@ def api_terceiros_documentos():
 def api_terceiros_documento_detalhe(documento_id):
     conn = get_db()
     try:
+        _ensure_terceiros_schema(conn)
         doc = _carregar_documento_terceiros(conn, documento_id)
         if not doc:
             return jsonify({'erro': 'Documento não encontrado.'}), 404
@@ -6753,6 +6908,7 @@ def api_terceiros_bipar_item(documento_id):
     conn = get_db()
     usuario = session.get('usuario', '')
     try:
+        _ensure_terceiros_schema(conn)
         item = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE id = ? AND documento_id = ?', (item_id, documento_id)).fetchone()
         if not item:
             return jsonify({'ok': False, 'erro': 'Item não encontrado.'}), 404
@@ -6793,6 +6949,7 @@ def api_terceiros_status(documento_id):
         return jsonify({'ok': False, 'erro': 'Campo inválido.'}), 400
     conn = get_db()
     try:
+        _ensure_terceiros_schema(conn)
         row = conn.execute('SELECT * FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,)).fetchone()
         if not row:
             return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
@@ -6834,6 +6991,7 @@ def api_terceiros_motorista(documento_id):
     usuario = session.get('usuario', '')
     conn = get_db()
     try:
+        _ensure_terceiros_schema(conn)
         row = conn.execute('SELECT motorista_carreta FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,)).fetchone()
         if not row:
             return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404

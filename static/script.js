@@ -111,7 +111,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 });
 
-let _terceirosTabAtiva = 'recebimento';
 let _terceirosDocAtual = {
     recebimento: null,
     expedicao: null
@@ -178,7 +177,8 @@ function initModulos() {
                 loadPainelDevolucoes();
             }
         } else if (id === 'terceiros') {
-            loadTerceirosDocumentos(_terceirosTabAtiva || 'recebimento');
+            loadTerceirosDocumentos('recebimento');
+            loadTerceirosDocumentos('expedicao');
         }
     }
 
@@ -230,28 +230,13 @@ function initDevolucoesTabs() {
 }
 
 function initTerceirosTabs() {
-    var botoes = document.querySelectorAll('.terceiros-subtab[data-ter-tab]');
     var recebimento = document.getElementById('terceiros-panel-recebimento');
     var expedicao = document.getElementById('terceiros-panel-expedicao');
-    if (!botoes.length || !recebimento || !expedicao) return;
-
-    function mostrarTerTab(tab) {
-        _terceirosTabAtiva = tab === 'expedicao' ? 'expedicao' : 'recebimento';
-        botoes.forEach(function(btn) {
-            btn.classList.toggle('active', btn.getAttribute('data-ter-tab') === _terceirosTabAtiva);
-        });
-        recebimento.classList.toggle('devolucoes-panel-active', _terceirosTabAtiva === 'recebimento');
-        expedicao.classList.toggle('devolucoes-panel-active', _terceirosTabAtiva === 'expedicao');
-        loadTerceirosDocumentos(_terceirosTabAtiva);
-    }
-
-    botoes.forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            mostrarTerTab(btn.getAttribute('data-ter-tab') || 'recebimento');
-        });
-    });
-
-    mostrarTerTab('recebimento');
+    if (!recebimento || !expedicao) return;
+    recebimento.classList.add('devolucoes-panel-active');
+    expedicao.classList.add('devolucoes-panel-active');
+    loadTerceirosDocumentos('recebimento');
+    loadTerceirosDocumentos('expedicao');
 }
 
 // Sistema de Abas
