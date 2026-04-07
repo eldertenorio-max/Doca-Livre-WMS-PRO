@@ -229,10 +229,34 @@ function initDevolucoesTabs() {
 }
 
 function initTerceirosTabs() {
+    var botoes = document.querySelectorAll('.terceiros-subtab[data-ter-tab]');
     var recebimento = document.getElementById('terceiros-panel-recebimento');
-    if (!recebimento) return;
-    recebimento.classList.add('devolucoes-panel-active');
-    loadTerceirosDocumentos();
+    var pendenciasMg = document.getElementById('terceiros-panel-pendencias-mg');
+    var historico = document.getElementById('terceiros-panel-historico');
+    if (!botoes.length || !recebimento || !pendenciasMg || !historico) return;
+
+    function mostrarTerTab(tab) {
+        var aba = 'fluxo';
+        if (tab === 'pendencias-mg') aba = 'pendencias-mg';
+        if (tab === 'historico') aba = 'historico';
+        botoes.forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-ter-tab') === aba);
+        });
+        recebimento.classList.toggle('devolucoes-panel-active', aba === 'fluxo');
+        pendenciasMg.classList.toggle('devolucoes-panel-active', aba === 'pendencias-mg');
+        historico.classList.toggle('devolucoes-panel-active', aba === 'historico');
+        if (aba === 'fluxo') loadTerceirosDocumentos();
+        if (aba === 'pendencias-mg') loadTerceirosPendenciasMg();
+        if (aba === 'historico') loadTerceirosHistorico();
+    }
+
+    botoes.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            mostrarTerTab(btn.getAttribute('data-ter-tab') || 'fluxo');
+        });
+    });
+
+    mostrarTerTab('fluxo');
 }
 
 // Sistema de Abas
@@ -472,6 +496,8 @@ async function uploadXmlTerceiros() {
         resultadoEl.textContent = 'Upload concluído. ' + (data.total_criados || 0) + ' nota(s) criada(s).' + ((data.erros && data.erros.length) ? ' Erros: ' + data.erros.join(' | ') : '');
         filesEl.value = '';
         loadTerceirosDocumentos();
+        loadTerceirosPendenciasMg();
+        loadTerceirosHistorico();
         showMessage('XMLs processados com sucesso.', 'success');
     } catch (e) {
         resultadoEl.textContent = 'Erro ao enviar XMLs.';
@@ -519,6 +545,101 @@ async function loadTerceirosDocumentos() {
             var id = parseInt(btn.getAttribute('data-ter-doc') || '0', 10);
             var areaBtn = btn.getAttribute('data-ter-area') || 'recebimento';
             if (id) loadTerceirosDocumentoDetalhe(areaBtn, id);
+        });
+    });
+}
+
+async function loadTerceirosPendenciasMg() {
+    var tbody = document.getElementById('ter-tbody-pendencias-mg');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="8" class="loading">Carregando...</td></tr>';
+    const respostas = await Promise.all([
+        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('recebimento'))),
+        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('expedicao')))
+    ]);
+    const rows = respostas.reduce(function(lista, resp) {
+        if (resp && Array.isArray(resp.rows)) return lista.concat(resp.rows);
+        return lista;
+    }, []).filter(function(row) {
+        return (row.enviar_para_mg || '').toLowerCase() === 'sim' && (row.carga_recebida_mg || '').toLowerCase() !== 'sim';
+    }).sort(function(a, b) {
+        return Number(b.id || 0) - Number(a.id || 0);
+    });
+
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Nenhuma NF pendente de envio para MG.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = rows.map(function(row) {
+        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+        return '<tr>'
+            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
+            + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
+            + '<td><strong>' + escapeHtml(row.enviar_para_mg || '-') + '</strong></td>'
+            + '<td>' + escapeHtml(row.carga_recebida_mg || 'pendente') + '</td>'
+            + '<td><button type="button" class="btn btn-primary btn-sm" data-ter-pendencia-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Abrir no fluxo</button></td>'
+            + '</tr>';
+    }).join('');
+
+    tbody.querySelectorAll('[data-ter-pendencia-doc]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = parseInt(btn.getAttribute('data-ter-pendencia-doc') || '0', 10);
+            var area = btn.getAttribute('data-ter-area') || 'recebimento';
+            var botaoFluxo = document.querySelector('.terceiros-subtab[data-ter-tab="fluxo"]');
+            if (botaoFluxo) botaoFluxo.click();
+            if (id) loadTerceirosDocumentoDetalhe(area, id);
+        });
+    });
+}
+
+async function loadTerceirosHistorico() {
+    var tbody = document.getElementById('ter-tbody-historico');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando...</td></tr>';
+    const respostas = await Promise.all([
+        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('recebimento'))),
+        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('expedicao')))
+    ]);
+    const rows = respostas.reduce(function(lista, resp) {
+        if (resp && Array.isArray(resp.rows)) return lista.concat(resp.rows);
+        return lista;
+    }, []).sort(function(a, b) {
+        return Number(b.id || 0) - Number(a.id || 0);
+    });
+
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhuma NF com XML enviado ainda.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = rows.map(function(row) {
+        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+        var recebimento = row.recebimento_concluido ? 'concluído' : 'pendente';
+        return '<tr>'
+            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
+            + '<td>' + escapeHtml(recebimento) + '</td>'
+            + '<td>' + escapeHtml(row.nota_lancada || '-') + '</td>'
+            + '<td>' + escapeHtml(row.enviar_para_mg || '-') + '</td>'
+            + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
+            + '<td>' + escapeHtml(row.carga_recebida_mg || '-') + '</td>'
+            + '<td><button type="button" class="btn btn-primary btn-sm" data-ter-historico-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Abrir no fluxo</button></td>'
+            + '</tr>';
+    }).join('');
+
+    tbody.querySelectorAll('[data-ter-historico-doc]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = parseInt(btn.getAttribute('data-ter-historico-doc') || '0', 10);
+            var area = btn.getAttribute('data-ter-area') || 'recebimento';
+            var botaoFluxo = document.querySelector('.terceiros-subtab[data-ter-tab="fluxo"]');
+            if (botaoFluxo) botaoFluxo.click();
+            if (id) loadTerceirosDocumentoDetalhe(area, id);
         });
     });
 }
@@ -650,6 +771,8 @@ async function biparItemTerceiros(area, itemId) {
     showMessage('Item bipado com sucesso.', 'success');
     await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
     await loadTerceirosDocumentos();
+    await loadTerceirosPendenciasMg();
+    await loadTerceirosHistorico();
 }
 
 async function atualizarStatusTerceiros(area, campo, valor) {
@@ -666,6 +789,8 @@ async function atualizarStatusTerceiros(area, campo, valor) {
     showMessage('Status atualizado.', 'success');
     await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
     await loadTerceirosDocumentos();
+    await loadTerceirosPendenciasMg();
+    await loadTerceirosHistorico();
 }
 
 async function salvarMotoristaTerceiros(area) {
@@ -689,6 +814,8 @@ async function salvarMotoristaTerceiros(area) {
     showMessage('Motorista salvo.', 'success');
     await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
     await loadTerceirosDocumentos();
+    await loadTerceirosPendenciasMg();
+    await loadTerceirosHistorico();
 }
 
 // Inicializar formulários

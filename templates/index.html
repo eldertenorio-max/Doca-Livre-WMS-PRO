@@ -1342,7 +1342,9 @@
         <div id="modulo-terceiros" class="modulo-area modulo-devolucoes" hidden aria-label="Recebimento e expedição de terceiros">
             <div class="devolucoes-conteudo">
                 <nav class="tabs devolucoes-subtabs" aria-label="Abas do módulo de terceiros">
-                    <button type="button" class="tab-button terceiros-subtab active">RECEBIMENTO / EXPEDIÇÃO DE TERCEIROS</button>
+                    <button type="button" class="tab-button terceiros-subtab active" data-ter-tab="fluxo">RECEBIMENTO / EXPEDIÇÃO DE TERCEIROS</button>
+                    <button type="button" class="tab-button terceiros-subtab" data-ter-tab="pendencias-mg">PENDÊNCIAS ENVIO MG</button>
+                    <button type="button" class="tab-button terceiros-subtab" data-ter-tab="historico">HISTÓRICO</button>
                 </nav>
 
                 <div id="terceiros-panel-recebimento" class="devolucoes-panel devolucoes-panel-active terceiros-panel-unico">
@@ -1482,6 +1484,70 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="terceiros-panel-pendencias-mg" class="devolucoes-panel">
+                    <div class="painel-titulo">
+                        <span class="painel-titulo-icon">🚚</span>
+                        <h2 class="painel-titulo-texto">Pendências de Envio para MG</h2>
+                        <p class="painel-titulo-sub">Notas com envio para MG marcado como sim e ainda sem conclusão do recebimento em MG</p>
+                    </div>
+
+                    <div class="conferencia-bloco form-container terceiros-lista-bloco">
+                        <h3 style="margin-top: 0; color: #366092;">NFs PENDENTES DE ENVIO / RECEBIMENTO EM MG</h3>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>NF</th>
+                                        <th>Remetente</th>
+                                        <th>Destinatário</th>
+                                        <th>Previsão</th>
+                                        <th>Motorista</th>
+                                        <th>Envio MG</th>
+                                        <th>Recebida MG</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ter-tbody-pendencias-mg">
+                                    <tr><td colspan="8" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="terceiros-panel-historico" class="devolucoes-panel">
+                    <div class="painel-titulo">
+                        <span class="painel-titulo-icon">🗂️</span>
+                        <h2 class="painel-titulo-texto">Histórico de NFs</h2>
+                        <p class="painel-titulo-sub">Lista de todas as notas com XML enviado e o andamento operacional de cada uma</p>
+                    </div>
+
+                    <div class="conferencia-bloco form-container terceiros-lista-bloco">
+                        <h3 style="margin-top: 0; color: #366092;">TODAS AS NFS E STATUS</h3>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>NF</th>
+                                        <th>Remetente</th>
+                                        <th>Destinatário</th>
+                                        <th>Previsão</th>
+                                        <th>Recebimento</th>
+                                        <th>Nota lançada</th>
+                                        <th>Enviar MG</th>
+                                        <th>Motorista</th>
+                                        <th>Recebida MG</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ter-tbody-historico">
+                                    <tr><td colspan="10" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
