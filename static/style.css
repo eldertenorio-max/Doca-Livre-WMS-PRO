@@ -319,6 +319,11 @@ body {
     margin-top: 6px;
 }
 
+#modulo-terceiros .ter-status-meta--alerta {
+    color: #c62828;
+    font-weight: 700;
+}
+
 #modulo-terceiros .terceiros-detalhe-bloco .data-table {
     min-width: 980px;
 }

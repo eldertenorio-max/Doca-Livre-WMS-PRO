@@ -6833,6 +6833,19 @@ def _carregar_documento_terceiros(conn, documento_id):
     return doc
 
 
+def _normalizar_texto_regra_terceiros(valor):
+    return re.sub(r'[^a-z0-9]+', ' ', str(valor or '').lower()).strip()
+
+
+def _motorista_obrigatorio_terceiros(doc):
+    remetente = _normalizar_texto_regra_terceiros((doc or {}).get('remetente_nome') or '')
+    destinatario = _normalizar_texto_regra_terceiros((doc or {}).get('destinatario_nome') or '')
+    return (
+        'ultrapao de pouso alegre' in remetente
+        and ('ultrapao de sp' in destinatario or 'ultrapao de sao paulo' in destinatario)
+    )
+
+
 @app.route('/api/terceiros/upload-xml', methods=['POST'])
 def api_terceiros_upload_xml():
     area = (request.form.get('area') or '').strip().lower()
@@ -6914,6 +6927,7 @@ def api_terceiros_documentos():
                 'nota_lancada': row.get('nota_lancada') or '',
                 'enviar_para_mg': row.get('enviar_para_mg') or '',
                 'motorista_carreta': row.get('motorista_carreta') or '',
+                'motorista_obrigatorio': _motorista_obrigatorio_terceiros(row),
                 'carga_recebida_mg': row.get('carga_recebida_mg') or '',
                 'total_itens': int(row.get('total_itens') or 0),
                 'quantidade_total_xml': float(row.get('quantidade_total_xml') or 0),
@@ -6933,11 +6947,45 @@ def api_terceiros_documento_detalhe(documento_id):
         doc = _carregar_documento_terceiros(conn, documento_id)
         if not doc:
             return jsonify({'erro': 'Documento não encontrado.'}), 404
+        doc['motorista_obrigatorio'] = _motorista_obrigatorio_terceiros(doc)
         for campo in ('recebimento_concluido_em', 'nota_lancada_em', 'enviar_para_mg_em', 'motorista_carreta_em', 'carga_recebida_mg_em', 'criado_em', 'atualizado_em'):
             doc[campo] = _fmt_datahora_br(doc.get(campo) or '')
         for ev in doc.get('eventos') or []:
             ev['criado_em'] = _fmt_datahora_br(ev.get('criado_em') or '')
         return jsonify(doc)
+    finally:
+        conn.close()
+
+
+@app.route('/api/terceiros/documentos/<int:documento_id>', methods=['DELETE'])
+def api_terceiros_excluir_documento(documento_id):
+    conn = get_db()
+    usuario = session.get('usuario', '')
+    try:
+        _ensure_terceiros_schema(conn)
+        row = conn.execute(
+            'SELECT numero_nf, serie_nf FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?',
+            (documento_id,)
+        ).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
+        numero_nf = (row['numero_nf'] if hasattr(row, 'keys') else row[0]) or ''
+        serie_nf = (row['serie_nf'] if hasattr(row, 'keys') else row[1]) or ''
+        conn.execute('DELETE FROM ' + _tbl_terceiros_documento_eventos(conn) + ' WHERE documento_id = ?', (documento_id,))
+        conn.execute('DELETE FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE documento_id = ?', (documento_id,))
+        conn.execute('DELETE FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,))
+        conn.commit()
+        return jsonify({
+            'ok': True,
+            'mensagem': 'NF excluída com sucesso.',
+            'documento_id': documento_id,
+            'numero_nf': numero_nf,
+            'serie_nf': serie_nf,
+            'usuario': usuario
+        })
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'ok': False, 'erro': str(e)}), 500
     finally:
         conn.close()
 
@@ -7021,6 +7069,12 @@ def api_terceiros_status(documento_id):
                     'confirmacao_necessaria': True,
                     'codigo': 'confirmar_lancamento_sem_recebimento'
                 }), 409
+            if campo in ('enviar_para_mg', 'carga_recebida_mg') and valor_norm == 'sim' and _motorista_obrigatorio_terceiros(doc) and not (doc.get('motorista_carreta') or '').strip():
+                return jsonify({
+                    'ok': False,
+                    'erro': 'Para esta rota, informe o motorista da carreta antes de continuar.',
+                    'codigo': 'motorista_obrigatorio_terceiros'
+                }), 400
             campo_em = campo + '_em'
             campo_por = campo + '_por'
             conn.execute(
@@ -7047,10 +7101,17 @@ def api_terceiros_motorista(documento_id):
     conn = get_db()
     try:
         _ensure_terceiros_schema(conn)
-        row = conn.execute('SELECT motorista_carreta FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,)).fetchone()
+        row = conn.execute('SELECT motorista_carreta, remetente_nome, destinatario_nome FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,)).fetchone()
         if not row:
             return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
-        valor_antigo = (row['motorista_carreta'] or '') if hasattr(row, 'keys') else (row[0] or '')
+        row_d = dict(row) if hasattr(row, 'keys') else {
+            'motorista_carreta': row[0] if len(row) > 0 else '',
+            'remetente_nome': row[1] if len(row) > 1 else '',
+            'destinatario_nome': row[2] if len(row) > 2 else '',
+        }
+        valor_antigo = (row_d.get('motorista_carreta') or '')
+        if _motorista_obrigatorio_terceiros(row_d) and not motorista:
+            return jsonify({'ok': False, 'erro': 'Para esta rota, informe o motorista da carreta.'}), 400
         agora = _agora_iso()
         conn.execute(
             'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET motorista_carreta = ?, motorista_carreta_em = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',

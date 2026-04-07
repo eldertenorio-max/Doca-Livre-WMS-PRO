@@ -1786,6 +1786,24 @@
         </div>
     </div>
 
+    <div id="modal-terceiros-excluir-documento" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 460px; border-top: 4px solid #c62828;">
+            <span class="close" id="modal-terceiros-excluir-documento-close">&times;</span>
+            <h3 style="margin-top: 0; color: #c62828;">Excluir nota fiscal?</h3>
+            <p style="margin: 12px 0; color: #455a64;">
+                Você está prestes a excluir esta NF do módulo de terceiros.
+            </p>
+            <p style="margin: 0 0 8px 0; color: #607d8b;">
+                Esta ação removerá a nota, os itens bipados e o histórico dela.
+            </p>
+            <p id="modal-terceiros-excluir-documento-info" style="margin: 0 0 20px 0; font-weight: 700; color: #37474f;">-</p>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary" id="btn-ter-cancelar-excluir-documento">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-ter-confirmar-excluir-documento" style="background: #c62828;">Excluir NF</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Overlay centralizado para "Puxando da API Ravex..." ou erro -->
     <div id="ravex-loading-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center;">
         <div class="ravex-loading-box" id="ravex-loading-box">

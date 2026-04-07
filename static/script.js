@@ -117,6 +117,8 @@ let _terceirosDocAtual = {
     recebimento_concluido: false
 };
 let _terceirosConfirmacaoLancamentoResolver = null;
+let _terceirosExcluirDocumentoResolver = null;
+let _terceirosExcluirDocumentoAtual = null;
 
 function initNavegacaoRapida() {
     var linkInicio = document.querySelector('.header-link-inicio');
@@ -494,6 +496,34 @@ function abrirModalLancamentoSemRecebimento() {
     });
 }
 
+function fecharModalExcluirDocumento(confirmado) {
+    var modal = document.getElementById('modal-terceiros-excluir-documento');
+    if (modal) modal.style.display = 'none';
+    if (_terceirosExcluirDocumentoResolver) {
+        _terceirosExcluirDocumentoResolver(!!confirmado);
+        _terceirosExcluirDocumentoResolver = null;
+    }
+    if (!confirmado) {
+        _terceirosExcluirDocumentoAtual = null;
+    }
+}
+
+function abrirModalExcluirDocumento(infoDocumento) {
+    var modal = document.getElementById('modal-terceiros-excluir-documento');
+    var infoEl = document.getElementById('modal-terceiros-excluir-documento-info');
+    _terceirosExcluirDocumentoAtual = infoDocumento || null;
+    if (infoEl) {
+        infoEl.textContent = infoDocumento && infoDocumento.nf ? infoDocumento.nf : 'NF não identificada';
+    }
+    if (!modal) {
+        return Promise.resolve(window.confirm('Deseja excluir esta NF do módulo de terceiros?'));
+    }
+    modal.style.display = 'block';
+    return new Promise(function(resolve) {
+        _terceirosExcluirDocumentoResolver = resolve;
+    });
+}
+
 async function uploadXmlTerceiros() {
     var area = 'recebimento';
     var prefixo = 'ter-recebimento';
@@ -563,6 +593,10 @@ function isTerceirosNao(valor) {
     return String(valor || '').toLowerCase() === 'nao';
 }
 
+function isTerceirosMotoristaObrigatorio(row) {
+    return !!(row && row.motorista_obrigatorio);
+}
+
 function getTerceirosRowsPorEtapa(rows, etapa) {
     rows = Array.isArray(rows) ? rows : [];
     if (etapa === 'pendencia-recebimento') {
@@ -602,6 +636,15 @@ function renderTerceirosAbrirButton(row, atributo, rotulo, tabDestino) {
         + '</button>';
 }
 
+function renderTerceirosExcluirButton(row, atributo) {
+    var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+    return '<button type="button" class="btn btn-sm" style="background:#c62828;color:#fff;" '
+        + atributo + '="' + escapeHtml(String(row.id)) + '" '
+        + 'data-ter-excluir-nf="' + escapeHtml(nf) + '">'
+        + 'Excluir'
+        + '</button>';
+}
+
 function bindTerceirosAbrirButtons(seletor) {
     document.querySelectorAll(seletor).forEach(function(btn) {
         btn.addEventListener('click', function() {
@@ -620,6 +663,31 @@ function bindTerceirosAbrirButtons(seletor) {
             var botaoAba = document.querySelector('.terceiros-subtab[data-ter-tab="' + tabDestino + '"]');
             if (botaoAba) botaoAba.click();
             if (id) loadTerceirosDocumentoDetalhe(area, id);
+        });
+    });
+}
+
+function bindTerceirosExcluirButtons(seletor) {
+    document.querySelectorAll(seletor).forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            var id = parseInt(
+                btn.getAttribute('data-ter-excluir-doc')
+                || btn.getAttribute('data-ter-excluir-fornecedor-doc')
+                || btn.getAttribute('data-ter-excluir-lancada-doc')
+                || btn.getAttribute('data-ter-excluir-enviada-doc')
+                || btn.getAttribute('data-ter-excluir-pendencia-doc')
+                || btn.getAttribute('data-ter-excluir-historico-doc')
+                || '0',
+                10
+            );
+            var nf = btn.getAttribute('data-ter-excluir-nf') || 'NF não identificada';
+            if (!id) return;
+            var confirmou = await abrirModalExcluirDocumento({ id: id, nf: nf });
+            if (!confirmou) {
+                showMessage('Exclusão cancelada.', 'warning');
+                return;
+            }
+            await excluirDocumentoTerceiros(id);
         });
     });
 }
@@ -650,10 +718,11 @@ async function loadTerceirosDocumentos() {
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
             + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-doc', 'Abrir', 'pendencia-recebimento') + '</td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-doc', 'Abrir', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-doc') + '</td>'
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-doc]');
+    bindTerceirosExcluirButtons('[data-ter-excluir-doc]');
 }
 
 async function loadTerceirosFornecedoresRecebidos() {
@@ -685,10 +754,11 @@ async function loadTerceirosFornecedoresRecebidos() {
                 + '<option value="sim"' + (isTerceirosSim(row.nota_lancada) ? ' selected' : '') + '>Sim</option>'
                 + '<option value="nao"' + (isTerceirosNao(row.nota_lancada) ? ' selected' : '') + '>Não</option>'
             + '</select><div class="ter-status-meta">' + escapeHtml(row.nota_lancada_em || '-') + '</div></td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'pendencia-recebimento') + '</td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-fornecedor-doc') + '</td>'
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-fornecedor-doc]');
+    bindTerceirosExcluirButtons('[data-ter-excluir-fornecedor-doc]');
     tbody.querySelectorAll('[data-ter-nota-lancada-doc]').forEach(function(select) {
         select.addEventListener('change', function() {
             var id = parseInt(select.getAttribute('data-ter-nota-lancada-doc') || '0', 10);
@@ -716,15 +786,18 @@ async function loadTerceirosNotasLancadas() {
     }
     tbody.innerHTML = rows.map(function(row) {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+        var avisoMotorista = isTerceirosMotoristaObrigatorio(row)
+            ? '<div class="ter-status-meta ter-status-meta--alerta">Motorista obrigatório</div>'
+            : '';
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
-            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
+            + '<td>' + escapeHtml(row.previsao_chegada || '-') + avisoMotorista + '</td>'
             + '<td>' + escapeHtml(row.nota_lancada || '-') + '</td>'
-            + '<td><select class="ter-select-inline" data-ter-enviar-mg-doc="' + escapeHtml(String(row.id)) + '">'
+            + '<td><select class="ter-select-inline" data-ter-enviar-mg-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
                 + '<option value="">Selecione</option>'
                 + '<option value="sim"' + (isTerceirosSim(row.enviar_para_mg) ? ' selected' : '') + '>Sim</option>'
                 + '<option value="nao"' + (isTerceirosNao(row.enviar_para_mg) ? ' selected' : '') + '>Não</option>'
@@ -733,26 +806,38 @@ async function loadTerceirosNotasLancadas() {
                 + '<input type="text" class="ter-input-inline" data-ter-motorista-doc="' + escapeHtml(String(row.id)) + '" value="' + escapeHtml(row.motorista_carreta || '') + '" placeholder="Motorista">'
                 + '<button type="button" class="btn btn-secondary btn-sm" data-ter-salvar-motorista-doc="' + escapeHtml(String(row.id)) + '">Salvar</button>'
                 + '<div class="ter-status-meta">' + escapeHtml(row.motorista_carreta_em || '-') + '</div>'
+                + (isTerceirosMotoristaObrigatorio(row) ? '<div class="ter-status-meta ter-status-meta--alerta">Obrigatório para esta rota</div>' : '')
             + '</div></td>'
-            + '<td><select class="ter-select-inline" data-ter-recebida-mg-doc="' + escapeHtml(String(row.id)) + '">'
+            + '<td><select class="ter-select-inline" data-ter-recebida-mg-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
                 + '<option value="">Selecione</option>'
                 + '<option value="sim"' + (isTerceirosSim(row.carga_recebida_mg) ? ' selected' : '') + '>Sim</option>'
                 + '<option value="nao"' + (isTerceirosNao(row.carga_recebida_mg) ? ' selected' : '') + '>Não</option>'
             + '</select><div class="ter-status-meta">' + escapeHtml(row.carga_recebida_mg_em || '-') + '</div></td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento') + '</td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-lancada-doc') + '</td>'
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-lancada-doc]');
+    bindTerceirosExcluirButtons('[data-ter-excluir-lancada-doc]');
     tbody.querySelectorAll('[data-ter-enviar-mg-doc]').forEach(function(select) {
         select.addEventListener('change', function() {
             var id = parseInt(select.getAttribute('data-ter-enviar-mg-doc') || '0', 10);
-            if (id && select.value) atualizarStatusTerceirosDireto(id, 'enviar_para_mg', select.value);
+            var motoristaObrigatorio = select.getAttribute('data-ter-motorista-obrigatorio') === 'sim';
+            var motoristaAtual = select.getAttribute('data-ter-motorista-atual') || '';
+            if (id && select.value) atualizarStatusTerceirosDireto(id, 'enviar_para_mg', select.value, {
+                motorista_obrigatorio: motoristaObrigatorio,
+                motorista_atual: motoristaAtual
+            });
         });
     });
     tbody.querySelectorAll('[data-ter-recebida-mg-doc]').forEach(function(select) {
         select.addEventListener('change', function() {
             var id = parseInt(select.getAttribute('data-ter-recebida-mg-doc') || '0', 10);
-            if (id && select.value) atualizarStatusTerceirosDireto(id, 'carga_recebida_mg', select.value);
+            var motoristaObrigatorio = select.getAttribute('data-ter-motorista-obrigatorio') === 'sim';
+            var motoristaAtual = select.getAttribute('data-ter-motorista-atual') || '';
+            if (id && select.value) atualizarStatusTerceirosDireto(id, 'carga_recebida_mg', select.value, {
+                motorista_obrigatorio: motoristaObrigatorio,
+                motorista_atual: motoristaAtual
+            });
         });
     });
     tbody.querySelectorAll('[data-ter-salvar-motorista-doc]').forEach(function(btn) {
@@ -790,10 +875,11 @@ async function loadTerceirosNotasEnviadasMg() {
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
             + '<td>' + escapeHtml(row.carga_recebida_mg || '-') + '</td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-enviada-doc', 'Abrir detalhe', 'pendencia-recebimento') + '</td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-enviada-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-enviada-doc') + '</td>'
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-enviada-doc]');
+    bindTerceirosExcluirButtons('[data-ter-excluir-enviada-doc]');
 }
 
 async function loadTerceirosPendenciasMg() {
@@ -824,10 +910,11 @@ async function loadTerceirosPendenciasMg() {
             + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
             + '<td><strong>' + escapeHtml(row.enviar_para_mg || '-') + '</strong></td>'
             + '<td>' + escapeHtml(row.carga_recebida_mg || 'pendente') + '</td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-pendencia-doc', 'Abrir detalhe', 'pendencia-recebimento') + '</td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-pendencia-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-pendencia-doc') + '</td>'
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-pendencia-doc]');
+    bindTerceirosExcluirButtons('[data-ter-excluir-pendencia-doc]');
 }
 
 async function loadTerceirosHistorico() {
@@ -861,10 +948,11 @@ async function loadTerceirosHistorico() {
             + '<td>' + escapeHtml(row.enviar_para_mg || '-') + '</td>'
             + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
             + '<td>' + escapeHtml(row.carga_recebida_mg || '-') + '</td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-historico-doc', 'Abrir detalhe', 'pendencia-recebimento') + '</td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-historico-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-historico-doc') + '</td>'
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-historico-doc]');
+    bindTerceirosExcluirButtons('[data-ter-excluir-historico-doc]');
 }
 
 async function refreshTerceirosViews() {
@@ -878,9 +966,30 @@ async function refreshTerceirosViews() {
     ]);
 }
 
+async function excluirDocumentoTerceiros(documentoId) {
+    var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId), {
+        method: 'DELETE'
+    });
+    _terceirosExcluirDocumentoAtual = null;
+    if (!resp || !resp.ok) {
+        showMessage((resp && resp.erro) || 'Erro ao excluir NF.', 'error');
+        return;
+    }
+    if (_terceirosDocAtual.id === documentoId) {
+        resetTerceirosDetalhe();
+    }
+    await refreshTerceirosViews();
+    showMessage((resp && resp.mensagem) || 'NF excluída com sucesso.', 'success');
+}
+
 async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes) {
     if (!documentoId) return;
     opcoes = opcoes || {};
+    if ((campo === 'enviar_para_mg' || campo === 'carga_recebida_mg') && String(valor).toLowerCase() === 'sim' && opcoes.motorista_obrigatorio && !String(opcoes.motorista_atual || '').trim()) {
+        showMessage('Para esta rota, informe o motorista da carreta antes de continuar.', 'warning');
+        await refreshTerceirosViews();
+        return;
+    }
     if (campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && opcoes.recebimento_concluido === false && !opcoes.forcar_lancamento_sem_recebimento) {
         var confirmouLocal = await abrirModalLancamentoSemRecebimento();
         if (!confirmouLocal) {
@@ -1186,6 +1295,14 @@ function initForms() {
     if (btnTerSemRecebConfirmar) btnTerSemRecebConfirmar.addEventListener('click', function() { fecharModalLancamentoSemRecebimento(true); });
     if (btnTerSemRecebCancelar) btnTerSemRecebCancelar.addEventListener('click', function() { fecharModalLancamentoSemRecebimento(false); });
     if (btnTerSemRecebClose) btnTerSemRecebClose.addEventListener('click', function() { fecharModalLancamentoSemRecebimento(false); });
+
+    const modalTerExcluir = document.getElementById('modal-terceiros-excluir-documento');
+    const btnTerExcluirConfirmar = document.getElementById('btn-ter-confirmar-excluir-documento');
+    const btnTerExcluirCancelar = document.getElementById('btn-ter-cancelar-excluir-documento');
+    const btnTerExcluirClose = document.getElementById('modal-terceiros-excluir-documento-close');
+    if (btnTerExcluirConfirmar) btnTerExcluirConfirmar.addEventListener('click', function() { fecharModalExcluirDocumento(true); });
+    if (btnTerExcluirCancelar) btnTerExcluirCancelar.addEventListener('click', function() { fecharModalExcluirDocumento(false); });
+    if (btnTerExcluirClose) btnTerExcluirClose.addEventListener('click', function() { fecharModalExcluirDocumento(false); });
     
     // Fechar modal ao clicar fora
     window.addEventListener('click', (e) => {
@@ -1195,6 +1312,9 @@ function initForms() {
         }
         if (modalTerSemReceb && e.target === modalTerSemReceb) {
             fecharModalLancamentoSemRecebimento(false);
+        }
+        if (modalTerExcluir && e.target === modalTerExcluir) {
+            fecharModalExcluirDocumento(false);
         }
     });
     
