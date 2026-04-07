@@ -524,7 +524,7 @@ async function loadTerceirosDocumentos() {
         return Number(b.id || 0) - Number(a.id || 0);
     });
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">Nenhuma nota enviada ainda.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Nenhuma nota enviada ainda.</td></tr>';
         resetTerceirosDetalhe();
         return;
     }
@@ -532,6 +532,7 @@ async function loadTerceirosDocumentos() {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
@@ -567,7 +568,7 @@ async function loadTerceirosPendenciasMg() {
     });
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Nenhuma NF pendente de envio para MG.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF pendente de envio para MG.</td></tr>';
         return;
     }
 
@@ -575,6 +576,7 @@ async function loadTerceirosPendenciasMg() {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
@@ -612,7 +614,7 @@ async function loadTerceirosHistorico() {
     });
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhuma NF com XML enviado ainda.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com XML enviado ainda.</td></tr>';
         return;
     }
 
@@ -621,6 +623,7 @@ async function loadTerceirosHistorico() {
         var recebimento = row.recebimento_concluido ? 'concluído' : 'pendente';
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
@@ -656,7 +659,7 @@ function resetTerceirosDetalhe() {
         var el = document.getElementById(prefixo + '-stat-' + suf);
         if (el) el.textContent = suf === 'nf' ? '-' : '0';
     });
-    ['remetente', 'destinatario', 'previsao', 'concluido-meta', 'nota-lancada-meta', 'enviar-mg-meta', 'motorista-meta', 'recebida-mg-meta'].forEach(function(suf) {
+    ['pedido', 'remetente', 'destinatario', 'previsao', 'concluido-meta', 'nota-lancada-meta', 'enviar-mg-meta', 'motorista-meta', 'recebida-mg-meta'].forEach(function(suf) {
         var el = document.getElementById(prefixo + '-' + suf);
         if (el) el.textContent = '-';
     });
@@ -694,10 +697,12 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     var statXml = document.getElementById(prefixo + '-stat-qtd-xml');
     var statBip = document.getElementById(prefixo + '-stat-qtd-bipada');
     var statPend = document.getElementById(prefixo + '-stat-pendencias');
+    var pedido = document.getElementById(prefixo + '-pedido');
     if (statNf) statNf.textContent = (doc.numero_nf || '-') + (doc.serie_nf ? ('/' + doc.serie_nf) : '');
     if (statXml) statXml.textContent = String((doc.resumo && doc.resumo.quantidade_total_xml) || 0);
     if (statBip) statBip.textContent = String((doc.resumo && doc.resumo.quantidade_total_bipada) || 0);
     if (statPend) statPend.textContent = String((doc.resumo && doc.resumo.itens_com_pendencia) || 0);
+    if (pedido) pedido.textContent = doc.numero_pedido || '-';
     var remetente = document.getElementById(prefixo + '-remetente');
     var destinatario = document.getElementById(prefixo + '-destinatario');
     var previsao = document.getElementById(prefixo + '-previsao');

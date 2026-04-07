@@ -6662,11 +6662,14 @@ def _parse_nfe_xml(xml_texto):
     total = infnfe.find('nfe:total', ns) if ns else infnfe.find('total')
 
     itens = []
+    numero_pedido = ''
     dets = infnfe.findall('nfe:det', ns) if ns else infnfe.findall('det')
     for idx, det in enumerate(dets, 1):
         prod = det.find('nfe:prod', ns) if ns else det.find('prod')
         if prod is None:
             continue
+        if not numero_pedido:
+            numero_pedido = _find_first(prod, ['nfe:xPed', 'xPed'], ns)
         codigo_ean = _find_first(prod, ['nfe:cEAN', 'cEAN', 'nfe:cEANTrib', 'cEANTrib'], ns)
         codigo_produto_xml = _find_first(prod, ['nfe:cProd', 'cProd'], ns)
         descricao_xml = _find_first(prod, ['nfe:xProd', 'xProd'], ns)
@@ -6685,6 +6688,13 @@ def _parse_nfe_xml(xml_texto):
             'descricao_base': (base or {}).get('descricao_base', ''),
         })
 
+    if not numero_pedido:
+        info_adic = infnfe.find('nfe:infAdic', ns) if ns else infnfe.find('infAdic')
+        info_complementar = _find_first(info_adic, ['nfe:infCpl', 'infCpl'], ns)
+        match = re.search(r'Numero do Pedido do Cliente:\s*([^\|\n\r]+)', info_complementar or '', re.IGNORECASE)
+        if match:
+            numero_pedido = (match.group(1) or '').strip()
+
     return {
         'chave_nfe': (infnfe.attrib.get('Id') or '').replace('NFe', '').strip(),
         'numero_nf': _find_first(ide, ['nfe:nNF', 'nNF'], ns),
@@ -6694,9 +6704,25 @@ def _parse_nfe_xml(xml_texto):
         'remetente_cnpj': _find_first(emit, ['nfe:CNPJ', 'CNPJ', 'nfe:CPF', 'CPF'], ns),
         'destinatario_nome': _find_first(dest, ['nfe:xNome', 'xNome'], ns),
         'destinatario_cnpj': _find_first(dest, ['nfe:CNPJ', 'CNPJ', 'nfe:CPF', 'CPF'], ns),
+        'numero_pedido': numero_pedido,
         'valor_total_xml': _find_first(total, ['nfe:ICMSTot/nfe:vNF', 'ICMSTot/vNF'], ns),
         'itens': itens,
     }
+
+
+def _numero_pedido_terceiros(doc):
+    if not doc:
+        return ''
+    if doc.get('numero_pedido'):
+        return doc.get('numero_pedido') or ''
+    xml_texto = doc.get('xml_conteudo') or ''
+    if not xml_texto:
+        return ''
+    try:
+        parsed = _parse_nfe_xml(xml_texto)
+        return parsed.get('numero_pedido') or ''
+    except Exception:
+        return ''
 
 
 def _valor_bool_texto(valor):
@@ -6766,6 +6792,7 @@ def _carregar_documento_terceiros(conn, documento_id):
     if not row:
         return None
     doc = dict(row) if hasattr(row, 'keys') else {}
+    doc['numero_pedido'] = _numero_pedido_terceiros(doc)
     itens_rows = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE documento_id = ? ORDER BY n_item, id', (documento_id,)).fetchall()
     eventos_rows = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_eventos(conn) + ' WHERE documento_id = ? ORDER BY criado_em DESC, id DESC', (documento_id,)).fetchall()
     itens = []
@@ -6858,6 +6885,7 @@ def api_terceiros_documentos():
                 'area': row.get('area') or '',
                 'numero_nf': row.get('numero_nf') or '',
                 'serie_nf': row.get('serie_nf') or '',
+                'numero_pedido': _numero_pedido_terceiros(row),
                 'chave_nfe': row.get('chave_nfe') or '',
                 'data_emissao': _fmt_data_br(row.get('data_emissao') or ''),
                 'remetente_nome': row.get('remetente_nome') or '',
