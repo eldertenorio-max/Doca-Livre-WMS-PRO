@@ -1769,6 +1769,23 @@
         </div>
     </div>
 
+    <div id="modal-terceiros-lancar-sem-recebimento" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 460px; border-top: 4px solid #f57c00;">
+            <span class="close" id="modal-terceiros-lancar-sem-recebimento-close">&times;</span>
+            <h3 style="margin-top: 0; color: #e65100;">Lançar sem recebimento?</h3>
+            <p style="margin: 12px 0; color: #455a64;">
+                Esta nota fiscal ainda não foi marcada como recebida.
+            </p>
+            <p style="margin: 0 0 20px 0; color: #607d8b;">
+                Deseja confirmar o lançamento mesmo assim?
+            </p>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary" id="btn-ter-cancelar-lancar-sem-recebimento">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-ter-confirmar-lancar-sem-recebimento" style="background: #e65100;">Sim, lançar mesmo assim</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Overlay centralizado para "Puxando da API Ravex..." ou erro -->
     <div id="ravex-loading-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center;">
         <div class="ravex-loading-box" id="ravex-loading-box">

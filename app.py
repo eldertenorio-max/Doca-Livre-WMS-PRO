@@ -6991,6 +6991,7 @@ def api_terceiros_status(documento_id):
     data = request.get_json() or {}
     campo = (data.get('campo') or '').strip()
     valor = (data.get('valor') or '').strip()
+    forcar_lancamento_sem_recebimento = bool(data.get('forcar_lancamento_sem_recebimento'))
     usuario = session.get('usuario', '')
     if campo not in ('recebimento_concluido', 'nota_lancada', 'enviar_para_mg', 'carga_recebida_mg'):
         return jsonify({'ok': False, 'erro': 'Campo inválido.'}), 400
@@ -7013,6 +7014,13 @@ def api_terceiros_status(documento_id):
             valor_norm = _valor_bool_texto(valor)
             if not valor_norm:
                 return jsonify({'ok': False, 'erro': 'Use sim ou nao.'}), 400
+            if campo == 'nota_lancada' and valor_norm == 'sim' and not bool(doc.get('recebimento_concluido')) and not forcar_lancamento_sem_recebimento:
+                return jsonify({
+                    'ok': False,
+                    'erro': 'A nota fiscal precisa ser recebida antes de ser lançada.',
+                    'confirmacao_necessaria': True,
+                    'codigo': 'confirmar_lancamento_sem_recebimento'
+                }), 409
             campo_em = campo + '_em'
             campo_por = campo + '_por'
             conn.execute(

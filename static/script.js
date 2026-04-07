@@ -113,8 +113,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
 let _terceirosDocAtual = {
     id: null,
-    area: 'recebimento'
+    area: 'recebimento',
+    recebimento_concluido: false
 };
+let _terceirosConfirmacaoLancamentoResolver = null;
 
 function initNavegacaoRapida() {
     var linkInicio = document.querySelector('.header-link-inicio');
@@ -472,6 +474,26 @@ function getTerceirosAreaApi(area) {
     return area === 'expedicao' ? 'expedicao' : 'recebimento';
 }
 
+function fecharModalLancamentoSemRecebimento(confirmado) {
+    var modal = document.getElementById('modal-terceiros-lancar-sem-recebimento');
+    if (modal) modal.style.display = 'none';
+    if (_terceirosConfirmacaoLancamentoResolver) {
+        _terceirosConfirmacaoLancamentoResolver(!!confirmado);
+        _terceirosConfirmacaoLancamentoResolver = null;
+    }
+}
+
+function abrirModalLancamentoSemRecebimento() {
+    var modal = document.getElementById('modal-terceiros-lancar-sem-recebimento');
+    if (!modal) {
+        return Promise.resolve(window.confirm('Esta nota fiscal ainda não foi recebida. Deseja lançar mesmo assim?'));
+    }
+    modal.style.display = 'block';
+    return new Promise(function(resolve) {
+        _terceirosConfirmacaoLancamentoResolver = resolve;
+    });
+}
+
 async function uploadXmlTerceiros() {
     var area = 'recebimento';
     var prefixo = 'ter-recebimento';
@@ -658,7 +680,7 @@ async function loadTerceirosFornecedoresRecebidos() {
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(isTerceirosSim(row.recebimento_concluido) ? 'concluído' : 'pendente') + '</td>'
-            + '<td><select class="ter-select-inline" data-ter-nota-lancada-doc="' + escapeHtml(String(row.id)) + '">'
+            + '<td><select class="ter-select-inline" data-ter-nota-lancada-doc="' + escapeHtml(String(row.id)) + '" data-ter-recebimento-concluido="' + escapeHtml(isTerceirosSim(row.recebimento_concluido) ? 'sim' : 'nao') + '">'
                 + '<option value="">Selecione</option>'
                 + '<option value="sim"' + (isTerceirosSim(row.nota_lancada) ? ' selected' : '') + '>Sim</option>'
                 + '<option value="nao"' + (isTerceirosNao(row.nota_lancada) ? ' selected' : '') + '>Não</option>'
@@ -670,7 +692,10 @@ async function loadTerceirosFornecedoresRecebidos() {
     tbody.querySelectorAll('[data-ter-nota-lancada-doc]').forEach(function(select) {
         select.addEventListener('change', function() {
             var id = parseInt(select.getAttribute('data-ter-nota-lancada-doc') || '0', 10);
-            if (id && select.value) atualizarStatusTerceirosDireto(id, 'nota_lancada', select.value);
+            var recebimentoConcluido = select.getAttribute('data-ter-recebimento-concluido') === 'sim';
+            if (id && select.value) atualizarStatusTerceirosDireto(id, 'nota_lancada', select.value, {
+                recebimento_concluido: recebimentoConcluido
+            });
         });
     });
 }
@@ -853,14 +878,41 @@ async function refreshTerceirosViews() {
     ]);
 }
 
-async function atualizarStatusTerceirosDireto(documentoId, campo, valor) {
+async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes) {
     if (!documentoId) return;
+    opcoes = opcoes || {};
+    if (campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && opcoes.recebimento_concluido === false && !opcoes.forcar_lancamento_sem_recebimento) {
+        var confirmouLocal = await abrirModalLancamentoSemRecebimento();
+        if (!confirmouLocal) {
+            showMessage('Lançamento cancelado. A nota segue sem recebimento confirmado.', 'warning');
+            await refreshTerceirosViews();
+            return;
+        }
+        opcoes.forcar_lancamento_sem_recebimento = true;
+    }
     var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
         method: 'POST',
-        body: JSON.stringify({ campo: campo, valor: valor })
+        body: JSON.stringify({
+            campo: campo,
+            valor: valor,
+            forcar_lancamento_sem_recebimento: !!opcoes.forcar_lancamento_sem_recebimento
+        })
     });
     if (!resp || !resp.ok) {
+        if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !opcoes.forcar_lancamento_sem_recebimento) {
+            var confirmou = await abrirModalLancamentoSemRecebimento();
+            if (confirmou) {
+                await atualizarStatusTerceirosDireto(documentoId, campo, valor, Object.assign({}, opcoes, {
+                    forcar_lancamento_sem_recebimento: true
+                }));
+                return;
+            }
+            showMessage('Lançamento cancelado. A nota segue sem recebimento confirmado.', 'warning');
+            await refreshTerceirosViews();
+            return;
+        }
         showMessage((resp && resp.erro) || 'Erro ao atualizar status.', 'error');
+        await refreshTerceirosViews();
         return;
     }
     if (_terceirosDocAtual.id === documentoId) {
@@ -899,6 +951,7 @@ function resetTerceirosDetalhe() {
     if (detalhe) detalhe.style.display = 'none';
     _terceirosDocAtual.id = null;
     _terceirosDocAtual.area = 'recebimento';
+    _terceirosDocAtual.recebimento_concluido = false;
     ['nf', 'qtd-xml', 'qtd-bipada', 'pendencias'].forEach(function(suf) {
         var el = document.getElementById(prefixo + '-stat-' + suf);
         if (el) el.textContent = suf === 'nf' ? '-' : '0';
@@ -954,6 +1007,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     }
     _terceirosDocAtual.id = doc.id;
     _terceirosDocAtual.area = doc.area || area;
+    _terceirosDocAtual.recebimento_concluido = !!doc.recebimento_concluido;
     if (vazio) vazio.style.display = 'none';
     if (detalhe) detalhe.style.display = 'block';
     var statNf = document.getElementById(prefixo + '-stat-nf');
@@ -1032,14 +1086,39 @@ async function biparItemTerceiros(area, itemId) {
     await refreshTerceirosViews();
 }
 
-async function atualizarStatusTerceiros(area, campo, valor) {
+async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
     var documentoId = _terceirosDocAtual.id;
     if (!documentoId) return;
+    opcoes = opcoes || {};
+    var payload = {
+        campo: campo,
+        valor: valor,
+        forcar_lancamento_sem_recebimento: !!opcoes.forcar_lancamento_sem_recebimento
+    };
+    if (campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !_terceirosDocAtual.recebimento_concluido && !payload.forcar_lancamento_sem_recebimento) {
+        var confirmouLocal = await abrirModalLancamentoSemRecebimento();
+        if (!confirmouLocal) {
+            showMessage('Lançamento cancelado. A nota segue sem recebimento confirmado.', 'warning');
+            await refreshTerceirosViews();
+            return;
+        }
+        payload.forcar_lancamento_sem_recebimento = true;
+    }
     var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
         method: 'POST',
-        body: JSON.stringify({ campo: campo, valor: valor })
+        body: JSON.stringify(payload)
     });
     if (!resp || !resp.ok) {
+        if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !payload.forcar_lancamento_sem_recebimento) {
+            var confirmou = await abrirModalLancamentoSemRecebimento();
+            if (confirmou) {
+                await atualizarStatusTerceiros(area, campo, valor, { forcar_lancamento_sem_recebimento: true });
+                return;
+            }
+            showMessage('Lançamento cancelado. A nota segue sem recebimento confirmado.', 'warning');
+            await refreshTerceirosViews();
+            return;
+        }
         showMessage((resp && resp.erro) || 'Erro ao atualizar status.', 'error');
         return;
     }
@@ -1099,12 +1178,23 @@ function initForms() {
     
     // Fechar modal ao clicar no X
     document.querySelector('.close').addEventListener('click', closeModal);
+
+    const modalTerSemReceb = document.getElementById('modal-terceiros-lancar-sem-recebimento');
+    const btnTerSemRecebConfirmar = document.getElementById('btn-ter-confirmar-lancar-sem-recebimento');
+    const btnTerSemRecebCancelar = document.getElementById('btn-ter-cancelar-lancar-sem-recebimento');
+    const btnTerSemRecebClose = document.getElementById('modal-terceiros-lancar-sem-recebimento-close');
+    if (btnTerSemRecebConfirmar) btnTerSemRecebConfirmar.addEventListener('click', function() { fecharModalLancamentoSemRecebimento(true); });
+    if (btnTerSemRecebCancelar) btnTerSemRecebCancelar.addEventListener('click', function() { fecharModalLancamentoSemRecebimento(false); });
+    if (btnTerSemRecebClose) btnTerSemRecebClose.addEventListener('click', function() { fecharModalLancamentoSemRecebimento(false); });
     
     // Fechar modal ao clicar fora
     window.addEventListener('click', (e) => {
         const modal = document.getElementById('edit-modal');
         if (e.target === modal) {
             closeModal();
+        }
+        if (modalTerSemReceb && e.target === modalTerSemReceb) {
+            fecharModalLancamentoSemRecebimento(false);
         }
     });
     
