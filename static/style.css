@@ -232,7 +232,11 @@ body {
     color: #607d8b;
 }
 
-#modulo-terceiros .terceiros-panel-unico {
+#modulo-terceiros .devolucoes-panel.terceiros-panel-unico {
+    display: none;
+}
+
+#modulo-terceiros .devolucoes-panel.devolucoes-panel-active.terceiros-panel-unico {
     display: flex;
     flex-direction: column;
     gap: 18px;
