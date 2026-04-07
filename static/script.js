@@ -177,7 +177,7 @@ function initModulos() {
                 loadPainelDevolucoes();
             }
         } else if (id === 'terceiros') {
-            loadTerceirosDocumentos();
+            refreshTerceirosViews();
         }
     }
 
@@ -231,32 +231,44 @@ function initDevolucoesTabs() {
 function initTerceirosTabs() {
     var botoes = document.querySelectorAll('.terceiros-subtab[data-ter-tab]');
     var recebimento = document.getElementById('terceiros-panel-recebimento');
+    var fornecedoresRecebidos = document.getElementById('terceiros-panel-fornecedores-recebidos');
+    var notasLancadas = document.getElementById('terceiros-panel-notas-lancadas');
+    var notasEnviadasMg = document.getElementById('terceiros-panel-notas-enviadas-mg');
     var pendenciasMg = document.getElementById('terceiros-panel-pendencias-mg');
     var historico = document.getElementById('terceiros-panel-historico');
-    if (!botoes.length || !recebimento || !pendenciasMg || !historico) return;
+    if (!botoes.length || !recebimento || !fornecedoresRecebidos || !notasLancadas || !notasEnviadasMg || !pendenciasMg || !historico) return;
 
     function mostrarTerTab(tab) {
-        var aba = 'fluxo';
+        var aba = 'pendencia-recebimento';
+        if (tab === 'fornecedores-recebidos') aba = 'fornecedores-recebidos';
+        if (tab === 'notas-lancadas') aba = 'notas-lancadas';
+        if (tab === 'notas-enviadas-mg') aba = 'notas-enviadas-mg';
         if (tab === 'pendencias-mg') aba = 'pendencias-mg';
         if (tab === 'historico') aba = 'historico';
         botoes.forEach(function(btn) {
             btn.classList.toggle('active', btn.getAttribute('data-ter-tab') === aba);
         });
-        recebimento.classList.toggle('devolucoes-panel-active', aba === 'fluxo');
+        recebimento.classList.toggle('devolucoes-panel-active', aba === 'pendencia-recebimento');
+        fornecedoresRecebidos.classList.toggle('devolucoes-panel-active', aba === 'fornecedores-recebidos');
+        notasLancadas.classList.toggle('devolucoes-panel-active', aba === 'notas-lancadas');
+        notasEnviadasMg.classList.toggle('devolucoes-panel-active', aba === 'notas-enviadas-mg');
         pendenciasMg.classList.toggle('devolucoes-panel-active', aba === 'pendencias-mg');
         historico.classList.toggle('devolucoes-panel-active', aba === 'historico');
-        if (aba === 'fluxo') loadTerceirosDocumentos();
+        if (aba === 'pendencia-recebimento') loadTerceirosDocumentos();
+        if (aba === 'fornecedores-recebidos') loadTerceirosFornecedoresRecebidos();
+        if (aba === 'notas-lancadas') loadTerceirosNotasLancadas();
+        if (aba === 'notas-enviadas-mg') loadTerceirosNotasEnviadasMg();
         if (aba === 'pendencias-mg') loadTerceirosPendenciasMg();
         if (aba === 'historico') loadTerceirosHistorico();
     }
 
     botoes.forEach(function(btn) {
         btn.addEventListener('click', function() {
-            mostrarTerTab(btn.getAttribute('data-ter-tab') || 'fluxo');
+            mostrarTerTab(btn.getAttribute('data-ter-tab') || 'pendencia-recebimento');
         });
     });
 
-    mostrarTerTab('fluxo');
+    mostrarTerTab('pendencia-recebimento');
 }
 
 // Sistema de Abas
@@ -495,36 +507,113 @@ async function uploadXmlTerceiros() {
         }
         resultadoEl.textContent = 'Upload concluído. ' + (data.total_criados || 0) + ' nota(s) criada(s).' + ((data.erros && data.erros.length) ? ' Erros: ' + data.erros.join(' | ') : '');
         filesEl.value = '';
-        loadTerceirosDocumentos();
-        loadTerceirosPendenciasMg();
-        loadTerceirosHistorico();
+        refreshTerceirosViews();
         showMessage('XMLs processados com sucesso.', 'success');
     } catch (e) {
         resultadoEl.textContent = 'Erro ao enviar XMLs.';
     }
 }
 
-async function loadTerceirosDocumentos() {
-    var tbody = document.getElementById('ter-tbody-recebimento-documentos');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading">Carregando...</td></tr>';
-    if (!tbody) return;
+async function fetchTerceirosDocumentosTodos() {
     const respostas = await Promise.all([
         fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('recebimento'))),
         fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('expedicao')))
     ]);
     const erros = respostas.filter(function(resp) { return !resp || resp.erro; });
     if (erros.length === respostas.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">' + escapeHtml((erros[0] && erros[0].erro) || 'Erro ao carregar documentos.') + '</td></tr>';
+        return { erro: (erros[0] && erros[0].erro) || 'Erro ao carregar documentos.', rows: [] };
+    }
+    return {
+        rows: respostas.reduce(function(lista, resp) {
+            if (resp && Array.isArray(resp.rows)) return lista.concat(resp.rows);
+            return lista;
+        }, []).sort(function(a, b) {
+            return Number(b.id || 0) - Number(a.id || 0);
+        })
+    };
+}
+
+function isTerceirosSim(valor) {
+    return String(valor || '').toLowerCase() === 'sim';
+}
+
+function isTerceirosNao(valor) {
+    return String(valor || '').toLowerCase() === 'nao';
+}
+
+function getTerceirosRowsPorEtapa(rows, etapa) {
+    rows = Array.isArray(rows) ? rows : [];
+    if (etapa === 'pendencia-recebimento') {
+        return rows.filter(function(row) {
+            return !isTerceirosSim(row.recebimento_concluido);
+        });
+    }
+    if (etapa === 'fornecedores-recebidos') {
+        return rows.filter(function(row) {
+            return isTerceirosSim(row.recebimento_concluido) && !row.nota_lancada;
+        });
+    }
+    if (etapa === 'notas-lancadas') {
+        return rows.filter(function(row) {
+            return isTerceirosSim(row.nota_lancada);
+        });
+    }
+    if (etapa === 'notas-enviadas-mg') {
+        return rows.filter(function(row) {
+            return isTerceirosSim(row.carga_recebida_mg);
+        });
+    }
+    if (etapa === 'pendencias-mg') {
+        return rows.filter(function(row) {
+            return isTerceirosSim(row.enviar_para_mg) && !isTerceirosSim(row.carga_recebida_mg);
+        });
+    }
+    return rows;
+}
+
+function renderTerceirosAbrirButton(row, atributo, rotulo, tabDestino) {
+    return '<button type="button" class="btn btn-primary btn-sm" '
+        + atributo + '="' + escapeHtml(String(row.id)) + '" '
+        + 'data-ter-area="' + escapeHtml(row.area || 'recebimento') + '" '
+        + 'data-ter-open-tab="' + escapeHtml(tabDestino || 'pendencia-recebimento') + '">'
+        + escapeHtml(rotulo || 'Abrir')
+        + '</button>';
+}
+
+function bindTerceirosAbrirButtons(seletor) {
+    document.querySelectorAll(seletor).forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = parseInt(
+                btn.getAttribute('data-ter-doc')
+                || btn.getAttribute('data-ter-fornecedor-doc')
+                || btn.getAttribute('data-ter-lancada-doc')
+                || btn.getAttribute('data-ter-enviada-doc')
+                || btn.getAttribute('data-ter-pendencia-doc')
+                || btn.getAttribute('data-ter-historico-doc')
+                || '0',
+                10
+            );
+            var area = btn.getAttribute('data-ter-area') || 'recebimento';
+            var tabDestino = btn.getAttribute('data-ter-open-tab') || 'pendencia-recebimento';
+            var botaoAba = document.querySelector('.terceiros-subtab[data-ter-tab="' + tabDestino + '"]');
+            if (botaoAba) botaoAba.click();
+            if (id) loadTerceirosDocumentoDetalhe(area, id);
+        });
+    });
+}
+
+async function loadTerceirosDocumentos() {
+    var tbody = document.getElementById('ter-tbody-recebimento-documentos');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando...</td></tr>';
+    if (!tbody) return;
+    const data = await fetchTerceirosDocumentosTodos();
+    if (data.erro) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
-    const rows = respostas.reduce(function(lista, resp) {
-        if (resp && Array.isArray(resp.rows)) return lista.concat(resp.rows);
-        return lista;
-    }, []).sort(function(a, b) {
-        return Number(b.id || 0) - Number(a.id || 0);
-    });
+    const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencia-recebimento');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Nenhuma nota enviada ainda.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF pendente de recebimento.</td></tr>';
         resetTerceirosDetalhe();
         return;
     }
@@ -535,40 +624,166 @@ async function loadTerceirosDocumentos() {
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
             + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
-            + '<td><button type="button" class="btn btn-primary btn-sm" data-ter-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Abrir</button></td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-doc', 'Abrir', 'pendencia-recebimento') + '</td>'
             + '</tr>';
     }).join('');
-    tbody.querySelectorAll('[data-ter-doc]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var id = parseInt(btn.getAttribute('data-ter-doc') || '0', 10);
-            var areaBtn = btn.getAttribute('data-ter-area') || 'recebimento';
-            if (id) loadTerceirosDocumentoDetalhe(areaBtn, id);
+    bindTerceirosAbrirButtons('[data-ter-doc]');
+}
+
+async function loadTerceirosFornecedoresRecebidos() {
+    var tbody = document.getElementById('ter-tbody-fornecedores-recebidos');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando...</td></tr>';
+    const data = await fetchTerceirosDocumentosTodos();
+    if (data.erro) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        return;
+    }
+    const rows = getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF aguardando lançamento.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(function(row) {
+        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+        return '<tr>'
+            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
+            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
+            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
+            + '<td>' + escapeHtml(isTerceirosSim(row.recebimento_concluido) ? 'concluído' : 'pendente') + '</td>'
+            + '<td><select class="ter-select-inline" data-ter-nota-lancada-doc="' + escapeHtml(String(row.id)) + '">'
+                + '<option value="">Selecione</option>'
+                + '<option value="sim"' + (isTerceirosSim(row.nota_lancada) ? ' selected' : '') + '>Sim</option>'
+                + '<option value="nao"' + (isTerceirosNao(row.nota_lancada) ? ' selected' : '') + '>Não</option>'
+            + '</select><div class="ter-status-meta">' + escapeHtml(row.nota_lancada_em || '-') + '</div></td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'pendencia-recebimento') + '</td>'
+            + '</tr>';
+    }).join('');
+    bindTerceirosAbrirButtons('[data-ter-fornecedor-doc]');
+    tbody.querySelectorAll('[data-ter-nota-lancada-doc]').forEach(function(select) {
+        select.addEventListener('change', function() {
+            var id = parseInt(select.getAttribute('data-ter-nota-lancada-doc') || '0', 10);
+            if (id && select.value) atualizarStatusTerceirosDireto(id, 'nota_lancada', select.value);
         });
     });
+}
+
+async function loadTerceirosNotasLancadas() {
+    var tbody = document.getElementById('ter-tbody-notas-lancadas');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando...</td></tr>';
+    const data = await fetchTerceirosDocumentosTodos();
+    if (data.erro) {
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        return;
+    }
+    const rows = getTerceirosRowsPorEtapa(data.rows, 'notas-lancadas');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF lançada ainda.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(function(row) {
+        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+        return '<tr>'
+            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
+            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
+            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
+            + '<td>' + escapeHtml(row.nota_lancada || '-') + '</td>'
+            + '<td><select class="ter-select-inline" data-ter-enviar-mg-doc="' + escapeHtml(String(row.id)) + '">'
+                + '<option value="">Selecione</option>'
+                + '<option value="sim"' + (isTerceirosSim(row.enviar_para_mg) ? ' selected' : '') + '>Sim</option>'
+                + '<option value="nao"' + (isTerceirosNao(row.enviar_para_mg) ? ' selected' : '') + '>Não</option>'
+            + '</select><div class="ter-status-meta">' + escapeHtml(row.enviar_para_mg_em || '-') + '</div></td>'
+            + '<td><div class="ter-inline-stack">'
+                + '<input type="text" class="ter-input-inline" data-ter-motorista-doc="' + escapeHtml(String(row.id)) + '" value="' + escapeHtml(row.motorista_carreta || '') + '" placeholder="Motorista">'
+                + '<button type="button" class="btn btn-secondary btn-sm" data-ter-salvar-motorista-doc="' + escapeHtml(String(row.id)) + '">Salvar</button>'
+                + '<div class="ter-status-meta">' + escapeHtml(row.motorista_carreta_em || '-') + '</div>'
+            + '</div></td>'
+            + '<td><select class="ter-select-inline" data-ter-recebida-mg-doc="' + escapeHtml(String(row.id)) + '">'
+                + '<option value="">Selecione</option>'
+                + '<option value="sim"' + (isTerceirosSim(row.carga_recebida_mg) ? ' selected' : '') + '>Sim</option>'
+                + '<option value="nao"' + (isTerceirosNao(row.carga_recebida_mg) ? ' selected' : '') + '>Não</option>'
+            + '</select><div class="ter-status-meta">' + escapeHtml(row.carga_recebida_mg_em || '-') + '</div></td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento') + '</td>'
+            + '</tr>';
+    }).join('');
+    bindTerceirosAbrirButtons('[data-ter-lancada-doc]');
+    tbody.querySelectorAll('[data-ter-enviar-mg-doc]').forEach(function(select) {
+        select.addEventListener('change', function() {
+            var id = parseInt(select.getAttribute('data-ter-enviar-mg-doc') || '0', 10);
+            if (id && select.value) atualizarStatusTerceirosDireto(id, 'enviar_para_mg', select.value);
+        });
+    });
+    tbody.querySelectorAll('[data-ter-recebida-mg-doc]').forEach(function(select) {
+        select.addEventListener('change', function() {
+            var id = parseInt(select.getAttribute('data-ter-recebida-mg-doc') || '0', 10);
+            if (id && select.value) atualizarStatusTerceirosDireto(id, 'carga_recebida_mg', select.value);
+        });
+    });
+    tbody.querySelectorAll('[data-ter-salvar-motorista-doc]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = parseInt(btn.getAttribute('data-ter-salvar-motorista-doc') || '0', 10);
+            var input = document.querySelector('[data-ter-motorista-doc="' + String(id) + '"]');
+            var motorista = input ? input.value.trim() : '';
+            if (id) salvarMotoristaTerceirosDireto(id, motorista);
+        });
+    });
+}
+
+async function loadTerceirosNotasEnviadasMg() {
+    var tbody = document.getElementById('ter-tbody-notas-enviadas-mg');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando...</td></tr>';
+    const data = await fetchTerceirosDocumentosTodos();
+    if (data.erro) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        return;
+    }
+    const rows = getTerceirosRowsPorEtapa(data.rows, 'notas-enviadas-mg');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF concluída em MG.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(function(row) {
+        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+        return '<tr>'
+            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
+            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
+            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
+            + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
+            + '<td>' + escapeHtml(row.carga_recebida_mg || '-') + '</td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-enviada-doc', 'Abrir detalhe', 'pendencia-recebimento') + '</td>'
+            + '</tr>';
+    }).join('');
+    bindTerceirosAbrirButtons('[data-ter-enviada-doc]');
 }
 
 async function loadTerceirosPendenciasMg() {
     var tbody = document.getElementById('ter-tbody-pendencias-mg');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="8" class="loading">Carregando...</td></tr>';
-    const respostas = await Promise.all([
-        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('recebimento'))),
-        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('expedicao')))
-    ]);
-    const rows = respostas.reduce(function(lista, resp) {
-        if (resp && Array.isArray(resp.rows)) return lista.concat(resp.rows);
-        return lista;
-    }, []).filter(function(row) {
-        return (row.enviar_para_mg || '').toLowerCase() === 'sim' && (row.carga_recebida_mg || '').toLowerCase() !== 'sim';
-    }).sort(function(a, b) {
-        return Number(b.id || 0) - Number(a.id || 0);
-    });
+    tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando...</td></tr>';
+    const data = await fetchTerceirosDocumentosTodos();
+    if (data.erro) {
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        return;
+    }
+    const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencias-mg');
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF pendente de envio para MG.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhuma NF pendente de envio para MG.</td></tr>';
         return;
     }
 
@@ -579,72 +794,101 @@ async function loadTerceirosPendenciasMg() {
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
             + '<td><strong>' + escapeHtml(row.enviar_para_mg || '-') + '</strong></td>'
             + '<td>' + escapeHtml(row.carga_recebida_mg || 'pendente') + '</td>'
-            + '<td><button type="button" class="btn btn-primary btn-sm" data-ter-pendencia-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Abrir no fluxo</button></td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-pendencia-doc', 'Abrir detalhe', 'pendencia-recebimento') + '</td>'
             + '</tr>';
     }).join('');
-
-    tbody.querySelectorAll('[data-ter-pendencia-doc]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var id = parseInt(btn.getAttribute('data-ter-pendencia-doc') || '0', 10);
-            var area = btn.getAttribute('data-ter-area') || 'recebimento';
-            var botaoFluxo = document.querySelector('.terceiros-subtab[data-ter-tab="fluxo"]');
-            if (botaoFluxo) botaoFluxo.click();
-            if (id) loadTerceirosDocumentoDetalhe(area, id);
-        });
-    });
+    bindTerceirosAbrirButtons('[data-ter-pendencia-doc]');
 }
 
 async function loadTerceirosHistorico() {
     var tbody = document.getElementById('ter-tbody-historico');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando...</td></tr>';
-    const respostas = await Promise.all([
-        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('recebimento'))),
-        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('expedicao')))
-    ]);
-    const rows = respostas.reduce(function(lista, resp) {
-        if (resp && Array.isArray(resp.rows)) return lista.concat(resp.rows);
-        return lista;
-    }, []).sort(function(a, b) {
-        return Number(b.id || 0) - Number(a.id || 0);
-    });
+    tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando...</td></tr>';
+    const data = await fetchTerceirosDocumentosTodos();
+    if (data.erro) {
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        return;
+    }
+    const rows = data.rows;
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com XML enviado ainda.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhuma NF com XML enviado ainda.</td></tr>';
         return;
     }
 
     tbody.innerHTML = rows.map(function(row) {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-        var recebimento = row.recebimento_concluido ? 'concluído' : 'pendente';
+        var recebimento = isTerceirosSim(row.recebimento_concluido) ? 'concluído' : 'pendente';
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(recebimento) + '</td>'
             + '<td>' + escapeHtml(row.nota_lancada || '-') + '</td>'
             + '<td>' + escapeHtml(row.enviar_para_mg || '-') + '</td>'
             + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
             + '<td>' + escapeHtml(row.carga_recebida_mg || '-') + '</td>'
-            + '<td><button type="button" class="btn btn-primary btn-sm" data-ter-historico-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Abrir no fluxo</button></td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-historico-doc', 'Abrir detalhe', 'pendencia-recebimento') + '</td>'
             + '</tr>';
     }).join('');
+    bindTerceirosAbrirButtons('[data-ter-historico-doc]');
+}
 
-    tbody.querySelectorAll('[data-ter-historico-doc]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var id = parseInt(btn.getAttribute('data-ter-historico-doc') || '0', 10);
-            var area = btn.getAttribute('data-ter-area') || 'recebimento';
-            var botaoFluxo = document.querySelector('.terceiros-subtab[data-ter-tab="fluxo"]');
-            if (botaoFluxo) botaoFluxo.click();
-            if (id) loadTerceirosDocumentoDetalhe(area, id);
-        });
+async function refreshTerceirosViews() {
+    await Promise.all([
+        loadTerceirosDocumentos(),
+        loadTerceirosFornecedoresRecebidos(),
+        loadTerceirosNotasLancadas(),
+        loadTerceirosNotasEnviadasMg(),
+        loadTerceirosPendenciasMg(),
+        loadTerceirosHistorico()
+    ]);
+}
+
+async function atualizarStatusTerceirosDireto(documentoId, campo, valor) {
+    if (!documentoId) return;
+    var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
+        method: 'POST',
+        body: JSON.stringify({ campo: campo, valor: valor })
     });
+    if (!resp || !resp.ok) {
+        showMessage((resp && resp.erro) || 'Erro ao atualizar status.', 'error');
+        return;
+    }
+    if (_terceirosDocAtual.id === documentoId) {
+        await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+    }
+    await refreshTerceirosViews();
+    showMessage('Status atualizado.', 'success');
+}
+
+async function salvarMotoristaTerceirosDireto(documentoId, motorista) {
+    if (!documentoId) return;
+    if (!motorista) {
+        showMessage('Digite o motorista da carreta.', 'warning');
+        return;
+    }
+    var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/motorista', {
+        method: 'POST',
+        body: JSON.stringify({ motorista: motorista })
+    });
+    if (!resp || !resp.ok) {
+        showMessage((resp && resp.erro) || 'Erro ao salvar motorista.', 'error');
+        return;
+    }
+    if (_terceirosDocAtual.id === documentoId) {
+        await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+    }
+    await refreshTerceirosViews();
+    showMessage('Motorista salvo.', 'success');
 }
 
 function resetTerceirosDetalhe() {
@@ -659,10 +903,11 @@ function resetTerceirosDetalhe() {
         var el = document.getElementById(prefixo + '-stat-' + suf);
         if (el) el.textContent = suf === 'nf' ? '-' : '0';
     });
-    ['pedido', 'remetente', 'destinatario', 'previsao', 'concluido-meta', 'nota-lancada-meta', 'enviar-mg-meta', 'motorista-meta', 'recebida-mg-meta'].forEach(function(suf) {
+    ['pedido', 'remetente', 'destinatario', 'destinatario-uf', 'previsao', 'concluido-meta'].forEach(function(suf) {
         var el = document.getElementById(prefixo + '-' + suf);
         if (el) el.textContent = '-';
     });
+    atualizarBotaoConclusaoTerceiros(prefixo, false);
     var tbody = document.getElementById('ter-tbody-recebimento-itens');
     if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">Selecione uma nota.</td></tr>';
 }
@@ -675,6 +920,24 @@ function preencherMetaTerceiros(prefixo, campoBase, valor, usuario, datahora) {
     if (usuario) partes.push('por ' + usuario);
     if (datahora) partes.push('em ' + datahora);
     el.textContent = partes.length ? partes.join(' ') : '-';
+}
+
+function atualizarBotaoConclusaoTerceiros(prefixo, concluido) {
+    var btn = document.getElementById('btn-' + prefixo + '-concluir');
+    if (!btn) return;
+    btn.classList.toggle('btn-ter-concluido', !!concluido);
+    btn.textContent = concluido ? 'Concluido ✓' : 'Marcar concluido';
+}
+
+function animarConclusaoTerceiros(prefixo) {
+    var btn = document.getElementById('btn-' + prefixo + '-concluir');
+    if (!btn) return;
+    btn.classList.remove('btn-ter-concluido-animando');
+    void btn.offsetWidth;
+    btn.classList.add('btn-ter-concluido-animando');
+    window.setTimeout(function() {
+        btn.classList.remove('btn-ter-concluido-animando');
+    }, 1400);
 }
 
 async function loadTerceirosDocumentoDetalhe(area, documentoId) {
@@ -705,23 +968,14 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     if (pedido) pedido.textContent = doc.numero_pedido || '-';
     var remetente = document.getElementById(prefixo + '-remetente');
     var destinatario = document.getElementById(prefixo + '-destinatario');
+    var destinatarioUf = document.getElementById(prefixo + '-destinatario-uf');
     var previsao = document.getElementById(prefixo + '-previsao');
     if (remetente) remetente.textContent = doc.remetente_nome || '-';
     if (destinatario) destinatario.textContent = doc.destinatario_nome || '-';
+    if (destinatarioUf) destinatarioUf.textContent = doc.destinatario_uf || '-';
     if (previsao) previsao.textContent = doc.previsao_chegada || '-';
-    var notaLancadaEl = document.getElementById(prefixo + '-nota-lancada');
-    var enviarMgEl = document.getElementById(prefixo + '-enviar-mg');
-    var recebidaMgEl = document.getElementById(prefixo + '-recebida-mg');
-    var motoristaEl = document.getElementById(prefixo + '-motorista');
-    if (notaLancadaEl) notaLancadaEl.value = doc.nota_lancada || '';
-    if (enviarMgEl) enviarMgEl.value = doc.enviar_para_mg || '';
-    if (recebidaMgEl) recebidaMgEl.value = doc.carga_recebida_mg || '';
-    if (motoristaEl) motoristaEl.value = doc.motorista_carreta || '';
     preencherMetaTerceiros(prefixo, 'concluido-meta', doc.recebimento_concluido ? 'Concluído' : '', doc.recebimento_concluido_por || '', doc.recebimento_concluido_em || '');
-    preencherMetaTerceiros(prefixo, 'nota-lancada-meta', doc.nota_lancada || '', doc.nota_lancada_por || '', doc.nota_lancada_em || '');
-    preencherMetaTerceiros(prefixo, 'enviar-mg-meta', doc.enviar_para_mg || '', doc.enviar_para_mg_por || '', doc.enviar_para_mg_em || '');
-    preencherMetaTerceiros(prefixo, 'motorista-meta', doc.motorista_carreta || '', '', doc.motorista_carreta_em || '');
-    preencherMetaTerceiros(prefixo, 'recebida-mg-meta', doc.carga_recebida_mg || '', doc.carga_recebida_mg_por || '', doc.carga_recebida_mg_em || '');
+    atualizarBotaoConclusaoTerceiros(prefixo, !!doc.recebimento_concluido);
 
     if (!tbody) return;
     const itens = Array.isArray(doc.itens) ? doc.itens : [];
@@ -775,9 +1029,7 @@ async function biparItemTerceiros(area, itemId) {
     }
     showMessage('Item bipado com sucesso.', 'success');
     await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
-    await loadTerceirosDocumentos();
-    await loadTerceirosPendenciasMg();
-    await loadTerceirosHistorico();
+    await refreshTerceirosViews();
 }
 
 async function atualizarStatusTerceiros(area, campo, valor) {
@@ -793,9 +1045,10 @@ async function atualizarStatusTerceiros(area, campo, valor) {
     }
     showMessage('Status atualizado.', 'success');
     await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
-    await loadTerceirosDocumentos();
-    await loadTerceirosPendenciasMg();
-    await loadTerceirosHistorico();
+    await refreshTerceirosViews();
+    if (campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim') {
+        animarConclusaoTerceiros(getTerceirosPrefixo());
+    }
 }
 
 async function salvarMotoristaTerceiros(area) {
@@ -818,9 +1071,7 @@ async function salvarMotoristaTerceiros(area) {
     }
     showMessage('Motorista salvo.', 'success');
     await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
-    await loadTerceirosDocumentos();
-    await loadTerceirosPendenciasMg();
-    await loadTerceirosHistorico();
+    await refreshTerceirosViews();
 }
 
 // Inicializar formulários

@@ -6660,6 +6660,7 @@ def _parse_nfe_xml(xml_texto):
     dest = infnfe.find('nfe:dest', ns) if ns else infnfe.find('dest')
     ide = infnfe.find('nfe:ide', ns) if ns else infnfe.find('ide')
     total = infnfe.find('nfe:total', ns) if ns else infnfe.find('total')
+    ender_dest = dest.find('nfe:enderDest', ns) if dest is not None and ns else (dest.find('enderDest') if dest is not None else None)
 
     itens = []
     numero_pedido = ''
@@ -6704,6 +6705,7 @@ def _parse_nfe_xml(xml_texto):
         'remetente_cnpj': _find_first(emit, ['nfe:CNPJ', 'CNPJ', 'nfe:CPF', 'CPF'], ns),
         'destinatario_nome': _find_first(dest, ['nfe:xNome', 'xNome'], ns),
         'destinatario_cnpj': _find_first(dest, ['nfe:CNPJ', 'CNPJ', 'nfe:CPF', 'CPF'], ns),
+        'destinatario_uf': _find_first(ender_dest, ['nfe:UF', 'UF'], ns),
         'numero_pedido': numero_pedido,
         'valor_total_xml': _find_first(total, ['nfe:ICMSTot/nfe:vNF', 'ICMSTot/vNF'], ns),
         'itens': itens,
@@ -6721,6 +6723,21 @@ def _numero_pedido_terceiros(doc):
     try:
         parsed = _parse_nfe_xml(xml_texto)
         return parsed.get('numero_pedido') or ''
+    except Exception:
+        return ''
+
+
+def _uf_destinatario_terceiros(doc):
+    if not doc:
+        return ''
+    if doc.get('destinatario_uf'):
+        return (doc.get('destinatario_uf') or '').strip()
+    xml_texto = doc.get('xml_conteudo') or ''
+    if not xml_texto:
+        return ''
+    try:
+        parsed = _parse_nfe_xml(xml_texto)
+        return (parsed.get('destinatario_uf') or '').strip()
     except Exception:
         return ''
 
@@ -6793,6 +6810,7 @@ def _carregar_documento_terceiros(conn, documento_id):
         return None
     doc = dict(row) if hasattr(row, 'keys') else {}
     doc['numero_pedido'] = _numero_pedido_terceiros(doc)
+    doc['destinatario_uf'] = _uf_destinatario_terceiros(doc)
     itens_rows = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE documento_id = ? ORDER BY n_item, id', (documento_id,)).fetchall()
     eventos_rows = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_eventos(conn) + ' WHERE documento_id = ? ORDER BY criado_em DESC, id DESC', (documento_id,)).fetchall()
     itens = []
@@ -6890,6 +6908,7 @@ def api_terceiros_documentos():
                 'data_emissao': _fmt_data_br(row.get('data_emissao') or ''),
                 'remetente_nome': row.get('remetente_nome') or '',
                 'destinatario_nome': row.get('destinatario_nome') or '',
+                'destinatario_uf': _uf_destinatario_terceiros(row),
                 'previsao_chegada': row.get('previsao_chegada') or '',
                 'recebimento_concluido': bool(row.get('recebimento_concluido')),
                 'nota_lancada': row.get('nota_lancada') or '',
