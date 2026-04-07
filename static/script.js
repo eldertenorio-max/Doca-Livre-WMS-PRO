@@ -112,8 +112,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 let _terceirosDocAtual = {
-    recebimento: null,
-    expedicao: null
+    id: null,
+    area: 'recebimento'
 };
 
 function initNavegacaoRapida() {
@@ -177,8 +177,7 @@ function initModulos() {
                 loadPainelDevolucoes();
             }
         } else if (id === 'terceiros') {
-            loadTerceirosDocumentos('recebimento');
-            loadTerceirosDocumentos('expedicao');
+            loadTerceirosDocumentos();
         }
     }
 
@@ -231,12 +230,9 @@ function initDevolucoesTabs() {
 
 function initTerceirosTabs() {
     var recebimento = document.getElementById('terceiros-panel-recebimento');
-    var expedicao = document.getElementById('terceiros-panel-expedicao');
-    if (!recebimento || !expedicao) return;
+    if (!recebimento) return;
     recebimento.classList.add('devolucoes-panel-active');
-    expedicao.classList.add('devolucoes-panel-active');
-    loadTerceirosDocumentos('recebimento');
-    loadTerceirosDocumentos('expedicao');
+    loadTerceirosDocumentos();
 }
 
 // Sistema de Abas
@@ -432,16 +428,17 @@ async function loadPainelDevolucoes() {
     renderPainelDevolucoesCharts(data);
 }
 
-function getTerceirosPrefixo(area) {
-    return area === 'expedicao' ? 'ter-exp' : 'ter-rec';
+function getTerceirosPrefixo() {
+    return 'ter-rec';
 }
 
 function getTerceirosAreaApi(area) {
     return area === 'expedicao' ? 'expedicao' : 'recebimento';
 }
 
-async function uploadXmlTerceiros(area) {
-    var prefixo = area === 'expedicao' ? 'ter-expedicao' : 'ter-recebimento';
+async function uploadXmlTerceiros() {
+    var area = 'recebimento';
+    var prefixo = 'ter-recebimento';
     var previsaoEl = document.getElementById(prefixo + '-previsao');
     var filesEl = document.getElementById(prefixo + '-xml');
     var resultadoEl = document.getElementById(prefixo + '-upload-resultado');
@@ -474,28 +471,35 @@ async function uploadXmlTerceiros(area) {
         }
         resultadoEl.textContent = 'Upload concluído. ' + (data.total_criados || 0) + ' nota(s) criada(s).' + ((data.erros && data.erros.length) ? ' Erros: ' + data.erros.join(' | ') : '');
         filesEl.value = '';
-        loadTerceirosDocumentos(area);
+        loadTerceirosDocumentos();
         showMessage('XMLs processados com sucesso.', 'success');
     } catch (e) {
         resultadoEl.textContent = 'Erro ao enviar XMLs.';
     }
 }
 
-async function loadTerceirosDocumentos(area) {
-    area = area === 'expedicao' ? 'expedicao' : 'recebimento';
-    var tbodyId = area === 'expedicao' ? 'ter-tbody-expedicao-documentos' : 'ter-tbody-recebimento-documentos';
-    var tbody = document.getElementById(tbodyId);
+async function loadTerceirosDocumentos() {
+    var tbody = document.getElementById('ter-tbody-recebimento-documentos');
     if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading">Carregando...</td></tr>';
-    const resp = await fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi(area)));
     if (!tbody) return;
-    if (!resp || resp.erro) {
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">' + escapeHtml((resp && resp.erro) || 'Erro ao carregar documentos.') + '</td></tr>';
+    const respostas = await Promise.all([
+        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('recebimento'))),
+        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('expedicao')))
+    ]);
+    const erros = respostas.filter(function(resp) { return !resp || resp.erro; });
+    if (erros.length === respostas.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">' + escapeHtml((erros[0] && erros[0].erro) || 'Erro ao carregar documentos.') + '</td></tr>';
         return;
     }
-    const rows = Array.isArray(resp.rows) ? resp.rows : [];
+    const rows = respostas.reduce(function(lista, resp) {
+        if (resp && Array.isArray(resp.rows)) return lista.concat(resp.rows);
+        return lista;
+    }, []).sort(function(a, b) {
+        return Number(b.id || 0) - Number(a.id || 0);
+    });
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="7" class="loading">Nenhuma nota enviada ainda.</td></tr>';
-        resetTerceirosDetalhe(area);
+        resetTerceirosDetalhe();
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
@@ -507,25 +511,26 @@ async function loadTerceirosDocumentos(area) {
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
             + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
-            + '<td><button type="button" class="btn btn-primary btn-sm" data-ter-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(area) + '">Abrir</button></td>'
+            + '<td><button type="button" class="btn btn-primary btn-sm" data-ter-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Abrir</button></td>'
             + '</tr>';
     }).join('');
     tbody.querySelectorAll('[data-ter-doc]').forEach(function(btn) {
         btn.addEventListener('click', function() {
             var id = parseInt(btn.getAttribute('data-ter-doc') || '0', 10);
-            var areaBtn = btn.getAttribute('data-ter-area') || area;
+            var areaBtn = btn.getAttribute('data-ter-area') || 'recebimento';
             if (id) loadTerceirosDocumentoDetalhe(areaBtn, id);
         });
     });
 }
 
-function resetTerceirosDetalhe(area) {
-    var prefixo = getTerceirosPrefixo(area);
-    var vazio = document.getElementById(area === 'expedicao' ? 'ter-expedicao-detalhe-vazio' : 'ter-recebimento-detalhe-vazio');
-    var detalhe = document.getElementById(area === 'expedicao' ? 'ter-expedicao-detalhe' : 'ter-recebimento-detalhe');
+function resetTerceirosDetalhe() {
+    var prefixo = getTerceirosPrefixo();
+    var vazio = document.getElementById('ter-recebimento-detalhe-vazio');
+    var detalhe = document.getElementById('ter-recebimento-detalhe');
     if (vazio) vazio.style.display = 'block';
     if (detalhe) detalhe.style.display = 'none';
-    _terceirosDocAtual[area] = null;
+    _terceirosDocAtual.id = null;
+    _terceirosDocAtual.area = 'recebimento';
     ['nf', 'qtd-xml', 'qtd-bipada', 'pendencias'].forEach(function(suf) {
         var el = document.getElementById(prefixo + '-stat-' + suf);
         if (el) el.textContent = suf === 'nf' ? '-' : '0';
@@ -534,7 +539,7 @@ function resetTerceirosDetalhe(area) {
         var el = document.getElementById(prefixo + '-' + suf);
         if (el) el.textContent = '-';
     });
-    var tbody = document.getElementById(area === 'expedicao' ? 'ter-tbody-expedicao-itens' : 'ter-tbody-recebimento-itens');
+    var tbody = document.getElementById('ter-tbody-recebimento-itens');
     if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">Selecione uma nota.</td></tr>';
 }
 
@@ -550,17 +555,18 @@ function preencherMetaTerceiros(prefixo, campoBase, valor, usuario, datahora) {
 
 async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     area = area === 'expedicao' ? 'expedicao' : 'recebimento';
-    const prefixo = getTerceirosPrefixo(area);
-    const vazio = document.getElementById(area === 'expedicao' ? 'ter-expedicao-detalhe-vazio' : 'ter-recebimento-detalhe-vazio');
-    const detalhe = document.getElementById(area === 'expedicao' ? 'ter-expedicao-detalhe' : 'ter-recebimento-detalhe');
-    const tbody = document.getElementById(area === 'expedicao' ? 'ter-tbody-expedicao-itens' : 'ter-tbody-recebimento-itens');
+    const prefixo = getTerceirosPrefixo();
+    const vazio = document.getElementById('ter-recebimento-detalhe-vazio');
+    const detalhe = document.getElementById('ter-recebimento-detalhe');
+    const tbody = document.getElementById('ter-tbody-recebimento-itens');
     if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando detalhe...</td></tr>';
     const doc = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId));
     if (!doc || doc.erro) {
         if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml((doc && doc.erro) || 'Erro ao carregar.') + '</td></tr>';
         return;
     }
-    _terceirosDocAtual[area] = doc.id;
+    _terceirosDocAtual.id = doc.id;
+    _terceirosDocAtual.area = doc.area || area;
     if (vazio) vazio.style.display = 'none';
     if (detalhe) detalhe.style.display = 'block';
     var statNf = document.getElementById(prefixo + '-stat-nf');
@@ -624,10 +630,9 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
 }
 
 async function biparItemTerceiros(area, itemId) {
-    area = area === 'expedicao' ? 'expedicao' : 'recebimento';
-    var documentoId = _terceirosDocAtual[area];
+    var documentoId = _terceirosDocAtual.id;
     if (!documentoId) return;
-    var prefixo = getTerceirosPrefixo(area);
+    var prefixo = getTerceirosPrefixo();
     var input = document.getElementById(prefixo + '-ean-item-' + itemId);
     var codigo = input ? input.value.trim() : '';
     if (!codigo) {
@@ -643,13 +648,12 @@ async function biparItemTerceiros(area, itemId) {
         return;
     }
     showMessage('Item bipado com sucesso.', 'success');
-    await loadTerceirosDocumentoDetalhe(area, documentoId);
-    await loadTerceirosDocumentos(area);
+    await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+    await loadTerceirosDocumentos();
 }
 
 async function atualizarStatusTerceiros(area, campo, valor) {
-    area = area === 'expedicao' ? 'expedicao' : 'recebimento';
-    var documentoId = _terceirosDocAtual[area];
+    var documentoId = _terceirosDocAtual.id;
     if (!documentoId) return;
     var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
         method: 'POST',
@@ -660,15 +664,14 @@ async function atualizarStatusTerceiros(area, campo, valor) {
         return;
     }
     showMessage('Status atualizado.', 'success');
-    await loadTerceirosDocumentoDetalhe(area, documentoId);
-    await loadTerceirosDocumentos(area);
+    await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+    await loadTerceirosDocumentos();
 }
 
 async function salvarMotoristaTerceiros(area) {
-    area = area === 'expedicao' ? 'expedicao' : 'recebimento';
-    var documentoId = _terceirosDocAtual[area];
+    var documentoId = _terceirosDocAtual.id;
     if (!documentoId) return;
-    var prefixo = getTerceirosPrefixo(area);
+    var prefixo = getTerceirosPrefixo();
     var input = document.getElementById(prefixo + '-motorista');
     var motorista = input ? input.value.trim() : '';
     if (!motorista) {
@@ -684,8 +687,8 @@ async function salvarMotoristaTerceiros(area) {
         return;
     }
     showMessage('Motorista salvo.', 'success');
-    await loadTerceirosDocumentoDetalhe(area, documentoId);
-    await loadTerceirosDocumentos(area);
+    await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+    await loadTerceirosDocumentos();
 }
 
 // Inicializar formulários
@@ -1256,22 +1259,15 @@ function initForms() {
     });
 
     const btnTerRecebUpload = document.getElementById('btn-ter-recebimento-upload');
-    if (btnTerRecebUpload) btnTerRecebUpload.addEventListener('click', function() { uploadXmlTerceiros('recebimento'); });
-    const btnTerExpUpload = document.getElementById('btn-ter-expedicao-upload');
-    if (btnTerExpUpload) btnTerExpUpload.addEventListener('click', function() { uploadXmlTerceiros('expedicao'); });
+    if (btnTerRecebUpload) btnTerRecebUpload.addEventListener('click', function() { uploadXmlTerceiros(); });
 
     const btnTerRecConcluir = document.getElementById('btn-ter-rec-concluir');
     if (btnTerRecConcluir) btnTerRecConcluir.addEventListener('click', function() { atualizarStatusTerceiros('recebimento', 'recebimento_concluido', 'sim'); });
-    const btnTerExpConcluir = document.getElementById('btn-ter-exp-concluir');
-    if (btnTerExpConcluir) btnTerExpConcluir.addEventListener('click', function() { atualizarStatusTerceiros('expedicao', 'recebimento_concluido', 'sim'); });
 
     [
         ['ter-rec-nota-lancada', 'recebimento', 'nota_lancada'],
         ['ter-rec-enviar-mg', 'recebimento', 'enviar_para_mg'],
-        ['ter-rec-recebida-mg', 'recebimento', 'carga_recebida_mg'],
-        ['ter-exp-nota-lancada', 'expedicao', 'nota_lancada'],
-        ['ter-exp-enviar-mg', 'expedicao', 'enviar_para_mg'],
-        ['ter-exp-recebida-mg', 'expedicao', 'carga_recebida_mg']
+        ['ter-rec-recebida-mg', 'recebimento', 'carga_recebida_mg']
     ].forEach(function(cfg) {
         var elStatus = document.getElementById(cfg[0]);
         if (!elStatus) return;
@@ -1282,8 +1278,6 @@ function initForms() {
 
     const btnTerRecMotorista = document.getElementById('btn-ter-rec-motorista');
     if (btnTerRecMotorista) btnTerRecMotorista.addEventListener('click', function() { salvarMotoristaTerceiros('recebimento'); });
-    const btnTerExpMotorista = document.getElementById('btn-ter-exp-motorista');
-    if (btnTerExpMotorista) btnTerExpMotorista.addEventListener('click', function() { salvarMotoristaTerceiros('expedicao'); });
 }
 
 // Verifica se o produto está na relação de itens da viagem
