@@ -6846,6 +6846,34 @@ def _motorista_obrigatorio_terceiros(doc):
     )
 
 
+def _identificador_duplicidade_terceiros(xml_data):
+    chave = (xml_data or {}).get('chave_nfe') or ''
+    if chave:
+        return ('chave_nfe', chave.strip())
+    numero_nf = str((xml_data or {}).get('numero_nf') or '').strip()
+    serie_nf = str((xml_data or {}).get('serie_nf') or '').strip()
+    emitente = _somente_digitos((xml_data or {}).get('remetente_cnpj') or '')
+    destinatario = _somente_digitos((xml_data or {}).get('destinatario_cnpj') or '')
+    return ('fallback', '|'.join([numero_nf, serie_nf, emitente, destinatario]))
+
+
+def _documento_terceiros_ja_existe(conn, xml_data):
+    tipo, valor = _identificador_duplicidade_terceiros(xml_data)
+    if not valor:
+        return False
+    if tipo == 'chave_nfe':
+        row = conn.execute(
+            'SELECT id FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE chave_nfe = ? LIMIT 1',
+            (valor,)
+        ).fetchone()
+        return bool(row)
+    row = conn.execute(
+        'SELECT id FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE numero_nf = ? AND serie_nf = ? AND remetente_cnpj = ? AND destinatario_cnpj = ? LIMIT 1',
+        tuple(valor.split('|'))
+    ).fetchone()
+    return bool(row)
+
+
 @app.route('/api/terceiros/upload-xml', methods=['POST'])
 def api_terceiros_upload_xml():
     area = (request.form.get('area') or '').strip().lower()
@@ -6860,6 +6888,7 @@ def api_terceiros_upload_xml():
     conn = get_db()
     usuario = session.get('usuario', '')
     criados, erros = [], []
+    vistos_lote = set()
     try:
         _ensure_terceiros_schema(conn)
         for arquivo in arquivos:
@@ -6876,6 +6905,15 @@ def api_terceiros_upload_xml():
                 continue
             try:
                 xml_data = _parse_nfe_xml(xml_texto)
+                identificador = _identificador_duplicidade_terceiros(xml_data)
+                if identificador[1] and identificador in vistos_lote:
+                    erros.append('%s: XML desta NF já foi incluído neste envio.' % nome)
+                    continue
+                if _documento_terceiros_ja_existe(conn, xml_data):
+                    erros.append('%s: XML desta NF já foi enviado anteriormente.' % nome)
+                    continue
+                if identificador[1]:
+                    vistos_lote.add(identificador)
                 criados.append(_criar_documento_terceiros(conn, area, previsao, nome, xml_texto, xml_data, usuario))
             except Exception as e:
                 erros.append('%s: %s' % (nome, str(e)))

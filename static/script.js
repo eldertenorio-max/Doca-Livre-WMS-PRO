@@ -116,6 +116,7 @@ let _terceirosDocAtual = {
     area: 'recebimento',
     recebimento_concluido: false
 };
+let _terceirosTabAtual = 'pendencia-recebimento';
 let _terceirosConfirmacaoLancamentoResolver = null;
 let _terceirosExcluirDocumentoResolver = null;
 let _terceirosExcluirDocumentoAtual = null;
@@ -249,6 +250,7 @@ function initTerceirosTabs() {
         if (tab === 'notas-enviadas-mg') aba = 'notas-enviadas-mg';
         if (tab === 'pendencias-mg') aba = 'pendencias-mg';
         if (tab === 'historico') aba = 'historico';
+        _terceirosTabAtual = aba;
         botoes.forEach(function(btn) {
             btn.classList.toggle('active', btn.getAttribute('data-ter-tab') === aba);
         });
@@ -560,7 +562,11 @@ async function uploadXmlTerceiros() {
         resultadoEl.textContent = 'Upload concluído. ' + (data.total_criados || 0) + ' nota(s) criada(s).' + ((data.erros && data.erros.length) ? ' Erros: ' + data.erros.join(' | ') : '');
         filesEl.value = '';
         refreshTerceirosViews();
-        showMessage('XMLs processados com sucesso.', 'success');
+        if (data.total_criados > 0) {
+            showMessage('XMLs processados com sucesso.', 'success');
+        } else if (data.erros && data.erros.length) {
+            showMessage('Nenhum XML foi aceito neste envio.', 'warning');
+        }
     } catch (e) {
         resultadoEl.textContent = 'Erro ao enviar XMLs.';
     }
@@ -956,14 +962,42 @@ async function loadTerceirosHistorico() {
 }
 
 async function refreshTerceirosViews() {
-    await Promise.all([
-        loadTerceirosDocumentos(),
-        loadTerceirosFornecedoresRecebidos(),
-        loadTerceirosNotasLancadas(),
-        loadTerceirosNotasEnviadasMg(),
-        loadTerceirosPendenciasMg(),
-        loadTerceirosHistorico()
-    ]);
+    try {
+        if (_terceirosTabAtual === 'fornecedores-recebidos') {
+            await loadTerceirosFornecedoresRecebidos();
+            return;
+        }
+        if (_terceirosTabAtual === 'notas-lancadas') {
+            await loadTerceirosNotasLancadas();
+            return;
+        }
+        if (_terceirosTabAtual === 'notas-enviadas-mg') {
+            await loadTerceirosNotasEnviadasMg();
+            return;
+        }
+        if (_terceirosTabAtual === 'pendencias-mg') {
+            await loadTerceirosPendenciasMg();
+            return;
+        }
+        if (_terceirosTabAtual === 'historico') {
+            await loadTerceirosHistorico();
+            return;
+        }
+        await loadTerceirosDocumentos();
+    } catch (error) {
+        console.error('Erro ao atualizar módulo de terceiros:', error);
+        var tbodyAtivo = document.getElementById('ter-tbody-recebimento-documentos');
+        if (_terceirosTabAtual === 'fornecedores-recebidos') tbodyAtivo = document.getElementById('ter-tbody-fornecedores-recebidos');
+        if (_terceirosTabAtual === 'notas-lancadas') tbodyAtivo = document.getElementById('ter-tbody-notas-lancadas');
+        if (_terceirosTabAtual === 'notas-enviadas-mg') tbodyAtivo = document.getElementById('ter-tbody-notas-enviadas-mg');
+        if (_terceirosTabAtual === 'pendencias-mg') tbodyAtivo = document.getElementById('ter-tbody-pendencias-mg');
+        if (_terceirosTabAtual === 'historico') tbodyAtivo = document.getElementById('ter-tbody-historico');
+        if (tbodyAtivo) {
+            var cols = tbodyAtivo.id === 'ter-tbody-notas-lancadas' ? 11 : tbodyAtivo.id === 'ter-tbody-pendencias-mg' ? 10 : tbodyAtivo.id === 'ter-tbody-historico' ? 12 : 9;
+            tbodyAtivo.innerHTML = '<tr><td colspan="' + cols + '" class="loading" style="color:#c62828;">Erro ao carregar os dados desta aba.</td></tr>';
+        }
+        showMessage('Erro ao carregar dados do módulo de terceiros.', 'error');
+    }
 }
 
 async function excluirDocumentoTerceiros(documentoId) {
