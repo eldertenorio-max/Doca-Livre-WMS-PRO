@@ -271,7 +271,7 @@ body {
 
 #modulo-terceiros .terceiros-conteudo-grid {
     display: grid;
-    grid-template-columns: minmax(360px, 520px) minmax(520px, 1fr);
+    grid-template-columns: 1fr;
     gap: 18px;
     align-items: start;
     margin-bottom: 0;
