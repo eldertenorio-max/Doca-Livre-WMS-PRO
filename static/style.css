@@ -242,6 +242,14 @@ body {
     gap: 18px;
 }
 
+#modulo-terceiros .ter-pendencia-acoes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    max-width: 320px;
+}
+
 #modulo-terceiros .terceiros-upload-grid {
     display: block;
     margin-bottom: 0;

@@ -235,16 +235,18 @@ function initDevolucoesTabs() {
 
 function initTerceirosTabs() {
     var botoes = document.querySelectorAll('.terceiros-subtab[data-ter-tab]');
+    var enviarXml = document.getElementById('terceiros-panel-enviar-xml');
     var recebimento = document.getElementById('terceiros-panel-recebimento');
     var fornecedoresRecebidos = document.getElementById('terceiros-panel-fornecedores-recebidos');
     var notasLancadas = document.getElementById('terceiros-panel-notas-lancadas');
     var notasEnviadasMg = document.getElementById('terceiros-panel-notas-enviadas-mg');
     var pendenciasMg = document.getElementById('terceiros-panel-pendencias-mg');
     var historico = document.getElementById('terceiros-panel-historico');
-    if (!botoes.length || !recebimento || !fornecedoresRecebidos || !notasLancadas || !notasEnviadasMg || !pendenciasMg || !historico) return;
+    if (!botoes.length || !enviarXml || !recebimento || !fornecedoresRecebidos || !notasLancadas || !notasEnviadasMg || !pendenciasMg || !historico) return;
 
     function mostrarTerTab(tab) {
         var aba = 'pendencia-recebimento';
+        if (tab === 'enviar-xml') aba = 'enviar-xml';
         if (tab === 'fornecedores-recebidos') aba = 'fornecedores-recebidos';
         if (tab === 'notas-lancadas') aba = 'notas-lancadas';
         if (tab === 'notas-enviadas-mg') aba = 'notas-enviadas-mg';
@@ -254,6 +256,7 @@ function initTerceirosTabs() {
         botoes.forEach(function(btn) {
             btn.classList.toggle('active', btn.getAttribute('data-ter-tab') === aba);
         });
+        enviarXml.classList.toggle('devolucoes-panel-active', aba === 'enviar-xml');
         recebimento.classList.toggle('devolucoes-panel-active', aba === 'pendencia-recebimento');
         fornecedoresRecebidos.classList.toggle('devolucoes-panel-active', aba === 'fornecedores-recebidos');
         notasLancadas.classList.toggle('devolucoes-panel-active', aba === 'notas-lancadas');
@@ -599,6 +602,20 @@ function isTerceirosNao(valor) {
     return String(valor || '').toLowerCase() === 'nao';
 }
 
+/** Campos vindos da API podem vir como boolean, número ou texto (sim/nao). */
+function isTerceirosFlagSim(valor) {
+    if (valor === true || valor === 1) return true;
+    if (valor === false || valor === 0 || valor == null) return false;
+    var s = String(valor).toLowerCase();
+    return s === 'sim' || s === 's' || s === 'true' || s === '1';
+}
+
+function isTerceirosFlagNao(valor) {
+    if (valor === false || valor === 0) return true;
+    if (valor === true || valor === 1) return false;
+    return isTerceirosNao(valor);
+}
+
 function isTerceirosMotoristaObrigatorio(row) {
     return !!(row && row.motorista_obrigatorio);
 }
@@ -607,27 +624,27 @@ function getTerceirosRowsPorEtapa(rows, etapa) {
     rows = Array.isArray(rows) ? rows : [];
     if (etapa === 'pendencia-recebimento') {
         return rows.filter(function(row) {
-            return !isTerceirosSim(row.recebimento_concluido);
+            return !isTerceirosFlagSim(row.recebimento_concluido);
         });
     }
     if (etapa === 'fornecedores-recebidos') {
         return rows.filter(function(row) {
-            return isTerceirosSim(row.recebimento_concluido) && !row.nota_lancada;
+            return isTerceirosFlagSim(row.recebimento_concluido) && !isTerceirosFlagSim(row.nota_lancada);
         });
     }
     if (etapa === 'notas-lancadas') {
         return rows.filter(function(row) {
-            return isTerceirosSim(row.nota_lancada);
+            return isTerceirosFlagSim(row.nota_lancada);
         });
     }
     if (etapa === 'notas-enviadas-mg') {
         return rows.filter(function(row) {
-            return isTerceirosSim(row.carga_recebida_mg);
+            return isTerceirosFlagSim(row.carga_recebida_mg);
         });
     }
     if (etapa === 'pendencias-mg') {
         return rows.filter(function(row) {
-            return isTerceirosSim(row.enviar_para_mg) && !isTerceirosSim(row.carga_recebida_mg);
+            return isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg);
         });
     }
     return rows;
@@ -649,6 +666,56 @@ function renderTerceirosExcluirButton(row, atributo) {
         + 'data-ter-excluir-nf="' + escapeHtml(nf) + '">'
         + 'Excluir'
         + '</button>';
+}
+
+function renderTerceirosPendenciaRecebimentoAcoes(row) {
+    var area = escapeHtml(row.area || 'recebimento');
+    var id = escapeHtml(String(row.id));
+    return '<span class="ter-pendencia-acoes">'
+        + '<button type="button" class="btn btn-primary btn-sm" data-ter-descarregar-pend="' + id + '" data-ter-area="' + area + '">Começar descarga</button>'
+        + '<button type="button" class="btn btn-secondary btn-sm" data-ter-ver-detalhe-pend="' + id + '" data-ter-area="' + area + '">Ver detalhe</button>'
+        + renderTerceirosExcluirButton(row, 'data-ter-excluir-doc')
+        + '</span>';
+}
+
+function scrollTerceirosRecebimentoDetalheSecao(secao) {
+    window.requestAnimationFrame(function() {
+        var id = secao === 'bipagem' ? 'ter-recebimento-area-bipagem' : 'ter-recebimento-detalhe-top';
+        var el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+}
+
+async function abrirPendenciaTerceirosComScroll(area, documentoId, secao) {
+    var abaBtn = document.querySelector('.terceiros-subtab[data-ter-tab="pendencia-recebimento"]');
+    if (abaBtn) abaBtn.click();
+    await loadTerceirosDocumentoDetalhe(area, documentoId);
+    scrollTerceirosRecebimentoDetalheSecao(secao);
+}
+
+function bindTerceirosPendenciaRecebimentoAcoes() {
+    document.querySelectorAll('[data-ter-descarregar-pend]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = parseInt(btn.getAttribute('data-ter-descarregar-pend') || '0', 10);
+            var area = btn.getAttribute('data-ter-area') || 'recebimento';
+            if (!id) return;
+            void abrirPendenciaTerceirosComScroll(area, id, 'bipagem').catch(function(err) {
+                console.error(err);
+                showMessage('Erro ao abrir a nota.', 'error');
+            });
+        });
+    });
+    document.querySelectorAll('[data-ter-ver-detalhe-pend]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = parseInt(btn.getAttribute('data-ter-ver-detalhe-pend') || '0', 10);
+            var area = btn.getAttribute('data-ter-area') || 'recebimento';
+            if (!id) return;
+            void abrirPendenciaTerceirosComScroll(area, id, 'resumo').catch(function(err) {
+                console.error(err);
+                showMessage('Erro ao abrir a nota.', 'error');
+            });
+        });
+    });
 }
 
 function bindTerceirosAbrirButtons(seletor) {
@@ -709,7 +776,7 @@ async function loadTerceirosDocumentos() {
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencia-recebimento');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF pendente de recebimento.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
         resetTerceirosDetalhe();
         return;
     }
@@ -724,10 +791,10 @@ async function loadTerceirosDocumentos() {
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
             + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-doc', 'Abrir', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-doc') + '</td>'
+            + '<td>' + renderTerceirosPendenciaRecebimentoAcoes(row) + '</td>'
             + '</tr>';
     }).join('');
-    bindTerceirosAbrirButtons('[data-ter-doc]');
+    bindTerceirosPendenciaRecebimentoAcoes();
     bindTerceirosExcluirButtons('[data-ter-excluir-doc]');
 }
 
@@ -754,11 +821,11 @@ async function loadTerceirosFornecedoresRecebidos() {
             + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
-            + '<td>' + escapeHtml(isTerceirosSim(row.recebimento_concluido) ? 'concluído' : 'pendente') + '</td>'
-            + '<td><select class="ter-select-inline" data-ter-nota-lancada-doc="' + escapeHtml(String(row.id)) + '" data-ter-recebimento-concluido="' + escapeHtml(isTerceirosSim(row.recebimento_concluido) ? 'sim' : 'nao') + '">'
+            + '<td>' + escapeHtml(isTerceirosFlagSim(row.recebimento_concluido) ? 'concluído' : 'pendente') + '</td>'
+            + '<td><select class="ter-select-inline" data-ter-nota-lancada-doc="' + escapeHtml(String(row.id)) + '" data-ter-recebimento-concluido="' + escapeHtml(isTerceirosFlagSim(row.recebimento_concluido) ? 'sim' : 'nao') + '">'
                 + '<option value="">Selecione</option>'
-                + '<option value="sim"' + (isTerceirosSim(row.nota_lancada) ? ' selected' : '') + '>Sim</option>'
-                + '<option value="nao"' + (isTerceirosNao(row.nota_lancada) ? ' selected' : '') + '>Não</option>'
+                + '<option value="sim"' + (isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Sim</option>'
+                + '<option value="nao"' + (isTerceirosFlagNao(row.nota_lancada) && !isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Não</option>'
             + '</select><div class="ter-status-meta">' + escapeHtml(row.nota_lancada_em || '-') + '</div></td>'
             + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-fornecedor-doc') + '</td>'
             + '</tr>';
@@ -805,8 +872,8 @@ async function loadTerceirosNotasLancadas() {
             + '<td>' + escapeHtml(row.nota_lancada || '-') + '</td>'
             + '<td><select class="ter-select-inline" data-ter-enviar-mg-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
                 + '<option value="">Selecione</option>'
-                + '<option value="sim"' + (isTerceirosSim(row.enviar_para_mg) ? ' selected' : '') + '>Sim</option>'
-                + '<option value="nao"' + (isTerceirosNao(row.enviar_para_mg) ? ' selected' : '') + '>Não</option>'
+                + '<option value="sim"' + (isTerceirosFlagSim(row.enviar_para_mg) ? ' selected' : '') + '>Sim</option>'
+                + '<option value="nao"' + (isTerceirosFlagNao(row.enviar_para_mg) && !isTerceirosFlagSim(row.enviar_para_mg) ? ' selected' : '') + '>Não</option>'
             + '</select><div class="ter-status-meta">' + escapeHtml(row.enviar_para_mg_em || '-') + '</div></td>'
             + '<td><div class="ter-inline-stack">'
                 + '<input type="text" class="ter-input-inline" data-ter-motorista-doc="' + escapeHtml(String(row.id)) + '" value="' + escapeHtml(row.motorista_carreta || '') + '" placeholder="Motorista">'
@@ -816,8 +883,8 @@ async function loadTerceirosNotasLancadas() {
             + '</div></td>'
             + '<td><select class="ter-select-inline" data-ter-recebida-mg-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
                 + '<option value="">Selecione</option>'
-                + '<option value="sim"' + (isTerceirosSim(row.carga_recebida_mg) ? ' selected' : '') + '>Sim</option>'
-                + '<option value="nao"' + (isTerceirosNao(row.carga_recebida_mg) ? ' selected' : '') + '>Não</option>'
+                + '<option value="sim"' + (isTerceirosFlagSim(row.carga_recebida_mg) ? ' selected' : '') + '>Sim</option>'
+                + '<option value="nao"' + (isTerceirosFlagNao(row.carga_recebida_mg) && !isTerceirosFlagSim(row.carga_recebida_mg) ? ' selected' : '') + '>Não</option>'
             + '</select><div class="ter-status-meta">' + escapeHtml(row.carga_recebida_mg_em || '-') + '</div></td>'
             + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-lancada-doc') + '</td>'
             + '</tr>';
@@ -941,7 +1008,7 @@ async function loadTerceirosHistorico() {
 
     tbody.innerHTML = rows.map(function(row) {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-        var recebimento = isTerceirosSim(row.recebimento_concluido) ? 'concluído' : 'pendente';
+        var recebimento = isTerceirosFlagSim(row.recebimento_concluido) ? 'concluído' : 'pendente';
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
@@ -963,6 +1030,10 @@ async function loadTerceirosHistorico() {
 
 async function refreshTerceirosViews() {
     try {
+        if (_terceirosTabAtual === 'enviar-xml') {
+            await loadTerceirosDocumentos();
+            return;
+        }
         if (_terceirosTabAtual === 'fornecedores-recebidos') {
             await loadTerceirosFornecedoresRecebidos();
             return;
@@ -986,6 +1057,10 @@ async function refreshTerceirosViews() {
         await loadTerceirosDocumentos();
     } catch (error) {
         console.error('Erro ao atualizar módulo de terceiros:', error);
+        if (_terceirosTabAtual === 'enviar-xml') {
+            showMessage('Erro ao carregar dados do módulo de terceiros.', 'error');
+            return;
+        }
         var tbodyAtivo = document.getElementById('ter-tbody-recebimento-documentos');
         if (_terceirosTabAtual === 'fornecedores-recebidos') tbodyAtivo = document.getElementById('ter-tbody-fornecedores-recebidos');
         if (_terceirosTabAtual === 'notas-lancadas') tbodyAtivo = document.getElementById('ter-tbody-notas-lancadas');
