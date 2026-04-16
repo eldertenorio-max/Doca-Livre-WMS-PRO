@@ -259,7 +259,7 @@ def init_db():
             conn.execute(
                 '''CREATE TABLE IF NOT EXISTS public.terceiros_documentos (
                     id BIGSERIAL PRIMARY KEY,
-                    area TEXT NOT NULL CHECK (area IN ('recebimento', 'expedicao')),
+                    area TEXT NOT NULL CHECK (area IN ('recebimento', 'expedicao', 'carreta')),
                     chave_nfe TEXT,
                     numero_nf TEXT,
                     serie_nf TEXT,
@@ -782,7 +782,7 @@ def _ensure_terceiros_schema(conn):
         conn.execute(
             '''CREATE TABLE IF NOT EXISTS public.terceiros_documentos (
                 id BIGSERIAL PRIMARY KEY,
-                area TEXT NOT NULL CHECK (area IN ('recebimento', 'expedicao')),
+                area TEXT NOT NULL CHECK (area IN ('recebimento', 'expedicao', 'carreta')),
                 chave_nfe TEXT,
                 numero_nf TEXT,
                 serie_nf TEXT,
@@ -926,6 +926,15 @@ def _ensure_terceiros_schema(conn):
         conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_itens_documento ON terceiros_documento_itens(documento_id)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_itens_ean ON terceiros_documento_itens(codigo_ean)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_eventos_documento ON terceiros_documento_eventos(documento_id, criado_em DESC)')
+    if getattr(conn, 'kind', None) == 'pg':
+        try:
+            conn.execute('ALTER TABLE public.terceiros_documentos DROP CONSTRAINT IF EXISTS terceiros_documentos_area_check')
+            conn.execute(
+                "ALTER TABLE public.terceiros_documentos ADD CONSTRAINT terceiros_documentos_area_check "
+                "CHECK (area IN ('recebimento', 'expedicao', 'carreta'))"
+            )
+        except Exception:
+            pass
     conn.commit()
 
 
@@ -6878,7 +6887,7 @@ def _documento_terceiros_ja_existe(conn, xml_data):
 def api_terceiros_upload_xml():
     area = (request.form.get('area') or '').strip().lower()
     previsao = (request.form.get('previsao_chegada') or '').strip()
-    if area not in ('recebimento', 'expedicao'):
+    if area not in ('recebimento', 'expedicao', 'carreta'):
         return jsonify({'ok': False, 'erro': 'Área inválida.'}), 400
     if not previsao:
         return jsonify({'ok': False, 'erro': 'Informe a previsão de chegada.'}), 400
@@ -6929,7 +6938,7 @@ def api_terceiros_upload_xml():
 @app.route('/api/terceiros/documentos', methods=['GET'])
 def api_terceiros_documentos():
     area = (request.args.get('area') or '').strip().lower()
-    if area not in ('recebimento', 'expedicao'):
+    if area not in ('recebimento', 'expedicao', 'carreta'):
         return jsonify({'erro': 'Área inválida.', 'rows': []}), 400
     conn = get_db()
     try:

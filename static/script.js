@@ -478,7 +478,9 @@ function getTerceirosPrefixo() {
 }
 
 function getTerceirosAreaApi(area) {
-    return area === 'expedicao' ? 'expedicao' : 'recebimento';
+    if (area === 'expedicao') return 'expedicao';
+    if (area === 'carreta') return 'carreta';
+    return 'recebimento';
 }
 
 function fecharModalLancamentoSemRecebimento(confirmado) {
@@ -529,9 +531,7 @@ function abrirModalExcluirDocumento(infoDocumento) {
     });
 }
 
-async function uploadXmlTerceiros() {
-    var area = 'recebimento';
-    var prefixo = 'ter-recebimento';
+async function uploadXmlTerceirosComPrefixo(prefixo, areaChave) {
     var previsaoEl = document.getElementById(prefixo + '-previsao');
     var filesEl = document.getElementById(prefixo + '-xml');
     var resultadoEl = document.getElementById(prefixo + '-upload-resultado');
@@ -545,7 +545,7 @@ async function uploadXmlTerceiros() {
         return;
     }
     var form = new FormData();
-    form.append('area', getTerceirosAreaApi(area));
+    form.append('area', getTerceirosAreaApi(areaChave));
     form.append('previsao_chegada', previsaoEl.value.trim());
     Array.prototype.forEach.call(filesEl.files, function(file) {
         form.append('files', file);
@@ -575,10 +575,19 @@ async function uploadXmlTerceiros() {
     }
 }
 
+async function uploadXmlTerceiros() {
+    return uploadXmlTerceirosComPrefixo('ter-recebimento', 'recebimento');
+}
+
+async function uploadXmlTerceirosCarreta() {
+    return uploadXmlTerceirosComPrefixo('ter-carreta', 'carreta');
+}
+
 async function fetchTerceirosDocumentosTodos() {
     const respostas = await Promise.all([
         fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('recebimento'))),
-        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('expedicao')))
+        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('expedicao'))),
+        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('carreta')))
     ]);
     const erros = respostas.filter(function(resp) { return !resp || resp.erro; });
     if (erros.length === respostas.length) {
@@ -782,8 +791,9 @@ async function loadTerceirosDocumentos() {
     }
     tbody.innerHTML = rows.map(function(row) {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+        var badgeCarreta = (row.area === 'carreta') ? ' <span class="ter-origem-badge ter-origem-badge--carreta">Carreta</span>' : '';
         return '<tr>'
-            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+            + '<td><strong>' + escapeHtml(nf) + '</strong>' + badgeCarreta + '</td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
             + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
@@ -1212,7 +1222,7 @@ function animarConclusaoTerceiros(prefixo) {
 }
 
 async function loadTerceirosDocumentoDetalhe(area, documentoId) {
-    area = area === 'expedicao' ? 'expedicao' : 'recebimento';
+    if (area !== 'expedicao' && area !== 'carreta') area = 'recebimento';
     const prefixo = getTerceirosPrefixo();
     const vazio = document.getElementById('ter-recebimento-detalhe-vazio');
     const detalhe = document.getElementById('ter-recebimento-detalhe');
@@ -1962,6 +1972,8 @@ function initForms() {
 
     const btnTerRecebUpload = document.getElementById('btn-ter-recebimento-upload');
     if (btnTerRecebUpload) btnTerRecebUpload.addEventListener('click', function() { uploadXmlTerceiros(); });
+    const btnTerCarretaUpload = document.getElementById('btn-ter-carreta-upload');
+    if (btnTerCarretaUpload) btnTerCarretaUpload.addEventListener('click', function() { uploadXmlTerceirosCarreta(); });
 
     const btnTerRecConcluir = document.getElementById('btn-ter-rec-concluir');
     if (btnTerRecConcluir) btnTerRecConcluir.addEventListener('click', function() { atualizarStatusTerceiros('recebimento', 'recebimento_concluido', 'sim'); });

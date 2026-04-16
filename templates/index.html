@@ -1355,7 +1355,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">📤</span>
                         <h2 class="painel-titulo-texto">Enviar XML de terceiros</h2>
-                        <p class="painel-titulo-sub">Envie um ou mais XMLs de NF-e com a previsão de chegada. As notas aparecem na aba Pendência de Recebimento para conferência e bipagem.</p>
+                        <p class="painel-titulo-sub">Envie XMLs de NF-e de terceiros e, quando houver, o XML da <strong>carreta</strong>. Informe a previsão de chegada em cada bloco. As notas entram na aba Pendência de Recebimento (etiqueta <strong>Carreta</strong> quando for o caso).</p>
                     </div>
 
                     <div class="conferencia-blocos-grid terceiros-upload-grid">
@@ -1376,6 +1376,24 @@
                             </div>
                             <div id="ter-recebimento-upload-resultado" class="info-text" style="margin-top: 10px;"></div>
                         </div>
+                        <div class="conferencia-bloco form-container terceiros-upload-bloco terceiros-upload-bloco--carreta" style="background: #f3e5f5; border-left: 4px solid #7b1fa2;">
+                            <h3 style="margin-top: 0; color: #7b1fa2;">XML DE CARRETA</h3>
+                            <p class="info-text" style="margin: 0 0 12px 0;">NF-e referente à carga da carreta. Mesma regra de previsão e validação de XML; a nota aparece na pendência com marcação Carreta.</p>
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="ter-carreta-previsao">Previsão de chegada *</label>
+                                    <input type="datetime-local" id="ter-carreta-previsao">
+                                </div>
+                                <div class="form-group" style="flex: 2;">
+                                    <label for="ter-carreta-xml">XMLs da nota (carreta) *</label>
+                                    <input type="file" id="ter-carreta-xml" multiple accept=".xml">
+                                </div>
+                                <div class="form-group" style="align-self: flex-end;">
+                                    <button type="button" class="btn btn-primary" id="btn-ter-carreta-upload">📤 Subir XML carreta</button>
+                                </div>
+                            </div>
+                            <div id="ter-carreta-upload-resultado" class="info-text" style="margin-top: 10px;"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -1383,7 +1401,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">📦</span>
                         <h2 class="painel-titulo-texto">Pendência de Recebimento</h2>
-                        <p class="painel-titulo-sub">Lista todas as NF-e enviadas por XML (recebimento e expedição) enquanto o recebimento não estiver concluído. Use <strong>Começar descarga</strong> para ir direto à bipagem, <strong>Ver detalhe</strong> para dados e status, ou <strong>Excluir</strong> para remover a nota.</p>
+                        <p class="painel-titulo-sub">Lista todas as NF-e enviadas por XML (terceiros, expedição ou <strong>carreta</strong>) enquanto o recebimento não estiver concluído. Use <strong>Começar descarga</strong> para ir direto à bipagem, <strong>Ver detalhe</strong> para dados e status, ou <strong>Excluir</strong> para remover a nota.</p>
                     </div>
 
                     <div class="conferencia-blocos-grid terceiros-conteudo-grid">
