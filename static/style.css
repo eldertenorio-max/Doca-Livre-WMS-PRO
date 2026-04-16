@@ -278,6 +278,36 @@ body {
     border: 1px solid #ce93d8;
 }
 
+#modulo-terceiros .terceiros-upload-bloco--carreta-banner {
+    background: #e8eaf6;
+    border-left: 4px solid #5c6bc0;
+    padding: 16px 18px;
+    max-width: 920px;
+    width: 100%;
+}
+
+#modulo-terceiros .terceiros-carreta-banner-inner {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+#modulo-terceiros .terceiros-carreta-banner-texto {
+    flex: 1;
+    min-width: 0;
+}
+
+#modulo-terceiros .terceiros-carreta-banner-titulo {
+    font-size: 1.2rem;
+    margin: 0;
+    color: #3949ab;
+}
+
+#modulo-terceiros .terceiros-carreta-banner-sub {
+    margin: 8px 0 0 0;
+    line-height: 1.45;
+}
+
 #modulo-terceiros .terceiros-upload-bloco .form-row {
     gap: 16px;
     align-items: end;

@@ -1346,8 +1346,9 @@
                     <button type="button" class="tab-button terceiros-subtab active" data-ter-tab="pendencia-recebimento">PENDÊNCIA DE RECEBIMENTO</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="fornecedores-recebidos">FORNECEDORES RECEBIDOS</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="notas-lancadas">NOTAS FISCAIS LANÇADAS</button>
-                    <button type="button" class="tab-button terceiros-subtab" data-ter-tab="notas-enviadas-mg">NOTAS FISCAIS ENVIADAS PARA MG</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="pendencias-mg">PENDÊNCIAS ENVIO MG</button>
+                    <button type="button" class="tab-button terceiros-subtab" data-ter-tab="notas-enviadas-mg">NOTAS FISCAIS ENVIADAS PARA MG</button>
+                    <button type="button" class="tab-button terceiros-subtab" data-ter-tab="recebimentos-mg">RECEBIMENTOS DE MG</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="historico">HISTÓRICO</button>
                 </nav>
 
@@ -1376,14 +1377,32 @@
                             </div>
                             <div id="ter-recebimento-upload-resultado" class="info-text" style="margin-top: 10px;"></div>
                         </div>
+                        <div class="conferencia-bloco form-container terceiros-upload-bloco terceiros-upload-bloco--carreta-banner">
+                            <div class="terceiros-carreta-banner-inner">
+                                <span class="painel-titulo-icon" aria-hidden="true">📤</span>
+                                <div class="terceiros-carreta-banner-texto">
+                                    <h2 class="painel-titulo-texto terceiros-carreta-banner-titulo">Enviar XML da carreta</h2>
+                                    <p class="painel-titulo-sub terceiros-carreta-banner-sub">Envie a NF-e da carga transportada na carreta. É <strong>obrigatório</strong> informar o <strong>nome do motorista</strong> e a <strong>placa</strong> antes dos arquivos. As notas entram na aba Pendência de Recebimento com a etiqueta <strong>Carreta</strong>.</p>
+                                </div>
+                            </div>
+                        </div>
                         <div class="conferencia-bloco form-container terceiros-upload-bloco terceiros-upload-bloco--carreta" style="background: #f3e5f5; border-left: 4px solid #7b1fa2;">
-                            <h3 style="margin-top: 0; color: #7b1fa2;">XML DE CARRETA</h3>
-                            <p class="info-text" style="margin: 0 0 12px 0;">NF-e referente à carga da carreta. Mesma regra de previsão e validação de XML; a nota aparece na pendência com marcação Carreta.</p>
+                            <h3 style="margin-top: 0; color: #7b1fa2;">DADOS DO ENVIO (CARRETA)</h3>
                             <div class="form-row">
                                 <div class="form-group" style="flex: 1;">
                                     <label for="ter-carreta-previsao">Previsão de chegada *</label>
                                     <input type="datetime-local" id="ter-carreta-previsao">
                                 </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="ter-carreta-motorista">Nome do motorista *</label>
+                                    <input type="text" id="ter-carreta-motorista" name="ter_carreta_motorista" autocomplete="name" placeholder="Nome completo" required>
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="ter-carreta-placa">Placa da carreta *</label>
+                                    <input type="text" id="ter-carreta-placa" name="ter_carreta_placa" list="datalist-placas" maxlength="10" placeholder="Ex.: ABC1D23" style="text-transform: uppercase;" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
                                 <div class="form-group" style="flex: 2;">
                                     <label for="ter-carreta-xml">XMLs da nota (carreta) *</label>
                                     <input type="file" id="ter-carreta-xml" multiple accept=".xml">
@@ -1448,6 +1467,8 @@
                                         <div class="form-group"><label>Destinatário</label><div id="ter-rec-destinatario" class="info-text">-</div></div>
                                         <div class="form-group"><label>UF destinatário</label><div id="ter-rec-destinatario-uf" class="info-text">-</div></div>
                                         <div class="form-group"><label>Previsão</label><div id="ter-rec-previsao" class="info-text">-</div></div>
+                                        <div class="form-group"><label>Motorista (carreta)</label><div id="ter-rec-motorista-carreta" class="info-text">-</div></div>
+                                        <div class="form-group"><label>Placa (carreta)</label><div id="ter-rec-placa-carreta" class="info-text">-</div></div>
                                     </div>
                                 </div>
 
@@ -1482,7 +1503,7 @@
                                         </div>
                                         <div class="form-group">
                                             <label>Próximas etapas</label>
-                                            <div class="info-text">Depois do recebimento concluído, a NF segue para as abas `Fornecedores Recebidos`, `Notas Fiscais Lançadas` e etapas de MG.</div>
+                                            <div class="info-text">Depois do recebimento concluído, a NF segue para as abas <strong>Fornecedores Recebidos</strong>, <strong>Notas Fiscais Lançadas</strong>, <strong>Pendências Envio MG</strong>, <strong>Notas Fiscais Enviadas para MG</strong>, <strong>Recebimentos de MG</strong> e <strong>Histórico</strong>.</div>
                                         </div>
                                     </div>
                                 </div>
@@ -1557,6 +1578,39 @@
                     </div>
                 </div>
 
+                <div id="terceiros-panel-pendencias-mg" class="devolucoes-panel">
+                    <div class="painel-titulo">
+                        <span class="painel-titulo-icon">🚚</span>
+                        <h2 class="painel-titulo-texto">Pendência Envio MG</h2>
+                        <p class="painel-titulo-sub">Notas com envio para MG marcado como sim e ainda sem conclusão do recebimento em MG.</p>
+                    </div>
+
+                    <div class="conferencia-bloco form-container terceiros-lista-bloco">
+                        <h3 style="margin-top: 0; color: #366092;">NFs PENDENTES DE ENVIO / RECEBIMENTO EM MG</h3>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>NF</th>
+                                        <th>Pedido</th>
+                                        <th>Remetente</th>
+                                        <th>Destinatário</th>
+                                        <th>UF</th>
+                                        <th>Previsão</th>
+                                        <th>Motorista</th>
+                                        <th>Envio MG</th>
+                                        <th>Recebida MG</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ter-tbody-pendencias-mg">
+                                    <tr><td colspan="10" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="terceiros-panel-notas-enviadas-mg" class="devolucoes-panel">
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🚛</span>
@@ -1589,15 +1643,15 @@
                     </div>
                 </div>
 
-                <div id="terceiros-panel-pendencias-mg" class="devolucoes-panel">
+                <div id="terceiros-panel-recebimentos-mg" class="devolucoes-panel">
                     <div class="painel-titulo">
-                        <span class="painel-titulo-icon">🚚</span>
-                        <h2 class="painel-titulo-texto">Pendência Envio MG</h2>
-                        <p class="painel-titulo-sub">Notas com envio para MG marcado como sim e ainda sem conclusão do recebimento em MG.</p>
+                        <span class="painel-titulo-icon">✅</span>
+                        <h2 class="painel-titulo-texto">Recebimentos de MG</h2>
+                        <p class="painel-titulo-sub">Notas com <strong>carga recebida em MG</strong> confirmada. Use o campo <strong>Recebida MG</strong> para corrigir o status, se necessário.</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
-                        <h3 style="margin-top: 0; color: #366092;">NFs PENDENTES DE ENVIO / RECEBIMENTO EM MG</h3>
+                        <h3 style="margin-top: 0; color: #366092;">NFS COM RECEBIMENTO CONFIRMADO EM MG</h3>
                         <div class="table-container">
                             <table class="data-table">
                                 <thead>
@@ -1614,7 +1668,7 @@
                                         <th>Ações</th>
                                     </tr>
                                 </thead>
-                                <tbody id="ter-tbody-pendencias-mg">
+                                <tbody id="ter-tbody-recebimentos-mg">
                                     <tr><td colspan="10" class="loading">Carregando...</td></tr>
                                 </tbody>
                             </table>

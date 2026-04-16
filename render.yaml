@@ -4,7 +4,8 @@ services:
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn -b 0.0.0.0:$PORT --timeout 120 app:app
+    # gthread: SSE (/api/eventos-stream) não bloqueia outras requisições no mesmo worker
+    startCommand: gunicorn -b 0.0.0.0:$PORT --timeout 120 --worker-class gthread --threads 4 app:app
     autoDeploy: true
     envVars:
       - key: SECRET_KEY
