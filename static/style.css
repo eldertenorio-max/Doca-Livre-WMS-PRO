@@ -240,6 +240,10 @@ body {
     display: flex;
     flex-direction: column;
     gap: 18px;
+    width: 100%;
+    max-width: none;
+    align-items: stretch;
+    box-sizing: border-box;
 }
 
 #modulo-terceiros .ter-pendencia-acoes {
@@ -253,12 +257,22 @@ body {
 #modulo-terceiros .terceiros-upload-grid {
     display: block;
     margin-bottom: 0;
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+}
+
+#modulo-terceiros .terceiros-panel-unico .painel-titulo {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
 }
 
 #modulo-terceiros .terceiros-upload-bloco {
-    max-width: 920px;
+    max-width: none;
     width: 100%;
     padding: 16px 18px;
+    box-sizing: border-box;
 }
 
 #modulo-terceiros .ter-origem-badge {
@@ -282,8 +296,9 @@ body {
     background: #e8eaf6;
     border-left: 4px solid #5c6bc0;
     padding: 16px 18px;
-    max-width: 920px;
+    max-width: none;
     width: 100%;
+    box-sizing: border-box;
 }
 
 #modulo-terceiros .terceiros-carreta-banner-inner {
@@ -330,6 +345,9 @@ body {
     gap: 18px;
     align-items: start;
     margin-bottom: 0;
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
 }
 
 #modulo-terceiros .terceiros-lista-bloco,
@@ -399,10 +417,6 @@ body {
 @media (max-width: 1180px) {
     #modulo-terceiros .terceiros-conteudo-grid {
         grid-template-columns: 1fr;
-    }
-
-    #modulo-terceiros .terceiros-upload-bloco {
-        max-width: none;
     }
 }
 
