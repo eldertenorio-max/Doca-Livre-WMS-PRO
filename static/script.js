@@ -813,34 +813,39 @@ async function loadTerceirosDocumentos() {
     var tbody = document.getElementById('ter-tbody-recebimento-documentos');
     if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando...</td></tr>';
     if (!tbody) return;
-    const data = await fetchTerceirosDocumentosTodos();
-    if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
-        return;
+    try {
+        const data = await fetchTerceirosDocumentosTodos();
+        if (data.erro) {
+            tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+            return;
+        }
+        const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencia-recebimento');
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
+            resetTerceirosDetalhe();
+            return;
+        }
+        tbody.innerHTML = rows.map(function(row) {
+            var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+            var badgeCarreta = (row.area === 'carreta') ? ' <span class="ter-origem-badge ter-origem-badge--carreta">Carreta</span>' : '';
+            return '<tr>'
+                + '<td><strong>' + escapeHtml(nf) + '</strong>' + badgeCarreta + '</td>'
+                + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
+                + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
+                + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+                + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
+                + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
+                + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
+                + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
+                + '<td>' + renderTerceirosPendenciaRecebimentoAcoes(row) + '</td>'
+                + '</tr>';
+        }).join('');
+        bindTerceirosPendenciaRecebimentoAcoes();
+        bindTerceirosExcluirButtons('[data-ter-excluir-doc]');
+    } catch (e) {
+        console.error('loadTerceirosDocumentos:', e);
+        tbody.innerHTML = '<tr><td colspan="9" class="loading" style="color:#c62828;">Erro ao carregar a lista. Atualize a página ou tente novamente.</td></tr>';
     }
-    const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencia-recebimento');
-    if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
-        resetTerceirosDetalhe();
-        return;
-    }
-    tbody.innerHTML = rows.map(function(row) {
-        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-        var badgeCarreta = (row.area === 'carreta') ? ' <span class="ter-origem-badge ter-origem-badge--carreta">Carreta</span>' : '';
-        return '<tr>'
-            + '<td><strong>' + escapeHtml(nf) + '</strong>' + badgeCarreta + '</td>'
-            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
-            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
-            + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
-            + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
-            + '<td>' + renderTerceirosPendenciaRecebimentoAcoes(row) + '</td>'
-            + '</tr>';
-    }).join('');
-    bindTerceirosPendenciaRecebimentoAcoes();
-    bindTerceirosExcluirButtons('[data-ter-excluir-doc]');
 }
 
 async function loadTerceirosFornecedoresRecebidos() {
@@ -2406,7 +2411,17 @@ async function fetchAPI(endpoint, options = {}) {
             ...(method === 'POST' && typeof options.priority === 'undefined' ? { priority: 'high' } : {}),
             ...options
         });
-        return await response.json();
+        const ct = (response.headers.get('content-type') || '').toLowerCase();
+        if (ct.includes('application/json')) {
+            const data = await response.json();
+            if (!response.ok && data && typeof data === 'object' && !data.erro) {
+                data.erro = data.erro || ('HTTP ' + response.status);
+            }
+            return data;
+        }
+        const text = await response.text();
+        const snippet = (text || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+        return { erro: 'HTTP ' + response.status + (snippet ? ': ' + snippet : '') };
     } catch (error) {
         console.error('Erro na API:', error);
         showMessage('Erro ao conectar com o servidor', 'error');

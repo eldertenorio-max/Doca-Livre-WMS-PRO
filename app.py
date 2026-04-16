@@ -7013,21 +7013,37 @@ def api_terceiros_documentos():
     try:
         _ensure_terceiros_schema(conn)
         cols = _sql_cols_terceiros_documentos_listagem('d')
+        tbl_d = _tbl_terceiros_documentos(conn)
+        tbl_i = _tbl_terceiros_documento_itens(conn)
+        # Agregação em subconsulta (evita GROUP BY com muitas colunas de d no PostgreSQL / diferenças de modo SQL)
         rows = conn.execute(
             '''SELECT ''' + cols + ''',
-                      COUNT(i.id) as total_itens,
-                      COALESCE(SUM(i.quantidade_xml), 0) as quantidade_total_xml,
-                      COALESCE(SUM(i.quantidade_bipada), 0) as quantidade_total_bipada
-               FROM ''' + _tbl_terceiros_documentos(conn) + ''' d
-               LEFT JOIN ''' + _tbl_terceiros_documento_itens(conn) + ''' i ON i.documento_id = d.id
+                      COALESCE(si.total_itens, 0) AS total_itens,
+                      COALESCE(si.quantidade_total_xml, 0) AS quantidade_total_xml,
+                      COALESCE(si.quantidade_total_bipada, 0) AS quantidade_total_bipada
+               FROM ''' + tbl_d + ''' d
+               LEFT JOIN (
+                   SELECT documento_id,
+                          COUNT(id) AS total_itens,
+                          COALESCE(SUM(quantidade_xml), 0) AS quantidade_total_xml,
+                          COALESCE(SUM(quantidade_bipada), 0) AS quantidade_total_bipada
+                   FROM ''' + tbl_i + '''
+                   GROUP BY documento_id
+               ) si ON si.documento_id = d.id
                WHERE d.area = ?
-               GROUP BY d.id
                ORDER BY d.criado_em DESC, d.id DESC''',
             (area,)
         ).fetchall()
         out = []
         for r in rows or []:
             row = dict(r) if hasattr(r, 'keys') else {}
+            rc = row.get('recebimento_concluido')
+            if isinstance(rc, str) and rc.strip().lower() in ('sim', 's', 'true', '1'):
+                rc_flag = True
+            elif isinstance(rc, str) and rc.strip().lower() in ('nao', 'n', 'false', '0', ''):
+                rc_flag = False
+            else:
+                rc_flag = bool(rc) if rc is not None else False
             out.append({
                 'id': row.get('id'),
                 'area': row.get('area') or '',
@@ -7040,7 +7056,7 @@ def api_terceiros_documentos():
                 'destinatario_nome': row.get('destinatario_nome') or '',
                 'destinatario_uf': _uf_destinatario_terceiros(row),
                 'previsao_chegada': row.get('previsao_chegada') or '',
-                'recebimento_concluido': bool(row.get('recebimento_concluido')),
+                'recebimento_concluido': rc_flag,
                 'nota_lancada': row.get('nota_lancada') or '',
                 'enviar_para_mg': row.get('enviar_para_mg') or '',
                 'motorista_carreta': row.get('motorista_carreta') or '',
@@ -7058,6 +7074,8 @@ def api_terceiros_documentos():
                 'carga_recebida_mg_em': _fmt_datahora_br(row.get('carga_recebida_mg_em') or ''),
             })
         return jsonify({'rows': out})
+    except Exception as e:
+        return jsonify({'erro': str(e), 'rows': []}), 500
     finally:
         conn.close()
 
