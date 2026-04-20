@@ -1508,12 +1508,10 @@
                                                 </select>
                                             </div>
                                             <div class="conferencia-btns-grupo ter-bipagem-btns-grupo">
-                                                <div class="ter-bipagem-btns-primarios">
-                                                    <button type="submit" class="btn btn-primary btn-bloco4 btn-bloco4-bipar" id="btn-ter-bipagem-executar">✅ Bipar</button>
-                                                    <button type="button" class="btn btn-secondary btn-bloco4" id="btn-ter-bipagem-limpar" title="Limpar campos">🧹 Limpar campos</button>
-                                                    <button type="button" class="btn btn-danger btn-bloco4 btn-bloco4-zerar" id="btn-ter-zerar-bipagem" style="display: none;" title="Zerar todos os itens bipados desta nota">🗑️ Zerar todos os itens</button>
-                                                </div>
-                                                <button type="button" class="btn btn-success btn-bloco4 ter-bipagem-btn-finalizar" id="btn-ter-finalizar-descarga" title="Marca o recebimento como concluído">Finalizar descarga</button>
+                                                <button type="submit" class="btn btn-primary btn-bloco4 btn-bloco4-bipar" id="btn-ter-bipagem-executar">✅ Bipar</button>
+                                                <button type="button" class="btn btn-secondary btn-bloco4" id="btn-ter-bipagem-limpar" title="Limpar campos">🧹 Limpar campos</button>
+                                                <button type="button" class="btn btn-danger btn-bloco4 btn-bloco4-zerar" id="btn-ter-zerar-bipagem" style="display: none;" title="Zerar todos os itens bipados desta nota">🗑️ Zerar todos os itens</button>
+                                                <button type="button" class="btn btn-success btn-bloco4" id="btn-ter-finalizar-descarga" title="Marca o recebimento como concluído">Finalizar descarga</button>
                                             </div>
                                             <div class="conferencia-resumo-group ter-bipagem-resumo-wrap">
                                                 <div class="conferencia-resumo-rapido">
@@ -1529,10 +1527,11 @@
                                     <p id="ter-bipagem-msg-concluido" class="info-text" style="display: none; margin-bottom: 0; color: #2e7d32; font-weight: 600;">Recebimento concluído — para alterar contagens, reabra a nota após ajuste operacional se aplicável.</p>
                                 </div>
 
-                                <div id="ter-recebimento-area-bipagem" class="table-container" style="margin-bottom: 16px;">
+                                <div id="ter-recebimento-area-bipagem" class="table-container ter-tabela-bipagem-conferencia" style="margin-bottom: 16px;">
                                     <table class="data-table">
                                         <thead>
                                             <tr>
+                                                <th>Status</th>
                                                 <th>Item</th>
                                                 <th>EAN</th>
                                                 <th>Cód. prod. XML</th>
@@ -1541,7 +1540,6 @@
                                                 <th>Qtd. XML</th>
                                                 <th>Qtd. bipada</th>
                                                 <th>Falta</th>
-                                                <th>Status</th>
                                                 <th>Ação</th>
                                             </tr>
                                         </thead>

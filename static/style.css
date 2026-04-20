@@ -269,7 +269,7 @@ body {
 /* Bipagem: ocupa toda a largura do painel; grid distribui campos e ações */
 #modulo-terceiros #ter-bipagem-bloco.conferencia-bloco-4 {
     width: 100%;
-    max-width: 100%;
+    max-width: none;
     box-sizing: border-box;
     margin-bottom: 16px;
     overflow: visible;
@@ -299,11 +299,11 @@ body {
     gap: 16px;
 }
 
-/* Linha 1: quatro colunas proporcionais (EAN, código, produto, qtd) */
+/* Linha 1: quatro colunas usando toda a largura (produto com mais espaço) */
 #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-campos {
     display: grid !important;
     width: 100%;
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(0, 1.5fr) minmax(100px, 0.42fr);
+    grid-template-columns: minmax(140px, 1fr) minmax(120px, 1fr) minmax(180px, 2fr) minmax(96px, 0.65fr);
     gap: 12px 18px;
     align-items: end;
 }
@@ -321,7 +321,7 @@ body {
 
 #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-grupo-qtd input {
     width: 100%;
-    max-width: 120px;
+    max-width: none;
 }
 
 #modulo-terceiros #ter-bipagem-bloco #ter-bipagem-produto-hint {
@@ -329,11 +329,11 @@ body {
     width: 100%;
 }
 
-/* Linha 2: veículo | status | botões | resumo — preenche a largura */
+/* Linha 2: veículo | status | botões em linha | resumo — preenche a largura */
 #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-acoes {
     display: grid !important;
     width: 100%;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr) minmax(260px, 1.35fr) minmax(220px, 1fr);
+    grid-template-columns: minmax(140px, 1fr) minmax(130px, 0.85fr) minmax(280px, 2.2fr) minmax(200px, 1.15fr);
     gap: 14px 18px;
     align-items: end;
 }
@@ -350,31 +350,27 @@ body {
     box-sizing: border-box;
 }
 
-#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-btns-grupo {
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-btns-grupo.conferencia-btns-grupo {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap !important;
     align-items: stretch;
-    gap: 10px;
+    align-content: center;
+    justify-content: stretch;
+    gap: 8px 10px;
     width: 100%;
     min-width: 0;
-}
-
-#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-btns-primarios {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    width: 100%;
-}
-
-#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-btns-primarios .btn {
     flex: 1 1 auto;
-    min-width: 0;
 }
 
-#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-btn-finalizar {
-    width: 100%;
-    box-sizing: border-box;
+/* .btn-bloco4 usa flex:0 e width:auto — aqui os quatro botões dividem a célula em linha */
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-btns-grupo .btn.btn-bloco4 {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    min-width: min(100%, 108px);
+    max-width: none;
+    white-space: nowrap;
+    text-align: center;
 }
 
 #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-resumo-wrap {
@@ -441,39 +437,55 @@ body {
     }
 }
 
-#modulo-terceiros #ter-recebimento-area-bipagem .data-table {
-    min-width: 1180px;
+/* Itens XML / bipagem: mesmo ritmo visual da tabela da Conferência */
+#modulo-terceiros .ter-tabela-bipagem-conferencia .data-table {
+    min-width: 1220px;
     table-layout: auto;
 }
 
-#modulo-terceiros #ter-recebimento-area-bipagem .data-table th,
-#modulo-terceiros #ter-recebimento-area-bipagem .data-table td {
-    padding: 6px 8px;
-    font-size: 13px;
-    line-height: 1.3;
+#modulo-terceiros .ter-tabela-bipagem-conferencia .data-table th,
+#modulo-terceiros .ter-tabela-bipagem-conferencia .data-table td {
+    padding: 6px 10px;
+    font-size: 15px;
+    line-height: 1.25;
     vertical-align: middle;
+    box-sizing: border-box;
 }
 
-#modulo-terceiros #ter-recebimento-area-bipagem .data-table th:nth-child(4),
-#modulo-terceiros #ter-recebimento-area-bipagem .data-table td:nth-child(4) {
-    max-width: 240px;
+#modulo-terceiros .ter-tabela-bipagem-conferencia .data-table th {
+    font-weight: 600;
+}
+
+#modulo-terceiros .ter-tabela-bipagem-conferencia .data-table th:nth-child(5),
+#modulo-terceiros .ter-tabela-bipagem-conferencia .data-table td:nth-child(5) {
+    max-width: 280px;
     word-break: break-word;
 }
 
-#modulo-terceiros #ter-recebimento-area-bipagem .data-table td:last-child {
+#modulo-terceiros .ter-tabela-bipagem-conferencia .data-table td:last-child {
+    white-space: nowrap;
     max-width: 300px;
 }
 
-#modulo-terceiros #ter-recebimento-area-bipagem .data-table td:last-child > div {
-    display: flex;
-    flex-wrap: wrap;
+#modulo-terceiros .ter-tabela-bipagem-conferencia .data-table td:last-child .ter-conf-acoes-celula {
+    display: inline-flex !important;
+    flex-wrap: nowrap !important;
     gap: 6px;
     align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
-#modulo-terceiros #ter-recebimento-area-bipagem .data-table .btn {
-    margin-top: 0;
+#modulo-terceiros .ter-tabela-bipagem-conferencia .data-table td:last-child .btn {
     flex-shrink: 0;
+    font-size: 13px;
+    padding: 4px 8px;
+    line-height: 1.25;
+    margin-top: 0;
+}
+
+#modulo-terceiros .ter-tabela-bipagem-conferencia .data-table .status-badge {
+    white-space: nowrap;
 }
 
 #modulo-terceiros .terceiros-upload-grid {

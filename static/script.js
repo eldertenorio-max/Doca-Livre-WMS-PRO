@@ -1406,6 +1406,29 @@ function _statusBipagemTerLocais(qtdXml, qtdBipada) {
     return 'PENDENTE';
 }
 
+/** Mesmo padrão visual da aba Conferência: badge + classe de linha */
+function _terConferenciaBadgeEClasseLinha(statusBip) {
+    var s = (statusBip || 'PENDENTE').toString().toUpperCase();
+    if (s === 'COMPLETO') {
+        return { badgeClass: 'status-OK', badgeText: '✅ COMPLETO', rowClass: 'row-completo' };
+    }
+    if (s === 'EXCEDENTE') {
+        return { badgeClass: 'status-EXCEDENTE', badgeText: '📦 EXCEDENTE', rowClass: 'row-excedente' };
+    }
+    if (s === 'PARCIAL') {
+        return { badgeClass: 'status-SOBRA', badgeText: '⚠️ PARCIAL', rowClass: 'row-parcial' };
+    }
+    return { badgeClass: 'status-FALTA', badgeText: '❌ PENDENTE', rowClass: 'row-pendente' };
+}
+
+function _terAtualizarBadgeELinha(row, xmlVal, bipVal) {
+    if (!row || !row.cells || row.cells.length < 10) return;
+    var st = _statusBipagemTerLocais(xmlVal, bipVal);
+    var pack = _terConferenciaBadgeEClasseLinha(st);
+    row.className = pack.rowClass;
+    row.cells[0].innerHTML = '<span class="status-badge ' + pack.badgeClass + '">' + pack.badgeText + '</span>';
+}
+
 function _formatTerQtdDisplay(n) {
     var x = parseFloat(n);
     if (isNaN(x)) return '0';
@@ -1420,9 +1443,57 @@ function _terAtualizarSnapshotItem(itemId, deltaBip) {
         if (Number(itens[i].id) === Number(itemId)) {
             var b = parseFloat(itens[i].quantidade_bipada) || 0;
             itens[i].quantidade_bipada = b + (parseFloat(deltaBip) || 0);
+            atualizarResumoTotaisBipagemTerceiros();
             return;
         }
     }
+}
+
+/** Atualiza Total XML, Bipado, pendências e cards de estatística a partir do snapshot (tempo real). */
+function atualizarResumoTotaisBipagemTerceiros() {
+    var itens = window._terceirosBipagemItens || [];
+    var totalXml = 0;
+    var totalBip = 0;
+    var pend = 0;
+    for (var i = 0; i < itens.length; i++) {
+        var xml = parseFloat(itens[i].quantidade_xml) || 0;
+        var bip = parseFloat(itens[i].quantidade_bipada) || 0;
+        totalXml += xml;
+        totalBip += bip;
+        if (_statusBipagemTerLocais(xml, bip) !== 'COMPLETO') {
+            pend++;
+        }
+    }
+    totalXml = Math.round(totalXml * 1000) / 1000;
+    totalBip = Math.round(totalBip * 1000) / 1000;
+
+    var tx = document.getElementById('ter-bipagem-total-xml');
+    var tb = document.getElementById('ter-bipagem-total-bipado');
+    var rs = document.getElementById('ter-bipagem-resumo-status');
+    if (tx) tx.textContent = 'Total XML: ' + _formatTerQtdDisplay(totalXml);
+    if (tb) tb.textContent = 'Bipado: ' + _formatTerQtdDisplay(totalBip);
+    if (rs) {
+        if (!itens.length) {
+            rs.textContent = 'Sem itens';
+            rs.className = 'conferencia-resumo-status status-sem-itens';
+            rs.style.color = '';
+        } else if (pend > 0) {
+            rs.textContent = pend + ' pendência(s)';
+            rs.className = 'conferencia-resumo-status';
+            rs.style.color = '#e65100';
+        } else {
+            rs.textContent = 'Completo';
+            rs.className = 'conferencia-resumo-status';
+            rs.style.color = '#2e7d32';
+        }
+    }
+    var prefixo = getTerceirosPrefixo();
+    var elXml = document.getElementById(prefixo + '-stat-qtd-xml');
+    var elBip = document.getElementById(prefixo + '-stat-qtd-bipada');
+    var elPend = document.getElementById(prefixo + '-stat-pendencias');
+    if (elXml) elXml.textContent = _formatTerQtdDisplay(totalXml);
+    if (elBip) elBip.textContent = _formatTerQtdDisplay(totalBip);
+    if (elPend) elPend.textContent = String(pend);
 }
 
 function _flushTerceirosAdd(itemId) {
@@ -1504,15 +1575,15 @@ window.biparItemTerceirosConferencia = function(btn, itemId, codigoEan, descrica
     if (qEl) qEl.value = '1';
     var row = btn && btn.closest ? btn.closest('tr') : null;
     var cells = row && row.cells && row.cells.length >= 10 ? row.cells : null;
-    var qFalta = cells ? (parseFloat(cells[7].textContent) || 0) : (parseFloat(qtdFaltaMax) || 0);
+    var qFalta = cells ? (parseFloat(cells[8].textContent) || 0) : (parseFloat(qtdFaltaMax) || 0);
     if (qFalta <= 1e-9) return;
     if (cells) {
-        var xml = parseFloat(cells[5].textContent) || 0;
-        var qBip = parseFloat(cells[6].textContent) || 0;
+        var xml = parseFloat(cells[6].textContent) || 0;
+        var qBip = parseFloat(cells[7].textContent) || 0;
         var novoBip = qBip + 1;
-        cells[6].textContent = _formatTerQtdDisplay(novoBip);
-        cells[7].textContent = _formatTerQtdDisplay(Math.max(0, xml - novoBip));
-        cells[8].textContent = _statusBipagemTerLocais(xml, novoBip);
+        cells[7].textContent = _formatTerQtdDisplay(novoBip);
+        cells[8].textContent = _formatTerQtdDisplay(Math.max(0, xml - novoBip));
+        _terAtualizarBadgeELinha(row, xml, novoBip);
     }
     _terAtualizarSnapshotItem(idNum, 1);
     var eanEnvio = eanVal;
@@ -1552,13 +1623,14 @@ window.tirarBipadoTerceiros = async function(btn, itemId, quantidade) {
     if (qtdParam === 'tudo') {
         if (!confirm('Remover todas as unidades bipadas deste item?')) return;
         if (cells) {
-            var xml = parseFloat(cells[5].textContent) || 0;
-            cells[6].textContent = _formatTerQtdDisplay(0);
-            cells[7].textContent = _formatTerQtdDisplay(xml);
-            cells[8].textContent = _statusBipagemTerLocais(xml, 0);
+            var xml = parseFloat(cells[6].textContent) || 0;
+            cells[7].textContent = _formatTerQtdDisplay(0);
+            cells[8].textContent = _formatTerQtdDisplay(xml);
+            _terAtualizarBadgeELinha(row, xml, 0);
         }
         var snap = (window._terceirosBipagemItens || []).filter(function(i) { return Number(i.id) === idNum; })[0];
         if (snap) snap.quantidade_bipada = 0;
+        atualizarResumoTotaisBipagemTerceiros();
         try {
             var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(_terceirosDocAtual.id) + '/desbipar', {
                 method: 'POST',
@@ -1578,13 +1650,13 @@ window.tirarBipadoTerceiros = async function(btn, itemId, quantidade) {
     }
 
     if (cells) {
-        var qBip = parseFloat(cells[6].textContent) || 0;
-        var xml2 = parseFloat(cells[5].textContent) || 0;
+        var qBip = parseFloat(cells[7].textContent) || 0;
+        var xml2 = parseFloat(cells[6].textContent) || 0;
         if (qBip <= 1e-9) return;
         var novoBip = Math.max(0, qBip - 1);
-        cells[6].textContent = _formatTerQtdDisplay(novoBip);
-        cells[7].textContent = _formatTerQtdDisplay(Math.max(0, xml2 - novoBip));
-        cells[8].textContent = _statusBipagemTerLocais(xml2, novoBip);
+        cells[7].textContent = _formatTerQtdDisplay(novoBip);
+        cells[8].textContent = _formatTerQtdDisplay(Math.max(0, xml2 - novoBip));
+        _terAtualizarBadgeELinha(row, xml2, novoBip);
     }
     _terAtualizarSnapshotItem(idNum, -1);
     var key = String(idNum);
@@ -1620,15 +1692,44 @@ window.zerarBipagemTerceirosDocumento = async function() {
 
 async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     if (area !== 'expedicao' && area !== 'carreta') area = 'recebimento';
-    _limparPendenciasBipagemTerceiros();
+    var idAlvo = parseInt(documentoId, 10);
+    if (isNaN(idAlvo)) return;
+
+    var seq = (window._terceirosDetalheCargaSeq = (window._terceirosDetalheCargaSeq || 0) + 1);
+    var docAnterior = _terceirosDocAtual.id;
+    var mudouDocumento = docAnterior == null || Number(docAnterior) !== idAlvo;
+
+    if (mudouDocumento) {
+        _limparPendenciasBipagemTerceiros();
+    }
+
     const prefixo = getTerceirosPrefixo();
     const vazio = document.getElementById('ter-recebimento-detalhe-vazio');
     const detalhe = document.getElementById('ter-recebimento-detalhe');
     const tbody = document.getElementById('ter-tbody-recebimento-itens');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando detalhe...</td></tr>';
-    const doc = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId));
+    if (tbody && mudouDocumento) {
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando detalhe...</td></tr>';
+    }
+
+    var doc;
+    try {
+        doc = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(idAlvo));
+    } catch (err) {
+        console.error(err);
+        doc = null;
+    }
+    if (seq !== window._terceirosDetalheCargaSeq) return;
+
     if (!doc || doc.erro) {
-        if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml((doc && doc.erro) || 'Erro ao carregar.') + '</td></tr>';
+        var msgErro = (doc && doc.erro) ? String(doc.erro) : 'Erro ao carregar.';
+        if (tbody) {
+            if (mudouDocumento) {
+                tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml(msgErro) + '</td></tr>';
+            }
+        }
+        if (!mudouDocumento) {
+            showMessage(msgErro, 'error');
+        }
         return;
     }
     _terceirosDocAtual.id = doc.id;
@@ -1637,14 +1738,8 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     if (vazio) vazio.style.display = 'none';
     if (detalhe) detalhe.style.display = 'block';
     var statNf = document.getElementById(prefixo + '-stat-nf');
-    var statXml = document.getElementById(prefixo + '-stat-qtd-xml');
-    var statBip = document.getElementById(prefixo + '-stat-qtd-bipada');
-    var statPend = document.getElementById(prefixo + '-stat-pendencias');
     var pedido = document.getElementById(prefixo + '-pedido');
     if (statNf) statNf.textContent = (doc.numero_nf || '-') + (doc.serie_nf ? ('/' + doc.serie_nf) : '');
-    if (statXml) statXml.textContent = String((doc.resumo && doc.resumo.quantidade_total_xml) || 0);
-    if (statBip) statBip.textContent = String((doc.resumo && doc.resumo.quantidade_total_bipada) || 0);
-    if (statPend) statPend.textContent = String((doc.resumo && doc.resumo.itens_com_pendencia) || 0);
     if (pedido) pedido.textContent = doc.numero_pedido || '-';
     var remetente = document.getElementById(prefixo + '-remetente');
     var destinatario = document.getElementById(prefixo + '-destinatario');
@@ -1661,28 +1756,9 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     preencherMetaTerceiros(prefixo, 'concluido-meta', doc.recebimento_concluido ? 'Concluído' : '', doc.recebimento_concluido_por || '', doc.recebimento_concluido_em || '');
     atualizarBotaoConclusaoTerceiros(prefixo, !!doc.recebimento_concluido);
 
-    var tx = document.getElementById('ter-bipagem-total-xml');
-    var tb = document.getElementById('ter-bipagem-total-bipado');
-    var rs = document.getElementById('ter-bipagem-resumo-status');
-    if (tx && doc.resumo) tx.textContent = 'Total XML: ' + _formatTerQtdDisplay(doc.resumo.quantidade_total_xml || 0);
-    if (tb && doc.resumo) tb.textContent = 'Bipado: ' + _formatTerQtdDisplay(doc.resumo.quantidade_total_bipada || 0);
-    if (rs && doc.resumo) {
-        var pend = doc.resumo.itens_com_pendencia || 0;
-        if (!doc.itens || !doc.itens.length) {
-            rs.textContent = 'Sem itens';
-            rs.className = 'conferencia-resumo-status status-sem-itens';
-        } else if (pend > 0) {
-            rs.textContent = pend + ' pendência(s)';
-            rs.className = 'conferencia-resumo-status';
-            rs.style.color = '#e65100';
-        } else {
-            rs.textContent = 'Completo';
-            rs.className = 'conferencia-resumo-status';
-            rs.style.color = '#2e7d32';
-        }
-    }
-
     if (!tbody) return;
+    if (seq !== window._terceirosDetalheCargaSeq) return;
+
     const itens = Array.isArray(doc.itens) ? doc.itens : [];
     window._terceirosBipagemItens = itens.map(function(item) {
         return {
@@ -1695,12 +1771,14 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
             quantidade_bipada: item.quantidade_bipada
         };
     });
+    atualizarResumoTotaisBipagemTerceiros();
     atualizarUIBipagemTerceiros(doc);
     if (!itens.length) {
         tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhum item encontrado no XML.</td></tr>';
         return;
     }
     var bloqueado = !!doc.recebimento_concluido;
+    if (seq !== window._terceirosDetalheCargaSeq) return;
     tbody.innerHTML = itens.map(function(item) {
         var baseEncontrada = item.codigo_produto_base || item.descricao_base;
         var baseHtml = baseEncontrada
@@ -1720,20 +1798,29 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
         var btnBipar = (!bloqueado && codigoBarras !== '-')
             ? ('<button type="button" class="btn btn-primary" onclick="biparItemTerceirosConferencia(this, ' + item.id + ', \'' + codigoBarrasEscapado + '\', \'' + produtoEscapado + '\', ' + qtdFaltaParaBipar + ')" style="padding: 6px 12px; font-size: 12px;">📱 Bipar</button>')
             : (falta > 1e-9 ? '<span style="color: #ff9800;" title="Sem EAN no XML para este item.">⚠️ Sem código de barras</span>' : '');
-        var acoesWrap = '<div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">' + btnBipar + botoesTirar + '</div>';
-        return '<tr data-ter-item-id="' + item.id + '">'
+        var acoesWrap = '<div class="ter-conf-acoes-celula">' + btnBipar + botoesTirar + '</div>';
+        var st = item.status_bipagem || _statusBipagemTerLocais(qXml, qBip);
+        var pack = _terConferenciaBadgeEClasseLinha(st);
+        return '<tr class="' + pack.rowClass + '" data-ter-item-id="' + item.id + '">'
+            + '<td><span class="status-badge ' + pack.badgeClass + '">' + pack.badgeText + '</span></td>'
             + '<td>' + escapeHtml(String(item.n_item || '-')) + '</td>'
-            + '<td>' + escapeHtml(item.codigo_ean || '-') + '</td>'
-            + '<td><strong style="color:#1976D2;">' + escapeHtml(item.codigo_produto_xml || '-') + '</strong></td>'
+            + '<td><strong>' + escapeHtml(item.codigo_ean || '-') + '</strong></td>'
+            + '<td><strong style="color: #1976D2;">' + escapeHtml(item.codigo_produto_xml || '-') + '</strong></td>'
             + '<td>' + escapeHtml(item.descricao_xml || '-') + '</td>'
             + '<td>' + baseHtml + '</td>'
             + '<td><strong>' + escapeHtml(_formatTerQtdDisplay(item.quantidade_xml || 0)) + '</strong></td>'
             + '<td><strong style="color: ' + (qBip > 1e-9 ? '#4caf50' : '#666') + ';">' + escapeHtml(_formatTerQtdDisplay(item.quantidade_bipada || 0)) + '</strong></td>'
             + '<td><strong style="color: ' + (falta > 1e-9 ? '#f44336' : '#4caf50') + ';">' + escapeHtml(_formatTerQtdDisplay(falta)) + '</strong></td>'
-            + '<td>' + escapeHtml(item.status_bipagem || 'PENDENTE') + '</td>'
             + '<td style="max-width: 280px;">' + acoesWrap + '</td>'
             + '</tr>';
     }).join('');
+    tbody.querySelectorAll('tr').forEach(function(r, index) {
+        r.style.opacity = '0';
+        window.setTimeout(function() {
+            r.style.transition = 'opacity 0.3s';
+            r.style.opacity = '1';
+        }, index * 20);
+    });
 }
 
 function encontrarItensTerceirosParaBipar(codigo) {
@@ -1831,12 +1918,12 @@ function _terAtualizarLinhaBipagemOtimista(itemId, deltaBip) {
     if (!tbody) return;
     var row = tbody.querySelector('tr[data-ter-item-id="' + itemId + '"]');
     if (!row || !row.cells || row.cells.length < 10) return;
-    var xml = parseFloat(row.cells[5].textContent) || 0;
-    var qBip = parseFloat(row.cells[6].textContent) || 0;
+    var xml = parseFloat(row.cells[6].textContent) || 0;
+    var qBip = parseFloat(row.cells[7].textContent) || 0;
     var novoBip = qBip + (parseFloat(deltaBip) || 0);
-    row.cells[6].textContent = _formatTerQtdDisplay(novoBip);
-    row.cells[7].textContent = _formatTerQtdDisplay(Math.max(0, xml - novoBip));
-    row.cells[8].textContent = _statusBipagemTerLocais(xml, novoBip);
+    row.cells[7].textContent = _formatTerQtdDisplay(novoBip);
+    row.cells[8].textContent = _formatTerQtdDisplay(Math.max(0, xml - novoBip));
+    _terAtualizarBadgeELinha(row, xml, novoBip);
 }
 
 async function executarBipagemTerceirosCentral() {
