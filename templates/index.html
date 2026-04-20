@@ -1473,26 +1473,55 @@
                                     </div>
                                 </div>
 
-                                <div id="ter-bipagem-bloco" class="form-container ter-bipagem-bloco" style="margin-bottom: 16px; background: #fff8e1; border-left: 4px solid #1976D2;">
-                                    <h4 style="margin-top: 0; color: #1976D2;">Bipagem da descarga</h4>
-                                    <p class="info-text" style="margin-top: 0;">Mesmo fluxo da <strong>Conferência</strong>: use o campo de código de barras abaixo e <strong>Bipar</strong>, ou clique em <strong>Bipar</strong> na linha do item para preencher o EAN deste XML.</p>
-                                    <form id="form-ter-bipagem" class="form-row" style="flex-wrap: wrap; align-items: flex-end; gap: 12px;">
-                                        <div class="form-group">
-                                            <label for="ter-codigo-barras-bipagem">Código de barras / EAN *</label>
-                                            <input type="text" id="ter-codigo-barras-bipagem" autocomplete="off" placeholder="Digite ou escaneie" style="min-width: 220px;">
+                                <div id="ter-bipagem-bloco" class="form-container ter-bipagem-bloco conferencia-bloco-4" style="margin-bottom: 16px; background: #fff8e1; border-left: 4px solid #1976D2;">
+                                    <h3 class="conferencia-bloco-4-titulo" style="color: #1976D2;">Bipagem da descarga</h3>
+                                    <p class="info-text" style="margin-top: 0;">Mesma dinâmica da <strong>Conferência</strong> (expedição): bipar pelo formulário ou por <strong>📱 Bipar</strong> na linha; <strong>➖ Tirar 1</strong> e <strong>🗑️ Tirar tudo</strong> nas linhas; <strong>Zerar</strong> zera toda a nota.</p>
+                                    <form id="form-ter-bipagem">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="ter-codigo-barras-bipagem">Código de barras *</label>
+                                                <input type="text" id="ter-codigo-barras-bipagem" autocomplete="off" placeholder="Digite ou escaneie">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="ter-codigo-produto-bipagem">Código produto</label>
+                                                <input type="text" id="ter-codigo-produto-bipagem" placeholder="Código produto (XML)" title="Opcional: filtra pelo código do item no XML">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="ter-bipagem-produto-hint">Produto</label>
+                                                <input type="text" id="ter-bipagem-produto-hint" readonly placeholder="Descrição do XML">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="ter-bipagem-quantidade">Qtd. bipada</label>
+                                                <input type="number" id="ter-bipagem-quantidade" value="1" min="1" max="99999" step="any" title="Quantidade a registrar nesta bipagem">
+                                            </div>
                                         </div>
-                                        <div class="form-group">
-                                            <label for="ter-bipagem-produto-hint">Produto (XML)</label>
-                                            <input type="text" id="ter-bipagem-produto-hint" readonly placeholder="—" style="min-width: 260px; background: #f5f5f5;">
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="ter-bipagem-quantidade">Qtd.</label>
-                                            <input type="number" id="ter-bipagem-quantidade" value="1" min="1" max="99999" step="1" title="Quantidade a registrar nesta bipagem" style="max-width: 100px;">
-                                        </div>
-                                        <div class="form-group" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
-                                            <button type="submit" class="btn btn-primary" id="btn-ter-bipagem-executar">Bipar</button>
-                                            <button type="button" class="btn btn-secondary" id="btn-ter-bipagem-limpar">Limpar campos</button>
-                                            <button type="button" class="btn btn-success" id="btn-ter-finalizar-descarga" title="Marca o recebimento como concluído">Finalizar descarga</button>
+                                        <div class="form-row conferencia-bloco4-acoes-row">
+                                            <div class="form-group">
+                                                <label for="ter-bipagem-veiculo">Veículo</label>
+                                                <input type="text" id="ter-bipagem-veiculo" placeholder="Referência local">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="ter-bipagem-status">Status</label>
+                                                <select id="ter-bipagem-status">
+                                                    <option value="PENDENTE">PENDENTE</option>
+                                                    <option value="CARREGADO">CARREGADO</option>
+                                                </select>
+                                            </div>
+                                            <div class="conferencia-btns-grupo">
+                                                <button type="submit" class="btn btn-primary btn-bloco4 btn-bloco4-bipar" id="btn-ter-bipagem-executar">✅ Bipar</button>
+                                                <button type="button" class="btn btn-secondary btn-bloco4" id="btn-ter-bipagem-limpar" title="Limpar campos">🧹 Limpar campos</button>
+                                                <button type="button" class="btn btn-danger btn-bloco4 btn-bloco4-zerar" id="btn-ter-zerar-bipagem" style="display: none;" title="Zerar todos os itens bipados desta nota">🗑️ Zerar todos os itens</button>
+                                                <button type="button" class="btn btn-success btn-bloco4" id="btn-ter-finalizar-descarga" title="Marca o recebimento como concluído">Finalizar descarga</button>
+                                            </div>
+                                            <div class="conferencia-resumo-group">
+                                                <div class="conferencia-resumo-rapido">
+                                                    <div id="ter-bipagem-totais-bloco" class="conferencia-totais-bloco">
+                                                        <span id="ter-bipagem-total-xml">Total XML: 0</span>
+                                                        <span id="ter-bipagem-total-bipado">Bipado: 0</span>
+                                                    </div>
+                                                    <span id="ter-bipagem-resumo-status" class="conferencia-resumo-status status-sem-itens">—</span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </form>
                                     <p id="ter-bipagem-msg-concluido" class="info-text" style="display: none; margin-bottom: 0; color: #2e7d32; font-weight: 600;">Recebimento concluído — para alterar contagens, reabra a nota após ajuste operacional se aplicável.</p>
@@ -1504,16 +1533,18 @@
                                             <tr>
                                                 <th>Item</th>
                                                 <th>EAN</th>
+                                                <th>Cód. prod. XML</th>
                                                 <th>Descrição XML</th>
                                                 <th>Base</th>
                                                 <th>Qtd. XML</th>
                                                 <th>Qtd. bipada</th>
+                                                <th>Falta</th>
                                                 <th>Status</th>
                                                 <th>Ação</th>
                                             </tr>
                                         </thead>
                                         <tbody id="ter-tbody-recebimento-itens">
-                                            <tr><td colspan="8" class="loading">Selecione uma nota.</td></tr>
+                                            <tr><td colspan="10" class="loading">Selecione uma nota.</td></tr>
                                         </tbody>
                                     </table>
                                 </div>

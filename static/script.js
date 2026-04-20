@@ -1342,8 +1342,9 @@ function resetTerceirosDetalhe() {
         if (el) el.textContent = '-';
     });
     atualizarBotaoConclusaoTerceiros(prefixo, false);
+    _limparPendenciasBipagemTerceiros();
     var tbody = document.getElementById('ter-tbody-recebimento-itens');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="loading">Selecione uma nota.</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="loading">Selecione uma nota.</td></tr>';
     window._terceirosBipagemItens = [];
     limparCamposBipagemTerceiros(false);
     atualizarUIBipagemTerceiros(null);
@@ -1377,16 +1378,257 @@ function animarConclusaoTerceiros(prefixo) {
     }, 1400);
 }
 
+if (typeof window._terceirosBipagemPending !== 'object') {
+    window._terceirosBipagemPending = { adds: {}, addTimers: {}, removes: {}, removeTimers: {}, DEBOUNCE_MS: 700 };
+}
+
+function _limparPendenciasBipagemTerceiros() {
+    var p = window._terceirosBipagemPending;
+    if (!p) return;
+    Object.keys(p.addTimers || {}).forEach(function(k) {
+        clearTimeout(p.addTimers[k]);
+    });
+    Object.keys(p.removeTimers || {}).forEach(function(k) {
+        clearTimeout(p.removeTimers[k]);
+    });
+    p.adds = {};
+    p.addTimers = {};
+    p.removes = {};
+    p.removeTimers = {};
+}
+
+function _statusBipagemTerLocais(qtdXml, qtdBipada) {
+    var xml = parseFloat(qtdXml) || 0;
+    var bip = parseFloat(qtdBipada) || 0;
+    if (xml > 0 && bip >= xml - 1e-9) return 'COMPLETO';
+    if (bip > xml + 1e-9) return 'EXCEDENTE';
+    if (bip > 1e-9) return 'PARCIAL';
+    return 'PENDENTE';
+}
+
+function _formatTerQtdDisplay(n) {
+    var x = parseFloat(n);
+    if (isNaN(x)) return '0';
+    var r = Math.round(x * 1000) / 1000;
+    if (Math.abs(r - Math.round(r)) < 1e-9) return String(Math.round(r));
+    return String(r);
+}
+
+function _terAtualizarSnapshotItem(itemId, deltaBip) {
+    var itens = window._terceirosBipagemItens || [];
+    for (var i = 0; i < itens.length; i++) {
+        if (Number(itens[i].id) === Number(itemId)) {
+            var b = parseFloat(itens[i].quantidade_bipada) || 0;
+            itens[i].quantidade_bipada = b + (parseFloat(deltaBip) || 0);
+            return;
+        }
+    }
+}
+
+function _flushTerceirosAdd(itemId) {
+    var documentoId = _terceirosDocAtual.id;
+    var key = String(itemId);
+    if (!documentoId || !itemId) return;
+    var entry = window._terceirosBipagemPending.adds[key];
+    if (!entry || !entry.qtd || entry.qtd <= 0) return;
+    var qtd = entry.qtd;
+    var ean = (entry.codigo_ean || '').trim();
+    delete window._terceirosBipagemPending.adds[key];
+    if (window._terceirosBipagemPending.addTimers[key]) {
+        clearTimeout(window._terceirosBipagemPending.addTimers[key]);
+        delete window._terceirosBipagemPending.addTimers[key];
+    }
+    fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/bipar', {
+        method: 'POST',
+        body: JSON.stringify({ item_id: itemId, codigo_ean: ean, quantidade: qtd })
+    }).then(function(resp) {
+        if (resp && resp.ok) {
+            if (qtd > 1) {
+                showMessage('Registradas ' + qtd + ' unidades na bipagem.', 'success');
+            } else {
+                showMessage('Item bipado com sucesso.', 'success');
+            }
+            return loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId).then(function() {
+                return refreshTerceirosViews();
+            });
+        }
+        showMessage((resp && resp.erro) || 'Erro ao bipar item.', 'error');
+        return loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+    }).catch(function() {
+        showMessage('Erro ao bipar item.', 'error');
+        return loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+    });
+}
+
+function _flushTerceirosRemove(itemId) {
+    var documentoId = _terceirosDocAtual.id;
+    var key = String(itemId);
+    if (!documentoId || !itemId) return;
+    var n = window._terceirosBipagemPending.removes[key];
+    if (n == null || n <= 0) return;
+    delete window._terceirosBipagemPending.removes[key];
+    if (window._terceirosBipagemPending.removeTimers[key]) {
+        clearTimeout(window._terceirosBipagemPending.removeTimers[key]);
+        delete window._terceirosBipagemPending.removeTimers[key];
+    }
+    fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/desbipar', {
+        method: 'POST',
+        body: JSON.stringify({ item_id: itemId, quantidade: n })
+    }).then(function(resp) {
+        if (resp && resp.ok) {
+            showMessage(n + ' unidade(s) removida(s).', 'success');
+            return loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId).then(function() {
+                return refreshTerceirosViews();
+            });
+        }
+        showMessage((resp && resp.erro) || 'Não foi possível remover.', 'error');
+        return loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+    }).catch(function() {
+        showMessage('Erro ao remover.', 'error');
+        return loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+    });
+}
+
+window.biparItemTerceirosConferencia = function(btn, itemId, codigoEan, descricaoXml, qtdFaltaMax) {
+    if (!_terceirosDocAtual.id || _terceirosDocAtual.recebimento_concluido) return;
+    var idNum = parseInt(itemId, 10);
+    if (!idNum) return;
+    var cb = document.getElementById('ter-codigo-barras-bipagem');
+    var pn = document.getElementById('ter-bipagem-produto-hint');
+    var cp = document.getElementById('ter-codigo-produto-bipagem');
+    var qEl = document.getElementById('ter-bipagem-quantidade');
+    if (cb) cb.value = '';
+    var eanVal = (codigoEan && codigoEan !== '-') ? String(codigoEan).trim() : '';
+    if (cb && eanVal) cb.value = eanVal;
+    if (pn) pn.value = (descricaoXml || '').trim();
+    if (qEl) qEl.value = '1';
+    var row = btn && btn.closest ? btn.closest('tr') : null;
+    var cells = row && row.cells && row.cells.length >= 10 ? row.cells : null;
+    var qFalta = cells ? (parseFloat(cells[7].textContent) || 0) : (parseFloat(qtdFaltaMax) || 0);
+    if (qFalta <= 1e-9) return;
+    if (cells) {
+        var xml = parseFloat(cells[5].textContent) || 0;
+        var qBip = parseFloat(cells[6].textContent) || 0;
+        var novoBip = qBip + 1;
+        cells[6].textContent = _formatTerQtdDisplay(novoBip);
+        cells[7].textContent = _formatTerQtdDisplay(Math.max(0, xml - novoBip));
+        cells[8].textContent = _statusBipagemTerLocais(xml, novoBip);
+    }
+    _terAtualizarSnapshotItem(idNum, 1);
+    var eanEnvio = eanVal;
+    if (!eanEnvio) {
+        var it = (window._terceirosBipagemItens || []).filter(function(i) { return Number(i.id) === idNum; })[0];
+        eanEnvio = it ? String(it.codigo_ean || '').trim() : '';
+    }
+    if (!eanEnvio) {
+        showMessage('Item sem EAN no XML.', 'warning');
+        loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, _terceirosDocAtual.id);
+        return;
+    }
+    var key = String(idNum);
+    if (!window._terceirosBipagemPending.adds[key]) {
+        window._terceirosBipagemPending.adds[key] = { qtd: 0, codigo_ean: eanEnvio };
+    }
+    window._terceirosBipagemPending.adds[key].qtd += 1;
+    if (window._terceirosBipagemPending.addTimers[key]) {
+        clearTimeout(window._terceirosBipagemPending.addTimers[key]);
+    }
+    window._terceirosBipagemPending.addTimers[key] = setTimeout(function() {
+        _flushTerceirosAdd(idNum);
+    }, window._terceirosBipagemPending.DEBOUNCE_MS);
+    if (cb) cb.focus();
+};
+
+window.tirarBipadoTerceiros = async function(btn, itemId, quantidade) {
+    if (!_terceirosDocAtual.id || _terceirosDocAtual.recebimento_concluido) return;
+    var idNum = parseInt(itemId, 10);
+    if (!idNum) return;
+    var cb = document.getElementById('ter-codigo-barras-bipagem');
+    if (cb) cb.value = '';
+    var row = btn && btn.closest ? btn.closest('tr') : null;
+    var cells = row && row.cells && row.cells.length >= 10 ? row.cells : null;
+    var qtdParam = quantidade === 'tudo' || quantidade === 'all' ? 'tudo' : (parseInt(quantidade, 10) || 1);
+
+    if (qtdParam === 'tudo') {
+        if (!confirm('Remover todas as unidades bipadas deste item?')) return;
+        if (cells) {
+            var xml = parseFloat(cells[5].textContent) || 0;
+            cells[6].textContent = _formatTerQtdDisplay(0);
+            cells[7].textContent = _formatTerQtdDisplay(xml);
+            cells[8].textContent = _statusBipagemTerLocais(xml, 0);
+        }
+        var snap = (window._terceirosBipagemItens || []).filter(function(i) { return Number(i.id) === idNum; })[0];
+        if (snap) snap.quantidade_bipada = 0;
+        try {
+            var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(_terceirosDocAtual.id) + '/desbipar', {
+                method: 'POST',
+                body: JSON.stringify({ item_id: idNum, quantidade: 'tudo' })
+            });
+            if (resp && resp.ok) {
+                showMessage('Item atualizado.', 'success');
+            } else {
+                showMessage((resp && resp.erro) || 'Não foi possível remover.', 'error');
+            }
+        } catch (e) {
+            showMessage('Erro ao remover.', 'error');
+        }
+        await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, _terceirosDocAtual.id);
+        await refreshTerceirosViews();
+        return;
+    }
+
+    if (cells) {
+        var qBip = parseFloat(cells[6].textContent) || 0;
+        var xml2 = parseFloat(cells[5].textContent) || 0;
+        if (qBip <= 1e-9) return;
+        var novoBip = Math.max(0, qBip - 1);
+        cells[6].textContent = _formatTerQtdDisplay(novoBip);
+        cells[7].textContent = _formatTerQtdDisplay(Math.max(0, xml2 - novoBip));
+        cells[8].textContent = _statusBipagemTerLocais(xml2, novoBip);
+    }
+    _terAtualizarSnapshotItem(idNum, -1);
+    var key = String(idNum);
+    window._terceirosBipagemPending.removes[key] = (window._terceirosBipagemPending.removes[key] || 0) + 1;
+    if (window._terceirosBipagemPending.removeTimers[key]) {
+        clearTimeout(window._terceirosBipagemPending.removeTimers[key]);
+    }
+    window._terceirosBipagemPending.removeTimers[key] = setTimeout(function() {
+        _flushTerceirosRemove(idNum);
+    }, window._terceirosBipagemPending.DEBOUNCE_MS);
+};
+
+window.zerarBipagemTerceirosDocumento = async function() {
+    if (!_terceirosDocAtual.id || _terceirosDocAtual.recebimento_concluido) return;
+    if (!confirm('Zerar todos os itens bipados desta nota?')) return;
+    _limparPendenciasBipagemTerceiros();
+    try {
+        var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(_terceirosDocAtual.id) + '/zerar-bipagem', {
+            method: 'POST',
+            body: JSON.stringify({})
+        });
+        if (resp && resp.ok) {
+            showMessage('Bipagem zerada.', 'success');
+            await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, _terceirosDocAtual.id);
+            await refreshTerceirosViews();
+        } else {
+            showMessage((resp && resp.erro) || 'Erro ao zerar.', 'error');
+        }
+    } catch (e) {
+        showMessage('Erro ao zerar.', 'error');
+    }
+};
+
 async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     if (area !== 'expedicao' && area !== 'carreta') area = 'recebimento';
+    _limparPendenciasBipagemTerceiros();
     const prefixo = getTerceirosPrefixo();
     const vazio = document.getElementById('ter-recebimento-detalhe-vazio');
     const detalhe = document.getElementById('ter-recebimento-detalhe');
     const tbody = document.getElementById('ter-tbody-recebimento-itens');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="loading">Carregando detalhe...</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando detalhe...</td></tr>';
     const doc = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId));
     if (!doc || doc.erro) {
-        if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="loading">' + escapeHtml((doc && doc.erro) || 'Erro ao carregar.') + '</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml((doc && doc.erro) || 'Erro ao carregar.') + '</td></tr>';
         return;
     }
     _terceirosDocAtual.id = doc.id;
@@ -1419,6 +1661,27 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     preencherMetaTerceiros(prefixo, 'concluido-meta', doc.recebimento_concluido ? 'Concluído' : '', doc.recebimento_concluido_por || '', doc.recebimento_concluido_em || '');
     atualizarBotaoConclusaoTerceiros(prefixo, !!doc.recebimento_concluido);
 
+    var tx = document.getElementById('ter-bipagem-total-xml');
+    var tb = document.getElementById('ter-bipagem-total-bipado');
+    var rs = document.getElementById('ter-bipagem-resumo-status');
+    if (tx && doc.resumo) tx.textContent = 'Total XML: ' + _formatTerQtdDisplay(doc.resumo.quantidade_total_xml || 0);
+    if (tb && doc.resumo) tb.textContent = 'Bipado: ' + _formatTerQtdDisplay(doc.resumo.quantidade_total_bipada || 0);
+    if (rs && doc.resumo) {
+        var pend = doc.resumo.itens_com_pendencia || 0;
+        if (!doc.itens || !doc.itens.length) {
+            rs.textContent = 'Sem itens';
+            rs.className = 'conferencia-resumo-status status-sem-itens';
+        } else if (pend > 0) {
+            rs.textContent = pend + ' pendência(s)';
+            rs.className = 'conferencia-resumo-status';
+            rs.style.color = '#e65100';
+        } else {
+            rs.textContent = 'Completo';
+            rs.className = 'conferencia-resumo-status';
+            rs.style.color = '#2e7d32';
+        }
+    }
+
     if (!tbody) return;
     const itens = Array.isArray(doc.itens) ? doc.itens : [];
     window._terceirosBipagemItens = itens.map(function(item) {
@@ -1426,6 +1689,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
             id: item.id,
             n_item: item.n_item,
             codigo_ean: item.codigo_ean,
+            codigo_produto_xml: item.codigo_produto_xml,
             descricao_xml: item.descricao_xml,
             quantidade_xml: item.quantidade_xml,
             quantidade_bipada: item.quantidade_bipada
@@ -1433,7 +1697,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     });
     atualizarUIBipagemTerceiros(doc);
     if (!itens.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Nenhum item encontrado no XML.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhum item encontrado no XML.</td></tr>';
         return;
     }
     var bloqueado = !!doc.recebimento_concluido;
@@ -1442,26 +1706,34 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
         var baseHtml = baseEncontrada
             ? ('<span style="color:#2e7d32;font-weight:700;">' + escapeHtml(item.codigo_produto_base || item.descricao_base || 'Encontrado') + '</span>')
             : '<span style="color:#c62828;font-weight:700;">Não encontrado</span>';
-        var btnLinha = bloqueado
-            ? '<span class="info-text">—</span>'
-            : '<button type="button" class="btn btn-primary btn-sm" data-ter-bipar-preencher="' + escapeHtml(String(item.id)) + '">Bipar</button>';
-        return '<tr>'
+        var qXml = parseFloat(item.quantidade_xml) || 0;
+        var qBip = parseFloat(item.quantidade_bipada) || 0;
+        var falta = Math.max(0, qXml - qBip);
+        var qtdFaltaParaBipar = Math.max(1, falta);
+        var codigoBarras = item.codigo_ean || '-';
+        var codigoBarrasEscapado = (codigoBarras !== '-' ? codigoBarras.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '');
+        var produtoEscapado = (item.descricao_xml || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        var botoesTirar = (!bloqueado && qBip > 1e-9 && codigoBarras !== '-')
+            ? ('<button type="button" class="btn btn-secondary" onclick="tirarBipadoTerceiros(this, ' + item.id + ', 1)" style="padding: 4px 8px; font-size: 11px;" title="Remover 1 unidade bipada">➖ Tirar 1</button>'
+                + '<button type="button" class="btn btn-secondary" onclick="tirarBipadoTerceiros(this, ' + item.id + ', \'tudo\')" style="padding: 4px 8px; font-size: 11px;" title="Remover todas as unidades bipadas deste item">🗑️ Tirar tudo</button>')
+            : '';
+        var btnBipar = (!bloqueado && codigoBarras !== '-')
+            ? ('<button type="button" class="btn btn-primary" onclick="biparItemTerceirosConferencia(this, ' + item.id + ', \'' + codigoBarrasEscapado + '\', \'' + produtoEscapado + '\', ' + qtdFaltaParaBipar + ')" style="padding: 6px 12px; font-size: 12px;">📱 Bipar</button>')
+            : (falta > 1e-9 ? '<span style="color: #ff9800;" title="Sem EAN no XML para este item.">⚠️ Sem código de barras</span>' : '');
+        var acoesWrap = '<div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">' + btnBipar + botoesTirar + '</div>';
+        return '<tr data-ter-item-id="' + item.id + '">'
             + '<td>' + escapeHtml(String(item.n_item || '-')) + '</td>'
             + '<td>' + escapeHtml(item.codigo_ean || '-') + '</td>'
+            + '<td><strong style="color:#1976D2;">' + escapeHtml(item.codigo_produto_xml || '-') + '</strong></td>'
             + '<td>' + escapeHtml(item.descricao_xml || '-') + '</td>'
             + '<td>' + baseHtml + '</td>'
-            + '<td><strong>' + escapeHtml(String(item.quantidade_xml || 0)) + '</strong></td>'
-            + '<td>' + escapeHtml(String(item.quantidade_bipada || 0)) + '</td>'
+            + '<td><strong>' + escapeHtml(_formatTerQtdDisplay(item.quantidade_xml || 0)) + '</strong></td>'
+            + '<td><strong style="color: ' + (qBip > 1e-9 ? '#4caf50' : '#666') + ';">' + escapeHtml(_formatTerQtdDisplay(item.quantidade_bipada || 0)) + '</strong></td>'
+            + '<td><strong style="color: ' + (falta > 1e-9 ? '#f44336' : '#4caf50') + ';">' + escapeHtml(_formatTerQtdDisplay(falta)) + '</strong></td>'
             + '<td>' + escapeHtml(item.status_bipagem || 'PENDENTE') + '</td>'
-            + '<td>' + btnLinha + '</td>'
+            + '<td style="max-width: 280px;">' + acoesWrap + '</td>'
             + '</tr>';
     }).join('');
-    tbody.querySelectorAll('[data-ter-bipar-preencher]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var itemId = parseInt(btn.getAttribute('data-ter-bipar-preencher') || '0', 10);
-            if (itemId) preencherBipagemTerceirosPorItemId(itemId);
-        });
-    });
 }
 
 function encontrarItensTerceirosParaBipar(codigo) {
@@ -1479,14 +1751,30 @@ function encontrarItensTerceirosParaBipar(codigo) {
     }).sort(function(a, b) { return (Number(a.n_item) || 0) - (Number(b.n_item) || 0); });
 }
 
+function encontrarItensTerceirosParaBiparPorCodigoProduto(cod) {
+    cod = String(cod || '').trim().toLowerCase();
+    if (!cod) return [];
+    return (window._terceirosBipagemItens || []).filter(function(item) {
+        var cp = String(item.codigo_produto_xml || '').trim().toLowerCase();
+        if (!cp) return false;
+        return cp === cod;
+    }).filter(function(item) {
+        var xml = parseFloat(item.quantidade_xml) || 0;
+        var bip = parseFloat(item.quantidade_bipada) || 0;
+        return bip < xml - 1e-9;
+    }).sort(function(a, b) { return (Number(a.n_item) || 0) - (Number(b.n_item) || 0); });
+}
+
 function preencherBipagemTerceirosPorItemId(itemId) {
     var itens = window._terceirosBipagemItens || [];
     var item = itens.filter(function(i) { return Number(i.id) === Number(itemId); })[0];
     if (!item) return;
     var c = document.getElementById('ter-codigo-barras-bipagem');
     var h = document.getElementById('ter-bipagem-produto-hint');
+    var cp = document.getElementById('ter-codigo-produto-bipagem');
     if (c) c.value = String(item.codigo_ean || '').trim();
     if (h) h.value = String(item.descricao_xml || '').trim();
+    if (cp) cp.value = String(item.codigo_produto_xml || '').trim();
     var q = document.getElementById('ter-bipagem-quantidade');
     if (q) q.value = '1';
     if (c) c.focus();
@@ -1496,10 +1784,16 @@ function limparCamposBipagemTerceiros(focar) {
     if (focar === undefined) focar = true;
     var c = document.getElementById('ter-codigo-barras-bipagem');
     var h = document.getElementById('ter-bipagem-produto-hint');
+    var cp = document.getElementById('ter-codigo-produto-bipagem');
     var q = document.getElementById('ter-bipagem-quantidade');
+    var ve = document.getElementById('ter-bipagem-veiculo');
+    var st = document.getElementById('ter-bipagem-status');
     if (c) c.value = '';
     if (h) h.value = '';
+    if (cp) cp.value = '';
     if (q) q.value = '1';
+    if (ve) ve.value = '';
+    if (st) st.value = 'PENDENTE';
     if (focar && c) c.focus();
 }
 
@@ -1507,13 +1801,21 @@ function atualizarUIBipagemTerceiros(doc) {
     var concluido = !!(doc && doc.recebimento_concluido);
     var msg = document.getElementById('ter-bipagem-msg-concluido');
     var fin = document.getElementById('btn-ter-finalizar-descarga');
+    var zer = document.getElementById('btn-ter-zerar-bipagem');
     if (msg) msg.style.display = concluido ? 'block' : 'none';
     if (fin) {
         if (!doc) fin.style.display = 'none';
         else fin.style.display = concluido ? 'none' : '';
     }
+    if (zer) {
+        if (!doc || concluido) {
+            zer.style.display = 'none';
+        } else {
+            zer.style.display = 'inline-block';
+        }
+    }
     var desabilitar = concluido || !doc;
-    ['ter-codigo-barras-bipagem', 'ter-bipagem-quantidade', 'ter-bipagem-produto-hint'].forEach(function(id) {
+    ['ter-codigo-barras-bipagem', 'ter-codigo-produto-bipagem', 'ter-bipagem-quantidade', 'ter-bipagem-produto-hint', 'ter-bipagem-veiculo', 'ter-bipagem-status'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.disabled = desabilitar;
     });
@@ -1521,6 +1823,20 @@ function atualizarUIBipagemTerceiros(doc) {
     var lim = document.getElementById('btn-ter-bipagem-limpar');
     if (sub) sub.disabled = desabilitar;
     if (lim) lim.disabled = desabilitar;
+    if (zer) zer.disabled = desabilitar;
+}
+
+function _terAtualizarLinhaBipagemOtimista(itemId, deltaBip) {
+    var tbody = document.getElementById('ter-tbody-recebimento-itens');
+    if (!tbody) return;
+    var row = tbody.querySelector('tr[data-ter-item-id="' + itemId + '"]');
+    if (!row || !row.cells || row.cells.length < 10) return;
+    var xml = parseFloat(row.cells[5].textContent) || 0;
+    var qBip = parseFloat(row.cells[6].textContent) || 0;
+    var novoBip = qBip + (parseFloat(deltaBip) || 0);
+    row.cells[6].textContent = _formatTerQtdDisplay(novoBip);
+    row.cells[7].textContent = _formatTerQtdDisplay(Math.max(0, xml - novoBip));
+    row.cells[8].textContent = _statusBipagemTerLocais(xml, novoBip);
 }
 
 async function executarBipagemTerceirosCentral() {
@@ -1533,17 +1849,22 @@ async function executarBipagemTerceirosCentral() {
         return;
     }
     var cEl = document.getElementById('ter-codigo-barras-bipagem');
+    var cpEl = document.getElementById('ter-codigo-produto-bipagem');
     var qEl = document.getElementById('ter-bipagem-quantidade');
     var codigo = cEl ? normalizarCodigoBarrasDuplicado((cEl.value || '').trim()) : '';
-    var qtdReq = qEl ? parseInt(qEl.value, 10) : 1;
-    if (!codigo) {
-        showMessage('Digite ou escaneie o código de barras.', 'error');
+    var codProd = cpEl ? String(cpEl.value || '').trim() : '';
+    var qtdReq = qEl ? parseFloat(qEl.value) : 1;
+    if (!qtdReq || qtdReq < 1 || isNaN(qtdReq)) qtdReq = 1;
+    var candidatos = codigo ? encontrarItensTerceirosParaBipar(codigo) : [];
+    if (!candidatos.length && codProd) {
+        candidatos = encontrarItensTerceirosParaBiparPorCodigoProduto(codProd);
+    }
+    if (!codigo && !codProd) {
+        showMessage('Informe o código de barras ou o código produto.', 'error');
         return;
     }
-    if (!qtdReq || qtdReq < 1 || isNaN(qtdReq)) qtdReq = 1;
-    var candidatos = encontrarItensTerceirosParaBipar(codigo);
     if (!candidatos.length) {
-        showMessage('Nenhum item pendente desta nota com esse EAN.', 'warning');
+        showMessage('Nenhum item pendente desta nota com esse filtro.', 'warning');
         return;
     }
     var item = candidatos[0];
@@ -1556,7 +1877,23 @@ async function executarBipagemTerceirosCentral() {
         return;
     }
     var eanEnvio = String(item.codigo_ean || '').trim() || codigo;
-    await biparItemTerceiros(_terceirosDocAtual.area, item.id, eanEnvio, aplicar);
+    if (!eanEnvio) {
+        showMessage('Item sem EAN no XML; não é possível bipar.', 'warning');
+        return;
+    }
+    _terAtualizarSnapshotItem(item.id, aplicar);
+    _terAtualizarLinhaBipagemOtimista(item.id, aplicar);
+    var key = String(item.id);
+    if (!window._terceirosBipagemPending.adds[key]) {
+        window._terceirosBipagemPending.adds[key] = { qtd: 0, codigo_ean: eanEnvio };
+    }
+    window._terceirosBipagemPending.adds[key].qtd += aplicar;
+    if (window._terceirosBipagemPending.addTimers[key]) {
+        clearTimeout(window._terceirosBipagemPending.addTimers[key]);
+    }
+    window._terceirosBipagemPending.addTimers[key] = setTimeout(function() {
+        _flushTerceirosAdd(item.id);
+    }, window._terceirosBipagemPending.DEBOUNCE_MS);
     limparCamposBipagemTerceiros(true);
 }
 
@@ -1584,6 +1921,11 @@ function initTerceirosBipagemForm() {
         lim.dataset.terBipBound = '1';
         lim.addEventListener('click', function() { limparCamposBipagemTerceiros(true); });
     }
+    var zer = document.getElementById('btn-ter-zerar-bipagem');
+    if (zer && !zer.dataset.terBipBound) {
+        zer.dataset.terBipBound = '1';
+        zer.addEventListener('click', function() { void zerarBipagemTerceirosDocumento(); });
+    }
     var fin = document.getElementById('btn-ter-finalizar-descarga');
     if (fin && !fin.dataset.terBipBound) {
         fin.dataset.terBipBound = '1';
@@ -1599,30 +1941,19 @@ function initTerceirosBipagemForm() {
             }
         });
     }
+    var cp = document.getElementById('ter-codigo-produto-bipagem');
+    if (cp && !cp.dataset.terBipBlur) {
+        cp.dataset.terBipBlur = '1';
+        cp.addEventListener('blur', function() {
+            var v = String(cp.value || '').trim().toLowerCase();
+            if (!v || !_terceirosDocAtual.id) return;
+            var lista = encontrarItensTerceirosParaBiparPorCodigoProduto(v);
+            if (lista.length === 1) {
+                preencherBipagemTerceirosPorItemId(lista[0].id);
+            }
+        });
+    }
     atualizarUIBipagemTerceiros(null);
-}
-
-async function biparItemTerceiros(area, itemId, codigoEan, quantidade) {
-    var documentoId = _terceirosDocAtual.id;
-    if (!documentoId) return;
-    quantidade = quantidade == null || quantidade === '' ? 1 : Number(quantidade);
-    if (!quantidade || quantidade <= 0 || isNaN(quantidade)) quantidade = 1;
-    codigoEan = (codigoEan || '').trim();
-    if (!itemId || !codigoEan) {
-        showMessage('Item e EAN são obrigatórios.', 'warning');
-        return;
-    }
-    var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/bipar', {
-        method: 'POST',
-        body: JSON.stringify({ item_id: itemId, codigo_ean: codigoEan, quantidade: quantidade })
-    });
-    if (!resp || !resp.ok) {
-        showMessage((resp && resp.erro) || 'Erro ao bipar item.', 'error');
-        return;
-    }
-    showMessage(quantidade > 1 ? ('Registradas ' + quantidade + ' unidades na bipagem.') : 'Item bipado com sucesso.', 'success');
-    await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
-    await refreshTerceirosViews();
 }
 
 async function atualizarStatusTerceiros(area, campo, valor, opcoes) {

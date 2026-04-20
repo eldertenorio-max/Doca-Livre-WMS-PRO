@@ -7185,6 +7185,101 @@ def api_terceiros_bipar_item(documento_id):
         conn.close()
 
 
+@app.route('/api/terceiros/documentos/<int:documento_id>/desbipar', methods=['POST'])
+def api_terceiros_desbipar_item(documento_id):
+    """Remove unidades bipadas (1, N ou tudo) — espelha a dinâmica Tirar 1 / Tirar tudo da conferência."""
+    data = request.get_json() or {}
+    item_id = int(data.get('item_id') or 0)
+    raw_q = data.get('quantidade')
+    conn = get_db()
+    usuario = session.get('usuario', '')
+    try:
+        _ensure_terceiros_schema(conn)
+        if not item_id:
+            return jsonify({'ok': False, 'erro': 'Item obrigatório.'}), 400
+        item = conn.execute(
+            'SELECT * FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE id = ? AND documento_id = ?',
+            (item_id, documento_id),
+        ).fetchone()
+        if not item:
+            return jsonify({'ok': False, 'erro': 'Item não encontrado.'}), 404
+        item_d = dict(item) if hasattr(item, 'keys') else {}
+        qtd_atual = float(item_d.get('quantidade_bipada') or 0)
+        if raw_q == 'tudo' or raw_q == 'all':
+            remover = qtd_atual
+        else:
+            remover = float(_parse_decimal(raw_q or 1))
+        remover = max(0.0, min(remover, qtd_atual))
+        if remover <= 0:
+            return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
+        qtd_nova = round(qtd_atual - remover, 3)
+        if qtd_nova < 0:
+            qtd_nova = 0.0
+        status = _status_bipagem_terceiros(item_d.get('quantidade_xml') or 0, qtd_nova)
+        if qtd_nova <= 0:
+            conn.execute(
+                '''UPDATE ''' + _tbl_terceiros_documento_itens(conn) + '''
+                   SET quantidade_bipada = ?, status_bipagem = ?,
+                       codigo_produto_base = '', codigo_barras_base = '', descricao_base = '',
+                       ultimo_ean_bipado = '', atualizado_em = ?, atualizado_por = ?
+                   WHERE id = ?''',
+                (qtd_nova, status, _agora_iso(), usuario, item_id),
+            )
+        else:
+            conn.execute(
+                '''UPDATE ''' + _tbl_terceiros_documento_itens(conn) + '''
+                   SET quantidade_bipada = ?, status_bipagem = ?, atualizado_em = ?, atualizado_por = ?
+                   WHERE id = ?''',
+                (qtd_nova, status, _agora_iso(), usuario, item_id),
+            )
+        _registrar_evento_terceiros(
+            conn, documento_id, 'desbipagem_item', str(qtd_atual), str(qtd_nova), usuario, 'item_id=%s' % item_id
+        )
+        conn.execute(
+            'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+            (_agora_iso(), usuario, documento_id),
+        )
+        conn.commit()
+        return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'ok': False, 'erro': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/terceiros/documentos/<int:documento_id>/zerar-bipagem', methods=['POST'])
+def api_terceiros_zerar_bipagem(documento_id):
+    """Zera toda a bipagem dos itens da NF (como Zerar todos na conferência)."""
+    conn = get_db()
+    usuario = session.get('usuario', '')
+    try:
+        _ensure_terceiros_schema(conn)
+        row = conn.execute('SELECT id FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,)).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
+        conn.execute(
+            '''UPDATE ''' + _tbl_terceiros_documento_itens(conn) + '''
+               SET quantidade_bipada = 0, status_bipagem = 'PENDENTE',
+                   codigo_produto_base = '', codigo_barras_base = '', descricao_base = '',
+                   ultimo_ean_bipado = '', atualizado_em = ?, atualizado_por = ?
+               WHERE documento_id = ?''',
+            (_agora_iso(), usuario, documento_id),
+        )
+        _registrar_evento_terceiros(conn, documento_id, 'zerar_bipagem', '', '', usuario, '')
+        conn.execute(
+            'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+            (_agora_iso(), usuario, documento_id),
+        )
+        conn.commit()
+        return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'ok': False, 'erro': str(e)}), 500
+    finally:
+        conn.close()
+
+
 @app.route('/api/terceiros/documentos/<int:documento_id>/status', methods=['POST'])
 def api_terceiros_status(documento_id):
     data = request.get_json() or {}
