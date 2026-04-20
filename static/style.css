@@ -266,7 +266,7 @@ body {
     font-weight: 600;
 }
 
-/* Bipagem (layout conferência): quebra de linha e cores próprias; evita nowrap global da conferência */
+/* Bipagem: ocupa toda a largura do painel; grid distribui campos e ações */
 #modulo-terceiros #ter-bipagem-bloco.conferencia-bloco-4 {
     width: 100%;
     max-width: 100%;
@@ -276,6 +276,7 @@ body {
     background: #fff8e1;
     border-left: 4px solid #1976d2;
     padding: 16px 18px;
+    align-items: stretch;
 }
 
 #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-titulo {
@@ -287,59 +288,112 @@ body {
     margin-top: 0;
     margin-bottom: 14px;
     max-width: 100%;
+    width: 100%;
 }
 
-#modulo-terceiros #ter-bipagem-bloco form > .form-row:not(.conferencia-bloco4-acoes-row) {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px 16px;
-    align-items: flex-end;
-}
-
-#modulo-terceiros #ter-bipagem-bloco form > .form-row:not(.conferencia-bloco4-acoes-row) .form-group {
-    flex: 1 1 160px;
-    min-width: min(100%, 140px);
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-form {
+    width: 100%;
     max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Linha 1: quatro colunas proporcionais (EAN, código, produto, qtd) */
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-campos {
+    display: grid !important;
+    width: 100%;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(0, 1.5fr) minmax(100px, 0.42fr);
+    gap: 12px 18px;
+    align-items: end;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-campos .form-group {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-campos input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-grupo-qtd input {
+    width: 100%;
+    max-width: 120px;
 }
 
 #modulo-terceiros #ter-bipagem-bloco #ter-bipagem-produto-hint {
     min-width: 0;
+    width: 100%;
 }
 
-#modulo-terceiros #ter-bipagem-bloco #ter-bipagem-quantidade {
-    max-width: 110px;
+/* Linha 2: veículo | status | botões | resumo — preenche a largura */
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-acoes {
+    display: grid !important;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr) minmax(260px, 1.35fr) minmax(220px, 1fr);
+    gap: 14px 18px;
+    align-items: end;
 }
 
-#modulo-terceiros #ter-bipagem-bloco .conferencia-bloco4-acoes-row {
-    flex-wrap: wrap !important;
-    align-items: flex-end;
-    gap: 12px 14px !important;
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-acoes > .form-group {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
 }
 
-#modulo-terceiros #ter-bipagem-bloco .conferencia-bloco4-acoes-row > .form-group {
-    flex: 1 1 160px;
-    min-width: min(100%, 140px);
-    max-width: 100%;
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-acoes input,
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-acoes select {
+    width: 100%;
+    box-sizing: border-box;
 }
 
-#modulo-terceiros #ter-bipagem-bloco .conferencia-btns-grupo {
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-btns-grupo {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-btns-primarios {
+    display: flex;
     flex-wrap: wrap;
-    flex: 1 1 280px;
-    min-width: min(100%, 200px);
-    max-width: 100%;
+    gap: 8px;
     align-items: center;
-    justify-content: flex-start;
+    width: 100%;
 }
 
-#modulo-terceiros #ter-bipagem-bloco .conferencia-resumo-group {
-    flex: 1 1 260px;
-    min-width: min(100%, 240px);
-    max-width: 100%;
-    justify-content: flex-start;
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-btns-primarios .btn {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
-#modulo-terceiros #ter-bipagem-bloco .conferencia-resumo-rapido {
-    justify-content: flex-start;
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-btn-finalizar {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-resumo-wrap {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-end;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-resumo-wrap .conferencia-resumo-rapido {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-resumo-wrap .conferencia-totais-bloco {
+    flex: 1 1 auto;
+    min-width: 0;
+    justify-content: center;
 }
 
 #modulo-terceiros #ter-bipagem-bloco .conferencia-totais-bloco {
@@ -354,6 +408,37 @@ body {
 
 #modulo-terceiros #ter-bipagem-bloco .btn {
     margin-top: 0;
+}
+
+@media (max-width: 1100px) {
+    #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-campos {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-grupo-qtd input {
+        max-width: none;
+    }
+
+    #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-acoes {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-acoes .ter-bipagem-btns-grupo,
+    #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-acoes .ter-bipagem-resumo-wrap {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 560px) {
+    #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-campos,
+    #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-acoes {
+        grid-template-columns: 1fr;
+    }
+
+    #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-acoes .ter-bipagem-btns-grupo,
+    #modulo-terceiros #ter-bipagem-bloco .ter-bipagem-linha-acoes .ter-bipagem-resumo-wrap {
+        grid-column: auto;
+    }
 }
 
 #modulo-terceiros #ter-recebimento-area-bipagem .data-table {

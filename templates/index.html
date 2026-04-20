@@ -1476,8 +1476,8 @@
                                 <div id="ter-bipagem-bloco" class="form-container ter-bipagem-bloco conferencia-bloco-4">
                                     <h3 class="conferencia-bloco-4-titulo ter-bipagem-titulo">Bipagem da descarga</h3>
                                     <p class="info-text ter-bipagem-intro">Mesma dinâmica da <strong>Conferência</strong> (expedição): bipar pelo formulário ou por <strong>📱 Bipar</strong> na linha; <strong>➖ Tirar 1</strong> e <strong>🗑️ Tirar tudo</strong> nas linhas; <strong>Zerar</strong> zera toda a nota.</p>
-                                    <form id="form-ter-bipagem">
-                                        <div class="form-row">
+                                    <form id="form-ter-bipagem" class="ter-bipagem-form">
+                                        <div class="form-row ter-bipagem-linha-campos">
                                             <div class="form-group">
                                                 <label for="ter-codigo-barras-bipagem">Código de barras *</label>
                                                 <input type="text" id="ter-codigo-barras-bipagem" autocomplete="off" placeholder="Digite ou escaneie">
@@ -1490,12 +1490,12 @@
                                                 <label for="ter-bipagem-produto-hint">Produto</label>
                                                 <input type="text" id="ter-bipagem-produto-hint" readonly placeholder="Descrição do XML">
                                             </div>
-                                            <div class="form-group">
+                                            <div class="form-group ter-bipagem-grupo-qtd">
                                                 <label for="ter-bipagem-quantidade">Qtd. bipada</label>
                                                 <input type="number" id="ter-bipagem-quantidade" value="1" min="1" max="99999" step="any" title="Quantidade a registrar nesta bipagem">
                                             </div>
                                         </div>
-                                        <div class="form-row conferencia-bloco4-acoes-row">
+                                        <div class="form-row conferencia-bloco4-acoes-row ter-bipagem-linha-acoes">
                                             <div class="form-group">
                                                 <label for="ter-bipagem-veiculo">Veículo</label>
                                                 <input type="text" id="ter-bipagem-veiculo" placeholder="Referência local">
@@ -1507,13 +1507,15 @@
                                                     <option value="CARREGADO">CARREGADO</option>
                                                 </select>
                                             </div>
-                                            <div class="conferencia-btns-grupo">
-                                                <button type="submit" class="btn btn-primary btn-bloco4 btn-bloco4-bipar" id="btn-ter-bipagem-executar">✅ Bipar</button>
-                                                <button type="button" class="btn btn-secondary btn-bloco4" id="btn-ter-bipagem-limpar" title="Limpar campos">🧹 Limpar campos</button>
-                                                <button type="button" class="btn btn-danger btn-bloco4 btn-bloco4-zerar" id="btn-ter-zerar-bipagem" style="display: none;" title="Zerar todos os itens bipados desta nota">🗑️ Zerar todos os itens</button>
-                                                <button type="button" class="btn btn-success btn-bloco4" id="btn-ter-finalizar-descarga" title="Marca o recebimento como concluído">Finalizar descarga</button>
+                                            <div class="conferencia-btns-grupo ter-bipagem-btns-grupo">
+                                                <div class="ter-bipagem-btns-primarios">
+                                                    <button type="submit" class="btn btn-primary btn-bloco4 btn-bloco4-bipar" id="btn-ter-bipagem-executar">✅ Bipar</button>
+                                                    <button type="button" class="btn btn-secondary btn-bloco4" id="btn-ter-bipagem-limpar" title="Limpar campos">🧹 Limpar campos</button>
+                                                    <button type="button" class="btn btn-danger btn-bloco4 btn-bloco4-zerar" id="btn-ter-zerar-bipagem" style="display: none;" title="Zerar todos os itens bipados desta nota">🗑️ Zerar todos os itens</button>
+                                                </div>
+                                                <button type="button" class="btn btn-success btn-bloco4 ter-bipagem-btn-finalizar" id="btn-ter-finalizar-descarga" title="Marca o recebimento como concluído">Finalizar descarga</button>
                                             </div>
-                                            <div class="conferencia-resumo-group">
+                                            <div class="conferencia-resumo-group ter-bipagem-resumo-wrap">
                                                 <div class="conferencia-resumo-rapido">
                                                     <div id="ter-bipagem-totais-bloco" class="conferencia-totais-bloco">
                                                         <span id="ter-bipagem-total-xml">Total XML: 0</span>
