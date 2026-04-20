@@ -266,6 +266,131 @@ body {
     font-weight: 600;
 }
 
+/* Bipagem (layout conferência): quebra de linha e cores próprias; evita nowrap global da conferência */
+#modulo-terceiros #ter-bipagem-bloco.conferencia-bloco-4 {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 16px;
+    overflow: visible;
+    background: #fff8e1;
+    border-left: 4px solid #1976d2;
+    padding: 16px 18px;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-titulo {
+    color: #0d47a1;
+    margin-bottom: 8px;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .ter-bipagem-intro {
+    margin-top: 0;
+    margin-bottom: 14px;
+    max-width: 100%;
+}
+
+#modulo-terceiros #ter-bipagem-bloco form > .form-row:not(.conferencia-bloco4-acoes-row) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 16px;
+    align-items: flex-end;
+}
+
+#modulo-terceiros #ter-bipagem-bloco form > .form-row:not(.conferencia-bloco4-acoes-row) .form-group {
+    flex: 1 1 160px;
+    min-width: min(100%, 140px);
+    max-width: 100%;
+}
+
+#modulo-terceiros #ter-bipagem-bloco #ter-bipagem-produto-hint {
+    min-width: 0;
+}
+
+#modulo-terceiros #ter-bipagem-bloco #ter-bipagem-quantidade {
+    max-width: 110px;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .conferencia-bloco4-acoes-row {
+    flex-wrap: wrap !important;
+    align-items: flex-end;
+    gap: 12px 14px !important;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .conferencia-bloco4-acoes-row > .form-group {
+    flex: 1 1 160px;
+    min-width: min(100%, 140px);
+    max-width: 100%;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .conferencia-btns-grupo {
+    flex-wrap: wrap;
+    flex: 1 1 280px;
+    min-width: min(100%, 200px);
+    max-width: 100%;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .conferencia-resumo-group {
+    flex: 1 1 260px;
+    min-width: min(100%, 240px);
+    max-width: 100%;
+    justify-content: flex-start;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .conferencia-resumo-rapido {
+    justify-content: flex-start;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .conferencia-totais-bloco {
+    background: #fff3e0;
+    border-color: #f57c00;
+    color: #bf360c;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .conferencia-totais-bloco span {
+    color: inherit;
+}
+
+#modulo-terceiros #ter-bipagem-bloco .btn {
+    margin-top: 0;
+}
+
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table {
+    min-width: 1180px;
+    table-layout: auto;
+}
+
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table th,
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table td {
+    padding: 6px 8px;
+    font-size: 13px;
+    line-height: 1.3;
+    vertical-align: middle;
+}
+
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table th:nth-child(4),
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table td:nth-child(4) {
+    max-width: 240px;
+    word-break: break-word;
+}
+
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table td:last-child {
+    max-width: 300px;
+}
+
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table td:last-child > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table .btn {
+    margin-top: 0;
+    flex-shrink: 0;
+}
+
 #modulo-terceiros .terceiros-upload-grid {
     display: block;
     margin-bottom: 0;
