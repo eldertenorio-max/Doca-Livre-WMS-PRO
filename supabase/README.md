@@ -32,10 +32,11 @@ Execute **nesta ordem**:
 ### 4️⃣ (Opcional) Dados iniciais
 - 📄 `seed_colaboradores.sql` (colaboradores de exemplo)
 
-### 5️⃣ REMOVER "UNRESTRICTED" (habilitar RLS)
+### 5️⃣ REMOVER "UNRESTRICTED" / "SEM RESTRIÇÃO" (habilitar RLS)
 Execute **nesta ordem**:
 - 📄 `enable_rls_policies.sql` (habilita RLS nas tabelas)
 - 📄 `enable_rls_views.sql` (remove UNRESTRICTED das views)
+- 📄 **`migrate_terceiros_rls.sql`** — se as tabelas `terceiros_documentos` / `terceiros_documento_itens` / `terceiros_documento_eventos` existirem (módulo terceiros). Rode após a primeira carga do app ou quando o painel mostrar **SEM RESTRIÇÃO** nessas tabelas.
 
 ---
 
@@ -98,6 +99,8 @@ Isso vai:
 - ✅ Remover o aviso "UNRESTRICTED"
 
 **Importante**: As políticas criadas permitem **acesso total** (sem autenticação JWT), adequado para sistema interno. Se quiser restringir no futuro, edite as policies.
+
+Para **terceiros** (XML de NF-e), use também `migrate_terceiros_rls.sql` — o arquivo `enable_rls_policies.sql` não inclui essas tabelas porque elas costumam ser criadas depois pelo aplicativo.
 
 ---
 
