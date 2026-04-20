@@ -248,10 +248,22 @@ body {
 
 #modulo-terceiros .ter-pendencia-acoes {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
-    gap: 6px;
-    max-width: 320px;
+    gap: 4px;
+    justify-content: flex-start;
+    min-width: 0;
+}
+
+#modulo-terceiros .ter-pendencia-acoes .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+#modulo-terceiros .ter-bipagem-bloco .form-group label {
+    font-weight: 600;
 }
 
 #modulo-terceiros .terceiros-upload-grid {
@@ -370,7 +382,52 @@ body {
 }
 
 #modulo-terceiros .terceiros-lista-bloco .data-table {
-    min-width: 760px;
+    min-width: 1080px;
+    table-layout: fixed;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .data-table th:nth-child(1),
+#modulo-terceiros .terceiros-lista-bloco .data-table td:nth-child(1) {
+    width: 9%;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .data-table th:nth-child(2),
+#modulo-terceiros .terceiros-lista-bloco .data-table td:nth-child(2) {
+    width: 7%;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .data-table th:nth-child(3),
+#modulo-terceiros .terceiros-lista-bloco .data-table td:nth-child(3) {
+    width: 16%;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .data-table th:nth-child(4),
+#modulo-terceiros .terceiros-lista-bloco .data-table td:nth-child(4) {
+    width: 16%;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .data-table th:nth-child(5),
+#modulo-terceiros .terceiros-lista-bloco .data-table td:nth-child(5) {
+    width: 4%;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .data-table th:nth-child(6),
+#modulo-terceiros .terceiros-lista-bloco .data-table td:nth-child(6) {
+    width: 11%;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .data-table th:last-child,
+#modulo-terceiros .terceiros-lista-bloco .data-table td:last-child {
+    width: 20%;
+    min-width: 248px;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .data-table .ter-cell-ellipsis {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
 }
 
 #modulo-terceiros .ter-select-inline,

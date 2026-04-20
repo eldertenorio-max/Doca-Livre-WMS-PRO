@@ -238,17 +238,19 @@ function initTerceirosTabs() {
     var enviarXml = document.getElementById('terceiros-panel-enviar-xml');
     var recebimento = document.getElementById('terceiros-panel-recebimento');
     var fornecedoresRecebidos = document.getElementById('terceiros-panel-fornecedores-recebidos');
+    var pendentesLancamento = document.getElementById('terceiros-panel-pendentes-lancamento');
     var notasLancadas = document.getElementById('terceiros-panel-notas-lancadas');
     var notasEnviadasMg = document.getElementById('terceiros-panel-notas-enviadas-mg');
     var recebimentosMg = document.getElementById('terceiros-panel-recebimentos-mg');
     var pendenciasMg = document.getElementById('terceiros-panel-pendencias-mg');
     var historico = document.getElementById('terceiros-panel-historico');
-    if (!botoes.length || !enviarXml || !recebimento || !fornecedoresRecebidos || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico) return;
+    if (!botoes.length || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico) return;
 
     function mostrarTerTab(tab) {
         var aba = 'pendencia-recebimento';
         if (tab === 'enviar-xml') aba = 'enviar-xml';
         if (tab === 'fornecedores-recebidos') aba = 'fornecedores-recebidos';
+        if (tab === 'pendentes-lancamento') aba = 'pendentes-lancamento';
         if (tab === 'notas-lancadas') aba = 'notas-lancadas';
         if (tab === 'notas-enviadas-mg') aba = 'notas-enviadas-mg';
         if (tab === 'recebimentos-mg') aba = 'recebimentos-mg';
@@ -261,6 +263,7 @@ function initTerceirosTabs() {
         enviarXml.classList.toggle('devolucoes-panel-active', aba === 'enviar-xml');
         recebimento.classList.toggle('devolucoes-panel-active', aba === 'pendencia-recebimento');
         fornecedoresRecebidos.classList.toggle('devolucoes-panel-active', aba === 'fornecedores-recebidos');
+        pendentesLancamento.classList.toggle('devolucoes-panel-active', aba === 'pendentes-lancamento');
         notasLancadas.classList.toggle('devolucoes-panel-active', aba === 'notas-lancadas');
         notasEnviadasMg.classList.toggle('devolucoes-panel-active', aba === 'notas-enviadas-mg');
         recebimentosMg.classList.toggle('devolucoes-panel-active', aba === 'recebimentos-mg');
@@ -268,6 +271,7 @@ function initTerceirosTabs() {
         historico.classList.toggle('devolucoes-panel-active', aba === 'historico');
         if (aba === 'pendencia-recebimento') loadTerceirosDocumentos();
         if (aba === 'fornecedores-recebidos') loadTerceirosFornecedoresRecebidos();
+        if (aba === 'pendentes-lancamento') loadTerceirosPendentesLancamento();
         if (aba === 'notas-lancadas') loadTerceirosNotasLancadas();
         if (aba === 'notas-enviadas-mg') loadTerceirosNotasEnviadasMg();
         if (aba === 'recebimentos-mg') loadTerceirosRecebimentosMg();
@@ -657,6 +661,13 @@ function isTerceirosMotoristaObrigatorio(row) {
     return !!(row && row.motorista_obrigatorio);
 }
 
+/** Resumo legível do status de nota lançada (aba Fornecedores recebidos). */
+function textoResumoNotaLancadaTerceiros(row) {
+    if (isTerceirosFlagSim(row.nota_lancada)) return 'Sim';
+    if (isTerceirosFlagNao(row.nota_lancada)) return 'Não';
+    return 'Pendente';
+}
+
 function getTerceirosRowsPorEtapa(rows, etapa) {
     rows = Array.isArray(rows) ? rows : [];
     if (etapa === 'pendencia-recebimento') {
@@ -665,6 +676,11 @@ function getTerceirosRowsPorEtapa(rows, etapa) {
         });
     }
     if (etapa === 'fornecedores-recebidos') {
+        return rows.filter(function(row) {
+            return isTerceirosFlagSim(row.recebimento_concluido);
+        });
+    }
+    if (etapa === 'pendentes-lancamento') {
         return rows.filter(function(row) {
             return isTerceirosFlagSim(row.recebimento_concluido) && !isTerceirosFlagSim(row.nota_lancada);
         });
@@ -690,6 +706,11 @@ function getTerceirosRowsPorEtapa(rows, etapa) {
         });
     }
     return rows;
+}
+
+function terceirosListaCellTextoLongo(valor) {
+    var text = valor == null || String(valor).trim() === '' ? '-' : String(valor).trim();
+    return '<span class="ter-cell-ellipsis" title="' + escapeHtml(text) + '">' + escapeHtml(text) + '</span>';
 }
 
 function renderTerceirosAbrirButton(row, atributo, rotulo, tabDestino) {
@@ -766,6 +787,7 @@ function bindTerceirosAbrirButtons(seletor) {
             var id = parseInt(
                 btn.getAttribute('data-ter-doc')
                 || btn.getAttribute('data-ter-fornecedor-doc')
+                || btn.getAttribute('data-ter-pend-lanc-doc')
                 || btn.getAttribute('data-ter-lancada-doc')
                 ||                 btn.getAttribute('data-ter-enviada-doc')
                 || btn.getAttribute('data-ter-receb-mg-doc')
@@ -789,6 +811,7 @@ function bindTerceirosExcluirButtons(seletor) {
             var id = parseInt(
                 btn.getAttribute('data-ter-excluir-doc')
                 || btn.getAttribute('data-ter-excluir-fornecedor-doc')
+                || btn.getAttribute('data-ter-excluir-pend-lanc-doc')
                 || btn.getAttribute('data-ter-excluir-lancada-doc')
                 || btn.getAttribute('data-ter-excluir-enviada-doc')
                 || btn.getAttribute('data-ter-excluir-receb-mg-doc')
@@ -831,8 +854,8 @@ async function loadTerceirosDocumentos() {
             return '<tr>'
                 + '<td><strong>' + escapeHtml(nf) + '</strong>' + badgeCarreta + '</td>'
                 + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-                + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
-                + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+                + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
+                + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
                 + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
                 + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
                 + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
@@ -859,7 +882,7 @@ async function loadTerceirosFornecedoresRecebidos() {
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF aguardando lançamento.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com recebimento concluído ainda. Finalize a descarga na aba <strong>Pendência de Recebimento</strong>.</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
@@ -867,24 +890,56 @@ async function loadTerceirosFornecedoresRecebidos() {
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(isTerceirosFlagSim(row.recebimento_concluido) ? 'concluído' : 'pendente') + '</td>'
-            + '<td><select class="ter-select-inline" data-ter-nota-lancada-doc="' + escapeHtml(String(row.id)) + '" data-ter-recebimento-concluido="' + escapeHtml(isTerceirosFlagSim(row.recebimento_concluido) ? 'sim' : 'nao') + '">'
-                + '<option value="">Selecione</option>'
-                + '<option value="sim"' + (isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Sim</option>'
-                + '<option value="nao"' + (isTerceirosFlagNao(row.nota_lancada) && !isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Não</option>'
-            + '</select><div class="ter-status-meta">' + escapeHtml(row.nota_lancada_em || '-') + '</div></td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-fornecedor-doc') + '</td>'
+            + '<td><strong>' + escapeHtml(textoResumoNotaLancadaTerceiros(row)) + '</strong><div class="ter-status-meta">' + escapeHtml(row.nota_lancada_em || '-') + '</div></td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'fornecedores-recebidos') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-fornecedor-doc') + '</td>'
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-fornecedor-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-fornecedor-doc]');
-    tbody.querySelectorAll('[data-ter-nota-lancada-doc]').forEach(function(select) {
+}
+
+async function loadTerceirosPendentesLancamento() {
+    var tbody = document.getElementById('ter-tbody-pendentes-lancamento');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando...</td></tr>';
+    const data = await fetchTerceirosDocumentosTodos();
+    if (data.erro) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        return;
+    }
+    const rows = getTerceirosRowsPorEtapa(data.rows, 'pendentes-lancamento');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF aguardando lançamento fiscal. Todas já foram marcadas ou ainda estão na <strong>Pendência de Recebimento</strong>.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(function(row) {
+        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+        return '<tr>'
+            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
+            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
+            + '<td>' + escapeHtml(isTerceirosFlagSim(row.recebimento_concluido) ? 'concluído' : 'pendente') + '</td>'
+            + '<td><select class="ter-select-inline" data-ter-nota-lancada-pend="' + escapeHtml(String(row.id)) + '" data-ter-recebimento-concluido="' + escapeHtml(isTerceirosFlagSim(row.recebimento_concluido) ? 'sim' : 'nao') + '">'
+                + '<option value="">Selecione</option>'
+                + '<option value="sim"' + (isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Sim</option>'
+                + '<option value="nao"' + (isTerceirosFlagNao(row.nota_lancada) && !isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Não</option>'
+            + '</select><div class="ter-status-meta">' + escapeHtml(row.nota_lancada_em || '-') + '</div></td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-pend-lanc-doc', 'Abrir detalhe', 'pendentes-lancamento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-pend-lanc-doc') + '</td>'
+            + '</tr>';
+    }).join('');
+    bindTerceirosAbrirButtons('[data-ter-pend-lanc-doc]');
+    bindTerceirosExcluirButtons('[data-ter-excluir-pend-lanc-doc]');
+    tbody.querySelectorAll('[data-ter-nota-lancada-pend]').forEach(function(select) {
         select.addEventListener('change', function() {
-            var id = parseInt(select.getAttribute('data-ter-nota-lancada-doc') || '0', 10);
+            var id = parseInt(select.getAttribute('data-ter-nota-lancada-pend') || '0', 10);
             var recebimentoConcluido = select.getAttribute('data-ter-recebimento-concluido') === 'sim';
             if (id && select.value) atualizarStatusTerceirosDireto(id, 'nota_lancada', select.value, {
                 recebimento_concluido: recebimentoConcluido
@@ -915,8 +970,8 @@ async function loadTerceirosNotasLancadas() {
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + avisoMotorista + '</td>'
             + '<td>' + escapeHtml(row.nota_lancada || '-') + '</td>'
@@ -992,8 +1047,8 @@ async function loadTerceirosNotasEnviadasMg() {
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
@@ -1024,8 +1079,8 @@ async function loadTerceirosRecebimentosMg() {
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
@@ -1074,8 +1129,8 @@ async function loadTerceirosPendenciasMg() {
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
@@ -1110,8 +1165,8 @@ async function loadTerceirosHistorico() {
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + escapeHtml(row.remetente_nome || '-') + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_nome || '-') + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(recebimento) + '</td>'
@@ -1134,6 +1189,10 @@ async function refreshTerceirosViews() {
         }
         if (_terceirosTabAtual === 'fornecedores-recebidos') {
             await loadTerceirosFornecedoresRecebidos();
+            return;
+        }
+        if (_terceirosTabAtual === 'pendentes-lancamento') {
+            await loadTerceirosPendentesLancamento();
             return;
         }
         if (_terceirosTabAtual === 'notas-lancadas') {
@@ -1165,6 +1224,7 @@ async function refreshTerceirosViews() {
         }
         var tbodyAtivo = document.getElementById('ter-tbody-recebimento-documentos');
         if (_terceirosTabAtual === 'fornecedores-recebidos') tbodyAtivo = document.getElementById('ter-tbody-fornecedores-recebidos');
+        if (_terceirosTabAtual === 'pendentes-lancamento') tbodyAtivo = document.getElementById('ter-tbody-pendentes-lancamento');
         if (_terceirosTabAtual === 'notas-lancadas') tbodyAtivo = document.getElementById('ter-tbody-notas-lancadas');
         if (_terceirosTabAtual === 'notas-enviadas-mg') tbodyAtivo = document.getElementById('ter-tbody-notas-enviadas-mg');
         if (_terceirosTabAtual === 'recebimentos-mg') tbodyAtivo = document.getElementById('ter-tbody-recebimentos-mg');
@@ -1283,7 +1343,10 @@ function resetTerceirosDetalhe() {
     });
     atualizarBotaoConclusaoTerceiros(prefixo, false);
     var tbody = document.getElementById('ter-tbody-recebimento-itens');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">Selecione uma nota.</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="loading">Selecione uma nota.</td></tr>';
+    window._terceirosBipagemItens = [];
+    limparCamposBipagemTerceiros(false);
+    atualizarUIBipagemTerceiros(null);
 }
 
 function preencherMetaTerceiros(prefixo, campoBase, valor, usuario, datahora) {
@@ -1320,10 +1383,10 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     const vazio = document.getElementById('ter-recebimento-detalhe-vazio');
     const detalhe = document.getElementById('ter-recebimento-detalhe');
     const tbody = document.getElementById('ter-tbody-recebimento-itens');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando detalhe...</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="loading">Carregando detalhe...</td></tr>';
     const doc = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId));
     if (!doc || doc.erro) {
-        if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml((doc && doc.erro) || 'Erro ao carregar.') + '</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="loading">' + escapeHtml((doc && doc.erro) || 'Erro ao carregar.') + '</td></tr>';
         return;
     }
     _terceirosDocAtual.id = doc.id;
@@ -1358,15 +1421,30 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
 
     if (!tbody) return;
     const itens = Array.isArray(doc.itens) ? doc.itens : [];
+    window._terceirosBipagemItens = itens.map(function(item) {
+        return {
+            id: item.id,
+            n_item: item.n_item,
+            codigo_ean: item.codigo_ean,
+            descricao_xml: item.descricao_xml,
+            quantidade_xml: item.quantidade_xml,
+            quantidade_bipada: item.quantidade_bipada
+        };
+    });
+    atualizarUIBipagemTerceiros(doc);
     if (!itens.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhum item encontrado no XML.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Nenhum item encontrado no XML.</td></tr>';
         return;
     }
+    var bloqueado = !!doc.recebimento_concluido;
     tbody.innerHTML = itens.map(function(item) {
         var baseEncontrada = item.codigo_produto_base || item.descricao_base;
         var baseHtml = baseEncontrada
             ? ('<span style="color:#2e7d32;font-weight:700;">' + escapeHtml(item.codigo_produto_base || item.descricao_base || 'Encontrado') + '</span>')
             : '<span style="color:#c62828;font-weight:700;">Não encontrado</span>';
+        var btnLinha = bloqueado
+            ? '<span class="info-text">—</span>'
+            : '<button type="button" class="btn btn-primary btn-sm" data-ter-bipar-preencher="' + escapeHtml(String(item.id)) + '">Bipar</button>';
         return '<tr>'
             + '<td>' + escapeHtml(String(item.n_item || '-')) + '</td>'
             + '<td>' + escapeHtml(item.codigo_ean || '-') + '</td>'
@@ -1375,38 +1453,174 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
             + '<td><strong>' + escapeHtml(String(item.quantidade_xml || 0)) + '</strong></td>'
             + '<td>' + escapeHtml(String(item.quantidade_bipada || 0)) + '</td>'
             + '<td>' + escapeHtml(item.status_bipagem || 'PENDENTE') + '</td>'
-            + '<td><input type="text" id="' + prefixo + '-ean-item-' + item.id + '" value="' + escapeHtml(item.codigo_ean || '') + '" placeholder="EAN" style="width: 100%; min-width: 120px;"></td>'
-            + '<td><button type="button" class="btn btn-primary btn-sm" data-ter-bipar-item="' + escapeHtml(String(item.id)) + '" data-ter-area="' + escapeHtml(area) + '">Bipar</button></td>'
+            + '<td>' + btnLinha + '</td>'
             + '</tr>';
     }).join('');
-    tbody.querySelectorAll('[data-ter-bipar-item]').forEach(function(btn) {
+    tbody.querySelectorAll('[data-ter-bipar-preencher]').forEach(function(btn) {
         btn.addEventListener('click', function() {
-            var itemId = parseInt(btn.getAttribute('data-ter-bipar-item') || '0', 10);
-            var areaBtn = btn.getAttribute('data-ter-area') || area;
-            if (itemId) biparItemTerceiros(areaBtn, itemId);
+            var itemId = parseInt(btn.getAttribute('data-ter-bipar-preencher') || '0', 10);
+            if (itemId) preencherBipagemTerceirosPorItemId(itemId);
         });
     });
 }
 
-async function biparItemTerceiros(area, itemId) {
+function encontrarItensTerceirosParaBipar(codigo) {
+    codigo = normalizarCodigoBarrasDuplicado(String(codigo || '').trim());
+    if (!codigo) return [];
+    var itens = window._terceirosBipagemItens || [];
+    return itens.filter(function(item) {
+        var ean = normalizarCodigoBarrasDuplicado(String(item.codigo_ean || '').trim());
+        if (!ean) return false;
+        return ean === codigo;
+    }).filter(function(item) {
+        var xml = parseFloat(item.quantidade_xml) || 0;
+        var bip = parseFloat(item.quantidade_bipada) || 0;
+        return bip < xml - 1e-9;
+    }).sort(function(a, b) { return (Number(a.n_item) || 0) - (Number(b.n_item) || 0); });
+}
+
+function preencherBipagemTerceirosPorItemId(itemId) {
+    var itens = window._terceirosBipagemItens || [];
+    var item = itens.filter(function(i) { return Number(i.id) === Number(itemId); })[0];
+    if (!item) return;
+    var c = document.getElementById('ter-codigo-barras-bipagem');
+    var h = document.getElementById('ter-bipagem-produto-hint');
+    if (c) c.value = String(item.codigo_ean || '').trim();
+    if (h) h.value = String(item.descricao_xml || '').trim();
+    var q = document.getElementById('ter-bipagem-quantidade');
+    if (q) q.value = '1';
+    if (c) c.focus();
+}
+
+function limparCamposBipagemTerceiros(focar) {
+    if (focar === undefined) focar = true;
+    var c = document.getElementById('ter-codigo-barras-bipagem');
+    var h = document.getElementById('ter-bipagem-produto-hint');
+    var q = document.getElementById('ter-bipagem-quantidade');
+    if (c) c.value = '';
+    if (h) h.value = '';
+    if (q) q.value = '1';
+    if (focar && c) c.focus();
+}
+
+function atualizarUIBipagemTerceiros(doc) {
+    var concluido = !!(doc && doc.recebimento_concluido);
+    var msg = document.getElementById('ter-bipagem-msg-concluido');
+    var fin = document.getElementById('btn-ter-finalizar-descarga');
+    if (msg) msg.style.display = concluido ? 'block' : 'none';
+    if (fin) {
+        if (!doc) fin.style.display = 'none';
+        else fin.style.display = concluido ? 'none' : '';
+    }
+    var desabilitar = concluido || !doc;
+    ['ter-codigo-barras-bipagem', 'ter-bipagem-quantidade', 'ter-bipagem-produto-hint'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.disabled = desabilitar;
+    });
+    var sub = document.getElementById('btn-ter-bipagem-executar');
+    var lim = document.getElementById('btn-ter-bipagem-limpar');
+    if (sub) sub.disabled = desabilitar;
+    if (lim) lim.disabled = desabilitar;
+}
+
+async function executarBipagemTerceirosCentral() {
+    if (!_terceirosDocAtual.id) {
+        showMessage('Selecione uma nota.', 'warning');
+        return;
+    }
+    if (_terceirosDocAtual.recebimento_concluido) {
+        showMessage('Recebimento já concluído.', 'warning');
+        return;
+    }
+    var cEl = document.getElementById('ter-codigo-barras-bipagem');
+    var qEl = document.getElementById('ter-bipagem-quantidade');
+    var codigo = cEl ? normalizarCodigoBarrasDuplicado((cEl.value || '').trim()) : '';
+    var qtdReq = qEl ? parseInt(qEl.value, 10) : 1;
+    if (!codigo) {
+        showMessage('Digite ou escaneie o código de barras.', 'error');
+        return;
+    }
+    if (!qtdReq || qtdReq < 1 || isNaN(qtdReq)) qtdReq = 1;
+    var candidatos = encontrarItensTerceirosParaBipar(codigo);
+    if (!candidatos.length) {
+        showMessage('Nenhum item pendente desta nota com esse EAN.', 'warning');
+        return;
+    }
+    var item = candidatos[0];
+    var xml = parseFloat(item.quantidade_xml) || 0;
+    var bip = parseFloat(item.quantidade_bipada) || 0;
+    var falta = Math.max(0, xml - bip);
+    var aplicar = Math.min(qtdReq, falta);
+    if (aplicar < 0.0001) {
+        showMessage('Este item já atingiu a quantidade do XML.', 'info');
+        return;
+    }
+    var eanEnvio = String(item.codigo_ean || '').trim() || codigo;
+    await biparItemTerceiros(_terceirosDocAtual.area, item.id, eanEnvio, aplicar);
+    limparCamposBipagemTerceiros(true);
+}
+
+async function finalizarDescargaTerceiros() {
+    if (!_terceirosDocAtual.id) {
+        showMessage('Selecione uma nota.', 'warning');
+        return;
+    }
+    if (_terceirosDocAtual.recebimento_concluido) return;
+    if (!confirm('Finalizar descarga? O recebimento será marcado como concluído. Itens ainda pendentes de bipagem permanecem com status pendente.')) return;
+    await atualizarStatusTerceiros('recebimento', 'recebimento_concluido', 'sim');
+}
+
+function initTerceirosBipagemForm() {
+    var form = document.getElementById('form-ter-bipagem');
+    if (form && !form.dataset.terBipBound) {
+        form.dataset.terBipBound = '1';
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            void executarBipagemTerceirosCentral();
+        });
+    }
+    var lim = document.getElementById('btn-ter-bipagem-limpar');
+    if (lim && !lim.dataset.terBipBound) {
+        lim.dataset.terBipBound = '1';
+        lim.addEventListener('click', function() { limparCamposBipagemTerceiros(true); });
+    }
+    var fin = document.getElementById('btn-ter-finalizar-descarga');
+    if (fin && !fin.dataset.terBipBound) {
+        fin.dataset.terBipBound = '1';
+        fin.addEventListener('click', function() { void finalizarDescargaTerceiros(); });
+    }
+    var cb = document.getElementById('ter-codigo-barras-bipagem');
+    if (cb && !cb.dataset.terBipEnter) {
+        cb.dataset.terBipEnter = '1';
+        cb.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                void executarBipagemTerceirosCentral();
+            }
+        });
+    }
+    atualizarUIBipagemTerceiros(null);
+}
+
+async function biparItemTerceiros(area, itemId, codigoEan, quantidade) {
     var documentoId = _terceirosDocAtual.id;
     if (!documentoId) return;
-    var prefixo = getTerceirosPrefixo();
-    var input = document.getElementById(prefixo + '-ean-item-' + itemId);
-    var codigo = input ? input.value.trim() : '';
-    if (!codigo) {
-        showMessage('Digite o EAN do item para bipar.', 'warning');
+    quantidade = quantidade == null || quantidade === '' ? 1 : Number(quantidade);
+    if (!quantidade || quantidade <= 0 || isNaN(quantidade)) quantidade = 1;
+    codigoEan = (codigoEan || '').trim();
+    if (!itemId || !codigoEan) {
+        showMessage('Item e EAN são obrigatórios.', 'warning');
         return;
     }
     var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/bipar', {
         method: 'POST',
-        body: JSON.stringify({ item_id: itemId, codigo_ean: codigo, quantidade: 1 })
+        body: JSON.stringify({ item_id: itemId, codigo_ean: codigoEan, quantidade: quantidade })
     });
     if (!resp || !resp.ok) {
         showMessage((resp && resp.erro) || 'Erro ao bipar item.', 'error');
         return;
     }
-    showMessage('Item bipado com sucesso.', 'success');
+    showMessage(quantidade > 1 ? ('Registradas ' + quantidade + ' unidades na bipagem.') : 'Item bipado com sucesso.', 'success');
     await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
     await refreshTerceirosViews();
 }
@@ -2065,6 +2279,12 @@ function initForms() {
         if (moduloDev && !moduloDev.hidden && devCb && devHid && devHid.value.trim()) {
             devCb.focus();
         }
+        var modTer = document.getElementById('modulo-terceiros');
+        var terDet = document.getElementById('ter-recebimento-detalhe');
+        var terCb = document.getElementById('ter-codigo-barras-bipagem');
+        if (modTer && !modTer.hidden && terDet && terDet.style.display !== 'none' && terCb && !terCb.disabled) {
+            terCb.focus();
+        }
     });
 
     const btnTerRecebUpload = document.getElementById('btn-ter-recebimento-upload');
@@ -2074,6 +2294,7 @@ function initForms() {
 
     const btnTerRecConcluir = document.getElementById('btn-ter-rec-concluir');
     if (btnTerRecConcluir) btnTerRecConcluir.addEventListener('click', function() { atualizarStatusTerceiros('recebimento', 'recebimento_concluido', 'sim'); });
+    initTerceirosBipagemForm();
 
     [
         ['ter-rec-nota-lancada', 'recebimento', 'nota_lancada'],

@@ -1345,6 +1345,7 @@
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="enviar-xml">ENVIAR XML</button>
                     <button type="button" class="tab-button terceiros-subtab active" data-ter-tab="pendencia-recebimento">PENDÊNCIA DE RECEBIMENTO</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="fornecedores-recebidos">FORNECEDORES RECEBIDOS</button>
+                    <button type="button" class="tab-button terceiros-subtab" data-ter-tab="pendentes-lancamento">NFS PENDENTES DE LANÇAMENTO</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="notas-lancadas">NOTAS FISCAIS LANÇADAS</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="pendencias-mg">PENDÊNCIAS ENVIO MG</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="notas-enviadas-mg">NOTAS FISCAIS ENVIADAS PARA MG</button>
@@ -1472,6 +1473,31 @@
                                     </div>
                                 </div>
 
+                                <div id="ter-bipagem-bloco" class="form-container ter-bipagem-bloco" style="margin-bottom: 16px; background: #fff8e1; border-left: 4px solid #1976D2;">
+                                    <h4 style="margin-top: 0; color: #1976D2;">Bipagem da descarga</h4>
+                                    <p class="info-text" style="margin-top: 0;">Mesmo fluxo da <strong>Conferência</strong>: use o campo de código de barras abaixo e <strong>Bipar</strong>, ou clique em <strong>Bipar</strong> na linha do item para preencher o EAN deste XML.</p>
+                                    <form id="form-ter-bipagem" class="form-row" style="flex-wrap: wrap; align-items: flex-end; gap: 12px;">
+                                        <div class="form-group">
+                                            <label for="ter-codigo-barras-bipagem">Código de barras / EAN *</label>
+                                            <input type="text" id="ter-codigo-barras-bipagem" autocomplete="off" placeholder="Digite ou escaneie" style="min-width: 220px;">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="ter-bipagem-produto-hint">Produto (XML)</label>
+                                            <input type="text" id="ter-bipagem-produto-hint" readonly placeholder="—" style="min-width: 260px; background: #f5f5f5;">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="ter-bipagem-quantidade">Qtd.</label>
+                                            <input type="number" id="ter-bipagem-quantidade" value="1" min="1" max="99999" step="1" title="Quantidade a registrar nesta bipagem" style="max-width: 100px;">
+                                        </div>
+                                        <div class="form-group" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                            <button type="submit" class="btn btn-primary" id="btn-ter-bipagem-executar">Bipar</button>
+                                            <button type="button" class="btn btn-secondary" id="btn-ter-bipagem-limpar">Limpar campos</button>
+                                            <button type="button" class="btn btn-success" id="btn-ter-finalizar-descarga" title="Marca o recebimento como concluído">Finalizar descarga</button>
+                                        </div>
+                                    </form>
+                                    <p id="ter-bipagem-msg-concluido" class="info-text" style="display: none; margin-bottom: 0; color: #2e7d32; font-weight: 600;">Recebimento concluído — para alterar contagens, reabra a nota após ajuste operacional se aplicável.</p>
+                                </div>
+
                                 <div id="ter-recebimento-area-bipagem" class="table-container" style="margin-bottom: 16px;">
                                     <table class="data-table">
                                         <thead>
@@ -1483,12 +1509,11 @@
                                                 <th>Qtd. XML</th>
                                                 <th>Qtd. bipada</th>
                                                 <th>Status</th>
-                                                <th>Bipar EAN</th>
                                                 <th>Ação</th>
                                             </tr>
                                         </thead>
                                         <tbody id="ter-tbody-recebimento-itens">
-                                            <tr><td colspan="9" class="loading">Selecione uma nota.</td></tr>
+                                            <tr><td colspan="8" class="loading">Selecione uma nota.</td></tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -1503,7 +1528,7 @@
                                         </div>
                                         <div class="form-group">
                                             <label>Próximas etapas</label>
-                                            <div class="info-text">Depois do recebimento concluído, a NF segue para as abas <strong>Fornecedores Recebidos</strong>, <strong>Notas Fiscais Lançadas</strong>, <strong>Pendências Envio MG</strong>, <strong>Notas Fiscais Enviadas para MG</strong>, <strong>Recebimentos de MG</strong> e <strong>Histórico</strong>.</div>
+                                            <div class="info-text">Depois do recebimento concluído, a NF segue para <strong>Fornecedores Recebidos</strong>, <strong>NFs pendentes de lançamento</strong>, <strong>Notas Fiscais Lançadas</strong>, <strong>Pendências Envio MG</strong>, <strong>Notas Fiscais Enviadas para MG</strong>, <strong>Recebimentos de MG</strong> e <strong>Histórico</strong>.</div>
                                         </div>
                                     </div>
                                 </div>
@@ -1516,11 +1541,11 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🏭</span>
                         <h2 class="painel-titulo-texto">Fornecedores Recebidos</h2>
-                        <p class="painel-titulo-sub">Notas já descarregadas e prontas para atualização do status de nota fiscal lançada.</p>
+                        <p class="painel-titulo-sub">Todas as notas com <strong>recebimento concluído</strong> (descarga finalizada). Para marcar o lançamento fiscal, use a aba <strong>NFs pendentes de lançamento</strong>.</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
-                        <h3 style="margin-top: 0; color: #366092;">NFS RECEBIDAS AGUARDANDO LANÇAMENTO</h3>
+                        <h3 style="margin-top: 0; color: #366092;">NFS COM RECEBIMENTO CONCLUÍDO</h3>
                         <div class="table-container">
                             <table class="data-table">
                                 <thead>
@@ -1537,6 +1562,38 @@
                                     </tr>
                                 </thead>
                                 <tbody id="ter-tbody-fornecedores-recebidos">
+                                    <tr><td colspan="9" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="terceiros-panel-pendentes-lancamento" class="devolucoes-panel">
+                    <div class="painel-titulo">
+                        <span class="painel-titulo-icon">📋</span>
+                        <h2 class="painel-titulo-texto">Notas fiscais pendentes de lançamento</h2>
+                        <p class="painel-titulo-sub">Notas com recebimento concluído e <strong>lançamento fiscal ainda não marcado como “sim”</strong>. Atualize o campo <strong>Nota lançada</strong> para enviar a NF à etapa seguinte.</p>
+                    </div>
+
+                    <div class="conferencia-bloco form-container terceiros-lista-bloco">
+                        <h3 style="margin-top: 0; color: #366092;">AGUARDANDO REGISTRO DE LANÇAMENTO</h3>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>NF</th>
+                                        <th>Pedido</th>
+                                        <th>Remetente</th>
+                                        <th>Destinatário</th>
+                                        <th>UF</th>
+                                        <th>Previsão</th>
+                                        <th>Recebimento</th>
+                                        <th>Nota lançada</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ter-tbody-pendentes-lancamento">
                                     <tr><td colspan="9" class="loading">Carregando...</td></tr>
                                 </tbody>
                             </table>

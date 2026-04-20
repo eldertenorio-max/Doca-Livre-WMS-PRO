@@ -268,6 +268,7 @@ def init_db():
                     remetente_cnpj TEXT,
                     destinatario_nome TEXT,
                     destinatario_cnpj TEXT,
+                    destinatario_uf TEXT,
                     previsao_chegada TEXT,
                     arquivo_nome TEXT,
                     xml_conteudo TEXT,
@@ -530,6 +531,7 @@ def init_db():
                 remetente_cnpj TEXT,
                 destinatario_nome TEXT,
                 destinatario_cnpj TEXT,
+                destinatario_uf TEXT,
                 previsao_chegada TEXT,
                 arquivo_nome TEXT,
                 xml_conteudo TEXT,
@@ -782,7 +784,7 @@ def _sql_cols_terceiros_documentos_listagem(alias):
     a = alias
     return (
         '%s.id, %s.area, %s.chave_nfe, %s.numero_nf, %s.serie_nf, %s.data_emissao, '
-        '%s.remetente_nome, %s.remetente_cnpj, %s.destinatario_nome, %s.destinatario_cnpj, '
+        '%s.remetente_nome, %s.remetente_cnpj, %s.destinatario_nome, %s.destinatario_cnpj, %s.destinatario_uf, '
         '%s.previsao_chegada, %s.arquivo_nome, '
         '%s.recebimento_concluido, %s.recebimento_concluido_em, %s.recebimento_concluido_por, '
         '%s.nota_lancada, %s.nota_lancada_em, %s.nota_lancada_por, '
@@ -790,7 +792,7 @@ def _sql_cols_terceiros_documentos_listagem(alias):
         '%s.motorista_carreta, %s.motorista_carreta_em, %s.placa_carreta, '
         '%s.carga_recebida_mg, %s.carga_recebida_mg_em, %s.carga_recebida_mg_por, '
         '%s.criado_em, %s.criado_por, %s.atualizado_em, %s.atualizado_por'
-    ) % ((a,) * 31)
+    ) % ((a,) * 32)
 
 
 def _ensure_terceiros_schema(conn):
@@ -807,6 +809,7 @@ def _ensure_terceiros_schema(conn):
                 remetente_cnpj TEXT,
                 destinatario_nome TEXT,
                 destinatario_cnpj TEXT,
+                destinatario_uf TEXT,
                 previsao_chegada TEXT,
                 arquivo_nome TEXT,
                 xml_conteudo TEXT,
@@ -881,6 +884,7 @@ def _ensure_terceiros_schema(conn):
                 remetente_cnpj TEXT,
                 destinatario_nome TEXT,
                 destinatario_cnpj TEXT,
+                destinatario_uf TEXT,
                 previsao_chegada TEXT,
                 arquivo_nome TEXT,
                 xml_conteudo TEXT,
@@ -957,11 +961,14 @@ def _ensure_terceiros_schema(conn):
         tbl_doc = _tbl_terceiros_documentos(conn)
         if getattr(conn, 'kind', None) == 'pg':
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS placa_carreta TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS destinatario_uf TEXT')
         else:
             info = conn.execute('PRAGMA table_info(terceiros_documentos)').fetchall()
             nomes = [r[1] for r in (info or [])]
             if 'placa_carreta' not in nomes:
                 conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN placa_carreta TEXT')
+            if 'destinatario_uf' not in nomes:
+                conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN destinatario_uf TEXT')
     except Exception:
         pass
     conn.commit()
@@ -6821,14 +6828,15 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
         row = conn.execute(
             '''INSERT INTO ''' + _tbl_terceiros_documentos(conn) + ''' (
                    area, chave_nfe, numero_nf, serie_nf, data_emissao, remetente_nome, remetente_cnpj,
-                   destinatario_nome, destinatario_cnpj, previsao_chegada, arquivo_nome, xml_conteudo,
+                   destinatario_nome, destinatario_cnpj, destinatario_uf, previsao_chegada, arquivo_nome, xml_conteudo,
                    motorista_carreta, motorista_carreta_em, placa_carreta,
                    criado_em, criado_por, atualizado_em, atualizado_por
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id''',
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id''',
             (
                 area, xml_data.get('chave_nfe') or '', xml_data.get('numero_nf') or '', xml_data.get('serie_nf') or '',
                 xml_data.get('data_emissao') or '', xml_data.get('remetente_nome') or '', _somente_digitos(xml_data.get('remetente_cnpj') or ''),
                 xml_data.get('destinatario_nome') or '', _somente_digitos(xml_data.get('destinatario_cnpj') or ''),
+                (xml_data.get('destinatario_uf') or '').strip(),
                 previsao_chegada or '', arquivo_nome or '', xml_texto,
                 mot, mot_em, plc,
                 _agora_iso(), usuario or '', _agora_iso(), usuario or ''
@@ -6839,14 +6847,15 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
         conn.execute(
             '''INSERT INTO ''' + _tbl_terceiros_documentos(conn) + ''' (
                    area, chave_nfe, numero_nf, serie_nf, data_emissao, remetente_nome, remetente_cnpj,
-                   destinatario_nome, destinatario_cnpj, previsao_chegada, arquivo_nome, xml_conteudo,
+                   destinatario_nome, destinatario_cnpj, destinatario_uf, previsao_chegada, arquivo_nome, xml_conteudo,
                    motorista_carreta, motorista_carreta_em, placa_carreta,
                    criado_em, criado_por, atualizado_em, atualizado_por
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (
                 area, xml_data.get('chave_nfe') or '', xml_data.get('numero_nf') or '', xml_data.get('serie_nf') or '',
                 xml_data.get('data_emissao') or '', xml_data.get('remetente_nome') or '', _somente_digitos(xml_data.get('remetente_cnpj') or ''),
                 xml_data.get('destinatario_nome') or '', _somente_digitos(xml_data.get('destinatario_cnpj') or ''),
+                (xml_data.get('destinatario_uf') or '').strip(),
                 previsao_chegada or '', arquivo_nome or '', xml_texto,
                 mot, mot_em, plc,
                 _agora_iso(), usuario or '', _agora_iso(), usuario or ''
@@ -7055,7 +7064,7 @@ def api_terceiros_documentos():
                 'remetente_nome': row.get('remetente_nome') or '',
                 'destinatario_nome': row.get('destinatario_nome') or '',
                 'destinatario_uf': _uf_destinatario_terceiros(row),
-                'previsao_chegada': row.get('previsao_chegada') or '',
+                'previsao_chegada': _fmt_datahora_br(row.get('previsao_chegada') or ''),
                 'recebimento_concluido': rc_flag,
                 'nota_lancada': row.get('nota_lancada') or '',
                 'enviar_para_mg': row.get('enviar_para_mg') or '',
@@ -7089,6 +7098,7 @@ def api_terceiros_documento_detalhe(documento_id):
         if not doc:
             return jsonify({'erro': 'Documento não encontrado.'}), 404
         doc['motorista_obrigatorio'] = _motorista_obrigatorio_terceiros(doc)
+        doc['previsao_chegada'] = _fmt_datahora_br(doc.get('previsao_chegada') or '')
         for campo in ('recebimento_concluido_em', 'nota_lancada_em', 'enviar_para_mg_em', 'motorista_carreta_em', 'carga_recebida_mg_em', 'criado_em', 'atualizado_em'):
             doc[campo] = _fmt_datahora_br(doc.get(campo) or '')
         for ev in doc.get('eventos') or []:
