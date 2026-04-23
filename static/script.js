@@ -2084,6 +2084,8 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
     await refreshTerceirosViews();
     if (campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim') {
         animarConclusaoTerceiros(getTerceirosPrefixo());
+        var tabFornecedores = document.querySelector('.terceiros-subtab[data-ter-tab="fornecedores-recebidos"]');
+        if (tabFornecedores) tabFornecedores.click();
     }
 }
 
