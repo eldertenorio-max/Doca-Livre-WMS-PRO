@@ -20,11 +20,11 @@ drop policy if exists "Permitir DELETE em terceiros_documentos" on public.tercei
 create policy "Permitir SELECT em terceiros_documentos"
   on public.terceiros_documentos for select using (true);
 create policy "Permitir INSERT em terceiros_documentos"
-  on public.terceiros_documentos for insert with check (true);
+  on public.terceiros_documentos for insert with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 create policy "Permitir UPDATE em terceiros_documentos"
-  on public.terceiros_documentos for update using (true);
+  on public.terceiros_documentos for update using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 create policy "Permitir DELETE em terceiros_documentos"
-  on public.terceiros_documentos for delete using (true);
+  on public.terceiros_documentos for delete using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 
 -- terceiros_documento_itens
 drop policy if exists "Permitir SELECT em terceiros_documento_itens" on public.terceiros_documento_itens;
@@ -35,11 +35,11 @@ drop policy if exists "Permitir DELETE em terceiros_documento_itens" on public.t
 create policy "Permitir SELECT em terceiros_documento_itens"
   on public.terceiros_documento_itens for select using (true);
 create policy "Permitir INSERT em terceiros_documento_itens"
-  on public.terceiros_documento_itens for insert with check (true);
+  on public.terceiros_documento_itens for insert with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 create policy "Permitir UPDATE em terceiros_documento_itens"
-  on public.terceiros_documento_itens for update using (true);
+  on public.terceiros_documento_itens for update using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 create policy "Permitir DELETE em terceiros_documento_itens"
-  on public.terceiros_documento_itens for delete using (true);
+  on public.terceiros_documento_itens for delete using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 
 -- terceiros_documento_eventos
 drop policy if exists "Permitir SELECT em terceiros_documento_eventos" on public.terceiros_documento_eventos;
@@ -50,8 +50,8 @@ drop policy if exists "Permitir DELETE em terceiros_documento_eventos" on public
 create policy "Permitir SELECT em terceiros_documento_eventos"
   on public.terceiros_documento_eventos for select using (true);
 create policy "Permitir INSERT em terceiros_documento_eventos"
-  on public.terceiros_documento_eventos for insert with check (true);
+  on public.terceiros_documento_eventos for insert with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 create policy "Permitir UPDATE em terceiros_documento_eventos"
-  on public.terceiros_documento_eventos for update using (true);
+  on public.terceiros_documento_eventos for update using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 create policy "Permitir DELETE em terceiros_documento_eventos"
-  on public.terceiros_documento_eventos for delete using (true);
+  on public.terceiros_documento_eventos for delete using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));

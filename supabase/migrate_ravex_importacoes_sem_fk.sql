@@ -30,8 +30,8 @@ drop policy if exists "Permitir DELETE em ravex_importacoes" on public.ravex_imp
 create policy "Permitir SELECT em ravex_importacoes"
   on public.ravex_importacoes for select using (true);
 create policy "Permitir INSERT em ravex_importacoes"
-  on public.ravex_importacoes for insert with check (true);
+  on public.ravex_importacoes for insert with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 create policy "Permitir UPDATE em ravex_importacoes"
-  on public.ravex_importacoes for update using (true);
+  on public.ravex_importacoes for update using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 create policy "Permitir DELETE em ravex_importacoes"
-  on public.ravex_importacoes for delete using (true);
+  on public.ravex_importacoes for delete using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));

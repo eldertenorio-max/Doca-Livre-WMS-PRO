@@ -45,12 +45,15 @@ create unique index if not exists idx_colaboradores_cpf on public.colaboradores 
 
 -- Trigger para atualizar timestamp automaticamente
 create or replace function atualizar_colaboradores_timestamp()
-returns trigger as $$
+returns trigger
+language plpgsql
+set search_path = public
+as $$
 begin
   new.atualizado_em = now();
   return new;
 end;
-$$ language plpgsql;
+$$;
 
 create trigger trigger_colaboradores_timestamp
   before update on public.colaboradores

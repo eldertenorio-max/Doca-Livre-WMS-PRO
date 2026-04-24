@@ -18,12 +18,15 @@ comment on table public.viagem_responsaveis is 'Equipe responsável pelo carrega
 
 -- Trigger
 create or replace function atualizar_viagem_responsaveis_timestamp()
-returns trigger as $$
+returns trigger
+language plpgsql
+set search_path = public
+as $$
 begin
   new.atualizado_em = now();
   return new;
 end;
-$$ language plpgsql;
+$$;
 
 create trigger trigger_viagem_responsaveis_timestamp
   before update on public.viagem_responsaveis

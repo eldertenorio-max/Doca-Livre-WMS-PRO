@@ -27,12 +27,15 @@ create index if not exists idx_viagem_placa_placa on public.viagem_placa (placa)
 
 -- Trigger para atualizar timestamp automaticamente
 create or replace function atualizar_viagem_placa_timestamp()
-returns trigger as $$
+returns trigger
+language plpgsql
+set search_path = public
+as $$
 begin
   new.atualizado_em = now();
   return new;
 end;
-$$ language plpgsql;
+$$;
 
 create trigger trigger_viagem_placa_timestamp
   before update on public.viagem_placa

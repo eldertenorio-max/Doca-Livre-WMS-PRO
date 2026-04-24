@@ -38,12 +38,15 @@ create index if not exists idx_motoristas_centro_custo on public.motoristas (cen
 
 -- Trigger
 create or replace function atualizar_motoristas_timestamp()
-returns trigger as $$
+returns trigger
+language plpgsql
+set search_path = public
+as $$
 begin
   new.atualizado_em = now();
   return new;
 end;
-$$ language plpgsql;
+$$;
 
 create trigger trigger_motoristas_timestamp
   before update on public.motoristas

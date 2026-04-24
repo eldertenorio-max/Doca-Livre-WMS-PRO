@@ -35,12 +35,15 @@ create index if not exists idx_placas_tipo on public.placas (tipo_veiculo) where
 
 -- Trigger
 create or replace function atualizar_placas_timestamp()
-returns trigger as $$
+returns trigger
+language plpgsql
+set search_path = public
+as $$
 begin
   new.atualizado_em = now();
   return new;
 end;
-$$ language plpgsql;
+$$;
 
 create trigger trigger_placas_timestamp
   before update on public.placas

@@ -22,8 +22,8 @@ drop policy if exists "Permitir DELETE em id_roteiros" on public.id_roteiros;
 create policy "Permitir SELECT em id_roteiros"
   on public.id_roteiros for select using (true);
 create policy "Permitir INSERT em id_roteiros"
-  on public.id_roteiros for insert with check (true);
+  on public.id_roteiros for insert with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 create policy "Permitir UPDATE em id_roteiros"
-  on public.id_roteiros for update using (true);
+  on public.id_roteiros for update using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 create policy "Permitir DELETE em id_roteiros"
-  on public.id_roteiros for delete using (true);
+  on public.id_roteiros for delete using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));

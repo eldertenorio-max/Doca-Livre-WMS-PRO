@@ -20,17 +20,17 @@ create policy "Permitir SELECT em motoristas"
 create policy "Permitir INSERT em motoristas"
   on public.motoristas
   for insert
-  with check (true);
+  with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 
 create policy "Permitir UPDATE em motoristas"
   on public.motoristas
   for update
-  using (true);
+  using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 
 create policy "Permitir DELETE em motoristas"
   on public.motoristas
   for delete
-  using (true);
+  using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 
 -- ============================================================
 -- POLÍTICAS: PLACAS
@@ -44,17 +44,17 @@ create policy "Permitir SELECT em placas"
 create policy "Permitir INSERT em placas"
   on public.placas
   for insert
-  with check (true);
+  with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 
 create policy "Permitir UPDATE em placas"
   on public.placas
   for update
-  using (true);
+  using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 
 create policy "Permitir DELETE em placas"
   on public.placas
   for delete
-  using (true);
+  using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 
 -- ============================================================
 -- Pronto! UNRESTRICTED removido de motoristas e placas

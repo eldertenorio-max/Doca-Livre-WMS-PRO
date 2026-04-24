@@ -27,12 +27,15 @@ create index if not exists idx_viagem_motorista_motorista on public.viagem_motor
 
 -- Trigger para atualizar timestamp automaticamente
 create or replace function atualizar_viagem_motorista_timestamp()
-returns trigger as $$
+returns trigger
+language plpgsql
+set search_path = public
+as $$
 begin
   new.atualizado_em = now();
   return new;
 end;
-$$ language plpgsql;
+$$;
 
 create trigger trigger_viagem_motorista_timestamp
   before update on public.viagem_motorista

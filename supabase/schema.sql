@@ -284,12 +284,15 @@ create index if not exists idx_id_roteiros_id_viagem on public.id_roteiros (id_v
 -- ============================================================
 
 create or replace function atualizar_timestamp_modificacao()
-returns trigger as $$
+returns trigger
+language plpgsql
+set search_path = public
+as $$
 begin
   new.atualizado_em = now();
   return new;
 end;
-$$ language plpgsql;
+$$;
 
 create trigger trigger_usuarios_timestamp
   before update on public.usuarios
