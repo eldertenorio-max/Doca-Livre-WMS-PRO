@@ -3549,6 +3549,20 @@ async function buscarProdutoPorCodigoProduto(codigoProduto) {
     }
 }
 
+/** Mensagem curta quando o proxy devolve HTML (502/503) em vez de JSON do app. */
+function mensagemErroRespostaNaoJson(status, corpoTexto) {
+    var s = Number(status) || 0;
+    if (s === 502 || s === 503 || s === 504 || s === 524) {
+        return 'Servidor temporariamente indisponível (erro ' + s + '). Na hospedagem, confira se o app está rodando, variáveis (ex.: banco) e os logs; em seguida tente de novo.';
+    }
+    var t = (corpoTexto || '').trim();
+    if (/^\s*<!DOCTYPE/i.test(t) || /^\s*<html/i.test(t)) {
+        return 'O serviço respondeu com página de erro (HTTP ' + (s || '?') + ') em vez dos dados. Verifique deploy e logs da hospedagem.';
+    }
+    var snippet = t.replace(/\s+/g, ' ').trim().slice(0, 200);
+    return 'HTTP ' + (s || '?') + (snippet ? ': ' + snippet : '');
+}
+
 // API Calls
 async function fetchAPI(endpoint, options = {}) {
     try {
@@ -3574,8 +3588,7 @@ async function fetchAPI(endpoint, options = {}) {
             return data;
         }
         const text = await response.text();
-        const snippet = (text || '').replace(/\s+/g, ' ').trim().slice(0, 240);
-        return { erro: 'HTTP ' + response.status + (snippet ? ': ' + snippet : '') };
+        return { erro: mensagemErroRespostaNaoJson(response.status, text) };
     } catch (error) {
         console.error('Erro na API:', error);
         showMessage('Erro ao conectar com o servidor', 'error');
