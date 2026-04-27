@@ -1342,6 +1342,8 @@ function resetTerceirosDetalhe() {
         if (el) el.textContent = '-';
     });
     atualizarBotaoConclusaoTerceiros(prefixo, false);
+    var hidDoc = document.getElementById('ter-rec-documento-id');
+    if (hidDoc) hidDoc.value = '';
     _limparPendenciasBipagemTerceiros();
     var tbody = document.getElementById('ter-tbody-recebimento-itens');
     if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="loading">Selecione uma nota.</td></tr>';
@@ -1857,6 +1859,8 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     _terceirosDocAtual.id = doc.id;
     _terceirosDocAtual.area = doc.area || area;
     _terceirosDocAtual.recebimento_concluido = !!doc.recebimento_concluido;
+    var hidId = document.getElementById('ter-rec-documento-id');
+    if (hidId) hidId.value = doc.id != null ? String(doc.id) : '';
     if (vazio) vazio.style.display = 'none';
     if (detalhe) detalhe.style.display = 'block';
     var statNf = document.getElementById(prefixo + '-stat-nf');
@@ -2176,9 +2180,27 @@ function initTerceirosBipagemForm() {
     atualizarUIBipagemTerceiros(null);
 }
 
+function _resolverIdDocumentoTerceirosParaStatus() {
+    var raw = _terceirosDocAtual.id;
+    var n = raw != null && raw !== '' ? Number(raw) : NaN;
+    if (Number.isFinite(n) && n > 0) return n;
+    var hid = document.getElementById('ter-rec-documento-id');
+    if (hid && String(hid.value || '').trim() !== '') {
+        var p = parseInt(String(hid.value).trim(), 10);
+        if (Number.isFinite(p) && p > 0) {
+            _terceirosDocAtual.id = p;
+            return p;
+        }
+    }
+    return null;
+}
+
 async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
-    var documentoId = _terceirosDocAtual.id;
-    if (!documentoId) return;
+    var documentoId = _resolverIdDocumentoTerceirosParaStatus();
+    if (documentoId == null) {
+        showMessage('Selecione uma nota (Ver detalhe ou Começar descarga) antes de marcar o recebimento como concluído.', 'warning');
+        return;
+    }
     opcoes = opcoes || {};
     var payload = {
         campo: campo,
@@ -2221,6 +2243,14 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         if (tabFornecedores) tabFornecedores.click();
     }
 }
+
+/** Fallback direto no HTML: funciona mesmo se initForms não registrou o listener. */
+window.marcarRecebimentoConcluidoTerceiros = function() {
+    void atualizarStatusTerceiros('recebimento', 'recebimento_concluido', 'sim').catch(function(e) {
+        console.error(e);
+        showMessage('Não foi possível concluir o recebimento.', 'error');
+    });
+};
 
 async function salvarMotoristaTerceiros(area) {
     var documentoId = _terceirosDocAtual.id;
@@ -2846,7 +2876,14 @@ function initForms() {
     if (btnTerCarretaUpload) btnTerCarretaUpload.addEventListener('click', function() { uploadXmlTerceirosCarreta(); });
 
     const btnTerRecConcluir = document.getElementById('btn-ter-rec-concluir');
-    if (btnTerRecConcluir) btnTerRecConcluir.addEventListener('click', function() { atualizarStatusTerceiros('recebimento', 'recebimento_concluido', 'sim'); });
+    if (btnTerRecConcluir) {
+        btnTerRecConcluir.addEventListener('click', function() {
+            void atualizarStatusTerceiros('recebimento', 'recebimento_concluido', 'sim').catch(function(e) {
+                console.error(e);
+                showMessage('Não foi possível concluir o recebimento.', 'error');
+            });
+        });
+    }
     initTerceirosBipagemForm();
 
     [

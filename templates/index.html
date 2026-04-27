@@ -1453,6 +1453,7 @@
                             <h3 style="margin-top: 0; color: #366092;">2. DETALHE DA NOTA</h3>
                             <div id="ter-recebimento-detalhe-vazio" class="info-text">Selecione uma nota para visualizar os itens e os status.</div>
                             <div id="ter-recebimento-detalhe" style="display: none;">
+                                <input type="hidden" id="ter-rec-documento-id" value="">
                                 <div id="ter-recebimento-detalhe-top" class="stats-grid" style="margin-bottom: 16px;">
                                     <div class="stat-card"><h3>NF</h3><p class="stat-number" id="ter-rec-stat-nf">-</p></div>
                                     <div class="stat-card"><h3>Total XML</h3><p class="stat-number" id="ter-rec-stat-qtd-xml">0</p></div>
@@ -1569,7 +1570,7 @@
                                     <div class="form-row">
                                         <div class="form-group">
                                             <label>Recebimento concluído</label>
-                                            <button type="button" class="btn btn-primary" id="btn-ter-rec-concluir">Marcar concluído</button>
+                                            <button type="button" class="btn btn-primary" id="btn-ter-rec-concluir" onclick="marcarRecebimentoConcluidoTerceiros(); return false;">Marcar concluído</button>
                                             <small id="ter-rec-concluido-meta" class="info-text"></small>
                                         </div>
                                         <div class="form-group">
