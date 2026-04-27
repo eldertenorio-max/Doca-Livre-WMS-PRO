@@ -628,20 +628,13 @@ async function uploadXmlTerceirosCarreta() {
 }
 
 async function fetchTerceirosDocumentosTodos() {
-    const respostas = await Promise.all([
-        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('recebimento'))),
-        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('expedicao'))),
-        fetchAPI('/terceiros/documentos?area=' + encodeURIComponent(getTerceirosAreaApi('carreta')))
-    ]);
-    const erros = respostas.filter(function(resp) { return !resp || resp.erro; });
-    if (erros.length === respostas.length) {
-        return { erro: (erros[0] && erros[0].erro) || 'Erro ao carregar documentos.', rows: [] };
+    const resp = await fetchAPI('/terceiros/documentos?area=' + encodeURIComponent('todas'));
+    if (!resp || resp.erro) {
+        return { erro: (resp && resp.erro) || 'Erro ao carregar documentos.', rows: [] };
     }
+    const rows = Array.isArray(resp.rows) ? resp.rows : [];
     return {
-        rows: respostas.reduce(function(lista, resp) {
-            if (resp && Array.isArray(resp.rows)) return lista.concat(resp.rows);
-            return lista;
-        }, []).sort(function(a, b) {
+        rows: rows.slice().sort(function(a, b) {
             return Number(b.id || 0) - Number(a.id || 0);
         })
     };
@@ -947,9 +940,15 @@ function scrollTerceirosRecebimentoDetalheSecao(secao) {
     });
 }
 
+/** Só dispara o clique na aba se não estiver nela — evita recarregar a lista inteira à toa. */
+function abrirAbaTerceirosSeDiferente(tab) {
+    if (_terceirosTabAtual === tab) return;
+    var btn = document.querySelector('.terceiros-subtab[data-ter-tab="' + tab + '"]');
+    if (btn) btn.click();
+}
+
 async function abrirPendenciaTerceirosComScroll(area, documentoId, secao) {
-    var abaBtn = document.querySelector('.terceiros-subtab[data-ter-tab="pendencia-recebimento"]');
-    if (abaBtn) abaBtn.click();
+    abrirAbaTerceirosSeDiferente('pendencia-recebimento');
     await loadTerceirosDocumentoDetalhe(area, documentoId);
     scrollTerceirosRecebimentoDetalheSecao(secao);
 }
@@ -996,9 +995,8 @@ function bindTerceirosAbrirButtons(seletor) {
             );
             var area = btn.getAttribute('data-ter-area') || 'recebimento';
             var tabDestino = btn.getAttribute('data-ter-open-tab') || 'pendencia-recebimento';
-            var botaoAba = document.querySelector('.terceiros-subtab[data-ter-tab="' + tabDestino + '"]');
-            if (botaoAba) botaoAba.click();
-            if (id) loadTerceirosDocumentoDetalhe(area, id);
+            abrirAbaTerceirosSeDiferente(tabDestino);
+            if (id) void loadTerceirosDocumentoDetalhe(area, id);
         });
     });
 }

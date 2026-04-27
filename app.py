@@ -7040,7 +7040,14 @@ def api_terceiros_upload_xml():
 @app.route('/api/terceiros/documentos', methods=['GET'])
 def api_terceiros_documentos():
     area = (request.args.get('area') or '').strip().lower()
-    if area not in ('recebimento', 'expedicao', 'carreta'):
+    areas_unica = ('recebimento', 'expedicao', 'carreta')
+    if area in ('todas', 'all'):
+        where_area = 'd.area IN (?, ?, ?)'
+        params_area = ('recebimento', 'expedicao', 'carreta')
+    elif area in areas_unica:
+        where_area = 'd.area = ?'
+        params_area = (area,)
+    else:
         return jsonify({'erro': 'Área inválida.', 'rows': []}), 400
     conn = get_db()
     try:
@@ -7063,9 +7070,9 @@ def api_terceiros_documentos():
                    FROM ''' + tbl_i + '''
                    GROUP BY documento_id
                ) si ON si.documento_id = d.id
-               WHERE d.area = ?
+               WHERE ''' + where_area + '''
                ORDER BY d.criado_em DESC, d.id DESC''',
-            (area,)
+            params_area
         ).fetchall()
         out = []
         for r in rows or []:
