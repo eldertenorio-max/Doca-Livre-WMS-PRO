@@ -2273,7 +2273,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
         var pack = _terConferenciaBadgeEClasseLinha(st);
         return '<tr class="' + pack.rowClass + '" data-ter-item-id="' + item.id + '">'
             + '<td><span class="status-badge ' + pack.badgeClass + '">' + pack.badgeText + '</span></td>'
-            + '<td><input type="text" class="ter-motivo-nf-placeholder" readonly tabindex="-1" value="" placeholder="—" title="Campo reservado" style="width:100%;min-width:72px;padding:6px 8px;box-sizing:border-box;background:#fafafa;border:1px solid #e0e0e0;border-radius:4px;color:#9e9e9e;"></td>'
+            + '<td><input type="text" class="ter-motivo-nf-placeholder" readonly tabindex="-1" value="" placeholder="—" title="Campo reservado"></td>'
             + '<td><strong>' + escapeHtml(item.codigo_ean || '-') + '</strong></td>'
             + '<td><strong style="color: #1976D2;">' + escapeHtml(item.codigo_produto_xml || '-') + '</strong></td>'
             + '<td>' + escapeHtml(item.descricao_xml || '-') + '</td>'
@@ -5654,7 +5654,7 @@ async function loadConferencia(idViagem = null, opts) {
                 return `
                 <tr class="${rowClass}" data-codigo="${item.codigo_produto || ''}">
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                    <td><input type="text" class="input-motivo-divergencia" data-id-viagem="${escHtml(idViagem)}" data-codigo-produto="${codigoProdutoEsc}" value="${motivoVal}" placeholder="Motivo da divergência" style="width: 100%; min-width: 120px; padding: 6px 8px; box-sizing: border-box;" onblur="salvarMotivoDivergencia(this)" title="Escreva o motivo e saia do campo para salvar"></td>
+                    <td><input type="text" class="input-motivo-divergencia" data-id-viagem="${escHtml(idViagem)}" data-codigo-produto="${codigoProdutoEsc}" value="${motivoVal}" placeholder="Motivo da divergência" onblur="salvarMotivoDivergencia(this)" title="Escreva o motivo e saia do campo para salvar"></td>
                     <td><strong>${codigoBarras}</strong></td>
                     <td><strong style="color: #1976D2;">${item.codigo_produto || '-'}</strong></td>
                     <td>${item.produto || '-'}</td>
@@ -6630,7 +6630,7 @@ async function loadDivergencias(force) {
                             const motivoVal = (motivoBrutoDiv || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                             const codigoProdutoEsc = (item.codigo_produto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                             return `<tr>
-                                <td><input type="text" class="input-motivo-divergencia" data-id-viagem="${escHtml(idViagem)}" data-codigo-produto="${codigoProdutoEsc}" value="${motivoVal}" placeholder="Escreva o motivo" style="width: 100%; min-width: 160px; padding: 6px 8px; box-sizing: border-box;" onblur="salvarMotivoDivergencia(this)" title="Escreva o motivo da divergência e saia do campo para salvar"></td>
+                                <td><input type="text" class="input-motivo-divergencia" data-id-viagem="${escHtml(idViagem)}" data-codigo-produto="${codigoProdutoEsc}" value="${motivoVal}" placeholder="Escreva o motivo" onblur="salvarMotivoDivergencia(this)" title="Escreva o motivo da divergência e saia do campo para salvar"></td>
                                 <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                                 <td><strong>${escHtml(item.codigo_barras || '-')}</strong></td>
                                 <td><strong style="color: #1976D2;">${escHtml(item.codigo_produto || '-')}</strong></td>
