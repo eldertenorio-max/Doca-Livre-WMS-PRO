@@ -2053,6 +2053,34 @@ window.biparItemTerceirosConferencia = function(btn, itemId, codigoEan, descrica
     if (cb) cb.focus();
 };
 
+/** Salva motivo (texto livre) da linha do item; persistência via API ao sair do campo. */
+window.salvarMotivoItemTerceiros = async function(inputEl) {
+    if (!inputEl || inputEl.disabled) return;
+    var docId = _terceirosDocumentoIdAtualParaApi();
+    var itemId = parseInt(inputEl.getAttribute('data-item-id') || '0', 10);
+    if (docId == null || !itemId) return;
+    var motivo = (inputEl.value || '').trim();
+    try {
+        var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(docId) + '/item-motivo', {
+            method: 'POST',
+            body: JSON.stringify({ item_id: itemId, motivo: motivo })
+        });
+        if (resp && resp.ok) {
+            var itens = window._terceirosBipagemItens || [];
+            for (var i = 0; i < itens.length; i++) {
+                if (Number(itens[i].id) === itemId) {
+                    itens[i].motivo = motivo;
+                    break;
+                }
+            }
+        } else {
+            showMessage((resp && resp.erro) || 'Não foi possível salvar o motivo.', 'error');
+        }
+    } catch (e) {
+        showMessage('Erro ao salvar o motivo.', 'error');
+    }
+};
+
 window.tirarBipadoTerceiros = async function(btn, itemId, quantidade) {
     var docIdApi = _terceirosDocumentoIdAtualParaApi();
     if (docIdApi == null || _terceirosDocAtual.recebimento_concluido) return;
@@ -2061,15 +2089,15 @@ window.tirarBipadoTerceiros = async function(btn, itemId, quantidade) {
     var cb = document.getElementById('ter-codigo-barras-bipagem');
     if (cb) cb.value = '';
     var row = btn && btn.closest ? btn.closest('tr') : null;
-    var cells = row && row.cells && row.cells.length >= 10 ? row.cells : null;
+    var cells = row && row.cells && row.cells.length >= 12 ? row.cells : null;
     var qtdParam = quantidade === 'tudo' || quantidade === 'all' ? 'tudo' : (parseInt(quantidade, 10) || 1);
 
     if (qtdParam === 'tudo') {
         if (!confirm('Remover todas as unidades bipadas deste item?')) return;
         if (cells) {
-            var xml = parseFloat(cells[6].textContent) || 0;
-            cells[7].textContent = _formatTerQtdDisplay(0);
-            _terSetCelulaFalta(cells[8], xml, 0);
+            var xml = parseFloat(cells[5].textContent) || 0;
+            cells[9].textContent = _formatTerQtdDisplay(0);
+            _terSetCelulaFalta(cells[10], xml, 0);
             _terAtualizarBadgeELinha(row, xml, 0);
         }
         var snap = (window._terceirosBipagemItens || []).filter(function(i) { return Number(i.id) === idNum; })[0];
@@ -2229,6 +2257,14 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     if (seq !== window._terceirosDetalheCargaSeq) return;
 
     const itens = Array.isArray(doc.itens) ? doc.itens : [];
+    var motivosAntes = {};
+    if (tbody) {
+        tbody.querySelectorAll('input.input-motivo-terceiros-nf').forEach(function(inp) {
+            var tr = inp.closest('tr');
+            var iid = tr && tr.getAttribute('data-ter-item-id');
+            if (iid) motivosAntes[iid] = inp.value;
+        });
+    }
     window._terceirosBipagemItens = itens.map(function(item) {
         return {
             id: item.id,
@@ -2238,7 +2274,8 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
             descricao_xml: item.descricao_xml,
             unidade_xml: item.unidade_xml,
             quantidade_xml: item.quantidade_xml,
-            quantidade_bipada: item.quantidade_bipada
+            quantidade_bipada: item.quantidade_bipada,
+            motivo: item.motivo || ''
         };
     });
     atualizarResumoTotaisBipagemTerceiros();
@@ -2261,9 +2298,11 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
         var codigoBarras = item.codigo_ean || '-';
         var codigoBarrasEscapado = (codigoBarras !== '-' ? codigoBarras.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '');
         var produtoEscapado = (item.descricao_xml || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        var botoesTirar = (!bloqueado && qBip > 1e-9 && codigoBarras !== '-')
-            ? ('<button type="button" class="btn btn-secondary" onclick="tirarBipadoTerceiros(this, ' + item.id + ', 1)" style="padding: 4px 8px; font-size: 11px;" title="Remover 1 unidade bipada">➖ Tirar 1</button>'
-                + '<button type="button" class="btn btn-secondary" onclick="tirarBipadoTerceiros(this, ' + item.id + ', \'tudo\')" style="padding: 4px 8px; font-size: 11px;" title="Remover todas as unidades bipadas deste item">🗑️ Tirar tudo</button>')
+        var podeAcoes = !bloqueado && codigoBarras !== '-';
+        var semBip = qBip <= 1e-9;
+        var botoesTirar = podeAcoes
+            ? ('<button type="button" class="btn btn-secondary" ' + (semBip ? 'disabled ' : '') + 'onclick="tirarBipadoTerceiros(this, ' + item.id + ', 1)" style="padding: 4px 8px; font-size: 11px;" title="Remover 1 unidade bipada">➖ Tirar 1</button>'
+                + '<button type="button" class="btn btn-secondary" ' + (semBip ? 'disabled ' : '') + 'onclick="tirarBipadoTerceiros(this, ' + item.id + ', \'tudo\')" style="padding: 4px 8px; font-size: 11px;" title="Remover todas as unidades bipadas deste item">🗑️ Tirar tudo</button>')
             : '';
         var btnBipar = (!bloqueado && codigoBarras !== '-')
             ? ('<button type="button" class="btn btn-primary" onclick="biparItemTerceirosConferencia(this, ' + item.id + ', \'' + codigoBarrasEscapado + '\', \'' + produtoEscapado + '\', ' + qtdFaltaParaBipar + ')" style="padding: 6px 12px; font-size: 12px;">📱 Bipar</button>')
@@ -2271,9 +2310,11 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
         var acoesWrap = '<div class="ter-conf-acoes-celula">' + btnBipar + botoesTirar + '</div>';
         var st = item.status_bipagem || _statusBipagemTerLocais(qXml, qBip);
         var pack = _terConferenciaBadgeEClasseLinha(st);
+        var motTexto = (item.motivo != null && String(item.motivo) !== '') ? String(item.motivo) : (Object.prototype.hasOwnProperty.call(motivosAntes, String(item.id)) ? motivosAntes[String(item.id)] : '');
+        var motAttr = String(motTexto).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         return '<tr class="' + pack.rowClass + '" data-ter-item-id="' + item.id + '">'
             + '<td><span class="status-badge ' + pack.badgeClass + '">' + pack.badgeText + '</span></td>'
-            + '<td><input type="text" class="ter-motivo-nf-placeholder" readonly tabindex="-1" value="" placeholder="—" title="Campo reservado"></td>'
+            + '<td><input type="text" class="input-motivo-terceiros-nf" data-item-id="' + item.id + '" value="' + motAttr + '" placeholder="Motivo" ' + (bloqueado ? 'disabled ' : '') + 'onblur="salvarMotivoItemTerceiros(this)" title="Motivo (opcional) — salva ao sair do campo"></td>'
             + '<td><strong>' + escapeHtml(item.codigo_ean || '-') + '</strong></td>'
             + '<td><strong style="color: #1976D2;">' + escapeHtml(item.codigo_produto_xml || '-') + '</strong></td>'
             + '<td>' + escapeHtml(item.descricao_xml || '-') + '</td>'

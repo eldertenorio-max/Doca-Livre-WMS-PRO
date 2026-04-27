@@ -992,6 +992,17 @@ def _ensure_terceiros_schema(conn):
                 conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN destinatario_uf TEXT')
     except Exception:
         pass
+    try:
+        tbl_it = _tbl_terceiros_documento_itens(conn)
+        if getattr(conn, 'kind', None) == 'pg':
+            conn.execute('ALTER TABLE ' + tbl_it + ' ADD COLUMN IF NOT EXISTS motivo TEXT')
+        else:
+            info_it = conn.execute('PRAGMA table_info(terceiros_documento_itens)').fetchall()
+            nomes_it = [r[1] for r in (info_it or [])]
+            if 'motivo' not in nomes_it:
+                conn.execute('ALTER TABLE terceiros_documento_itens ADD COLUMN motivo TEXT')
+    except Exception:
+        pass
     conn.commit()
 
 
@@ -7211,6 +7222,46 @@ def api_terceiros_bipar_item(documento_id):
         return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
     except Exception as e:
         conn.rollback()
+        return jsonify({'ok': False, 'erro': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/terceiros/documentos/<int:documento_id>/item-motivo', methods=['POST'])
+def api_terceiros_item_motivo(documento_id):
+    """Motivo livre por linha (item da NF). Body: item_id, motivo."""
+    data = request.get_json() or {}
+    item_id = int(data.get('item_id') or 0)
+    motivo = data.get('motivo')
+    if motivo is None:
+        motivo = ''
+    motivo = (str(motivo) or '').strip()
+    if len(motivo) > 2000:
+        motivo = motivo[:2000]
+    if not item_id:
+        return jsonify({'ok': False, 'erro': 'item_id obrigatório.'}), 400
+    usuario = session.get('usuario', '')
+    conn = get_db()
+    try:
+        _ensure_terceiros_schema(conn)
+        tbl = _tbl_terceiros_documento_itens(conn)
+        row = conn.execute(
+            'SELECT id FROM ' + tbl + ' WHERE id = ? AND documento_id = ?', (item_id, documento_id)
+        ).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'erro': 'Item não encontrado.'}), 404
+        conn.execute(
+            '''UPDATE ''' + tbl + ''' SET motivo = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ? AND documento_id = ?''',
+            (motivo, _agora_iso(), usuario, item_id, documento_id),
+        )
+        conn.execute('UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET atualizado_em = ?, atualizado_por = ? WHERE id = ?', (_agora_iso(), usuario, documento_id))
+        conn.commit()
+        return jsonify({'ok': True})
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         return jsonify({'ok': False, 'erro': str(e)}), 500
     finally:
         conn.close()

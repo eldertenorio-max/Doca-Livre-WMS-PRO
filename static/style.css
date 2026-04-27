@@ -1320,7 +1320,7 @@ h2 {
 #tabela-conferencia-container .data-table input.input-motivo-divergencia,
 #dev-tabela-conferencia-container .data-table input.input-motivo-divergencia,
 .data-table.tabela-divergencias-roteiro input.input-motivo-divergencia,
-#modulo-terceiros #ter-recebimento-area-bipagem .data-table input.ter-motivo-nf-placeholder {
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table input.input-motivo-terceiros-nf {
     width: 100%;
     min-width: 120px;
     max-width: 100%;
@@ -1340,7 +1340,7 @@ h2 {
 #tabela-conferencia-container .data-table input.input-motivo-divergencia::placeholder,
 #dev-tabela-conferencia-container .data-table input.input-motivo-divergencia::placeholder,
 .data-table.tabela-divergencias-roteiro input.input-motivo-divergencia::placeholder,
-#modulo-terceiros #ter-recebimento-area-bipagem .data-table input.ter-motivo-nf-placeholder::placeholder {
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table input.input-motivo-terceiros-nf::placeholder {
     color: rgba(255, 255, 255, 0.82);
     font-weight: 500;
 }
@@ -1351,17 +1351,16 @@ h2 {
 }
 #tabela-conferencia-container .data-table input.input-motivo-divergencia:focus,
 #dev-tabela-conferencia-container .data-table input.input-motivo-divergencia:focus,
-.data-table.tabela-divergencias-roteiro input.input-motivo-divergencia:focus {
+.data-table.tabela-divergencias-roteiro input.input-motivo-divergencia:focus,
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table input.input-motivo-terceiros-nf:hover,
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table input.input-motivo-terceiros-nf:focus {
     outline: none;
     background: #2a4d6f;
     box-shadow: 0 0 0 2px #fff, 0 0 0 4px #366092;
 }
-#modulo-terceiros #ter-recebimento-area-bipagem .data-table input.ter-motivo-nf-placeholder {
-    cursor: default;
-    opacity: 0.92;
-}
-#modulo-terceiros #ter-recebimento-area-bipagem .data-table input.ter-motivo-nf-placeholder:focus {
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+#modulo-terceiros #ter-recebimento-area-bipagem .data-table input.input-motivo-terceiros-nf:disabled {
+    opacity: 0.75;
+    cursor: not-allowed;
 }
 #tabela-conferencia-container .data-table .btn {
     font-size: 13px;
