@@ -1397,13 +1397,14 @@ function _limparPendenciasBipagemTerceiros() {
     p.removeTimers = {};
 }
 
+/** Alinhado a app._status_bipagem_terceiros: excedente antes de completo. */
 function _statusBipagemTerLocais(qtdXml, qtdBipada) {
     var xml = parseFloat(qtdXml) || 0;
     var bip = parseFloat(qtdBipada) || 0;
-    if (xml > 0 && bip >= xml - 1e-9) return 'COMPLETO';
-    if (bip > xml + 1e-9) return 'EXCEDENTE';
-    if (bip > 1e-9) return 'PARCIAL';
-    return 'PENDENTE';
+    if (bip <= 1e-9) return 'PENDENTE';
+    if (bip < xml - 1e-9) return 'PARCIAL';
+    if (bip <= xml + 1e-9) return 'COMPLETO';
+    return 'EXCEDENTE';
 }
 
 /** Mesmo padrão visual da aba Conferência: badge + classe de linha */
@@ -1435,6 +1436,22 @@ function _formatTerQtdDisplay(n) {
     var r = Math.round(x * 1000) / 1000;
     if (Math.abs(r - Math.round(r)) < 1e-9) return String(Math.round(r));
     return String(r);
+}
+
+function _terHtmlCelulaFalta(xml, bip) {
+    var qXml = parseFloat(xml) || 0;
+    var qBip = parseFloat(bip) || 0;
+    var falta = Math.max(0, qXml - qBip);
+    var sobra = Math.max(0, qBip - qXml);
+    if (sobra > 1e-9) {
+        return '<strong style="color:#7b1fa2;">+' + escapeHtml(_formatTerQtdDisplay(sobra)) + ' sobra</strong>';
+    }
+    return '<strong style="color: ' + (falta > 1e-9 ? '#f44336' : '#4caf50') + ';">' + escapeHtml(_formatTerQtdDisplay(falta)) + '</strong>';
+}
+
+function _terSetCelulaFalta(cell, xml, bip) {
+    if (!cell) return;
+    cell.innerHTML = _terHtmlCelulaFalta(xml, bip);
 }
 
 function _terAtualizarSnapshotItem(itemId, deltaBip) {
@@ -1494,7 +1511,114 @@ function atualizarResumoTotaisBipagemTerceiros() {
     if (elXml) elXml.textContent = _formatTerQtdDisplay(totalXml);
     if (elBip) elBip.textContent = _formatTerQtdDisplay(totalBip);
     if (elPend) elPend.textContent = String(pend);
+    atualizarBoxesComprovanteTerceiros();
 }
+
+/** Caixas verde/laranja como na Conferência (expedição): comprovante completo vs divergente. */
+function atualizarBoxesComprovanteTerceiros() {
+    var boxC = document.getElementById('ter-conferencia-completa-box');
+    var boxD = document.getElementById('ter-conferencia-divergente-box');
+    if (!boxC || !boxD) return;
+    var itens = window._terceirosBipagemItens || [];
+    var temItens = itens.length > 0;
+    var todosCompletos = temItens && itens.every(function(item) {
+        var xml = parseFloat(item.quantidade_xml) || 0;
+        var bip = parseFloat(item.quantidade_bipada) || 0;
+        return _statusBipagemTerLocais(xml, bip) === 'COMPLETO';
+    });
+    boxC.style.display = (temItens && todosCompletos) ? 'block' : 'none';
+    boxD.style.display = (temItens && !todosCompletos) ? 'block' : 'none';
+}
+
+function _terTextoEl(id) {
+    var el = document.getElementById(id);
+    return el ? String(el.textContent || '').trim() : '';
+}
+
+/** Imprime comprovante da descarga (NF terceiros). divergente: inclui aviso no topo. */
+window.imprimirComprovanteDescargaTerceiros = function(divergente) {
+    if (!_terceirosDocAtual.id) {
+        showMessage('Selecione uma nota.', 'warning');
+        return;
+    }
+    var itens = window._terceirosBipagemItens || [];
+    if (!itens.length) {
+        showMessage('Não há itens para o comprovante.', 'warning');
+        return;
+    }
+    var nf = _terTextoEl('ter-rec-stat-nf');
+    var pedido = _terTextoEl('ter-rec-pedido');
+    var remetente = _terTextoEl('ter-rec-remetente');
+    var destinatario = _terTextoEl('ter-rec-destinatario');
+    var perfilU = document.getElementById('perfil-usuario');
+    var usuario = perfilU ? String(perfilU.textContent || '').trim() : '';
+    var agora = new Date().toLocaleString('pt-BR');
+    var rows = itens.map(function(item) {
+        var xml = parseFloat(item.quantidade_xml) || 0;
+        var bip = parseFloat(item.quantidade_bipada) || 0;
+        var st = _statusBipagemTerLocais(xml, bip);
+        var falta = Math.max(0, xml - bip);
+        var sobra = Math.max(0, bip - xml);
+        var faltaTxt = sobra > 1e-9
+            ? ('0 (+' + _formatTerQtdDisplay(sobra) + ' sobra)')
+            : _formatTerQtdDisplay(falta);
+        return '<tr>'
+            + '<td>' + escapeHtml(String(item.n_item != null ? item.n_item : '')) + '</td>'
+            + '<td>' + escapeHtml(String(item.codigo_ean || '')) + '</td>'
+            + '<td>' + escapeHtml(String(item.codigo_produto_xml || '')) + '</td>'
+            + '<td>' + escapeHtml(String(item.descricao_xml || '')) + '</td>'
+            + '<td style="text-align:right">' + escapeHtml(_formatTerQtdDisplay(xml)) + '</td>'
+            + '<td style="text-align:right">' + escapeHtml(_formatTerQtdDisplay(bip)) + '</td>'
+            + '<td style="text-align:right">' + escapeHtml(faltaTxt) + '</td>'
+            + '<td>' + escapeHtml(st) + '</td>'
+            + '</tr>';
+    }).join('');
+    var aviso = divergente
+        ? '<p style="color:#e65100;font-weight:bold;">Comprovante divergente — há itens pendentes ou excedentes.</p>'
+        : '';
+    var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Comprovante descarga</title>'
+        + '<style>body{font-family:Arial,sans-serif;padding:16px;font-size:13px}'
+        + 'table{border-collapse:collapse;width:100%;margin-top:12px}'
+        + 'th,td{border:1px solid #ccc;padding:6px}'
+        + 'th{background:#f5f5f5;text-align:left}'
+        + '</style></head><body>'
+        + '<h2>Comprovante de descarga (terceiros)</h2>'
+        + aviso
+        + '<p><strong>NF:</strong> ' + escapeHtml(nf || '-') + ' &nbsp; <strong>Pedido:</strong> ' + escapeHtml(pedido || '-') + '</p>'
+        + '<p><strong>Remetente:</strong> ' + escapeHtml(remetente || '-') + '</p>'
+        + '<p><strong>Destinatário:</strong> ' + escapeHtml(destinatario || '-') + '</p>'
+        + '<p><strong>Emitido em:</strong> ' + escapeHtml(agora) + (usuario ? (' &nbsp; <strong>Usuário:</strong> ' + escapeHtml(usuario)) : '') + '</p>'
+        + '<table><thead><tr>'
+        + '<th>Item</th><th>EAN</th><th>Cód. XML</th><th>Descrição</th><th>Qtd. XML</th><th>Qtd. bipada</th><th>Falta</th><th>Status</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table>'
+        + '</body></html>';
+    var w = window.open('', '_blank');
+    if (!w) {
+        showMessage('Permita pop-ups para imprimir o comprovante.', 'warning');
+        return;
+    }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    try {
+        w.print();
+    } catch (e) { /* ignore */ }
+};
+
+window.abrirModalComprovanteTerceirosDivergente = function() {
+    var m = document.getElementById('modal-comprovante-terceiros-divergente');
+    if (m) m.style.display = 'block';
+};
+
+window.fecharModalComprovanteTerceirosDivergente = function() {
+    var m = document.getElementById('modal-comprovante-terceiros-divergente');
+    if (m) m.style.display = 'none';
+};
+
+window.confirmarImprimirComprovanteTerceirosDivergente = function() {
+    fecharModalComprovanteTerceirosDivergente();
+    imprimirComprovanteDescargaTerceiros(true);
+};
 
 function _flushTerceirosAdd(itemId) {
     var documentoId = _terceirosDocAtual.id;
@@ -1575,14 +1699,12 @@ window.biparItemTerceirosConferencia = function(btn, itemId, codigoEan, descrica
     if (qEl) qEl.value = '1';
     var row = btn && btn.closest ? btn.closest('tr') : null;
     var cells = row && row.cells && row.cells.length >= 10 ? row.cells : null;
-    var qFalta = cells ? (parseFloat(cells[8].textContent) || 0) : (parseFloat(qtdFaltaMax) || 0);
-    if (qFalta <= 1e-9) return;
     if (cells) {
         var xml = parseFloat(cells[6].textContent) || 0;
         var qBip = parseFloat(cells[7].textContent) || 0;
         var novoBip = qBip + 1;
         cells[7].textContent = _formatTerQtdDisplay(novoBip);
-        cells[8].textContent = _formatTerQtdDisplay(Math.max(0, xml - novoBip));
+        _terSetCelulaFalta(cells[8], xml, novoBip);
         _terAtualizarBadgeELinha(row, xml, novoBip);
     }
     _terAtualizarSnapshotItem(idNum, 1);
@@ -1625,7 +1747,7 @@ window.tirarBipadoTerceiros = async function(btn, itemId, quantidade) {
         if (cells) {
             var xml = parseFloat(cells[6].textContent) || 0;
             cells[7].textContent = _formatTerQtdDisplay(0);
-            cells[8].textContent = _formatTerQtdDisplay(xml);
+            _terSetCelulaFalta(cells[8], xml, 0);
             _terAtualizarBadgeELinha(row, xml, 0);
         }
         var snap = (window._terceirosBipagemItens || []).filter(function(i) { return Number(i.id) === idNum; })[0];
@@ -1655,7 +1777,7 @@ window.tirarBipadoTerceiros = async function(btn, itemId, quantidade) {
         if (qBip <= 1e-9) return;
         var novoBip = Math.max(0, qBip - 1);
         cells[7].textContent = _formatTerQtdDisplay(novoBip);
-        cells[8].textContent = _formatTerQtdDisplay(Math.max(0, xml2 - novoBip));
+        _terSetCelulaFalta(cells[8], xml2, novoBip);
         _terAtualizarBadgeELinha(row, xml2, novoBip);
     }
     _terAtualizarSnapshotItem(idNum, -1);
@@ -1810,7 +1932,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
             + '<td>' + baseHtml + '</td>'
             + '<td><strong>' + escapeHtml(_formatTerQtdDisplay(item.quantidade_xml || 0)) + '</strong></td>'
             + '<td><strong style="color: ' + (qBip > 1e-9 ? '#4caf50' : '#666') + ';">' + escapeHtml(_formatTerQtdDisplay(item.quantidade_bipada || 0)) + '</strong></td>'
-            + '<td><strong style="color: ' + (falta > 1e-9 ? '#f44336' : '#4caf50') + ';">' + escapeHtml(_formatTerQtdDisplay(falta)) + '</strong></td>'
+            + '<td>' + _terHtmlCelulaFalta(qXml, qBip) + '</td>'
             + '<td style="max-width: 280px;">' + acoesWrap + '</td>'
             + '</tr>';
     }).join('');
@@ -1827,29 +1949,33 @@ function encontrarItensTerceirosParaBipar(codigo) {
     codigo = normalizarCodigoBarrasDuplicado(String(codigo || '').trim());
     if (!codigo) return [];
     var itens = window._terceirosBipagemItens || [];
-    return itens.filter(function(item) {
+    var matched = itens.filter(function(item) {
         var ean = normalizarCodigoBarrasDuplicado(String(item.codigo_ean || '').trim());
-        if (!ean) return false;
         return ean === codigo;
-    }).filter(function(item) {
-        var xml = parseFloat(item.quantidade_xml) || 0;
-        var bip = parseFloat(item.quantidade_bipada) || 0;
-        return bip < xml - 1e-9;
-    }).sort(function(a, b) { return (Number(a.n_item) || 0) - (Number(b.n_item) || 0); });
+    });
+    return matched.sort(function(a, b) {
+        var fa = Math.max(0, (parseFloat(a.quantidade_xml) || 0) - (parseFloat(a.quantidade_bipada) || 0));
+        var fb = Math.max(0, (parseFloat(b.quantidade_xml) || 0) - (parseFloat(b.quantidade_bipada) || 0));
+        if (fa > 1e-9 && fb <= 1e-9) return -1;
+        if (fa <= 1e-9 && fb > 1e-9) return 1;
+        return (Number(a.n_item) || 0) - (Number(b.n_item) || 0);
+    });
 }
 
 function encontrarItensTerceirosParaBiparPorCodigoProduto(cod) {
     cod = String(cod || '').trim().toLowerCase();
     if (!cod) return [];
-    return (window._terceirosBipagemItens || []).filter(function(item) {
+    var matched = (window._terceirosBipagemItens || []).filter(function(item) {
         var cp = String(item.codigo_produto_xml || '').trim().toLowerCase();
-        if (!cp) return false;
         return cp === cod;
-    }).filter(function(item) {
-        var xml = parseFloat(item.quantidade_xml) || 0;
-        var bip = parseFloat(item.quantidade_bipada) || 0;
-        return bip < xml - 1e-9;
-    }).sort(function(a, b) { return (Number(a.n_item) || 0) - (Number(b.n_item) || 0); });
+    });
+    return matched.sort(function(a, b) {
+        var fa = Math.max(0, (parseFloat(a.quantidade_xml) || 0) - (parseFloat(a.quantidade_bipada) || 0));
+        var fb = Math.max(0, (parseFloat(b.quantidade_xml) || 0) - (parseFloat(b.quantidade_bipada) || 0));
+        if (fa > 1e-9 && fb <= 1e-9) return -1;
+        if (fa <= 1e-9 && fb > 1e-9) return 1;
+        return (Number(a.n_item) || 0) - (Number(b.n_item) || 0);
+    });
 }
 
 function preencherBipagemTerceirosPorItemId(itemId) {
@@ -1898,7 +2024,15 @@ function atualizarUIBipagemTerceiros(doc) {
         if (!doc || concluido) {
             zer.style.display = 'none';
         } else {
-            zer.style.display = 'inline-block';
+            var temBip = false;
+            var arr = window._terceirosBipagemItens || [];
+            for (var zi = 0; zi < arr.length; zi++) {
+                if ((parseFloat(arr[zi].quantidade_bipada) || 0) > 1e-9) {
+                    temBip = true;
+                    break;
+                }
+            }
+            zer.style.display = temBip ? 'inline-block' : 'none';
         }
     }
     var desabilitar = concluido || !doc;
@@ -1922,7 +2056,7 @@ function _terAtualizarLinhaBipagemOtimista(itemId, deltaBip) {
     var qBip = parseFloat(row.cells[7].textContent) || 0;
     var novoBip = qBip + (parseFloat(deltaBip) || 0);
     row.cells[7].textContent = _formatTerQtdDisplay(novoBip);
-    row.cells[8].textContent = _formatTerQtdDisplay(Math.max(0, xml - novoBip));
+    _terSetCelulaFalta(row.cells[8], xml, novoBip);
     _terAtualizarBadgeELinha(row, xml, novoBip);
 }
 
@@ -1951,16 +2085,15 @@ async function executarBipagemTerceirosCentral() {
         return;
     }
     if (!candidatos.length) {
-        showMessage('Nenhum item pendente desta nota com esse filtro.', 'warning');
+        showMessage('Nenhum item desta nota com esse código.', 'warning');
         return;
     }
     var item = candidatos[0];
     var xml = parseFloat(item.quantidade_xml) || 0;
     var bip = parseFloat(item.quantidade_bipada) || 0;
     var falta = Math.max(0, xml - bip);
-    var aplicar = Math.min(qtdReq, falta);
+    var aplicar = falta > 1e-9 ? Math.min(qtdReq, falta) : qtdReq;
     if (aplicar < 0.0001) {
-        showMessage('Este item já atingiu a quantidade do XML.', 'info');
         return;
     }
     var eanEnvio = String(item.codigo_ean || '').trim() || codigo;
