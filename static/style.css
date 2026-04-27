@@ -1809,6 +1809,14 @@ h2 {
     line-height: 1.4;
 }
 
+/* Linha recém concluída na aba Fornecedores Recebidos (pós "Recebimento concluído") */
+#modulo-terceiros .ter-fornecedor-linha-destacada {
+    outline: 2px solid #366092;
+    outline-offset: -2px;
+    background: #e3f2fd;
+    transition: background 0.3s ease;
+}
+
 .modal-content {
     background-color: white;
     margin: 5% auto;

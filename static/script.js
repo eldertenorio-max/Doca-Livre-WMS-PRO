@@ -120,6 +120,28 @@ let _terceirosTabAtual = 'pendencia-recebimento';
 let _terceirosConfirmacaoLancamentoResolver = null;
 let _terceirosExcluirDocumentoResolver = null;
 let _terceirosExcluirDocumentoAtual = null;
+/** Após concluir recebimento: destaca a linha desta NF na tabela de Fornecedores Recebidos. */
+let _terceirosDestacarDocIdAposCargaFornecedores = null;
+
+function definirDestaqueLinhaFornecedoresRecebidos(documentoId) {
+    var n = parseInt(documentoId, 10);
+    _terceirosDestacarDocIdAposCargaFornecedores = Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function aplicarDestaqueLinhaFornecedoresRecebidos(tbody) {
+    if (!tbody || _terceirosDestacarDocIdAposCargaFornecedores == null) return;
+    var idAlvo = _terceirosDestacarDocIdAposCargaFornecedores;
+    _terceirosDestacarDocIdAposCargaFornecedores = null;
+    window.requestAnimationFrame(function() {
+        var tr = tbody.querySelector('tr[data-ter-doc-id="' + idAlvo + '"]');
+        if (!tr) return;
+        tr.classList.add('ter-fornecedor-linha-destacada');
+        tr.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        window.setTimeout(function() {
+            tr.classList.remove('ter-fornecedor-linha-destacada');
+        }, 2400);
+    });
+}
 
 function initNavegacaoRapida() {
     var linkInicio = document.querySelector('.header-link-inicio');
@@ -409,7 +431,23 @@ function loadAllData() {
 async function loadPainelDevolucoes() {
     const data = await fetchAPI('/devolucoes/painel');
     if (!data) return;
-    if (data.erro) showMessage('Painel de devoluções: ' + data.erro, 'error');
+    if (data.erro) {
+        if (data._falhaGateway) {
+            console.warn('Painel de devoluções: servidor indisponível (proxy/gateway).');
+            var msgInd = 'Não foi possível carregar o painel no momento. Use o botão «Atualizar aba» no topo e tente de novo.';
+            ['dev-stat-bipados', 'dev-stat-soma-quantidades', 'dev-stat-unicos', 'dev-stat-viagens', 'dev-stat-docas', 'dev-stat-usuarios'].forEach(function(sid) {
+                var el = document.getElementById(sid);
+                if (el) el.textContent = '—';
+            });
+            [['dev-tbody-painel-viagens', 7], ['dev-tbody-painel-itens', 3], ['dev-tbody-painel-veiculos', 3], ['dev-tbody-painel-docas', 3], ['dev-tbody-painel-usuarios', 3]].forEach(function(pair) {
+                var tb = document.getElementById(pair[0]);
+                if (tb) tb.innerHTML = '<tr><td colspan="' + pair[1] + '" class="loading">' + escapeHtml(msgInd) + '</td></tr>';
+            });
+            destroyPainelDevolucoesCharts();
+            return;
+        }
+        showMessage('Painel de devoluções: ' + data.erro, 'error');
+    }
 
     const stats = data.estatisticas || {};
     const set = function(id, val) {
@@ -511,8 +549,7 @@ function fecharModalRecebimentoConcluidoTerceiros() {
         modal.style.alignItems = '';
         modal.style.justifyContent = '';
     }
-    var tab = document.querySelector('.terceiros-subtab[data-ter-tab="fornecedores-recebidos"]');
-    if (tab) tab.click();
+    abrirAbaTerceirosSeDiferente('fornecedores-recebidos');
 }
 
 function fecharModalLancamentoSemRecebimento(confirmado) {
@@ -1086,16 +1123,18 @@ async function loadTerceirosFornecedoresRecebidos() {
     const data = await fetchTerceirosDocumentosTodos();
     if (data.erro) {
         tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        _terceirosDestacarDocIdAposCargaFornecedores = null;
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos');
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com recebimento concluído ainda. Finalize a descarga na aba <strong>Pendência de Recebimento</strong>.</td></tr>';
+        _terceirosDestacarDocIdAposCargaFornecedores = null;
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-        return '<tr>'
+        return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
@@ -1109,6 +1148,7 @@ async function loadTerceirosFornecedoresRecebidos() {
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-fornecedor-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-fornecedor-doc]');
+    aplicarDestaqueLinhaFornecedoresRecebidos(tbody);
 }
 
 async function loadTerceirosPendentesLancamento() {
@@ -2635,6 +2675,8 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
     await refreshTerceirosViews();
     if (concluiuRecebimento) {
         animarConclusaoTerceiros(getTerceirosPrefixo());
+        definirDestaqueLinhaFornecedoresRecebidos(documentoId);
+        abrirAbaTerceirosSeDiferente('fornecedores-recebidos');
         window.setTimeout(function() {
             abrirModalRecebimentoConcluidoTerceiros();
         }, 0);
@@ -3632,6 +3674,12 @@ async function buscarProdutoPorCodigoProduto(codigoProduto) {
     }
 }
 
+/** HTTP de indisponibilidade do app atrás do proxy (sem toast agressivo no cliente). */
+function _falhaGatewayHttpStatus(status) {
+    var s = Number(status) || 0;
+    return s === 502 || s === 503 || s === 504 || s === 524;
+}
+
 /** Mensagem curta quando o proxy devolve HTML (502/503) em vez de JSON do app. */
 function mensagemErroRespostaNaoJson(status, corpoTexto) {
     var s = Number(status) || 0;
@@ -3668,10 +3716,16 @@ async function fetchAPI(endpoint, options = {}) {
             if (!response.ok && data && typeof data === 'object' && !data.erro) {
                 data.erro = data.erro || ('HTTP ' + response.status);
             }
+            if (!response.ok && data && typeof data === 'object' && _falhaGatewayHttpStatus(response.status)) {
+                data._falhaGateway = true;
+            }
             return data;
         }
         const text = await response.text();
-        return { erro: mensagemErroRespostaNaoJson(response.status, text) };
+        return {
+            erro: mensagemErroRespostaNaoJson(response.status, text),
+            _falhaGateway: _falhaGatewayHttpStatus(response.status)
+        };
     } catch (error) {
         console.error('Erro na API:', error);
         showMessage('Erro ao conectar com o servidor', 'error');
