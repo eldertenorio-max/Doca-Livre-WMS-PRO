@@ -941,7 +941,7 @@ function renderTerceirosPendenciaRecebimentoAcoes(row) {
 
 function scrollTerceirosRecebimentoDetalheSecao(secao) {
     window.requestAnimationFrame(function() {
-        var id = secao === 'bipagem' ? 'ter-recebimento-area-bipagem' : 'ter-recebimento-detalhe-top';
+        var id = secao === 'bipagem' ? 'ter-bipagem-bloco' : 'ter-descarga-conferencia-modelo';
         var el = document.getElementById(id);
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
@@ -1539,12 +1539,20 @@ function resetTerceirosDetalhe() {
         var el = document.getElementById(prefixo + '-' + suf);
         if (el) el.textContent = '-';
     });
+    var elDocIdR = document.getElementById('ter-rec-doc-id-display');
+    if (elDocIdR) elDocIdR.textContent = '—';
+    var elOrigemR = document.getElementById('ter-rec-origem-badge');
+    if (elOrigemR) {
+        elOrigemR.style.display = 'none';
+        elOrigemR.textContent = '';
+        elOrigemR.className = 'ter-origem-badge';
+    }
     atualizarBotaoConclusaoTerceiros(prefixo, false);
     var hidDoc = document.getElementById('ter-rec-documento-id');
     if (hidDoc) hidDoc.value = '';
     _limparPendenciasBipagemTerceiros();
     var tbody = document.getElementById('ter-tbody-recebimento-itens');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="loading">Selecione uma nota.</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="12" class="loading">Selecione uma nota.</td></tr>';
     window._terceirosBipagemItens = [];
     limparCamposBipagemTerceiros(false);
     atualizarUIBipagemTerceiros(null);
@@ -1735,7 +1743,7 @@ function _terConferenciaBadgeEClasseLinha(statusBip) {
 }
 
 function _terAtualizarBadgeELinha(row, xmlVal, bipVal) {
-    if (!row || !row.cells || row.cells.length < 10) return;
+    if (!row || !row.cells || row.cells.length < 12) return;
     var st = _statusBipagemTerLocais(xmlVal, bipVal);
     var pack = _terConferenciaBadgeEClasseLinha(st);
     row.className = pack.rowClass;
@@ -1799,7 +1807,7 @@ function atualizarResumoTotaisBipagemTerceiros() {
     var tx = document.getElementById('ter-bipagem-total-xml');
     var tb = document.getElementById('ter-bipagem-total-bipado');
     var rs = document.getElementById('ter-bipagem-resumo-status');
-    if (tx) tx.textContent = 'Total XML: ' + _formatTerQtdDisplay(totalXml);
+    if (tx) tx.textContent = 'Total: ' + _formatTerQtdDisplay(totalXml);
     if (tb) tb.textContent = 'Bipado: ' + _formatTerQtdDisplay(totalBip);
     if (rs) {
         if (!itens.length) {
@@ -2010,13 +2018,13 @@ window.biparItemTerceirosConferencia = function(btn, itemId, codigoEan, descrica
     if (pn) pn.value = (descricaoXml || '').trim();
     if (qEl) qEl.value = '1';
     var row = btn && btn.closest ? btn.closest('tr') : null;
-    var cells = row && row.cells && row.cells.length >= 10 ? row.cells : null;
+    var cells = row && row.cells && row.cells.length >= 12 ? row.cells : null;
     if (cells) {
-        var xml = parseFloat(cells[6].textContent) || 0;
-        var qBip = parseFloat(cells[7].textContent) || 0;
+        var xml = parseFloat(cells[5].textContent) || 0;
+        var qBip = parseFloat(cells[9].textContent) || 0;
         var novoBip = qBip + 1;
-        cells[7].textContent = _formatTerQtdDisplay(novoBip);
-        _terSetCelulaFalta(cells[8], xml, novoBip);
+        cells[9].textContent = _formatTerQtdDisplay(novoBip);
+        _terSetCelulaFalta(cells[10], xml, novoBip);
         _terAtualizarBadgeELinha(row, xml, novoBip);
     }
     _terAtualizarSnapshotItem(idNum, 1);
@@ -2086,12 +2094,12 @@ window.tirarBipadoTerceiros = async function(btn, itemId, quantidade) {
     }
 
     if (cells) {
-        var qBip = parseFloat(cells[7].textContent) || 0;
-        var xml2 = parseFloat(cells[6].textContent) || 0;
+        var qBip = parseFloat(cells[9].textContent) || 0;
+        var xml2 = parseFloat(cells[5].textContent) || 0;
         if (qBip <= 1e-9) return;
         var novoBip = Math.max(0, qBip - 1);
-        cells[7].textContent = _formatTerQtdDisplay(novoBip);
-        _terSetCelulaFalta(cells[8], xml2, novoBip);
+        cells[9].textContent = _formatTerQtdDisplay(novoBip);
+        _terSetCelulaFalta(cells[10], xml2, novoBip);
         _terAtualizarBadgeELinha(row, xml2, novoBip);
     }
     _terAtualizarSnapshotItem(idNum, -1);
@@ -2153,7 +2161,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     const detalhe = document.getElementById('ter-recebimento-detalhe');
     const tbody = document.getElementById('ter-tbody-recebimento-itens');
     if (tbody && mudouDocumento) {
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando detalhe...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando detalhe...</td></tr>';
     }
 
     var doc;
@@ -2169,7 +2177,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
         var msgErro = (doc && doc.erro) ? String(doc.erro) : 'Erro ao carregar.';
         if (tbody) {
             if (mudouDocumento) {
-                tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml(msgErro) + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" class="loading">' + escapeHtml(msgErro) + '</td></tr>';
             }
         }
         if (!mudouDocumento) {
@@ -2200,6 +2208,20 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     var plaCarreta = document.getElementById(prefixo + '-placa-carreta');
     if (motCarreta) motCarreta.textContent = doc.motorista_carreta || '-';
     if (plaCarreta) plaCarreta.textContent = doc.placa_carreta || '-';
+    var elDocId = document.getElementById('ter-rec-doc-id-display');
+    if (elDocId) elDocId.textContent = doc.id != null ? String(doc.id) : '—';
+    var elOrigem = document.getElementById('ter-rec-origem-badge');
+    if (elOrigem) {
+        if ((doc.area || '') === 'carreta') {
+            elOrigem.style.display = 'inline-block';
+            elOrigem.textContent = 'Carreta';
+            elOrigem.className = 'ter-origem-badge ter-origem-badge--carreta';
+        } else {
+            elOrigem.style.display = 'none';
+            elOrigem.textContent = '';
+            elOrigem.className = 'ter-origem-badge';
+        }
+    }
     preencherMetaTerceiros(prefixo, 'concluido-meta', doc.recebimento_concluido ? 'Concluído' : '', doc.recebimento_concluido_por || '', doc.recebimento_concluido_em || '');
     atualizarBotaoConclusaoTerceiros(prefixo, !!doc.recebimento_concluido);
 
@@ -2214,6 +2236,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
             codigo_ean: item.codigo_ean,
             codigo_produto_xml: item.codigo_produto_xml,
             descricao_xml: item.descricao_xml,
+            unidade_xml: item.unidade_xml,
             quantidade_xml: item.quantidade_xml,
             quantidade_bipada: item.quantidade_bipada
         };
@@ -2221,16 +2244,16 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     atualizarResumoTotaisBipagemTerceiros();
     atualizarUIBipagemTerceiros(doc);
     if (!itens.length) {
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhum item encontrado no XML.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhum item encontrado no XML.</td></tr>';
         return;
     }
     var bloqueado = !!doc.recebimento_concluido;
     if (seq !== window._terceirosDetalheCargaSeq) return;
     tbody.innerHTML = itens.map(function(item) {
         var baseEncontrada = item.codigo_produto_base || item.descricao_base;
-        var baseHtml = baseEncontrada
-            ? ('<span style="color:#2e7d32;font-weight:700;">' + escapeHtml(item.codigo_produto_base || item.descricao_base || 'Encontrado') + '</span>')
-            : '<span style="color:#c62828;font-weight:700;">Não encontrado</span>';
+        var avisoHtml = baseEncontrada
+            ? '<span style="color:#2e7d32;font-weight:600;">Cadastro local</span>'
+            : '<span style="color:#c62828;font-weight:600;">Sem cadastro</span>';
         var qXml = parseFloat(item.quantidade_xml) || 0;
         var qBip = parseFloat(item.quantidade_bipada) || 0;
         var falta = Math.max(0, qXml - qBip);
@@ -2250,12 +2273,14 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
         var pack = _terConferenciaBadgeEClasseLinha(st);
         return '<tr class="' + pack.rowClass + '" data-ter-item-id="' + item.id + '">'
             + '<td><span class="status-badge ' + pack.badgeClass + '">' + pack.badgeText + '</span></td>'
-            + '<td>' + escapeHtml(String(item.n_item || '-')) + '</td>'
+            + '<td><input type="text" class="ter-motivo-nf-placeholder" readonly tabindex="-1" value="" placeholder="—" title="Campo reservado" style="width:100%;min-width:72px;padding:6px 8px;box-sizing:border-box;background:#fafafa;border:1px solid #e0e0e0;border-radius:4px;color:#9e9e9e;"></td>'
             + '<td><strong>' + escapeHtml(item.codigo_ean || '-') + '</strong></td>'
             + '<td><strong style="color: #1976D2;">' + escapeHtml(item.codigo_produto_xml || '-') + '</strong></td>'
             + '<td>' + escapeHtml(item.descricao_xml || '-') + '</td>'
-            + '<td>' + baseHtml + '</td>'
             + '<td><strong>' + escapeHtml(_formatTerQtdDisplay(item.quantidade_xml || 0)) + '</strong></td>'
+            + '<td>' + escapeHtml(item.unidade_xml || '-') + '</td>'
+            + '<td>—</td>'
+            + '<td>' + avisoHtml + '</td>'
             + '<td><strong style="color: ' + (qBip > 1e-9 ? '#4caf50' : '#666') + ';">' + escapeHtml(_formatTerQtdDisplay(item.quantidade_bipada || 0)) + '</strong></td>'
             + '<td>' + _terHtmlCelulaFalta(qXml, qBip) + '</td>'
             + '<td style="max-width: 280px;">' + acoesWrap + '</td>'
@@ -2376,12 +2401,12 @@ function _terAtualizarLinhaBipagemOtimista(itemId, deltaBip) {
     var tbody = document.getElementById('ter-tbody-recebimento-itens');
     if (!tbody) return;
     var row = tbody.querySelector('tr[data-ter-item-id="' + itemId + '"]');
-    if (!row || !row.cells || row.cells.length < 10) return;
-    var xml = parseFloat(row.cells[6].textContent) || 0;
-    var qBip = parseFloat(row.cells[7].textContent) || 0;
+    if (!row || !row.cells || row.cells.length < 12) return;
+    var xml = parseFloat(row.cells[5].textContent) || 0;
+    var qBip = parseFloat(row.cells[9].textContent) || 0;
     var novoBip = qBip + (parseFloat(deltaBip) || 0);
-    row.cells[7].textContent = _formatTerQtdDisplay(novoBip);
-    _terSetCelulaFalta(row.cells[8], xml, novoBip);
+    row.cells[9].textContent = _formatTerQtdDisplay(novoBip);
+    _terSetCelulaFalta(row.cells[10], xml, novoBip);
     _terAtualizarBadgeELinha(row, xml, novoBip);
 }
 

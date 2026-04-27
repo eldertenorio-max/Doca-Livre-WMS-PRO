@@ -722,7 +722,72 @@ body {
 }
 
 #modulo-terceiros .terceiros-detalhe-bloco .data-table {
-    min-width: 980px;
+    min-width: 1280px;
+}
+
+/* Descarga terceiros: mesmo grid visual da aba Conferência (blocos 1–4) */
+#modulo-terceiros .ter-descarga-conferencia-modelo {
+    margin-top: 4px;
+}
+#modulo-terceiros .ter-descarga-titulo-principal {
+    margin: 0 0 14px 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #37474f;
+    letter-spacing: 0.03em;
+}
+#modulo-terceiros .ter-descarga-blocos-grid {
+    display: grid;
+    grid-template-columns: minmax(160px, 260px) minmax(180px, 280px) 1fr;
+    grid-template-rows: auto auto;
+    gap: 0;
+    margin-bottom: 8px;
+}
+#modulo-terceiros .ter-descarga-blocos-grid > .conferencia-bloco:first-child {
+    grid-column: 1;
+    grid-row: 1;
+    margin-top: 0;
+}
+#modulo-terceiros .ter-descarga-form-middle {
+    grid-column: 2 / -1;
+    grid-row: 1;
+    margin-top: 0;
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(200px, 1fr);
+    grid-template-rows: auto;
+    gap: 0;
+    min-width: 0;
+    position: relative;
+}
+#modulo-terceiros .ter-descarga-bloco4-wrapper {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    position: relative;
+    min-height: 0;
+    margin-top: 8px;
+    margin-bottom: 0;
+}
+#modulo-terceiros .ter-descarga-bloco4-wrapper .conferencia-bloco-4 {
+    margin-top: 0;
+}
+@media (max-width: 1100px) {
+    #modulo-terceiros .ter-descarga-blocos-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+    }
+    #modulo-terceiros .ter-descarga-blocos-grid > .conferencia-bloco:first-child {
+        grid-column: 1;
+        grid-row: auto;
+    }
+    #modulo-terceiros .ter-descarga-form-middle {
+        grid-column: 1;
+        grid-row: auto;
+        grid-template-columns: 1fr;
+    }
+    #modulo-terceiros .ter-descarga-bloco4-wrapper {
+        grid-column: 1;
+        grid-row: auto;
+    }
 }
 
 #modulo-terceiros .terceiros-detalhe-bloco .stats-grid {
