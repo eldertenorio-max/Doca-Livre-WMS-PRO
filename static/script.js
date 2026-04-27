@@ -708,6 +708,192 @@ function getTerceirosRowsPorEtapa(rows, etapa) {
     return rows;
 }
 
+function _terPad2(n) {
+    n = Number(n);
+    return (n >= 0 && n < 10) ? '0' + n : String(n);
+}
+
+function _terDateKeyLocal(d) {
+    if (!d || !(d instanceof Date) || isNaN(d.getTime())) return '';
+    return d.getFullYear() + '-' + _terPad2(d.getMonth() + 1) + '-' + _terPad2(d.getDate());
+}
+
+/** Interpreta previsão exibida (ex.: 28/04/2026 12:00:00) ou ISO. Retorna data local meia-noite. */
+function parsePrevisaoChegadaTerceiros(texto) {
+    if (texto == null) return null;
+    var s = String(texto).trim();
+    if (!s || s === '-') return null;
+    var primeira = s.split(/\s+/)[0];
+    var m = primeira.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+        var d = parseInt(m[1], 10);
+        var mo = parseInt(m[2], 10) - 1;
+        var y = parseInt(m[3], 10);
+        var dt = new Date(y, mo, d);
+        if (dt.getFullYear() === y && dt.getMonth() === mo && dt.getDate() === d) {
+            dt.setHours(0, 0, 0, 0);
+            return dt;
+        }
+    }
+    var t = Date.parse(s);
+    if (!isNaN(t)) {
+        var dt2 = new Date(t);
+        dt2.setHours(0, 0, 0, 0);
+        return dt2;
+    }
+    return null;
+}
+
+function segundaFeiraSemanaContendo(hoje) {
+    var x = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    var dow = x.getDay();
+    var diff = dow === 0 ? -6 : 1 - dow;
+    x.setDate(x.getDate() + diff);
+    x.setHours(0, 0, 0, 0);
+    return x;
+}
+
+/** Próxima semana (segunda a domingo), em relação à semana corrente. */
+function intervaloSemanaQueVemTerceiros() {
+    var segEsta = segundaFeiraSemanaContendo(new Date());
+    var inicio = new Date(segEsta);
+    inicio.setDate(inicio.getDate() + 7);
+    inicio.setHours(0, 0, 0, 0);
+    var fim = new Date(inicio);
+    fim.setDate(fim.getDate() + 6);
+    fim.setHours(0, 0, 0, 0);
+    return { inicio: inicio, fim: fim };
+}
+
+function filtrarRowsPendenciaPorPrevisao(rows, tipo, dataLivreIso) {
+    rows = Array.isArray(rows) ? rows : [];
+    tipo = (tipo || 'todos').toLowerCase();
+    if (tipo === 'todos') return rows;
+    if (tipo === 'semana') {
+        var iv = intervaloSemanaQueVemTerceiros();
+        return rows.filter(function(row) {
+            var pd = parsePrevisaoChegadaTerceiros(row.previsao_chegada);
+            if (!pd) return false;
+            pd.setHours(0, 0, 0, 0);
+            return pd >= iv.inicio && pd <= iv.fim;
+        });
+    }
+    var alvo = null;
+    var hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    if (tipo === 'hoje') {
+        alvo = new Date(hoje);
+    } else if (tipo === 'amanha') {
+        alvo = new Date(hoje);
+        alvo.setDate(alvo.getDate() + 1);
+    } else if (tipo === 'depois') {
+        alvo = new Date(hoje);
+        alvo.setDate(alvo.getDate() + 2);
+    } else if (tipo === 'livre' && dataLivreIso) {
+        var parts = String(dataLivreIso).split('-');
+        if (parts.length === 3) {
+            alvo = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        }
+    }
+    if (!alvo) return rows;
+    alvo.setHours(0, 0, 0, 0);
+    var keyAlvo = _terDateKeyLocal(alvo);
+    return rows.filter(function(row) {
+        var pd = parsePrevisaoChegadaTerceiros(row.previsao_chegada);
+        if (!pd) return false;
+        return _terDateKeyLocal(pd) === keyAlvo;
+    });
+}
+
+function renderTerceirosPendenciaDocumentosTbodyHtml(rows) {
+    return rows.map(function(row) {
+        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+        var badgeCarreta = (row.area === 'carreta') ? ' <span class="ter-origem-badge ter-origem-badge--carreta">Carreta</span>' : '';
+        return '<tr>'
+            + '<td><strong>' + escapeHtml(nf) + '</strong>' + badgeCarreta + '</td>'
+            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
+            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
+            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
+            + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
+            + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
+            + '<td>' + renderTerceirosPendenciaRecebimentoAcoes(row) + '</td>'
+            + '</tr>';
+    }).join('');
+}
+
+function atualizarUiBotoesFiltroPrevisaoPendencia() {
+    var tipo = (window._terceirosPendenciaFiltroTipo || 'todos').toLowerCase();
+    document.querySelectorAll('.ter-filtro-previsao-btn').forEach(function(btn) {
+        var t = (btn.getAttribute('data-ter-filtro-previsao') || '').toLowerCase();
+        btn.classList.toggle('ter-filtro-previsao-btn--ativo', t === tipo);
+    });
+}
+
+function reaplicarFiltroPrevisaoPendenciaRecebimento() {
+    var tbody = document.getElementById('ter-tbody-recebimento-documentos');
+    if (!tbody) return;
+    var cache = window._terceirosPendenciaRowsCache;
+    if (!Array.isArray(cache)) {
+        void loadTerceirosDocumentos();
+        return;
+    }
+    var tipo = window._terceirosPendenciaFiltroTipo || 'todos';
+    var dataLivre = window._terceirosPendenciaFiltroDataLivre || '';
+    var filtradas = filtrarRowsPendenciaPorPrevisao(cache, tipo, dataLivre);
+    atualizarUiBotoesFiltroPrevisaoPendencia();
+    if (!cache.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
+        var hidLista = document.getElementById('ter-rec-documento-id');
+        var temNotaAbertaNaTela = (_terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '')
+            || (hidLista && String(hidLista.value || '').trim() !== '');
+        if (!temNotaAbertaNaTela) {
+            resetTerceirosDetalhe();
+        }
+        return;
+    }
+    if (!filtradas.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com <strong>previsão</strong> neste filtro. Use <strong>Todos</strong> ou escolha outra data.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = renderTerceirosPendenciaDocumentosTbodyHtml(filtradas);
+    bindTerceirosPendenciaRecebimentoAcoes();
+    bindTerceirosExcluirButtons('[data-ter-excluir-doc]');
+}
+
+function initTerceirosFiltroPrevisaoPendencia() {
+    if (window._terceirosFiltroPrevisaoBound) return;
+    window._terceirosFiltroPrevisaoBound = true;
+    if (typeof window._terceirosPendenciaFiltroTipo === 'undefined') {
+        window._terceirosPendenciaFiltroTipo = 'todos';
+    }
+    document.querySelectorAll('.ter-filtro-previsao-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var t = (btn.getAttribute('data-ter-filtro-previsao') || 'todos').toLowerCase();
+            window._terceirosPendenciaFiltroTipo = t;
+            window._terceirosPendenciaFiltroDataLivre = '';
+            var inp = document.getElementById('ter-pendencia-filtro-data-livre');
+            if (inp) inp.value = '';
+            reaplicarFiltroPrevisaoPendenciaRecebimento();
+        });
+    });
+    var inpData = document.getElementById('ter-pendencia-filtro-data-livre');
+    if (inpData) {
+        inpData.addEventListener('change', function() {
+            var v = (inpData.value || '').trim();
+            if (!v) {
+                window._terceirosPendenciaFiltroTipo = 'todos';
+                window._terceirosPendenciaFiltroDataLivre = '';
+            } else {
+                window._terceirosPendenciaFiltroTipo = 'livre';
+                window._terceirosPendenciaFiltroDataLivre = v;
+            }
+            reaplicarFiltroPrevisaoPendenciaRecebimento();
+        });
+    }
+}
+
 function terceirosListaCellTextoLongo(valor) {
     var text = valor == null || String(valor).trim() === '' ? '-' : String(valor).trim();
     return '<span class="ter-cell-ellipsis" title="' + escapeHtml(text) + '">' + escapeHtml(text) + '</span>';
@@ -843,6 +1029,11 @@ async function loadTerceirosDocumentos() {
             return;
         }
         const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencia-recebimento');
+        window._terceirosPendenciaRowsCache = rows;
+        const tipoFiltro = window._terceirosPendenciaFiltroTipo || 'todos';
+        const dataLivreFiltro = window._terceirosPendenciaFiltroDataLivre || '';
+        const filtradas = filtrarRowsPendenciaPorPrevisao(rows, tipoFiltro, dataLivreFiltro);
+        atualizarUiBotoesFiltroPrevisaoPendencia();
         if (!rows.length) {
             tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
             var hidLista = document.getElementById('ter-rec-documento-id');
@@ -853,21 +1044,11 @@ async function loadTerceirosDocumentos() {
             }
             return;
         }
-        tbody.innerHTML = rows.map(function(row) {
-            var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-            var badgeCarreta = (row.area === 'carreta') ? ' <span class="ter-origem-badge ter-origem-badge--carreta">Carreta</span>' : '';
-            return '<tr>'
-                + '<td><strong>' + escapeHtml(nf) + '</strong>' + badgeCarreta + '</td>'
-                + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-                + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
-                + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
-                + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
-                + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
-                + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
-                + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
-                + '<td>' + renderTerceirosPendenciaRecebimentoAcoes(row) + '</td>'
-                + '</tr>';
-        }).join('');
+        if (!filtradas.length) {
+            tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com <strong>previsão</strong> neste filtro. Use <strong>Todos</strong> ou escolha outra data.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = renderTerceirosPendenciaDocumentosTbodyHtml(filtradas);
         bindTerceirosPendenciaRecebimentoAcoes();
         bindTerceirosExcluirButtons('[data-ter-excluir-doc]');
     } catch (e) {
@@ -3007,6 +3188,7 @@ function initForms() {
         });
     }
     initTerceirosBipagemForm();
+    initTerceirosFiltroPrevisaoPendencia();
 
     [
         ['ter-rec-nota-lancada', 'recebimento', 'nota_lancada'],

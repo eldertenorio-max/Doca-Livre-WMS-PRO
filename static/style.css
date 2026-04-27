@@ -246,6 +246,51 @@ body {
     box-sizing: border-box;
 }
 
+#modulo-terceiros .ter-pendencia-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 10px;
+}
+
+#modulo-terceiros .ter-pendencia-filtro-previsao {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    justify-content: flex-end;
+    max-width: 100%;
+}
+
+#modulo-terceiros .ter-filtro-previsao-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #366092;
+    margin-right: 4px;
+}
+
+#modulo-terceiros .ter-filtro-previsao-btn--ativo {
+    background: #1976d2 !important;
+    color: #fff !important;
+    border-color: #1565c0 !important;
+}
+
+#modulo-terceiros .ter-filtro-data-livre-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #366092;
+    margin-left: 4px;
+}
+
+#modulo-terceiros .ter-filtro-data-livre-input {
+    padding: 4px 8px;
+    border: 1px solid #90a4ae;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
 #modulo-terceiros .ter-pendencia-acoes {
     display: flex;
     flex-wrap: nowrap;

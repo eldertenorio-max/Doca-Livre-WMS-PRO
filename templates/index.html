@@ -1428,6 +1428,19 @@
                         <div class="conferencia-bloco form-container terceiros-lista-bloco">
                             <h3 style="margin-top: 0; color: #366092;">1. NFS PENDENTES DE RECEBIMENTO</h3>
                             <div class="table-container">
+                                <div class="ter-pendencia-toolbar" aria-label="Filtro por data de previsão">
+                                    <div class="ter-pendencia-filtro-previsao">
+                                        <span class="ter-filtro-previsao-label">Previsão</span>
+                                        <button type="button" class="btn btn-secondary btn-sm ter-filtro-previsao-btn ter-filtro-previsao-btn--ativo" data-ter-filtro-previsao="todos">Todos</button>
+                                        <button type="button" class="btn btn-secondary btn-sm ter-filtro-previsao-btn" data-ter-filtro-previsao="hoje">Hoje</button>
+                                        <button type="button" class="btn btn-secondary btn-sm ter-filtro-previsao-btn" data-ter-filtro-previsao="amanha">Amanhã</button>
+                                        <button type="button" class="btn btn-secondary btn-sm ter-filtro-previsao-btn" data-ter-filtro-previsao="depois">Depois de amanhã</button>
+                                        <button type="button" class="btn btn-secondary btn-sm ter-filtro-previsao-btn" data-ter-filtro-previsao="semana">Semana que vem</button>
+                                        <label class="ter-filtro-data-livre-wrap">Data livre
+                                            <input type="date" id="ter-pendencia-filtro-data-livre" class="ter-filtro-data-livre-input" title="Filtrar pela data da previsão (somente dia)">
+                                        </label>
+                                    </div>
+                                </div>
                                 <table class="data-table">
                                     <thead>
                                         <tr>
