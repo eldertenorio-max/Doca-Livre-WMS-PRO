@@ -141,6 +141,7 @@ create table if not exists public.produtos_bipados (
   -- Auditoria
   data_hora timestamptz not null default now(),
   usuario_bipagem text,
+  fluxo text default 'carregamento',
   
   -- Metadados
   criado_em timestamptz not null default now()

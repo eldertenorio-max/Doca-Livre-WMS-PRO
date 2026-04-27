@@ -491,6 +491,18 @@ function getTerceirosAreaApi(area) {
     return 'recebimento';
 }
 
+function abrirModalRecebimentoConcluidoTerceiros() {
+    var modal = document.getElementById('modal-terceiros-recebimento-concluido');
+    if (modal) modal.style.display = 'block';
+}
+
+function fecharModalRecebimentoConcluidoTerceiros() {
+    var modal = document.getElementById('modal-terceiros-recebimento-concluido');
+    if (modal) modal.style.display = 'none';
+    var tab = document.querySelector('.terceiros-subtab[data-ter-tab="fornecedores-recebidos"]');
+    if (tab) tab.click();
+}
+
 function fecharModalLancamentoSemRecebimento(confirmado) {
     var modal = document.getElementById('modal-terceiros-lancar-sem-recebimento');
     if (modal) modal.style.display = 'none';
@@ -2542,8 +2554,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
     await refreshTerceirosViews();
     if (campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim') {
         animarConclusaoTerceiros(getTerceirosPrefixo());
-        var tabFornecedores = document.querySelector('.terceiros-subtab[data-ter-tab="fornecedores-recebidos"]');
-        if (tabFornecedores) tabFornecedores.click();
+        abrirModalRecebimentoConcluidoTerceiros();
     }
 }
 
@@ -2619,6 +2630,12 @@ function initForms() {
     if (btnTerExcluirConfirmar) btnTerExcluirConfirmar.addEventListener('click', function() { fecharModalExcluirDocumento(true); });
     if (btnTerExcluirCancelar) btnTerExcluirCancelar.addEventListener('click', function() { fecharModalExcluirDocumento(false); });
     if (btnTerExcluirClose) btnTerExcluirClose.addEventListener('click', function() { fecharModalExcluirDocumento(false); });
+
+    const modalTerRecConc = document.getElementById('modal-terceiros-recebimento-concluido');
+    const btnTerRecConcFechar = document.getElementById('btn-ter-fechar-recebimento-concluido');
+    const btnTerRecConcClose = document.getElementById('modal-terceiros-recebimento-concluido-close');
+    if (btnTerRecConcFechar) btnTerRecConcFechar.addEventListener('click', fecharModalRecebimentoConcluidoTerceiros);
+    if (btnTerRecConcClose) btnTerRecConcClose.addEventListener('click', fecharModalRecebimentoConcluidoTerceiros);
     
     // Fechar modal ao clicar fora
     window.addEventListener('click', (e) => {
@@ -2631,6 +2648,9 @@ function initForms() {
         }
         if (modalTerExcluir && e.target === modalTerExcluir) {
             fecharModalExcluirDocumento(false);
+        }
+        if (modalTerRecConc && e.target === modalTerRecConc) {
+            fecharModalRecebimentoConcluidoTerceiros();
         }
     });
     

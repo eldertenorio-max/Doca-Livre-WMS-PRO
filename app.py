@@ -208,6 +208,7 @@ def init_db():
                     status TEXT NOT NULL DEFAULT 'PENDENTE' CHECK (status IN ('PENDENTE', 'CARREGADO', 'CANCELADO')),
                     data_hora TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     usuario_bipagem TEXT,
+                    fluxo TEXT DEFAULT 'carregamento',
                     criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )'''
             )
@@ -392,7 +393,11 @@ def init_db():
                 conn.execute('CREATE INDEX IF NOT EXISTS idx_romaneio_por_item_row_index ON public.romaneio_por_item (dataset_id, row_index)')
             except Exception:
                 conn.rollback()
+            # Postgres: sem commit o DDL era revertido ao fechar a conexão (coluna fluxo sumia).
+            try:
                 conn.commit()
+            except Exception:
+                pass
             return
 
         # SQLite (local)
@@ -765,6 +770,22 @@ class CompatConn:
 
     def close(self):
         return self._conn.close()
+
+
+def _ensure_pg_produtos_bipados_fluxo(conn):
+    """Garante coluna fluxo em produtos_bipados (Postgres). Migrações antigas sem commit perdiam o ALTER."""
+    if getattr(conn, 'kind', None) != 'pg':
+        return
+    try:
+        conn.execute(
+            "ALTER TABLE public.produtos_bipados ADD COLUMN IF NOT EXISTS fluxo TEXT DEFAULT 'carregamento'"
+        )
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
 
 
 def _tbl_terceiros_documentos(conn):
@@ -1503,6 +1524,8 @@ def add_produto():
     if fluxo not in ('carregamento', 'devolucao'):
         fluxo = 'carregamento'
     conn = get_db()
+    if getattr(conn, 'kind', None) == 'pg':
+        _ensure_pg_produtos_bipados_fluxo(conn)
     codigo_barras = _normalizar_codigo_barras(data.get('codigo_barras', '') or '')
     id_viagem = (data.get('id_viagem') or '').strip()
 
@@ -2615,6 +2638,7 @@ def get_conferencia(id_viagem=None):
             if getattr(conn, 'kind', None) != 'pg':
                 conn.close()
                 return jsonify({'erro': 'Conferência disponível apenas com Postgres (DATABASE_URL).'}), 400
+            _ensure_pg_produtos_bipados_fluxo(conn)
             ds = _get_latest_dataset_id(conn)
             if not ds:
                 conn.close()
