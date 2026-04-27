@@ -1620,8 +1620,8 @@
                                     <h4 style="margin-top: 0; color: #1976D2;">Status operacionais</h4>
                                     <div class="form-row">
                                         <div class="form-group">
-                                            <label>Recebimento concluído</label>
-                                            <button type="button" class="btn btn-primary" id="btn-ter-rec-concluir" onclick="marcarRecebimentoConcluidoTerceiros(); return false;">Marcar concluído</button>
+                                            <label for="btn-ter-rec-concluir">Fim do recebimento</label>
+                                            <button type="button" class="btn btn-primary" id="btn-ter-rec-concluir" onclick="marcarRecebimentoConcluidoTerceiros(); return false;">Recebimento concluído</button>
                                             <small id="ter-rec-concluido-meta" class="info-text"></small>
                                         </div>
                                         <div class="form-group">
@@ -2056,8 +2056,9 @@
         <div class="modal-content" style="max-width: 460px; border-top: 4px solid #2e7d32;">
             <span class="close" id="modal-terceiros-recebimento-concluido-close">&times;</span>
             <h3 style="margin-top: 0; color: #2e7d32;">Recebimento concluído</h3>
-            <p style="margin: 12px 0 24px 0; color: #455a64;">
-                O recebimento desta nota fiscal foi registrado. Ao fechar, você será levado à aba <strong>Fornecedores Recebidos</strong> (recebimentos concluídos).
+            <p style="margin: 12px 0 8px 0; color: #2e7d32; font-weight: 600; font-size: 1.05rem;">Recebimento concluído com sucesso.</p>
+            <p style="margin: 0 0 24px 0; color: #455a64; font-size: 14px;">
+                Ao fechar, você será levado à aba <strong>Fornecedores Recebidos</strong>.
             </p>
             <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
                 <button type="button" class="btn btn-primary" id="btn-ter-fechar-recebimento-concluido">Fechar</button>

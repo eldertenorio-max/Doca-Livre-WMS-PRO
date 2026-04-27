@@ -1572,7 +1572,9 @@ function atualizarBotaoConclusaoTerceiros(prefixo, concluido) {
     var btn = document.getElementById('btn-' + prefixo + '-concluir');
     if (!btn) return;
     btn.classList.toggle('btn-ter-concluido', !!concluido);
-    btn.textContent = concluido ? 'Concluido ✓' : 'Marcar concluido';
+    btn.textContent = concluido ? 'Recebimento concluído ✓' : 'Recebimento concluído';
+    btn.disabled = !!concluido;
+    btn.setAttribute('aria-label', concluido ? 'Recebimento já concluído' : 'Registrar recebimento como concluído');
 }
 
 function animarConclusaoTerceiros(prefixo) {
@@ -2574,10 +2576,13 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         showMessage((resp && resp.erro) || 'Erro ao atualizar status.', 'error');
         return;
     }
-    showMessage('Status atualizado.', 'success');
+    var concluiuRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
+    if (!concluiuRecebimento) {
+        showMessage('Status atualizado.', 'success');
+    }
     await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
     await refreshTerceirosViews();
-    if (campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim') {
+    if (concluiuRecebimento) {
         animarConclusaoTerceiros(getTerceirosPrefixo());
         abrirModalRecebimentoConcluidoTerceiros();
     }
