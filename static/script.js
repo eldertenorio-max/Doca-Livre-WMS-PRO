@@ -845,7 +845,12 @@ async function loadTerceirosDocumentos() {
         const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencia-recebimento');
         if (!rows.length) {
             tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
-            resetTerceirosDetalhe();
+            var hidLista = document.getElementById('ter-rec-documento-id');
+            var temNotaAbertaNaTela = (_terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '')
+                || (hidLista && String(hidLista.value || '').trim() !== '');
+            if (!temNotaAbertaNaTela) {
+                resetTerceirosDetalhe();
+            }
             return;
         }
         tbody.innerHTML = rows.map(function(row) {
@@ -1381,7 +1386,7 @@ function animarConclusaoTerceiros(prefixo) {
 }
 
 if (typeof window._terceirosBipagemPending !== 'object') {
-    window._terceirosBipagemPending = { adds: {}, addTimers: {}, removes: {}, removeTimers: {}, DEBOUNCE_MS: 700 };
+    window._terceirosBipagemPending = { adds: {}, addTimers: {}, removes: {}, removeTimers: {}, DEBOUNCE_MS: 400 };
 }
 
 function _limparPendenciasBipagemTerceiros() {
@@ -1397,6 +1402,118 @@ function _limparPendenciasBipagemTerceiros() {
     p.addTimers = {};
     p.removes = {};
     p.removeTimers = {};
+}
+
+/** ID do documento na tela (memória + campo oculto). Sincroniza _terceirosDocAtual.id quando veio só do hidden. */
+function _terceirosDocumentoIdAtualParaApi() {
+    var raw = _terceirosDocAtual.id;
+    var n = raw != null && raw !== '' ? Number(raw) : NaN;
+    if (Number.isFinite(n) && n > 0) return n;
+    var hid = document.getElementById('ter-rec-documento-id');
+    if (hid && String(hid.value || '').trim() !== '') {
+        var p = parseInt(String(hid.value).trim(), 10);
+        if (Number.isFinite(p) && p > 0) {
+            _terceirosDocAtual.id = p;
+            return p;
+        }
+    }
+    return null;
+}
+
+/** Envia todas as bipagens/desbipagens em fila (debounce) para o servidor — evita perda ao trocar de NF. */
+async function _flushTerceirosPendingDocumento(documentoId) {
+    documentoId = Number(documentoId);
+    if (!Number.isFinite(documentoId) || documentoId <= 0) return;
+    var p = window._terceirosBipagemPending;
+    if (!p) return;
+    Object.keys(p.addTimers || {}).forEach(function(k) {
+        clearTimeout(p.addTimers[k]);
+    });
+    Object.keys(p.removeTimers || {}).forEach(function(k) {
+        clearTimeout(p.removeTimers[k]);
+    });
+    p.addTimers = {};
+    p.removeTimers = {};
+    var adds = p.adds;
+    var removes = p.removes;
+    p.adds = {};
+    p.removes = {};
+    var tasks = [];
+    Object.keys(adds).forEach(function(itemKey) {
+        var entry = adds[itemKey];
+        if (!entry || !entry.qtd || entry.qtd <= 0) return;
+        var itemId = parseInt(itemKey, 10);
+        if (!itemId) return;
+        tasks.push(fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/bipar', {
+            method: 'POST',
+            body: JSON.stringify({ item_id: itemId, codigo_ean: (entry.codigo_ean || '').trim(), quantidade: entry.qtd })
+        }));
+    });
+    Object.keys(removes).forEach(function(itemKey) {
+        var n = removes[itemKey];
+        if (n == null || n <= 0) return;
+        var itemId = parseInt(itemKey, 10);
+        if (!itemId) return;
+        tasks.push(fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/desbipar', {
+            method: 'POST',
+            body: JSON.stringify({ item_id: itemId, quantidade: n })
+        }));
+    });
+    if (!tasks.length) return;
+    var results = await Promise.all(tasks);
+    var algumErro = results.some(function(r) { return !r || !r.ok; });
+    if (algumErro) {
+        showMessage('Parte da bipagem não foi salva. Confira as quantidades e bipe de novo se faltar.', 'warning');
+    }
+}
+
+/** Melhor esforço ao fechar aba/navegar: envia fila com keepalive (não bloqueia o unload). */
+function _enviarPendenciasTerceirosKeepalive(documentoId) {
+    documentoId = Number(documentoId);
+    if (!Number.isFinite(documentoId) || documentoId <= 0) return;
+    var p = window._terceirosBipagemPending;
+    if (!p) return;
+    Object.keys(p.addTimers || {}).forEach(function(k) { clearTimeout(p.addTimers[k]); });
+    Object.keys(p.removeTimers || {}).forEach(function(k) { clearTimeout(p.removeTimers[k]); });
+    p.addTimers = {};
+    p.removeTimers = {};
+    var adds = Object.assign({}, p.adds);
+    var removes = Object.assign({}, p.removes);
+    p.adds = {};
+    p.removes = {};
+    var base = typeof API_BASE !== 'undefined' ? API_BASE : '/api';
+    function post(url, body) {
+        try {
+            fetch(base + url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                credentials: 'same-origin',
+                keepalive: true
+            });
+        } catch (e) { /* ignore */ }
+    }
+    Object.keys(adds).forEach(function(itemKey) {
+        var entry = adds[itemKey];
+        if (!entry || !entry.qtd || entry.qtd <= 0) return;
+        var itemId = parseInt(itemKey, 10);
+        if (!itemId) return;
+        post('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/bipar', {
+            item_id: itemId,
+            codigo_ean: (entry.codigo_ean || '').trim(),
+            quantidade: entry.qtd
+        });
+    });
+    Object.keys(removes).forEach(function(itemKey) {
+        var n = removes[itemKey];
+        if (n == null || n <= 0) return;
+        var itemId = parseInt(itemKey, 10);
+        if (!itemId) return;
+        post('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/desbipar', {
+            item_id: itemId,
+            quantidade: n
+        });
+    });
 }
 
 /** Alinhado a app._status_bipagem_terceiros: excedente antes de completo. */
@@ -1539,7 +1656,7 @@ function _terTextoEl(id) {
 
 /** Imprime comprovante da descarga (NF terceiros). divergente: inclui aviso no topo. */
 window.imprimirComprovanteDescargaTerceiros = function(divergente) {
-    if (!_terceirosDocAtual.id) {
+    if (_terceirosDocumentoIdAtualParaApi() == null) {
         showMessage('Selecione uma nota.', 'warning');
         return;
     }
@@ -1623,7 +1740,7 @@ window.confirmarImprimirComprovanteTerceirosDivergente = function() {
 };
 
 function _flushTerceirosAdd(itemId) {
-    var documentoId = _terceirosDocAtual.id;
+    var documentoId = _terceirosDocumentoIdAtualParaApi();
     var key = String(itemId);
     if (!documentoId || !itemId) return;
     var entry = window._terceirosBipagemPending.adds[key];
@@ -1658,7 +1775,7 @@ function _flushTerceirosAdd(itemId) {
 }
 
 function _flushTerceirosRemove(itemId) {
-    var documentoId = _terceirosDocAtual.id;
+    var documentoId = _terceirosDocumentoIdAtualParaApi();
     var key = String(itemId);
     if (!documentoId || !itemId) return;
     var n = window._terceirosBipagemPending.removes[key];
@@ -1687,7 +1804,7 @@ function _flushTerceirosRemove(itemId) {
 }
 
 window.biparItemTerceirosConferencia = function(btn, itemId, codigoEan, descricaoXml, qtdFaltaMax) {
-    if (!_terceirosDocAtual.id || _terceirosDocAtual.recebimento_concluido) return;
+    if (_terceirosDocumentoIdAtualParaApi() == null || _terceirosDocAtual.recebimento_concluido) return;
     var idNum = parseInt(itemId, 10);
     if (!idNum) return;
     var cb = document.getElementById('ter-codigo-barras-bipagem');
@@ -1717,7 +1834,8 @@ window.biparItemTerceirosConferencia = function(btn, itemId, codigoEan, descrica
     }
     if (!eanEnvio) {
         showMessage('Item sem EAN no XML.', 'warning');
-        loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, _terceirosDocAtual.id);
+        var docIdEan = _terceirosDocumentoIdAtualParaApi();
+        if (docIdEan) loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, docIdEan);
         return;
     }
     var key = String(idNum);
@@ -1735,7 +1853,8 @@ window.biparItemTerceirosConferencia = function(btn, itemId, codigoEan, descrica
 };
 
 window.tirarBipadoTerceiros = async function(btn, itemId, quantidade) {
-    if (!_terceirosDocAtual.id || _terceirosDocAtual.recebimento_concluido) return;
+    var docIdApi = _terceirosDocumentoIdAtualParaApi();
+    if (docIdApi == null || _terceirosDocAtual.recebimento_concluido) return;
     var idNum = parseInt(itemId, 10);
     if (!idNum) return;
     var cb = document.getElementById('ter-codigo-barras-bipagem');
@@ -1756,7 +1875,7 @@ window.tirarBipadoTerceiros = async function(btn, itemId, quantidade) {
         if (snap) snap.quantidade_bipada = 0;
         atualizarResumoTotaisBipagemTerceiros();
         try {
-            var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(_terceirosDocAtual.id) + '/desbipar', {
+            var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(docIdApi) + '/desbipar', {
                 method: 'POST',
                 body: JSON.stringify({ item_id: idNum, quantidade: 'tudo' })
             });
@@ -1768,7 +1887,7 @@ window.tirarBipadoTerceiros = async function(btn, itemId, quantidade) {
         } catch (e) {
             showMessage('Erro ao remover.', 'error');
         }
-        await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, _terceirosDocAtual.id);
+        await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, docIdApi);
         await refreshTerceirosViews();
         return;
     }
@@ -1794,17 +1913,18 @@ window.tirarBipadoTerceiros = async function(btn, itemId, quantidade) {
 };
 
 window.zerarBipagemTerceirosDocumento = async function() {
-    if (!_terceirosDocAtual.id || _terceirosDocAtual.recebimento_concluido) return;
+    var docIdZ = _terceirosDocumentoIdAtualParaApi();
+    if (docIdZ == null || _terceirosDocAtual.recebimento_concluido) return;
     if (!confirm('Zerar todos os itens bipados desta nota?')) return;
     _limparPendenciasBipagemTerceiros();
     try {
-        var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(_terceirosDocAtual.id) + '/zerar-bipagem', {
+        var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(docIdZ) + '/zerar-bipagem', {
             method: 'POST',
             body: JSON.stringify({})
         });
         if (resp && resp.ok) {
             showMessage('Bipagem zerada.', 'success');
-            await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, _terceirosDocAtual.id);
+            await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, docIdZ);
             await refreshTerceirosViews();
         } else {
             showMessage((resp && resp.erro) || 'Erro ao zerar.', 'error');
@@ -1824,6 +1944,14 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     var mudouDocumento = docAnterior == null || Number(docAnterior) !== idAlvo;
 
     if (mudouDocumento) {
+        var idAntNum = docAnterior != null && docAnterior !== '' ? Number(docAnterior) : NaN;
+        if (Number.isFinite(idAntNum) && idAntNum > 0) {
+            try {
+                await _flushTerceirosPendingDocumento(idAntNum);
+            } catch (e) {
+                console.error(e);
+            }
+        }
         _limparPendenciasBipagemTerceiros();
     }
 
@@ -2065,7 +2193,7 @@ function _terAtualizarLinhaBipagemOtimista(itemId, deltaBip) {
 }
 
 async function executarBipagemTerceirosCentral() {
-    if (!_terceirosDocAtual.id) {
+    if (_terceirosDocumentoIdAtualParaApi() == null) {
         showMessage('Selecione uma nota.', 'warning');
         return;
     }
@@ -2122,7 +2250,7 @@ async function executarBipagemTerceirosCentral() {
 }
 
 async function finalizarDescargaTerceiros() {
-    if (!_terceirosDocAtual.id) {
+    if (_terceirosDocumentoIdAtualParaApi() == null) {
         showMessage('Selecione uma nota.', 'warning');
         return;
     }
@@ -2181,18 +2309,7 @@ function initTerceirosBipagemForm() {
 }
 
 function _resolverIdDocumentoTerceirosParaStatus() {
-    var raw = _terceirosDocAtual.id;
-    var n = raw != null && raw !== '' ? Number(raw) : NaN;
-    if (Number.isFinite(n) && n > 0) return n;
-    var hid = document.getElementById('ter-rec-documento-id');
-    if (hid && String(hid.value || '').trim() !== '') {
-        var p = parseInt(String(hid.value).trim(), 10);
-        if (Number.isFinite(p) && p > 0) {
-            _terceirosDocAtual.id = p;
-            return p;
-        }
-    }
-    return null;
+    return _terceirosDocumentoIdAtualParaApi();
 }
 
 async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
@@ -2200,6 +2317,11 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
     if (documentoId == null) {
         showMessage('Selecione uma nota (Ver detalhe ou Começar descarga) antes de marcar o recebimento como concluído.', 'warning');
         return;
+    }
+    try {
+        await _flushTerceirosPendingDocumento(documentoId);
+    } catch (e) {
+        console.error(e);
     }
     opcoes = opcoes || {};
     var payload = {
@@ -2253,8 +2375,8 @@ window.marcarRecebimentoConcluidoTerceiros = function() {
 };
 
 async function salvarMotoristaTerceiros(area) {
-    var documentoId = _terceirosDocAtual.id;
-    if (!documentoId) return;
+    var documentoId = _terceirosDocumentoIdAtualParaApi();
+    if (documentoId == null) return;
     var prefixo = getTerceirosPrefixo();
     var input = document.getElementById(prefixo + '-motorista');
     var motorista = input ? input.value.trim() : '';
@@ -2900,6 +3022,25 @@ function initForms() {
 
     const btnTerRecMotorista = document.getElementById('btn-ter-rec-motorista');
     if (btnTerRecMotorista) btnTerRecMotorista.addEventListener('click', function() { salvarMotoristaTerceiros('recebimento'); });
+
+    if (!window._terceirosPagehideRegistrado) {
+        window._terceirosPagehideRegistrado = true;
+        window.addEventListener('pagehide', function() {
+            var idPh = _terceirosDocumentoIdAtualParaApi();
+            if (!idPh || !window._terceirosBipagemPending) return;
+            var pend = window._terceirosBipagemPending;
+            var has = Object.keys(pend.adds || {}).length > 0 || Object.keys(pend.removes || {}).length > 0;
+            if (has) _enviarPendenciasTerceirosKeepalive(idPh);
+        });
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState !== 'hidden') return;
+            var idV = _terceirosDocumentoIdAtualParaApi();
+            if (!idV || !window._terceirosBipagemPending) return;
+            var pend2 = window._terceirosBipagemPending;
+            var has2 = Object.keys(pend2.adds || {}).length > 0 || Object.keys(pend2.removes || {}).length > 0;
+            if (has2) _enviarPendenciasTerceirosKeepalive(idV);
+        });
+    }
 }
 
 // Verifica se o produto está na relação de itens da viagem
