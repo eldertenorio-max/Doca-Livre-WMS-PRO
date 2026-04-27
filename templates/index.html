@@ -1621,7 +1621,7 @@
                                     <div class="form-row">
                                         <div class="form-group">
                                             <label for="btn-ter-rec-concluir">Fim do recebimento</label>
-                                            <button type="button" class="btn btn-primary" id="btn-ter-rec-concluir" onclick="marcarRecebimentoConcluidoTerceiros(); return false;">Recebimento concluído</button>
+                                            <button type="button" class="btn btn-primary" id="btn-ter-rec-concluir">Recebimento concluído</button>
                                             <small id="ter-rec-concluido-meta" class="info-text"></small>
                                         </div>
                                         <div class="form-group">
@@ -2052,13 +2052,13 @@
         </div>
     </div>
 
-    <div id="modal-terceiros-recebimento-concluido" class="modal" style="display: none;">
-        <div class="modal-content" style="max-width: 460px; border-top: 4px solid #2e7d32;">
-            <span class="close" id="modal-terceiros-recebimento-concluido-close">&times;</span>
-            <h3 style="margin-top: 0; color: #2e7d32;">Recebimento concluído</h3>
-            <p style="margin: 12px 0 8px 0; color: #2e7d32; font-weight: 600; font-size: 1.05rem;">Recebimento concluído com sucesso.</p>
-            <p style="margin: 0 0 24px 0; color: #455a64; font-size: 14px;">
-                Ao fechar, você será levado à aba <strong>Fornecedores Recebidos</strong>.
+    <div id="modal-terceiros-recebimento-concluido" class="modal modal-terceiros-recebimento-concluido" style="display: none;" role="alertdialog" aria-modal="true" aria-labelledby="ter-rec-concluido-aviso-titulo" aria-describedby="ter-rec-concluido-aviso-texto">
+        <div class="modal-content modal-terceiros-recebimento-concluido-box" style="max-width: 420px; border-top: 4px solid #366092;">
+            <span class="close" id="modal-terceiros-recebimento-concluido-close" title="Fechar">&times;</span>
+            <h3 id="ter-rec-concluido-aviso-titulo" style="margin-top: 0; color: #1a237e;">Aviso</h3>
+            <p id="ter-rec-concluido-aviso-texto" class="ter-rec-concluido-aviso-principal">Recebimento concluído.</p>
+            <p style="margin: 0 0 20px 0; color: #455a64; font-size: 14px; line-height: 1.45;">
+                A descarga desta nota foi finalizada. Ao fechar, você será levado à aba <strong>Fornecedores Recebidos</strong>.
             </p>
             <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
                 <button type="button" class="btn btn-primary" id="btn-ter-fechar-recebimento-concluido">Fechar</button>

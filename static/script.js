@@ -493,12 +493,24 @@ function getTerceirosAreaApi(area) {
 
 function abrirModalRecebimentoConcluidoTerceiros() {
     var modal = document.getElementById('modal-terceiros-recebimento-concluido');
-    if (modal) modal.style.display = 'block';
+    if (!modal) return;
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.zIndex = '10050';
+    var btnFechar = document.getElementById('btn-ter-fechar-recebimento-concluido');
+    window.setTimeout(function() {
+        if (btnFechar) btnFechar.focus();
+    }, 50);
 }
 
 function fecharModalRecebimentoConcluidoTerceiros() {
     var modal = document.getElementById('modal-terceiros-recebimento-concluido');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+        modal.style.display = 'none';
+        modal.style.alignItems = '';
+        modal.style.justifyContent = '';
+    }
     var tab = document.querySelector('.terceiros-subtab[data-ter-tab="fornecedores-recebidos"]');
     if (tab) tab.click();
 }
@@ -2623,7 +2635,9 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
     await refreshTerceirosViews();
     if (concluiuRecebimento) {
         animarConclusaoTerceiros(getTerceirosPrefixo());
-        abrirModalRecebimentoConcluidoTerceiros();
+        window.setTimeout(function() {
+            abrirModalRecebimentoConcluidoTerceiros();
+        }, 0);
     }
 }
 
