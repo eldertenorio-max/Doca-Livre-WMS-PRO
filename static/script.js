@@ -2668,19 +2668,20 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         return;
     }
     var concluiuRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
-    if (!concluiuRecebimento) {
-        showMessage('Status atualizado.', 'success');
-    }
-    await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
-    await refreshTerceirosViews();
     if (concluiuRecebimento) {
+        await refreshTerceirosViews();
         animarConclusaoTerceiros(getTerceirosPrefixo());
         definirDestaqueLinhaFornecedoresRecebidos(documentoId);
         abrirAbaTerceirosSeDiferente('fornecedores-recebidos');
+        resetTerceirosDetalhe();
         window.setTimeout(function() {
             abrirModalRecebimentoConcluidoTerceiros();
         }, 0);
+        return;
     }
+    showMessage('Status atualizado.', 'success');
+    await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+    await refreshTerceirosViews();
 }
 
 /** Fallback direto no HTML: funciona mesmo se initForms não registrou o listener. */
