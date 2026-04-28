@@ -84,6 +84,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initTabs();
     initDevolucoesTabs();
     initTerceirosTabs();
+    initTerceirosPendenciaRecebimentoDelegacao();
     initForms();
     initFiltrosBase();
     initBaseItemModal();
@@ -912,8 +913,6 @@ function reaplicarFiltroPrevisaoPendenciaRecebimento() {
         return;
     }
     tbody.innerHTML = renderTerceirosPendenciaDocumentosTbodyHtml(filtradas);
-    bindTerceirosPendenciaRecebimentoAcoes();
-    bindTerceirosExcluirButtons('[data-ter-excluir-doc]');
 }
 
 function initTerceirosFiltroPrevisaoPendencia() {
@@ -1002,28 +1001,73 @@ async function abrirPendenciaTerceirosComScroll(area, documentoId, secao) {
     scrollTerceirosRecebimentoDetalheSecao(secao);
 }
 
-function bindTerceirosPendenciaRecebimentoAcoes() {
-    document.querySelectorAll('[data-ter-descarregar-pend]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var id = parseInt(btn.getAttribute('data-ter-descarregar-pend') || '0', 10);
-            var area = btn.getAttribute('data-ter-area') || 'recebimento';
-            if (!id) return;
-            void abrirPendenciaTerceirosComScroll(area, id, 'bipagem').catch(function(err) {
+/** ID numérico de documento a partir do atributo data (evita clique sem efeito quando o id não é válido). */
+function terceirosIdDocumentoDeAtributo(raw) {
+    if (raw == null) return NaN;
+    var s = String(raw).trim();
+    if (!s) return NaN;
+    var n = parseInt(s, 10);
+    return Number.isFinite(n) && n > 0 ? n : NaN;
+}
+
+/**
+ * Um único listener no tbody da pendência: a lista é recriada via innerHTML e bindings por botão
+ * podiam não aplicar ou competir com outros nós; delegação mantém Começar descarga / Ver detalhe / Excluir estáveis.
+ */
+function initTerceirosPendenciaRecebimentoDelegacao() {
+    if (window._terceirosPendenciaRecebimentoDelegacaoOk) return;
+    var tbody = document.getElementById('ter-tbody-recebimento-documentos');
+    if (!tbody) return;
+    window._terceirosPendenciaRecebimentoDelegacaoOk = true;
+    tbody.addEventListener('click', function(ev) {
+        var el = ev.target;
+        if (!el || typeof el.closest !== 'function') return;
+        var excluir = el.closest('[data-ter-excluir-doc]');
+        if (excluir && tbody.contains(excluir)) {
+            ev.preventDefault();
+            void (async function() {
+                var id = terceirosIdDocumentoDeAtributo(excluir.getAttribute('data-ter-excluir-doc'));
+                var nf = excluir.getAttribute('data-ter-excluir-nf') || 'NF não identificada';
+                if (!Number.isFinite(id)) {
+                    showMessage('Não foi possível identificar a nota. Recarregue a lista.', 'warning');
+                    return;
+                }
+                var confirmou = await abrirModalExcluirDocumento({ id: id, nf: nf });
+                if (!confirmou) {
+                    showMessage('Exclusão cancelada.', 'warning');
+                    return;
+                }
+                await excluirDocumentoTerceiros(id);
+            })();
+            return;
+        }
+        var desc = el.closest('[data-ter-descarregar-pend]');
+        if (desc && tbody.contains(desc)) {
+            var idD = terceirosIdDocumentoDeAtributo(desc.getAttribute('data-ter-descarregar-pend'));
+            var areaD = desc.getAttribute('data-ter-area') || 'recebimento';
+            if (!Number.isFinite(idD)) {
+                showMessage('Não foi possível identificar a nota. Recarregue a lista.', 'warning');
+                return;
+            }
+            void abrirPendenciaTerceirosComScroll(areaD, idD, 'bipagem').catch(function(err) {
                 console.error(err);
                 showMessage('Erro ao abrir a nota.', 'error');
             });
-        });
-    });
-    document.querySelectorAll('[data-ter-ver-detalhe-pend]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var id = parseInt(btn.getAttribute('data-ter-ver-detalhe-pend') || '0', 10);
-            var area = btn.getAttribute('data-ter-area') || 'recebimento';
-            if (!id) return;
-            void abrirPendenciaTerceirosComScroll(area, id, 'resumo').catch(function(err) {
+            return;
+        }
+        var det = el.closest('[data-ter-ver-detalhe-pend]');
+        if (det && tbody.contains(det)) {
+            var idV = terceirosIdDocumentoDeAtributo(det.getAttribute('data-ter-ver-detalhe-pend'));
+            var areaV = det.getAttribute('data-ter-area') || 'recebimento';
+            if (!Number.isFinite(idV)) {
+                showMessage('Não foi possível identificar a nota. Recarregue a lista.', 'warning');
+                return;
+            }
+            void abrirPendenciaTerceirosComScroll(areaV, idV, 'resumo').catch(function(err) {
                 console.error(err);
                 showMessage('Erro ao abrir a nota.', 'error');
             });
-        });
+        }
     });
 }
 
@@ -1108,8 +1152,6 @@ async function loadTerceirosDocumentos() {
             return;
         }
         tbody.innerHTML = renderTerceirosPendenciaDocumentosTbodyHtml(filtradas);
-        bindTerceirosPendenciaRecebimentoAcoes();
-        bindTerceirosExcluirButtons('[data-ter-excluir-doc]');
     } catch (e) {
         console.error('loadTerceirosDocumentos:', e);
         tbody.innerHTML = '<tr><td colspan="9" class="loading" style="color:#c62828;">Erro ao carregar a lista. Atualize a página ou tente novamente.</td></tr>';
