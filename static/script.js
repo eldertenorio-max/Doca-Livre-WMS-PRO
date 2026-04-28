@@ -997,6 +997,8 @@ function abrirAbaTerceirosSeDiferente(tab) {
 
 async function abrirPendenciaTerceirosComScroll(area, documentoId, secao) {
     abrirAbaTerceirosSeDiferente('pendencia-recebimento');
+    // Rolagem já no clique: o carregamento pode esperar flush + API; sem isso parece “travado”.
+    scrollTerceirosRecebimentoDetalheSecao(secao);
     await loadTerceirosDocumentoDetalhe(area, documentoId);
     scrollTerceirosRecebimentoDetalheSecao(secao);
 }
@@ -2266,24 +2268,33 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     var docAnterior = _terceirosDocAtual.id;
     var mudouDocumento = docAnterior == null || Number(docAnterior) !== idAlvo;
 
+    const prefixo = getTerceirosPrefixo();
+    const vazio = document.getElementById('ter-recebimento-detalhe-vazio');
+    const detalhe = document.getElementById('ter-recebimento-detalhe');
+    const tbody = document.getElementById('ter-tbody-recebimento-itens');
+
     if (mudouDocumento) {
+        // Painel visível + loading antes do flush (muitas chamadas à API) para o clique não parecer morto.
+        if (vazio) vazio.style.display = 'none';
+        if (detalhe) detalhe.style.display = 'block';
         var idAntNum = docAnterior != null && docAnterior !== '' ? Number(docAnterior) : NaN;
-        if (Number.isFinite(idAntNum) && idAntNum > 0) {
+        var vaiFlush = Number.isFinite(idAntNum) && idAntNum > 0;
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="12" class="loading">' + (vaiFlush
+                ? 'Salvando bipagens pendentes…'
+                : 'Carregando detalhe…') + '</td></tr>';
+        }
+        if (vaiFlush) {
             try {
                 await _flushTerceirosPendingDocumento(idAntNum);
             } catch (e) {
                 console.error(e);
             }
+            if (tbody && seq === window._terceirosDetalheCargaSeq) {
+                tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando detalhe…</td></tr>';
+            }
         }
         _limparPendenciasBipagemTerceiros();
-    }
-
-    const prefixo = getTerceirosPrefixo();
-    const vazio = document.getElementById('ter-recebimento-detalhe-vazio');
-    const detalhe = document.getElementById('ter-recebimento-detalhe');
-    const tbody = document.getElementById('ter-tbody-recebimento-itens');
-    if (tbody && mudouDocumento) {
-        tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando detalhe...</td></tr>';
     }
 
     var doc;
