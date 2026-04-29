@@ -85,6 +85,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initDevolucoesTabs();
     initTerceirosTabs();
     initTerceirosPendenciaRecebimentoDelegacao();
+    initTerceirosConferenciaAcoesDelegacao();
     initForms();
     initFiltrosBase();
     initBaseItemModal();
@@ -1051,9 +1052,15 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
                 showMessage('Não foi possível identificar a nota. Recarregue a lista.', 'warning');
                 return;
             }
+            var btnDesc = desc;
+            var labelAnterior = btnDesc.textContent;
+            btnDesc.disabled = true;
+            btnDesc.textContent = 'Carregando...';
             void abrirPendenciaTerceirosComScroll(areaD, idD, 'bipagem').catch(function(err) {
                 console.error(err);
                 showMessage('Erro ao abrir a nota.', 'error');
+                btnDesc.disabled = false;
+                btnDesc.textContent = labelAnterior || 'Começar descarga';
             });
             return;
         }
@@ -1069,6 +1076,39 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
                 console.error(err);
                 showMessage('Erro ao abrir a nota.', 'error');
             });
+        }
+    });
+}
+
+/** Ações da tabela da NF por delegação (mais confiável após re-render). */
+function initTerceirosConferenciaAcoesDelegacao() {
+    if (window._terceirosConferenciaAcoesDelegacaoOk) return;
+    var tbody = document.getElementById('ter-tbody-recebimento-itens');
+    if (!tbody) return;
+    window._terceirosConferenciaAcoesDelegacaoOk = true;
+    tbody.addEventListener('click', function(ev) {
+        var el = ev.target;
+        if (!el || typeof el.closest !== 'function') return;
+        var btnTirar1 = el.closest('[data-ter-acao="tirar-1"]');
+        if (btnTirar1 && tbody.contains(btnTirar1) && !btnTirar1.disabled) {
+            ev.preventDefault();
+            var id1 = parseInt(btnTirar1.getAttribute('data-ter-item-id') || '0', 10);
+            if (!id1) {
+                showMessage('Não foi possível identificar o item para remover.', 'warning');
+                return;
+            }
+            void tirarBipadoTerceiros(btnTirar1, id1, 1);
+            return;
+        }
+        var btnTirarTudo = el.closest('[data-ter-acao="tirar-tudo"]');
+        if (btnTirarTudo && tbody.contains(btnTirarTudo) && !btnTirarTudo.disabled) {
+            ev.preventDefault();
+            var idT = parseInt(btnTirarTudo.getAttribute('data-ter-item-id') || '0', 10);
+            if (!idT) {
+                showMessage('Não foi possível identificar o item para remover.', 'warning');
+                return;
+            }
+            void tirarBipadoTerceiros(btnTirarTudo, idT, 'tudo');
         }
     });
 }
@@ -2406,8 +2446,8 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
         var podeAcoes = !bloqueado && codigoBarras !== '-';
         var semBip = qBip <= 1e-9;
         var botoesTirar = podeAcoes
-            ? ('<button type="button" class="btn btn-secondary" ' + (semBip ? 'disabled ' : '') + 'onclick="tirarBipadoTerceiros(this, ' + item.id + ', 1)" style="padding: 4px 8px; font-size: 11px;" title="Remover 1 unidade bipada">➖ Tirar 1</button>'
-                + '<button type="button" class="btn btn-secondary" ' + (semBip ? 'disabled ' : '') + 'onclick="tirarBipadoTerceiros(this, ' + item.id + ', \'tudo\')" style="padding: 4px 8px; font-size: 11px;" title="Remover todas as unidades bipadas deste item">🗑️ Tirar tudo</button>')
+            ? ('<button type="button" class="btn btn-secondary" ' + (semBip ? 'disabled ' : '') + 'data-ter-acao="tirar-1" data-ter-item-id="' + item.id + '" style="padding: 4px 8px; font-size: 11px;" title="Remover 1 unidade bipada">➖ Tirar 1</button>'
+                + '<button type="button" class="btn btn-secondary" ' + (semBip ? 'disabled ' : '') + 'data-ter-acao="tirar-tudo" data-ter-item-id="' + item.id + '" style="padding: 4px 8px; font-size: 11px;" title="Remover todas as unidades bipadas deste item">🗑️ Tirar tudo</button>')
             : '';
         var btnBipar = (!bloqueado && codigoBarras !== '-')
             ? ('<button type="button" class="btn btn-primary" onclick="biparItemTerceirosConferencia(this, ' + item.id + ', \'' + codigoBarrasEscapado + '\', \'' + produtoEscapado + '\', ' + qtdFaltaParaBipar + ')" style="padding: 6px 12px; font-size: 12px;">📱 Bipar</button>')
