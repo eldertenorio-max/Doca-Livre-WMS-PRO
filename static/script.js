@@ -907,7 +907,9 @@ function reaplicarFiltroPrevisaoPendenciaRecebimento() {
         var hidLista = document.getElementById('ter-rec-documento-id');
         var temNotaAbertaNaTela = (_terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '')
             || (hidLista && String(hidLista.value || '').trim() !== '');
-        if (!temNotaAbertaNaTela) {
+        var detalhe = document.getElementById('ter-recebimento-detalhe');
+        var detalheVisivel = !!(detalhe && detalhe.style.display !== 'none');
+        if (!temNotaAbertaNaTela && !detalheVisivel) {
             resetTerceirosDetalhe();
         }
         return;
@@ -1190,7 +1192,9 @@ async function loadTerceirosDocumentos() {
             var hidLista = document.getElementById('ter-rec-documento-id');
             var temNotaAbertaNaTela = (_terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '')
                 || (hidLista && String(hidLista.value || '').trim() !== '');
-            if (!temNotaAbertaNaTela) {
+            var detalhe = document.getElementById('ter-recebimento-detalhe');
+            var detalheVisivel = !!(detalhe && detalhe.style.display !== 'none');
+            if (!temNotaAbertaNaTela && !detalheVisivel) {
                 resetTerceirosDetalhe();
             }
             return;

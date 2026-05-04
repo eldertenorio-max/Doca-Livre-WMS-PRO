@@ -1904,8 +1904,16 @@ h2 {
 .message {
     padding: 15px;
     border-radius: 5px;
-    margin-bottom: 20px;
+    margin: 0;
     display: none;
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 20000;
+    max-width: 520px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    word-break: break-word;
+    pointer-events: none;
 }
 
 .message.success {
