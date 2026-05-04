@@ -865,12 +865,15 @@ function renderTerceirosPendenciaDocumentosTbodyHtml(rows) {
     return rows.map(function(row) {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
         var badgeCarreta = (row.area === 'carreta') ? ' <span class="ter-origem-badge ter-origem-badge--carreta">Carreta</span>' : '';
+        var plc = ((row.placa_carreta || '').trim() || '—');
         return '<tr>'
             + '<td><strong>' + escapeHtml(nf) + '</strong>' + badgeCarreta + '</td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
             + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>'
+            + '<td><strong>' + escapeHtml(plc) + '</strong></td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
             + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
@@ -900,7 +903,7 @@ function reaplicarFiltroPrevisaoPendenciaRecebimento() {
     var filtradas = filtrarRowsPendenciaPorPrevisao(cache, tipo, dataLivre);
     atualizarUiBotoesFiltroPrevisaoPendencia();
     if (!cache.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
         var hidLista = document.getElementById('ter-rec-documento-id');
         var temNotaAbertaNaTela = (_terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '')
             || (hidLista && String(hidLista.value || '').trim() !== '');
@@ -910,7 +913,7 @@ function reaplicarFiltroPrevisaoPendenciaRecebimento() {
         return;
     }
     if (!filtradas.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com <strong>previsão</strong> neste filtro. Use <strong>Todos</strong> ou escolha outra data.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com <strong>previsão</strong> neste filtro. Use <strong>Todos</strong> ou escolha outra data.</td></tr>';
         return;
     }
     tbody.innerHTML = renderTerceirosPendenciaDocumentosTbodyHtml(filtradas);
@@ -1056,7 +1059,10 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
             var labelAnterior = btnDesc.textContent;
             btnDesc.disabled = true;
             btnDesc.textContent = 'Carregando...';
-            void abrirPendenciaTerceirosComScroll(areaD, idD, 'bipagem').catch(function(err) {
+            void abrirPendenciaTerceirosComScroll(areaD, idD, 'bipagem').then(function() {
+                btnDesc.disabled = false;
+                btnDesc.textContent = labelAnterior || 'Começar descarga';
+            }).catch(function(err) {
                 console.error(err);
                 showMessage('Erro ao abrir a nota.', 'error');
                 btnDesc.disabled = false;
@@ -1165,12 +1171,12 @@ function bindTerceirosExcluirButtons(seletor) {
 
 async function loadTerceirosDocumentos() {
     var tbody = document.getElementById('ter-tbody-recebimento-documentos');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando...</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando...</td></tr>';
     if (!tbody) return;
     try {
         const data = await fetchTerceirosDocumentosTodos();
         if (data.erro) {
-            tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
             return;
         }
         const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencia-recebimento');
@@ -1180,7 +1186,7 @@ async function loadTerceirosDocumentos() {
         const filtradas = filtrarRowsPendenciaPorPrevisao(rows, tipoFiltro, dataLivreFiltro);
         atualizarUiBotoesFiltroPrevisaoPendencia();
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
             var hidLista = document.getElementById('ter-rec-documento-id');
             var temNotaAbertaNaTela = (_terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '')
                 || (hidLista && String(hidLista.value || '').trim() !== '');
@@ -1190,13 +1196,13 @@ async function loadTerceirosDocumentos() {
             return;
         }
         if (!filtradas.length) {
-            tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com <strong>previsão</strong> neste filtro. Use <strong>Todos</strong> ou escolha outra data.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com <strong>previsão</strong> neste filtro. Use <strong>Todos</strong> ou escolha outra data.</td></tr>';
             return;
         }
         tbody.innerHTML = renderTerceirosPendenciaDocumentosTbodyHtml(filtradas);
     } catch (e) {
         console.error('loadTerceirosDocumentos:', e);
-        tbody.innerHTML = '<tr><td colspan="9" class="loading" style="color:#c62828;">Erro ao carregar a lista. Atualize a página ou tente novamente.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading" style="color:#c62828;">Erro ao carregar a lista. Atualize a página ou tente novamente.</td></tr>';
     }
 }
 
@@ -1563,7 +1569,7 @@ async function refreshTerceirosViews() {
         if (_terceirosTabAtual === 'pendencias-mg') tbodyAtivo = document.getElementById('ter-tbody-pendencias-mg');
         if (_terceirosTabAtual === 'historico') tbodyAtivo = document.getElementById('ter-tbody-historico');
         if (tbodyAtivo) {
-            var cols = tbodyAtivo.id === 'ter-tbody-notas-lancadas' ? 11 : tbodyAtivo.id === 'ter-tbody-pendencias-mg' || tbodyAtivo.id === 'ter-tbody-recebimentos-mg' ? 10 : tbodyAtivo.id === 'ter-tbody-historico' ? 12 : 9;
+            var cols = tbodyAtivo.id === 'ter-tbody-notas-lancadas' || tbodyAtivo.id === 'ter-tbody-recebimento-documentos' ? 11 : tbodyAtivo.id === 'ter-tbody-pendencias-mg' || tbodyAtivo.id === 'ter-tbody-recebimentos-mg' ? 10 : tbodyAtivo.id === 'ter-tbody-historico' ? 12 : 9;
             tbodyAtivo.innerHTML = '<tr><td colspan="' + cols + '" class="loading" style="color:#c62828;">Erro ao carregar os dados desta aba.</td></tr>';
         }
         showMessage('Erro ao carregar dados do módulo de terceiros.', 'error');
@@ -2762,7 +2768,8 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
     }
     var concluiuRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
     if (concluiuRecebimento) {
-        await refreshTerceirosViews();
+        _terceirosDocAtual.recebimento_concluido = true;
+        await loadTerceirosDocumentos();
         animarConclusaoTerceiros(getTerceirosPrefixo());
         definirDestaqueLinhaFornecedoresRecebidos(documentoId);
         abrirAbaTerceirosSeDiferente('fornecedores-recebidos');
