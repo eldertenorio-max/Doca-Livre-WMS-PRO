@@ -1708,12 +1708,13 @@ function preencherMetaTerceiros(prefixo, campoBase, valor, usuario, datahora) {
     el.textContent = partes.length ? partes.join(' ') : '-';
 }
 
-function atualizarBotaoConclusaoTerceiros(prefixo, concluido) {
+function atualizarBotaoConclusaoTerceiros(prefixo, concluidoRaw) {
     var btn = document.getElementById('btn-' + prefixo + '-concluir');
     if (!btn) return;
-    btn.classList.toggle('btn-ter-concluido', !!concluido);
+    var concluido = isTerceirosFlagSim(concluidoRaw);
+    btn.classList.toggle('btn-ter-concluido', concluido);
     btn.textContent = concluido ? 'Recebimento concluído ✓' : 'Recebimento concluído';
-    btn.disabled = !!concluido;
+    btn.disabled = concluido;
     btn.setAttribute('aria-label', concluido ? 'Recebimento já concluído' : 'Registrar recebimento como concluído');
 }
 
@@ -1808,6 +1809,27 @@ async function _flushTerceirosPendingDocumento(documentoId) {
     if (algumErro) {
         showMessage('Parte da bipagem não foi salva. Confira as quantidades e bipe de novo se faltar.', 'warning');
     }
+}
+
+/**
+ * Evita o fluxo de "Recebimento concluído" ficar bloqueado para sempre se /bipar ou /desbipar
+ * demorarem ou não responderem (Promise.all do flush).
+ */
+async function _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, tempoMs) {
+    tempoMs = tempoMs == null || tempoMs < 1000 ? 20000 : tempoMs;
+    var flushP = _flushTerceirosPendingDocumento(documentoId).then(function() { return 'flush'; });
+    var timeoutP = new Promise(function(resolve) {
+        window.setTimeout(function() { resolve('timeout'); }, tempoMs);
+    });
+    var primeiro = await Promise.race([flushP, timeoutP]);
+    if (primeiro === 'timeout') {
+        showMessage('A sincronização da bipagem está demorando; a conclusão seguirá. Se faltar quantidade, volte à nota e bipe de novo.', 'warning');
+    }
+}
+
+/** Resposta JSON de rotas que usam { ok: true/false } (evita depender só de coerção truthy). */
+function _terceirosRespostaApiOk(resp) {
+    return !!(resp && (resp.ok === true || resp.ok === 1 || isTerceirosFlagSim(resp.ok)));
 }
 
 /** Melhor esforço ao fechar aba/navegar: envia fila com keepalive (não bloqueia o unload). */
@@ -2366,7 +2388,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     }
     _terceirosDocAtual.id = doc.id;
     _terceirosDocAtual.area = doc.area || area;
-    _terceirosDocAtual.recebimento_concluido = !!doc.recebimento_concluido;
+    _terceirosDocAtual.recebimento_concluido = isTerceirosFlagSim(doc.recebimento_concluido);
     var hidId = document.getElementById('ter-rec-documento-id');
     if (hidId) hidId.value = doc.id != null ? String(doc.id) : '';
     if (vazio) vazio.style.display = 'none';
@@ -2402,7 +2424,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
         }
     }
     preencherMetaTerceiros(prefixo, 'concluido-meta', doc.recebimento_concluido ? 'Concluído' : '', doc.recebimento_concluido_por || '', doc.recebimento_concluido_em || '');
-    atualizarBotaoConclusaoTerceiros(prefixo, !!doc.recebimento_concluido);
+    atualizarBotaoConclusaoTerceiros(prefixo, doc.recebimento_concluido);
 
     if (!tbody) return;
     if (seq !== window._terceirosDetalheCargaSeq) return;
@@ -2723,65 +2745,89 @@ function _resolverIdDocumentoTerceirosParaStatus() {
 }
 
 async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
-    var documentoId = _resolverIdDocumentoTerceirosParaStatus();
-    if (documentoId == null) {
-        showMessage('Selecione uma nota (Ver detalhe ou Começar descarga) antes de marcar o recebimento como concluído.', 'warning');
-        return;
+    var prefixo = getTerceirosPrefixo();
+    var btnConcluir = document.getElementById('btn-' + prefixo + '-concluir');
+    var pedidoConclusaoRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
+    var restaurarBotaoConcluir = null;
+    if (pedidoConclusaoRecebimento && btnConcluir && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido)) {
+        var txtAntesConcluir = btnConcluir.textContent;
+        var disAntesConcluir = btnConcluir.disabled;
+        btnConcluir.disabled = true;
+        btnConcluir.textContent = 'A guardar…';
+        restaurarBotaoConcluir = function() {
+            btnConcluir.disabled = disAntesConcluir;
+            btnConcluir.textContent = txtAntesConcluir;
+        };
     }
     try {
-        await _flushTerceirosPendingDocumento(documentoId);
-    } catch (e) {
-        console.error(e);
-    }
-    opcoes = opcoes || {};
-    var payload = {
-        campo: campo,
-        valor: valor,
-        forcar_lancamento_sem_recebimento: !!opcoes.forcar_lancamento_sem_recebimento
-    };
-    if (campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !_terceirosDocAtual.recebimento_concluido && !payload.forcar_lancamento_sem_recebimento) {
-        var confirmouLocal = await abrirModalLancamentoSemRecebimento();
-        if (!confirmouLocal) {
-            showMessage('Lançamento cancelado. A nota segue sem recebimento confirmado.', 'warning');
-            await refreshTerceirosViews();
+        var documentoId = _resolverIdDocumentoTerceirosParaStatus();
+        if (documentoId == null) {
+            showMessage('Selecione uma nota (Ver detalhe ou Começar descarga) antes de marcar o recebimento como concluído.', 'warning');
             return;
         }
-        payload.forcar_lancamento_sem_recebimento = true;
-    }
-    var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
-        method: 'POST',
-        body: JSON.stringify(payload)
-    });
-    if (!resp || !resp.ok) {
-        if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !payload.forcar_lancamento_sem_recebimento) {
-            var confirmou = await abrirModalLancamentoSemRecebimento();
-            if (confirmou) {
-                await atualizarStatusTerceiros(area, campo, valor, { forcar_lancamento_sem_recebimento: true });
+        try {
+            await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 20000);
+        } catch (e) {
+            console.error(e);
+        }
+        opcoes = opcoes || {};
+        var payload = {
+            campo: campo,
+            valor: valor,
+            forcar_lancamento_sem_recebimento: !!opcoes.forcar_lancamento_sem_recebimento
+        };
+        if (campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido) && !payload.forcar_lancamento_sem_recebimento) {
+            var confirmouLocal = await abrirModalLancamentoSemRecebimento();
+            if (!confirmouLocal) {
+                showMessage('Lançamento cancelado. A nota segue sem recebimento confirmado.', 'warning');
+                await refreshTerceirosViews();
                 return;
             }
-            showMessage('Lançamento cancelado. A nota segue sem recebimento confirmado.', 'warning');
-            await refreshTerceirosViews();
+            payload.forcar_lancamento_sem_recebimento = true;
+        }
+        var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        if (!_terceirosRespostaApiOk(resp)) {
+            if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !payload.forcar_lancamento_sem_recebimento) {
+                var confirmou = await abrirModalLancamentoSemRecebimento();
+                if (confirmou) {
+                    await atualizarStatusTerceiros(area, campo, valor, { forcar_lancamento_sem_recebimento: true });
+                    return;
+                }
+                showMessage('Lançamento cancelado. A nota segue sem recebimento confirmado.', 'warning');
+                await refreshTerceirosViews();
+                return;
+            }
+            showMessage((resp && resp.erro) || 'Erro ao atualizar status.', 'error');
             return;
         }
-        showMessage((resp && resp.erro) || 'Erro ao atualizar status.', 'error');
-        return;
+        var concluiuRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
+        if (concluiuRecebimento) {
+            restaurarBotaoConcluir = null;
+            _terceirosDocAtual.recebimento_concluido = true;
+            try {
+                await loadTerceirosDocumentos();
+            } catch (e) {
+                console.error(e);
+                showMessage('Recebimento gravado, mas a lista de pendências não atualizou. Atualize a página ou reabra o módulo.', 'warning');
+            }
+            animarConclusaoTerceiros(getTerceirosPrefixo());
+            definirDestaqueLinhaFornecedoresRecebidos(documentoId);
+            abrirAbaTerceirosSeDiferente('fornecedores-recebidos');
+            resetTerceirosDetalhe();
+            window.setTimeout(function() {
+                abrirModalRecebimentoConcluidoTerceiros();
+            }, 0);
+            return;
+        }
+        showMessage('Status atualizado.', 'success');
+        await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+        await refreshTerceirosViews();
+    } finally {
+        if (restaurarBotaoConcluir) restaurarBotaoConcluir();
     }
-    var concluiuRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
-    if (concluiuRecebimento) {
-        _terceirosDocAtual.recebimento_concluido = true;
-        await loadTerceirosDocumentos();
-        animarConclusaoTerceiros(getTerceirosPrefixo());
-        definirDestaqueLinhaFornecedoresRecebidos(documentoId);
-        abrirAbaTerceirosSeDiferente('fornecedores-recebidos');
-        resetTerceirosDetalhe();
-        window.setTimeout(function() {
-            abrirModalRecebimentoConcluidoTerceiros();
-        }, 0);
-        return;
-    }
-    showMessage('Status atualizado.', 'success');
-    await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
-    await refreshTerceirosViews();
 }
 
 /** Fallback direto no HTML: funciona mesmo se initForms não registrou o listener. */
