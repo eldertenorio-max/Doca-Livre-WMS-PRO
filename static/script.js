@@ -2966,10 +2966,12 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         if (concluiuRecebimento) {
             restaurarBotaoConcluir = null;
             _terceirosDocAtual.recebimento_concluido = true;
-            void loadTerceirosDocumentos().catch(function(e) {
+            try {
+                await loadTerceirosDocumentos();
+            } catch (e) {
                 console.error(e);
-                showMessage('Recebimento gravado, mas a lista de pendências não atualizou. Use «Atualizar» na aba se precisar.', 'warning');
-            });
+                showMessage('Recebimento gravado, mas a lista de pendências não atualizou. Volte à 2ª aba ou atualize a página.', 'warning');
+            }
             animarConclusaoTerceiros(getTerceirosPrefixo());
             definirDestaqueLinhaFornecedoresRecebidos(documentoId);
             abrirAbaTerceirosSeDiferente('fornecedores-recebidos', true);
