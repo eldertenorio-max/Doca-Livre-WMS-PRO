@@ -867,7 +867,7 @@ async function uploadXmlTerceirosCarreta() {
 }
 
 async function fetchTerceirosDocumentosTodos() {
-    const resp = await fetchAPI('/terceiros/documentos?area=' + encodeURIComponent('todas'));
+    const resp = await fetchAPIComTimeout('/terceiros/documentos?area=' + encodeURIComponent('todas'), {}, 55000);
     if (!resp || resp.erro) {
         return { erro: (resp && resp.erro) || 'Erro ao carregar documentos.', rows: [] };
     }
@@ -2612,7 +2612,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
 
     var doc;
     try {
-        doc = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(idAlvo));
+        doc = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(idAlvo), {}, 55000);
     } catch (err) {
         console.error(err);
         doc = null;
@@ -3075,30 +3075,35 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             restaurarBotaoConcluir = null;
             _terceirosDocAtual.recebimento_concluido = true;
             var areaConcl = _terceirosDocAtual.area || 'recebimento';
+            var prefixoConcl = getTerceirosPrefixo();
             try {
-                await loadTerceirosDocumentos();
-            } catch (e) {
-                console.error(e);
-                showMessage('Recebimento gravado, mas a lista de pendências não atualizou. Volte à 2ª aba ou atualize a página.', 'warning');
+                try {
+                    await loadTerceirosDocumentos();
+                } catch (e) {
+                    console.error(e);
+                    showMessage('Recebimento gravado, mas a lista de pendências não atualizou. Volte à 2ª aba ou atualize a página.', 'warning');
+                }
+                terceirosReaplicarFiltroPrevisaoPendenciaSeAplicavel();
+                definirDestaqueLinhaTerceirosDoc(documentoId);
+                try {
+                    await loadTerceirosFornecedoresRecebidos();
+                } catch (e) {
+                    console.error(e);
+                }
+                try {
+                    await abrirAbaTerceirosSeDiferenteAsync('fornecedores-recebidos', false, true);
+                } catch (e) {
+                    console.error(e);
+                }
+                try {
+                    await loadTerceirosDocumentoDetalhe(areaConcl, documentoId);
+                } catch (e) {
+                    console.error(e);
+                }
+            } finally {
+                atualizarBotaoConclusaoTerceiros(prefixoConcl, true);
             }
-            terceirosReaplicarFiltroPrevisaoPendenciaSeAplicavel();
-            definirDestaqueLinhaTerceirosDoc(documentoId);
-            try {
-                await loadTerceirosFornecedoresRecebidos();
-            } catch (e) {
-                console.error(e);
-            }
-            try {
-                await abrirAbaTerceirosSeDiferenteAsync('fornecedores-recebidos', false, true);
-            } catch (e) {
-                console.error(e);
-            }
-            try {
-                await loadTerceirosDocumentoDetalhe(areaConcl, documentoId);
-            } catch (e) {
-                console.error(e);
-            }
-            animarConclusaoTerceiros(getTerceirosPrefixo());
+            animarConclusaoTerceiros(prefixoConcl);
             window.setTimeout(function() {
                 abrirModalRecebimentoConcluidoTerceiros();
             }, 0);
