@@ -91,7 +91,10 @@ document.addEventListener('DOMContentLoaded', function() {
     initBaseItemModal();
     initNavegacaoRapida();
     // Primeira carga após um tick para a tela pintar antes (resposta mais rápida percebida)
-    setTimeout(function() { loadAllData(); }, 0);
+    setTimeout(function() {
+        loadAllData();
+        restaurarTerceirosUltimaNotaSeSessao();
+    }, 0);
     initEventosStream();
     // Sair é um link direto (href="/login?sair=1") no HTML; não depende de JS
     var btnAtualizarAba = document.getElementById('btn-atualizar-aba');
@@ -124,6 +127,51 @@ let _terceirosExcluirDocumentoResolver = null;
 let _terceirosExcluirDocumentoAtual = null;
 /** Após concluir recebimento: destaca a linha desta NF na tabela de Fornecedores Recebidos. */
 let _terceirosDestacarDocIdAposCargaFornecedores = null;
+
+/** Reabre a última NF após F5 (evita “sumir” bipagem que já está no servidor). */
+var TERCEIROS_SESS_DOC_KEY = 'terceiros_doc_restaurar_v1';
+var TERCEIROS_SESS_MAX_MS = 12 * 60 * 60 * 1000;
+
+function _limparTerceirosDocumentoNaSessao() {
+    try {
+        sessionStorage.removeItem(TERCEIROS_SESS_DOC_KEY);
+    } catch (e) {}
+}
+
+function _lerTerceirosDocumentoNaSessao() {
+    try {
+        var raw = sessionStorage.getItem(TERCEIROS_SESS_DOC_KEY);
+        if (!raw) return null;
+        var o = JSON.parse(raw);
+        if (!o || !o.id) return null;
+        if (o.t && Date.now() - o.t > TERCEIROS_SESS_MAX_MS) {
+            _limparTerceirosDocumentoNaSessao();
+            return null;
+        }
+        return o;
+    } catch (e) {
+        return null;
+    }
+}
+
+function _persistirTerceirosDocumentoNaSessao(documentoId, area) {
+    try {
+        if (documentoId == null || documentoId === '') {
+            _limparTerceirosDocumentoNaSessao();
+            return;
+        }
+        var aid = Number(documentoId);
+        if (!Number.isFinite(aid) || aid <= 0) return;
+        var ar = (area === 'expedicao' || area === 'carreta') ? area : 'recebimento';
+        var payload = {
+            id: aid,
+            area: ar,
+            tab: typeof _terceirosTabAtual !== 'undefined' ? _terceirosTabAtual : 'pendencia-recebimento',
+            t: Date.now()
+        };
+        sessionStorage.setItem(TERCEIROS_SESS_DOC_KEY, JSON.stringify(payload));
+    } catch (e) {}
+}
 
 function definirDestaqueLinhaFornecedoresRecebidos(documentoId) {
     var n = parseInt(documentoId, 10);
@@ -214,6 +262,9 @@ function initModulos() {
         btn.addEventListener('click', function() {
             var mod = btn.getAttribute('data-modulo');
             if (!mod) return;
+            if (mod !== 'terceiros') {
+                _limparTerceirosDocumentoNaSessao();
+            }
             mostrarModulo(mod);
         });
     });
@@ -223,6 +274,8 @@ function initModulos() {
     if (modUrl && ['carregamento', 'devolucoes', 'terceiros'].indexOf(modUrl) !== -1) {
         mostrarModulo(modUrl);
     }
+
+    window.controleMostrarModulo = mostrarModulo;
 }
 
 function initDevolucoesTabs() {
@@ -301,6 +354,9 @@ function initTerceirosTabs() {
         if (aba === 'recebimentos-mg') loadTerceirosRecebimentosMg();
         if (aba === 'pendencias-mg') loadTerceirosPendenciasMg();
         if (aba === 'historico') loadTerceirosHistorico();
+        if (_terceirosDocAtual && _terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '') {
+            _persistirTerceirosDocumentoNaSessao(_terceirosDocAtual.id, _terceirosDocAtual.area);
+        }
     }
 
     botoes.forEach(function(btn) {
@@ -309,7 +365,27 @@ function initTerceirosTabs() {
         });
     });
 
-    mostrarTerTab('pendencia-recebimento');
+    window.terceirosMostrarAba = mostrarTerTab;
+    var tabInicial = 'pendencia-recebimento';
+    var sessTab = _lerTerceirosDocumentoNaSessao();
+    if (sessTab && sessTab.tab) tabInicial = sessTab.tab;
+    mostrarTerTab(tabInicial);
+}
+
+/** Após init: reabre módulo + NF se havia sessão (F5). */
+function restaurarTerceirosUltimaNotaSeSessao() {
+    var o = _lerTerceirosDocumentoNaSessao();
+    if (!o || !o.id) return;
+    if (window.controleMostrarModulo) window.controleMostrarModulo('terceiros');
+    var aba = o.tab || 'pendencia-recebimento';
+    if (window.terceirosMostrarAba) window.terceirosMostrarAba(aba);
+    try {
+        var u = new URL(window.location.href);
+        u.searchParams.set('modulo', 'terceiros');
+        history.replaceState({}, '', u.toString());
+    } catch (e2) {}
+    var area = (o.area === 'expedicao' || o.area === 'carreta') ? o.area : 'recebimento';
+    void loadTerceirosDocumentoDetalhe(area, o.id);
 }
 
 // Sistema de Abas
@@ -1667,6 +1743,7 @@ async function salvarMotoristaTerceirosDireto(documentoId, motorista) {
 }
 
 function resetTerceirosDetalhe() {
+    _limparTerceirosDocumentoNaSessao();
     var prefixo = getTerceirosPrefixo();
     var vazio = document.getElementById('ter-recebimento-detalhe-vazio');
     var detalhe = document.getElementById('ter-recebimento-detalhe');
@@ -2457,6 +2534,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     });
     atualizarResumoTotaisBipagemTerceiros();
     atualizarUIBipagemTerceiros(doc);
+    _persistirTerceirosDocumentoNaSessao(doc.id, _terceirosDocAtual.area);
     if (!itens.length) {
         tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhum item encontrado no XML.</td></tr>';
         return;
