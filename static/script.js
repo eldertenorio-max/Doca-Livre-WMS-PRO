@@ -209,45 +209,116 @@ async function recarregarListaTerceirosTab(tab) {
     return undefined;
 }
 
+function _terceirosNormalizarAbaTab(tab) {
+    var aba = 'pendencia-recebimento';
+    if (tab === 'enviar-xml') aba = 'enviar-xml';
+    if (tab === 'fornecedores-recebidos') aba = 'fornecedores-recebidos';
+    if (tab === 'pendentes-lancamento') aba = 'pendentes-lancamento';
+    if (tab === 'notas-lancadas') aba = 'notas-lancadas';
+    if (tab === 'notas-enviadas-mg') aba = 'notas-enviadas-mg';
+    if (tab === 'recebimentos-mg') aba = 'recebimentos-mg';
+    if (tab === 'pendencias-mg') aba = 'pendencias-mg';
+    if (tab === 'historico') aba = 'historico';
+    return aba;
+}
+
+/** Atualiza botões e painéis da sub-aba (sem fetch). */
+function terceirosAplicarPainelAbaSomenteUi(aba) {
+    var botoes = document.querySelectorAll('.terceiros-subtab[data-ter-tab]');
+    var enviarXml = document.getElementById('terceiros-panel-enviar-xml');
+    var recebimento = document.getElementById('terceiros-panel-recebimento');
+    var fornecedoresRecebidos = document.getElementById('terceiros-panel-fornecedores-recebidos');
+    var pendentesLancamento = document.getElementById('terceiros-panel-pendentes-lancamento');
+    var notasLancadas = document.getElementById('terceiros-panel-notas-lancadas');
+    var notasEnviadasMg = document.getElementById('terceiros-panel-notas-enviadas-mg');
+    var recebimentosMg = document.getElementById('terceiros-panel-recebimentos-mg');
+    var pendenciasMg = document.getElementById('terceiros-panel-pendencias-mg');
+    var historico = document.getElementById('terceiros-panel-historico');
+    if (!botoes.length || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico) return;
+    _terceirosTabAtual = aba;
+    botoes.forEach(function(btn) {
+        btn.classList.toggle('active', btn.getAttribute('data-ter-tab') === aba);
+    });
+    enviarXml.classList.toggle('devolucoes-panel-active', aba === 'enviar-xml');
+    recebimento.classList.toggle('devolucoes-panel-active', aba === 'pendencia-recebimento');
+    fornecedoresRecebidos.classList.toggle('devolucoes-panel-active', aba === 'fornecedores-recebidos');
+    pendentesLancamento.classList.toggle('devolucoes-panel-active', aba === 'pendentes-lancamento');
+    notasLancadas.classList.toggle('devolucoes-panel-active', aba === 'notas-lancadas');
+    notasEnviadasMg.classList.toggle('devolucoes-panel-active', aba === 'notas-enviadas-mg');
+    recebimentosMg.classList.toggle('devolucoes-panel-active', aba === 'recebimentos-mg');
+    pendenciasMg.classList.toggle('devolucoes-panel-active', aba === 'pendencias-mg');
+    historico.classList.toggle('devolucoes-panel-active', aba === 'historico');
+    if (_terceirosDocAtual && _terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '') {
+        _persistirTerceirosDocumentoNaSessao(_terceirosDocAtual.id, _terceirosDocAtual.area);
+    }
+}
+
 /**
- * Após gravar certos status «sim»: atualiza primeiro a lista de origem, define destaque e abre a aba seguinte (igual ao fluxo recebimento → fornecedores).
- * @returns {Promise<boolean>} true se tratou o fluxo (não precisa de refreshTerceirosViews genérico)
+ * Abre sub-aba aguardando carga da lista (evita trocar de aba antes do reload terminarem).
+ * @param {boolean} [listaJaFoiRecarregada] Se true, só aplica UI (lista já foi atualizada em background).
  */
-async function posAtualizarStatusTerceirosListasENavegar(campo, valor, documentoId) {
-    var sim = isTerceirosFlagSim(valor);
-    if (campo === 'nota_lancada' && sim) {
-        try {
+async function abrirAbaTerceirosSeDiferenteAsync(tab, forcarRecarregarLista, listaJaFoiRecarregada) {
+    var aba = _terceirosNormalizarAbaTab(tab);
+    if (_terceirosTabAtual === aba) {
+        if (forcarRecarregarLista) {
+            await recarregarListaTerceirosTab(aba);
+        }
+        return;
+    }
+    terceirosAplicarPainelAbaSomenteUi(aba);
+    if (!listaJaFoiRecarregada) {
+        await recarregarListaTerceirosTab(aba);
+    }
+}
+
+/**
+ * Reaplica filtro de previsão na 2ª aba quando o cache da pendência já foi atualizado (mantém filtro ativo sem F5).
+ */
+function terceirosReaplicarFiltroPrevisaoPendenciaSeAplicavel() {
+    try {
+        reaplicarFiltroPrevisaoPendenciaRecebimento();
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+/**
+ * Fluxo padrão após POST /status com sucesso: origem → destino → filtros → destaque → aba → detalhe.
+ * Ordem: reload origem; definir destaque; reload destino (aplica destaque no fim do load); abrir aba sem duplicar fetch; carregar detalhe.
+ * @returns {Promise<boolean>} true se este fluxo cobriu o caso (evitar refreshTerceirosViews).
+ */
+async function moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor) {
+    if (!isTerceirosFlagSim(valor)) return false;
+    var areaDetalhe = _terceirosDocAtual.area || 'recebimento';
+    try {
+        if (campo === 'nota_lancada') {
             await loadTerceirosPendentesLancamento();
-        } catch (e) {
-            console.error(e);
-        }
-        definirDestaqueLinhaTerceirosDoc(documentoId);
-        abrirAbaTerceirosSeDiferente('notas-lancadas', true);
-        return true;
-    }
-    if (campo === 'enviar_para_mg' && sim) {
-        try {
+            definirDestaqueLinhaTerceirosDoc(documentoId);
             await loadTerceirosNotasLancadas();
-            await loadTerceirosPendenciasMg();
-        } catch (e) {
-            console.error(e);
+            await abrirAbaTerceirosSeDiferenteAsync('notas-lancadas', false, true);
+            await loadTerceirosDocumentoDetalhe(areaDetalhe, documentoId);
+            return true;
         }
-        definirDestaqueLinhaTerceirosDoc(documentoId);
-        abrirAbaTerceirosSeDiferente('pendencias-mg', true);
-        return true;
-    }
-    if (campo === 'carga_recebida_mg' && sim) {
-        try {
-            await loadTerceirosPendenciasMg();
+        if (campo === 'enviar_para_mg') {
             await loadTerceirosNotasLancadas();
+            definirDestaqueLinhaTerceirosDoc(documentoId);
+            await loadTerceirosPendenciasMg();
+            await abrirAbaTerceirosSeDiferenteAsync('pendencias-mg', false, true);
+            await loadTerceirosDocumentoDetalhe(areaDetalhe, documentoId);
+            return true;
+        }
+        if (campo === 'carga_recebida_mg') {
+            await loadTerceirosPendenciasMg();
             await loadTerceirosNotasEnviadasMg();
+            await loadTerceirosNotasLancadas();
+            definirDestaqueLinhaTerceirosDoc(documentoId);
             await loadTerceirosRecebimentosMg();
-        } catch (e) {
-            console.error(e);
+            await abrirAbaTerceirosSeDiferenteAsync('recebimentos-mg', false, true);
+            await loadTerceirosDocumentoDetalhe(areaDetalhe, documentoId);
+            return true;
         }
-        definirDestaqueLinhaTerceirosDoc(documentoId);
-        abrirAbaTerceirosSeDiferente('notas-enviadas-mg', true);
-        return true;
+    } catch (e) {
+        console.error(e);
     }
     return false;
 }
@@ -383,39 +454,9 @@ function initTerceirosTabs() {
     if (!botoes.length || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico) return;
 
     function mostrarTerTab(tab) {
-        var aba = 'pendencia-recebimento';
-        if (tab === 'enviar-xml') aba = 'enviar-xml';
-        if (tab === 'fornecedores-recebidos') aba = 'fornecedores-recebidos';
-        if (tab === 'pendentes-lancamento') aba = 'pendentes-lancamento';
-        if (tab === 'notas-lancadas') aba = 'notas-lancadas';
-        if (tab === 'notas-enviadas-mg') aba = 'notas-enviadas-mg';
-        if (tab === 'recebimentos-mg') aba = 'recebimentos-mg';
-        if (tab === 'pendencias-mg') aba = 'pendencias-mg';
-        if (tab === 'historico') aba = 'historico';
-        _terceirosTabAtual = aba;
-        botoes.forEach(function(btn) {
-            btn.classList.toggle('active', btn.getAttribute('data-ter-tab') === aba);
-        });
-        enviarXml.classList.toggle('devolucoes-panel-active', aba === 'enviar-xml');
-        recebimento.classList.toggle('devolucoes-panel-active', aba === 'pendencia-recebimento');
-        fornecedoresRecebidos.classList.toggle('devolucoes-panel-active', aba === 'fornecedores-recebidos');
-        pendentesLancamento.classList.toggle('devolucoes-panel-active', aba === 'pendentes-lancamento');
-        notasLancadas.classList.toggle('devolucoes-panel-active', aba === 'notas-lancadas');
-        notasEnviadasMg.classList.toggle('devolucoes-panel-active', aba === 'notas-enviadas-mg');
-        recebimentosMg.classList.toggle('devolucoes-panel-active', aba === 'recebimentos-mg');
-        pendenciasMg.classList.toggle('devolucoes-panel-active', aba === 'pendencias-mg');
-        historico.classList.toggle('devolucoes-panel-active', aba === 'historico');
-        if (aba === 'pendencia-recebimento') loadTerceirosDocumentos();
-        if (aba === 'fornecedores-recebidos') loadTerceirosFornecedoresRecebidos();
-        if (aba === 'pendentes-lancamento') loadTerceirosPendentesLancamento();
-        if (aba === 'notas-lancadas') loadTerceirosNotasLancadas();
-        if (aba === 'notas-enviadas-mg') loadTerceirosNotasEnviadasMg();
-        if (aba === 'recebimentos-mg') loadTerceirosRecebimentosMg();
-        if (aba === 'pendencias-mg') loadTerceirosPendenciasMg();
-        if (aba === 'historico') loadTerceirosHistorico();
-        if (_terceirosDocAtual && _terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '') {
-            _persistirTerceirosDocumentoNaSessao(_terceirosDocAtual.id, _terceirosDocAtual.area);
-        }
+        var aba = _terceirosNormalizarAbaTab(tab);
+        terceirosAplicarPainelAbaSomenteUi(aba);
+        void recarregarListaTerceirosTab(aba);
     }
 
     botoes.forEach(function(btn) {
@@ -1799,11 +1840,11 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
         await refreshTerceirosViews();
         return;
     }
-    if (_terceirosDocAtual.id === documentoId) {
-        await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
-    }
-    var navegouFluxo = await posAtualizarStatusTerceirosListasENavegar(campo, valor, documentoId);
+    var navegouFluxo = await moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor);
     if (!navegouFluxo) {
+        if (_terceirosDocAtual.id === documentoId) {
+            await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+        }
         await refreshTerceirosViews();
     }
     showMessage('Status atualizado.', 'success');
@@ -3033,25 +3074,40 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         if (concluiuRecebimento) {
             restaurarBotaoConcluir = null;
             _terceirosDocAtual.recebimento_concluido = true;
+            var areaConcl = _terceirosDocAtual.area || 'recebimento';
             try {
                 await loadTerceirosDocumentos();
             } catch (e) {
                 console.error(e);
                 showMessage('Recebimento gravado, mas a lista de pendências não atualizou. Volte à 2ª aba ou atualize a página.', 'warning');
             }
-            animarConclusaoTerceiros(getTerceirosPrefixo());
+            terceirosReaplicarFiltroPrevisaoPendenciaSeAplicavel();
             definirDestaqueLinhaTerceirosDoc(documentoId);
-            abrirAbaTerceirosSeDiferente('fornecedores-recebidos', true);
-            resetTerceirosDetalhe();
+            try {
+                await loadTerceirosFornecedoresRecebidos();
+            } catch (e) {
+                console.error(e);
+            }
+            try {
+                await abrirAbaTerceirosSeDiferenteAsync('fornecedores-recebidos', false, true);
+            } catch (e) {
+                console.error(e);
+            }
+            try {
+                await loadTerceirosDocumentoDetalhe(areaConcl, documentoId);
+            } catch (e) {
+                console.error(e);
+            }
+            animarConclusaoTerceiros(getTerceirosPrefixo());
             window.setTimeout(function() {
                 abrirModalRecebimentoConcluidoTerceiros();
             }, 0);
             return;
         }
         showMessage('Status atualizado.', 'success');
-        await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
-        var navegouFluxo = await posAtualizarStatusTerceirosListasENavegar(campo, valor, documentoId);
+        var navegouFluxo = await moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor);
         if (!navegouFluxo) {
+            await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
             await refreshTerceirosViews();
         }
     } finally {
