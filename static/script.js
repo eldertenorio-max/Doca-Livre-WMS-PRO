@@ -630,6 +630,18 @@ function fecharModalRecebimentoConcluidoTerceiros() {
     abrirAbaTerceirosSeDiferente('fornecedores-recebidos');
 }
 
+/** Fecha o modal e leva à próxima aba do fluxo (NFs pendentes de lançamento). */
+function terceirosIrParaProximaEtapaLancamento() {
+    var modal = document.getElementById('modal-terceiros-recebimento-concluido');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.style.alignItems = '';
+        modal.style.justifyContent = '';
+    }
+    if (window.terceirosMostrarAba) window.terceirosMostrarAba('pendentes-lancamento');
+}
+window.terceirosIrParaProximaEtapaLancamento = terceirosIrParaProximaEtapaLancamento;
+
 function fecharModalLancamentoSemRecebimento(confirmado) {
     var modal = document.getElementById('modal-terceiros-lancar-sem-recebimento');
     if (modal) modal.style.display = 'none';
@@ -2848,7 +2860,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             return;
         }
         try {
-            await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 20000);
+            await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 8000);
         } catch (e) {
             console.error(e);
         }
@@ -2867,10 +2879,10 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             }
             payload.forcar_lancamento_sem_recebimento = true;
         }
-        var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
+        var resp = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
             method: 'POST',
             body: JSON.stringify(payload)
-        });
+        }, pedidoConclusaoRecebimento ? 45000 : 35000);
         if (!_terceirosRespostaApiOk(resp)) {
             if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !payload.forcar_lancamento_sem_recebimento) {
                 var confirmou = await abrirModalLancamentoSemRecebimento();
@@ -2889,12 +2901,10 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         if (concluiuRecebimento) {
             restaurarBotaoConcluir = null;
             _terceirosDocAtual.recebimento_concluido = true;
-            try {
-                await loadTerceirosDocumentos();
-            } catch (e) {
+            void loadTerceirosDocumentos().catch(function(e) {
                 console.error(e);
-                showMessage('Recebimento gravado, mas a lista de pendências não atualizou. Atualize a página ou reabra o módulo.', 'warning');
-            }
+                showMessage('Recebimento gravado, mas a lista de pendências não atualizou. Use «Atualizar» na aba se precisar.', 'warning');
+            });
             animarConclusaoTerceiros(getTerceirosPrefixo());
             definirDestaqueLinhaFornecedoresRecebidos(documentoId);
             abrirAbaTerceirosSeDiferente('fornecedores-recebidos');
@@ -2988,8 +2998,10 @@ function initForms() {
     const modalTerRecConc = document.getElementById('modal-terceiros-recebimento-concluido');
     const btnTerRecConcFechar = document.getElementById('btn-ter-fechar-recebimento-concluido');
     const btnTerRecConcClose = document.getElementById('modal-terceiros-recebimento-concluido-close');
+    const btnTerRecProxLanc = document.getElementById('btn-ter-proxima-etapa-lancamento');
     if (btnTerRecConcFechar) btnTerRecConcFechar.addEventListener('click', fecharModalRecebimentoConcluidoTerceiros);
     if (btnTerRecConcClose) btnTerRecConcClose.addEventListener('click', fecharModalRecebimentoConcluidoTerceiros);
+    if (btnTerRecProxLanc) btnTerRecProxLanc.addEventListener('click', terceirosIrParaProximaEtapaLancamento);
     
     // Fechar modal ao clicar fora
     window.addEventListener('click', (e) => {
@@ -3924,6 +3936,22 @@ function mensagemErroRespostaNaoJson(status, corpoTexto) {
 }
 
 // API Calls
+/** POST/PUT com limite de tempo (evita botão «A guardar…» preso para sempre se o servidor não responder). */
+async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
+    timeoutMs = timeoutMs == null || timeoutMs < 5000 ? 35000 : timeoutMs;
+    var ac = new AbortController();
+    var tid = window.setTimeout(function() {
+        try {
+            ac.abort();
+        } catch (e) {}
+    }, timeoutMs);
+    try {
+        return await fetchAPI(endpoint, Object.assign({}, options || {}, { signal: ac.signal }));
+    } finally {
+        window.clearTimeout(tid);
+    }
+}
+
 async function fetchAPI(endpoint, options = {}) {
     try {
         const method = ((options && options.method) ? options.method : 'GET').toString().toUpperCase();
@@ -3956,6 +3984,9 @@ async function fetchAPI(endpoint, options = {}) {
             _falhaGateway: _falhaGatewayHttpStatus(response.status)
         };
     } catch (error) {
+        if (error && error.name === 'AbortError') {
+            return { ok: false, erro: 'Tempo esgotado ao contactar o servidor.', _timeout: true };
+        }
         console.error('Erro na API:', error);
         showMessage('Erro ao conectar com o servidor', 'error');
         return null;
