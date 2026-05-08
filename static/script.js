@@ -125,8 +125,8 @@ let _terceirosTabAtual = 'pendencia-recebimento';
 let _terceirosConfirmacaoLancamentoResolver = null;
 let _terceirosExcluirDocumentoResolver = null;
 let _terceirosExcluirDocumentoAtual = null;
-/** Após concluir recebimento: destaca a linha desta NF na tabela de Fornecedores Recebidos. */
-let _terceirosDestacarDocIdAposCargaFornecedores = null;
+/** Após mudar de etapa: destaca a linha desta NF na tabela da aba de destino (data-ter-doc-id). */
+let _terceirosDestacarDocIdAposCarga = null;
 
 /** Reabre a última NF após F5 (evita “sumir” bipagem que já está no servidor). */
 var TERCEIROS_SESS_DOC_KEY = 'terceiros_doc_restaurar_v1';
@@ -173,15 +173,15 @@ function _persistirTerceirosDocumentoNaSessao(documentoId, area) {
     } catch (e) {}
 }
 
-function definirDestaqueLinhaFornecedoresRecebidos(documentoId) {
+function definirDestaqueLinhaTerceirosDoc(documentoId) {
     var n = parseInt(documentoId, 10);
-    _terceirosDestacarDocIdAposCargaFornecedores = Number.isFinite(n) && n > 0 ? n : null;
+    _terceirosDestacarDocIdAposCarga = Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function aplicarDestaqueLinhaFornecedoresRecebidos(tbody) {
-    if (!tbody || _terceirosDestacarDocIdAposCargaFornecedores == null) return;
-    var idAlvo = _terceirosDestacarDocIdAposCargaFornecedores;
-    _terceirosDestacarDocIdAposCargaFornecedores = null;
+function aplicarDestaqueLinhaTerceirosDoc(tbody) {
+    if (!tbody || _terceirosDestacarDocIdAposCarga == null) return;
+    var idAlvo = _terceirosDestacarDocIdAposCarga;
+    _terceirosDestacarDocIdAposCarga = null;
     window.requestAnimationFrame(function() {
         var tr = tbody.querySelector('tr[data-ter-doc-id="' + idAlvo + '"]');
         if (!tr) return;
@@ -191,6 +191,65 @@ function aplicarDestaqueLinhaFornecedoresRecebidos(tbody) {
             tr.classList.remove('ter-fornecedor-linha-destacada');
         }, 2400);
     });
+}
+
+/**
+ * Recarrega só a tabela da aba indicada (ex.: já estamos na aba e forçamos atualização).
+ * @param {string} tab mesmo valor de data-ter-tab / _terceirosTabAtual
+ */
+async function recarregarListaTerceirosTab(tab) {
+    if (tab === 'pendencia-recebimento' || tab === 'enviar-xml') return loadTerceirosDocumentos();
+    if (tab === 'fornecedores-recebidos') return loadTerceirosFornecedoresRecebidos();
+    if (tab === 'pendentes-lancamento') return loadTerceirosPendentesLancamento();
+    if (tab === 'notas-lancadas') return loadTerceirosNotasLancadas();
+    if (tab === 'pendencias-mg') return loadTerceirosPendenciasMg();
+    if (tab === 'notas-enviadas-mg') return loadTerceirosNotasEnviadasMg();
+    if (tab === 'recebimentos-mg') return loadTerceirosRecebimentosMg();
+    if (tab === 'historico') return loadTerceirosHistorico();
+    return undefined;
+}
+
+/**
+ * Após gravar certos status «sim»: atualiza primeiro a lista de origem, define destaque e abre a aba seguinte (igual ao fluxo recebimento → fornecedores).
+ * @returns {Promise<boolean>} true se tratou o fluxo (não precisa de refreshTerceirosViews genérico)
+ */
+async function posAtualizarStatusTerceirosListasENavegar(campo, valor, documentoId) {
+    var sim = isTerceirosFlagSim(valor);
+    if (campo === 'nota_lancada' && sim) {
+        try {
+            await loadTerceirosPendentesLancamento();
+        } catch (e) {
+            console.error(e);
+        }
+        definirDestaqueLinhaTerceirosDoc(documentoId);
+        abrirAbaTerceirosSeDiferente('notas-lancadas', true);
+        return true;
+    }
+    if (campo === 'enviar_para_mg' && sim) {
+        try {
+            await loadTerceirosNotasLancadas();
+            await loadTerceirosPendenciasMg();
+        } catch (e) {
+            console.error(e);
+        }
+        definirDestaqueLinhaTerceirosDoc(documentoId);
+        abrirAbaTerceirosSeDiferente('pendencias-mg', true);
+        return true;
+    }
+    if (campo === 'carga_recebida_mg' && sim) {
+        try {
+            await loadTerceirosPendenciasMg();
+            await loadTerceirosNotasLancadas();
+            await loadTerceirosNotasEnviadasMg();
+            await loadTerceirosRecebimentosMg();
+        } catch (e) {
+            console.error(e);
+        }
+        definirDestaqueLinhaTerceirosDoc(documentoId);
+        abrirAbaTerceirosSeDiferente('notas-enviadas-mg', true);
+        return true;
+    }
+    return false;
 }
 
 function initNavegacaoRapida() {
@@ -1085,12 +1144,12 @@ function scrollTerceirosRecebimentoDetalheSecao(secao) {
 /**
  * Só dispara o clique na aba se não estiver nela — evita recarregar a lista inteira à toa.
  * @param {string} tab
- * @param {boolean} [forcarRecarregarLista] Se true e a aba já for Fornecedores Recebidos, recarrega a tabela (ex.: após «Recebimento concluído» a NF deve aparecer na 3ª aba).
+ * @param {boolean} [forcarRecarregarLista] Se true e já estivermos na aba, recarrega a tabela (ex.: NF acabou de entrar na lista após mudança de status).
  */
 function abrirAbaTerceirosSeDiferente(tab, forcarRecarregarLista) {
     if (_terceirosTabAtual === tab) {
-        if (forcarRecarregarLista && tab === 'fornecedores-recebidos') {
-            void loadTerceirosFornecedoresRecebidos();
+        if (forcarRecarregarLista) {
+            void recarregarListaTerceirosTab(tab);
         }
         return;
     }
@@ -1314,13 +1373,13 @@ async function loadTerceirosFornecedoresRecebidos() {
     const data = await fetchTerceirosDocumentosTodos();
     if (data.erro) {
         tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
-        _terceirosDestacarDocIdAposCargaFornecedores = null;
+        _terceirosDestacarDocIdAposCarga = null;
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos');
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com recebimento concluído ainda. Finalize a descarga na aba <strong>Pendência de Recebimento</strong>.</td></tr>';
-        _terceirosDestacarDocIdAposCargaFornecedores = null;
+        _terceirosDestacarDocIdAposCarga = null;
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
@@ -1339,7 +1398,7 @@ async function loadTerceirosFornecedoresRecebidos() {
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-fornecedor-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-fornecedor-doc]');
-    aplicarDestaqueLinhaFornecedoresRecebidos(tbody);
+    aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
 async function loadTerceirosPendentesLancamento() {
@@ -1358,7 +1417,7 @@ async function loadTerceirosPendentesLancamento() {
     }
     tbody.innerHTML = rows.map(function(row) {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-        return '<tr>'
+        return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
@@ -1385,6 +1444,7 @@ async function loadTerceirosPendentesLancamento() {
             });
         });
     });
+    aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
 async function loadTerceirosNotasLancadas() {
@@ -1406,7 +1466,7 @@ async function loadTerceirosNotasLancadas() {
         var avisoMotorista = isTerceirosMotoristaObrigatorio(row)
             ? '<div class="ter-status-meta ter-status-meta--alerta">Motorista obrigatório</div>'
             : '';
-        return '<tr>'
+        return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
@@ -1465,6 +1525,7 @@ async function loadTerceirosNotasLancadas() {
             if (id) salvarMotoristaTerceirosDireto(id, motorista);
         });
     });
+    aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
 async function loadTerceirosNotasEnviadasMg() {
@@ -1483,7 +1544,7 @@ async function loadTerceirosNotasEnviadasMg() {
     }
     tbody.innerHTML = rows.map(function(row) {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-        return '<tr>'
+        return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
@@ -1497,6 +1558,7 @@ async function loadTerceirosNotasEnviadasMg() {
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-enviada-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-enviada-doc]');
+    aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
 async function loadTerceirosRecebimentosMg() {
@@ -1515,7 +1577,7 @@ async function loadTerceirosRecebimentosMg() {
     }
     tbody.innerHTML = rows.map(function(row) {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-        return '<tr>'
+        return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
@@ -1545,6 +1607,7 @@ async function loadTerceirosRecebimentosMg() {
             });
         });
     });
+    aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
 async function loadTerceirosPendenciasMg() {
@@ -1565,7 +1628,7 @@ async function loadTerceirosPendenciasMg() {
 
     tbody.innerHTML = rows.map(function(row) {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-        return '<tr>'
+        return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
@@ -1580,6 +1643,7 @@ async function loadTerceirosPendenciasMg() {
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-pendencia-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-pendencia-doc]');
+    aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
 async function loadTerceirosHistorico() {
@@ -1738,7 +1802,10 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
     if (_terceirosDocAtual.id === documentoId) {
         await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
     }
-    await refreshTerceirosViews();
+    var navegouFluxo = await posAtualizarStatusTerceirosListasENavegar(campo, valor, documentoId);
+    if (!navegouFluxo) {
+        await refreshTerceirosViews();
+    }
     showMessage('Status atualizado.', 'success');
 }
 
@@ -2973,7 +3040,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 showMessage('Recebimento gravado, mas a lista de pendências não atualizou. Volte à 2ª aba ou atualize a página.', 'warning');
             }
             animarConclusaoTerceiros(getTerceirosPrefixo());
-            definirDestaqueLinhaFornecedoresRecebidos(documentoId);
+            definirDestaqueLinhaTerceirosDoc(documentoId);
             abrirAbaTerceirosSeDiferente('fornecedores-recebidos', true);
             resetTerceirosDetalhe();
             window.setTimeout(function() {
@@ -2983,7 +3050,10 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         }
         showMessage('Status atualizado.', 'success');
         await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
-        await refreshTerceirosViews();
+        var navegouFluxo = await posAtualizarStatusTerceirosListasENavegar(campo, valor, documentoId);
+        if (!navegouFluxo) {
+            await refreshTerceirosViews();
+        }
     } finally {
         if (restaurarBotaoConcluir) restaurarBotaoConcluir();
     }
