@@ -1082,9 +1082,18 @@ function scrollTerceirosRecebimentoDetalheSecao(secao) {
     });
 }
 
-/** Só dispara o clique na aba se não estiver nela — evita recarregar a lista inteira à toa. */
-function abrirAbaTerceirosSeDiferente(tab) {
-    if (_terceirosTabAtual === tab) return;
+/**
+ * Só dispara o clique na aba se não estiver nela — evita recarregar a lista inteira à toa.
+ * @param {string} tab
+ * @param {boolean} [forcarRecarregarLista] Se true e a aba já for Fornecedores Recebidos, recarrega a tabela (ex.: após «Recebimento concluído» a NF deve aparecer na 3ª aba).
+ */
+function abrirAbaTerceirosSeDiferente(tab, forcarRecarregarLista) {
+    if (_terceirosTabAtual === tab) {
+        if (forcarRecarregarLista && tab === 'fornecedores-recebidos') {
+            void loadTerceirosFornecedoresRecebidos();
+        }
+        return;
+    }
     var btn = document.querySelector('.terceiros-subtab[data-ter-tab="' + tab + '"]');
     if (btn) btn.click();
 }
@@ -2907,7 +2916,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             });
             animarConclusaoTerceiros(getTerceirosPrefixo());
             definirDestaqueLinhaFornecedoresRecebidos(documentoId);
-            abrirAbaTerceirosSeDiferente('fornecedores-recebidos');
+            abrirAbaTerceirosSeDiferente('fornecedores-recebidos', true);
             resetTerceirosDetalhe();
             window.setTimeout(function() {
                 abrirModalRecebimentoConcluidoTerceiros();
