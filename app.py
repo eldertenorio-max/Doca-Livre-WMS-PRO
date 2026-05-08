@@ -6744,6 +6744,24 @@ def _resolver_item_base_por_ean(codigo_ean):
     }
 
 
+def _base_terceiros_para_bipagem(item_d, codigo_ean_solicitado):
+    """Dados para gravar na linha do item na bipagem.
+
+    Se o EAN não existir na planilha local, usa código/descrição do XML para não bloquear
+    a contagem e não “zerar” o bipado ao recarregar a página.
+    """
+    codigo_ean_solicitado = str(codigo_ean_solicitado or '').strip()
+    base = _resolver_item_base_por_ean(codigo_ean_solicitado)
+    if base:
+        return base
+    ean_xml = (item_d.get('codigo_ean') or '').strip()
+    return {
+        'codigo_produto_base': (item_d.get('codigo_produto_xml') or '').strip(),
+        'codigo_barras_base': ean_xml or codigo_ean_solicitado,
+        'descricao_base': (item_d.get('descricao_xml') or '').strip(),
+    }
+
+
 def _parse_nfe_xml(xml_texto):
     try:
         root = ET.fromstring(xml_texto)
@@ -7204,9 +7222,7 @@ def api_terceiros_bipar_item(documento_id):
         ean_esperado = (item_d.get('codigo_ean') or '').strip()
         if ean_esperado and codigo_ean != ean_esperado:
             return jsonify({'ok': False, 'erro': 'EAN diferente do item do XML.'}), 400
-        base = _resolver_item_base_por_ean(codigo_ean)
-        if not base:
-            return jsonify({'ok': False, 'erro': 'EAN não encontrado na base de produtos.'}), 400
+        base = _base_terceiros_para_bipagem(item_d, codigo_ean)
         qtd_bipada = float(item_d.get('quantidade_bipada') or 0) + quantidade
         status = _status_bipagem_terceiros(item_d.get('quantidade_xml') or 0, qtd_bipada)
         conn.execute(
