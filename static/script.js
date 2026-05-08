@@ -1929,6 +1929,24 @@ async function _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, tempoM
     }
 }
 
+/**
+ * Antes de gravar recebimento concluído: termina todas as bipagens pendentes.
+ * Importante: se cortarmos o flush por tempo e já chamarmos POST /status, o SQLite (ou outro BD)
+ * pode ficar com escrita concorrente e o pedido de status fica preso — o botão fica em «A guardar…».
+ */
+async function _flushTerceirosAntesConcluirRecebimento(documentoId) {
+    var avisoMs = 12000;
+    var flushP = _flushTerceirosPendingDocumento(documentoId).then(function() { return 'ok'; });
+    var avisoP = new Promise(function(resolve) {
+        window.setTimeout(function() { resolve('aviso'); }, avisoMs);
+    });
+    var primeiro = await Promise.race([flushP, avisoP]);
+    if (primeiro === 'aviso') {
+        showMessage('A guardar últimas bipagens antes de concluir…', 'warning');
+    }
+    await flushP;
+}
+
 /** Resposta JSON de rotas que usam { ok: true/false } (evita depender só de coerção truthy). */
 function _terceirosRespostaApiOk(resp) {
     return !!(resp && (resp.ok === true || resp.ok === 1 || isTerceirosFlagSim(resp.ok)));
@@ -2869,7 +2887,11 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             return;
         }
         try {
-            await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 8000);
+            if (pedidoConclusaoRecebimento) {
+                await _flushTerceirosAntesConcluirRecebimento(documentoId);
+            } else {
+                await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 8000);
+            }
         } catch (e) {
             console.error(e);
         }
@@ -2890,7 +2912,8 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         }
         var resp = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
             method: 'POST',
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            keepalive: false
         }, pedidoConclusaoRecebimento ? 45000 : 35000);
         if (!_terceirosRespostaApiOk(resp)) {
             if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !payload.forcar_lancamento_sem_recebimento) {
@@ -3955,7 +3978,11 @@ async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
         } catch (e) {}
     }, timeoutMs);
     try {
-        return await fetchAPI(endpoint, Object.assign({}, options || {}, { signal: ac.signal }));
+        var merged = Object.assign({}, options || {}, { signal: ac.signal });
+        if (merged.method && String(merged.method).toUpperCase() !== 'GET' && String(merged.method).toUpperCase() !== 'HEAD') {
+            merged.keepalive = false;
+        }
+        return await fetchAPI(endpoint, merged);
     } finally {
         window.clearTimeout(tid);
     }
