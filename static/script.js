@@ -226,6 +226,7 @@ function _terceirosNormalizarAbaTab(tab) {
 
 /** Atualiza botões e painéis da sub-aba (sem fetch). */
 function terceirosAplicarPainelAbaSomenteUi(aba) {
+    _terceirosTabAtual = aba;
     var botoes = document.querySelectorAll('.terceiros-subtab[data-ter-tab]');
     var enviarXml = document.getElementById('terceiros-panel-enviar-xml');
     var recebimento = document.getElementById('terceiros-panel-recebimento');
@@ -237,7 +238,6 @@ function terceirosAplicarPainelAbaSomenteUi(aba) {
     var pendenciasMg = document.getElementById('terceiros-panel-pendencias-mg');
     var historico = document.getElementById('terceiros-panel-historico');
     if (!botoes.length || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico) return;
-    _terceirosTabAtual = aba;
     botoes.forEach(function(btn) {
         btn.classList.toggle('active', btn.getAttribute('data-ter-tab') === aba);
     });
@@ -256,20 +256,57 @@ function terceirosAplicarPainelAbaSomenteUi(aba) {
 }
 
 /**
+ * Diagnóstico: defina window.TERCEIROS_DEBUG_FLUXO = true ou localStorage 'terceiros_debug_fluxo' = '1'.
+ */
+function _terceirosLogFluxoRecebimento(etapa) {
+    try {
+        if (window.TERCEIROS_DEBUG_FLUXO === true || (typeof localStorage !== 'undefined' && localStorage.getItem('terceiros_debug_fluxo') === '1')) {
+            console.log('[terceiros conclusão]', etapa, new Date().toISOString());
+        }
+    } catch (e) {}
+}
+
+/**
  * Abre sub-aba aguardando carga da lista (evita trocar de aba antes do reload terminarem).
+ * Protegido por timeout para nenhum await ficar pendente indefinidamente.
  * @param {boolean} [listaJaFoiRecarregada] Se true, só aplica UI (lista já foi atualizada em background).
  */
 async function abrirAbaTerceirosSeDiferenteAsync(tab, forcarRecarregarLista, listaJaFoiRecarregada) {
     var aba = _terceirosNormalizarAbaTab(tab);
-    if (_terceirosTabAtual === aba) {
-        if (forcarRecarregarLista) {
+    var msLimite = 50000;
+    var executar = async function() {
+        if (_terceirosTabAtual === aba) {
+            if (forcarRecarregarLista) {
+                await recarregarListaTerceirosTab(aba);
+            }
+            return;
+        }
+        terceirosAplicarPainelAbaSomenteUi(aba);
+        if (!listaJaFoiRecarregada) {
             await recarregarListaTerceirosTab(aba);
         }
-        return;
-    }
-    terceirosAplicarPainelAbaSomenteUi(aba);
-    if (!listaJaFoiRecarregada) {
-        await recarregarListaTerceirosTab(aba);
+    };
+    try {
+        await Promise.race([
+            executar(),
+            new Promise(function(_, rej) {
+                window.setTimeout(function() {
+                    rej(new Error('TERCEIROS_ABA_ASYNC_TIMEOUT'));
+                }, msLimite);
+            })
+        ]);
+    } catch (e) {
+        if (e && e.message === 'TERCEIROS_ABA_ASYNC_TIMEOUT') {
+            console.warn('[terceiros] abrirAbaTerceirosSeDiferenteAsync: tempo limite (' + msLimite + 'ms). A aba pode estar inconsistente.');
+            terceirosAplicarPainelAbaSomenteUi(aba);
+            try {
+                void recarregarListaTerceirosTab(aba);
+            } catch (e2) {
+                console.error(e2);
+            }
+        } else {
+            throw e;
+        }
     }
 }
 
@@ -1319,6 +1356,8 @@ function initTerceirosConferenciaAcoesDelegacao() {
 
 function bindTerceirosAbrirButtons(seletor) {
     document.querySelectorAll(seletor).forEach(function(btn) {
+        if (btn.dataset.terAbrirBound === '1') return;
+        btn.dataset.terAbrirBound = '1';
         btn.addEventListener('click', function() {
             var id = parseInt(
                 btn.getAttribute('data-ter-doc')
@@ -1342,6 +1381,8 @@ function bindTerceirosAbrirButtons(seletor) {
 
 function bindTerceirosExcluirButtons(seletor) {
     document.querySelectorAll(seletor).forEach(function(btn) {
+        if (btn.dataset.terExcluirBound === '1') return;
+        btn.dataset.terExcluirBound = '1';
         btn.addEventListener('click', async function() {
             var id = parseInt(
                 btn.getAttribute('data-ter-excluir-doc')
@@ -3046,14 +3087,16 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         try {
             try {
                 if (pedidoConclusaoRecebimento) {
+                    _terceirosLogFluxoRecebimento('1 antes flush');
                     await Promise.race([
                         _flushTerceirosAntesConcluirRecebimento(documentoId),
                         new Promise(function(_, rej) {
                             window.setTimeout(function() {
                                 rej(new Error('TERCEIROS_FLUSH_TOTAL_TIMEOUT'));
-                            }, 180000);
+                            }, 120000);
                         })
                     ]);
+                    _terceirosLogFluxoRecebimento('2 após flush');
                 } else {
                     await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 8000);
                 }
@@ -3062,7 +3105,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 if (pedidoConclusaoRecebimento) {
                     showMessage(
                         e && e.message === 'TERCEIROS_FLUSH_TOTAL_TIMEOUT'
-                            ? 'Demorou demais a guardar bipagens (limite 3 min). Atualize a página e tente «Recebimento concluído» de novo.'
+                            ? 'Demorou demais a guardar bipagens (limite 2 min). Atualize a página e tente «Recebimento concluído» de novo.'
                             : 'Não foi possível sincronizar a bipagem antes de concluir. Verifique a ligação e tente de novo.',
                         'error'
                     );
@@ -3088,11 +3131,17 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 }
                 payload.forcar_lancamento_sem_recebimento = true;
             }
+            if (pedidoConclusaoRecebimento) {
+                _terceirosLogFluxoRecebimento('3 antes POST /status');
+            }
             var resp = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
                 method: 'POST',
                 body: JSON.stringify(payload),
                 keepalive: false
             }, pedidoConclusaoRecebimento ? 45000 : 35000);
+            if (pedidoConclusaoRecebimento) {
+                _terceirosLogFluxoRecebimento('4 após POST /status');
+            }
             if (!_terceirosRespostaApiOk(resp)) {
                 if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !payload.forcar_lancamento_sem_recebimento) {
                     var confirmou = await abrirModalLancamentoSemRecebimento();
@@ -3117,12 +3166,14 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 _terceirosDocAtual.recebimento_concluido = true;
                 var prefixoConcl = getTerceirosPrefixo();
                 try {
+                    _terceirosLogFluxoRecebimento('5 antes loadTerceirosDocumentos');
                     try {
                         await loadTerceirosDocumentos();
                     } catch (e) {
                         console.error(e);
                         showMessage('Recebimento gravado, mas a lista de pendências não atualizou. Volte à 2ª aba ou atualize a página.', 'warning');
                     }
+                    _terceirosLogFluxoRecebimento('6 após pendência; antes fornecedores');
                     terceirosReaplicarFiltroPrevisaoPendenciaSeAplicavel();
                     definirDestaqueLinhaTerceirosDoc(documentoId);
                     try {
@@ -3130,11 +3181,13 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                     } catch (e) {
                         console.error(e);
                     }
+                    _terceirosLogFluxoRecebimento('7 após fornecedores; antes abrirAbaAsync');
                     try {
                         await abrirAbaTerceirosSeDiferenteAsync('fornecedores-recebidos', false, true);
                     } catch (e) {
                         console.error(e);
                     }
+                    _terceirosLogFluxoRecebimento('8 fim fluxo conclusão (sem loadDetalhe)');
                 } finally {
                     atualizarBotaoConclusaoTerceiros(prefixoConcl, true);
                 }
@@ -3162,6 +3215,9 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             }
         }
     } finally {
+        if (pedidoConclusaoRecebimento) {
+            _terceirosLogFluxoRecebimento('finally externo');
+        }
         if (restaurarBotaoConcluir) restaurarBotaoConcluir();
         if (pedidoConclusaoRecebimento && btnConcluir && btnConcluir.textContent === 'A guardar…') {
             atualizarBotaoConclusaoTerceiros(prefixo, isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido));
