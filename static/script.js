@@ -1884,30 +1884,48 @@ async function _flushTerceirosPendingDocumento(documentoId) {
     var removes = p.removes;
     p.adds = {};
     p.removes = {};
-    var tasks = [];
+    var addOps = [];
     Object.keys(adds).forEach(function(itemKey) {
         var entry = adds[itemKey];
         if (!entry || !entry.qtd || entry.qtd <= 0) return;
         var itemId = parseInt(itemKey, 10);
         if (!itemId) return;
-        tasks.push(fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/bipar', {
-            method: 'POST',
-            body: JSON.stringify({ item_id: itemId, codigo_ean: (entry.codigo_ean || '').trim(), quantidade: entry.qtd })
-        }));
+        addOps.push({
+            itemId: itemId,
+            codigo_ean: (entry.codigo_ean || '').trim(),
+            quantidade: entry.qtd
+        });
     });
+    var removeOps = [];
     Object.keys(removes).forEach(function(itemKey) {
         var n = removes[itemKey];
         if (n == null || n <= 0) return;
         var itemId = parseInt(itemKey, 10);
         if (!itemId) return;
-        tasks.push(fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/desbipar', {
-            method: 'POST',
-            body: JSON.stringify({ item_id: itemId, quantidade: n })
-        }));
+        removeOps.push({ itemId: itemId, quantidade: n });
     });
-    if (!tasks.length) return;
-    var results = await Promise.all(tasks);
-    var algumErro = results.some(function(r) { return !r || !r.ok; });
+    if (!addOps.length && !removeOps.length) return;
+    var perReqMs = 40000;
+    var algumErro = false;
+    var i;
+    for (i = 0; i < addOps.length; i++) {
+        var a = addOps[i];
+        var ra = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/bipar', {
+            method: 'POST',
+            body: JSON.stringify({ item_id: a.itemId, codigo_ean: a.codigo_ean, quantidade: a.quantidade }),
+            keepalive: false
+        }, perReqMs);
+        if (!ra || !ra.ok) algumErro = true;
+    }
+    for (i = 0; i < removeOps.length; i++) {
+        var rm = removeOps[i];
+        var rr = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/desbipar', {
+            method: 'POST',
+            body: JSON.stringify({ item_id: rm.itemId, quantidade: rm.quantidade }),
+            keepalive: false
+        }, perReqMs);
+        if (!rr || !rr.ok) algumErro = true;
+    }
     if (algumErro) {
         showMessage('Parte da bipagem não foi salva. Confira as quantidades e bipe de novo se faltar.', 'warning');
     }
@@ -1935,16 +1953,15 @@ async function _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, tempoM
  * pode ficar com escrita concorrente e o pedido de status fica preso — o botão fica em «A guardar…».
  */
 async function _flushTerceirosAntesConcluirRecebimento(documentoId) {
-    var avisoMs = 12000;
-    var flushP = _flushTerceirosPendingDocumento(documentoId).then(function() { return 'ok'; });
-    var avisoP = new Promise(function(resolve) {
-        window.setTimeout(function() { resolve('aviso'); }, avisoMs);
-    });
-    var primeiro = await Promise.race([flushP, avisoP]);
-    if (primeiro === 'aviso') {
+    var avisoMs = 8000;
+    var avisoT = window.setTimeout(function() {
         showMessage('A guardar últimas bipagens antes de concluir…', 'warning');
+    }, avisoMs);
+    try {
+        await _flushTerceirosPendingDocumento(documentoId);
+    } finally {
+        window.clearTimeout(avisoT);
     }
-    await flushP;
 }
 
 /** Resposta JSON de rotas que usam { ok: true/false } (evita depender só de coerção truthy). */
@@ -2888,12 +2905,28 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         }
         try {
             if (pedidoConclusaoRecebimento) {
-                await _flushTerceirosAntesConcluirRecebimento(documentoId);
+                await Promise.race([
+                    _flushTerceirosAntesConcluirRecebimento(documentoId),
+                    new Promise(function(_, rej) {
+                        window.setTimeout(function() {
+                            rej(new Error('TERCEIROS_FLUSH_TOTAL_TIMEOUT'));
+                        }, 180000);
+                    })
+                ]);
             } else {
                 await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 8000);
             }
         } catch (e) {
             console.error(e);
+            if (pedidoConclusaoRecebimento) {
+                showMessage(
+                    e && e.message === 'TERCEIROS_FLUSH_TOTAL_TIMEOUT'
+                        ? 'Demorou demais a guardar bipagens (limite 3 min). Atualize a página e tente «Recebimento concluído» de novo.'
+                        : 'Não foi possível sincronizar a bipagem antes de concluir. Verifique a ligação e tente de novo.',
+                    'error'
+                );
+                return;
+            }
         }
         opcoes = opcoes || {};
         var payload = {
