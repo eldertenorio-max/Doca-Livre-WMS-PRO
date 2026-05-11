@@ -3424,6 +3424,14 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin) {
         showMessage('Selecione uma nota.', 'warning');
         return;
     }
+    if (_terceirosRecebimentoConcluindo) {
+        showMessage('Conclusão de recebimento em curso. Aguarde.', 'warning');
+        return;
+    }
+    if (isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido)) {
+        return;
+    }
+    var concluiu = false;
     _terceirosRecebimentoConcluindo = true;
     try {
         _terceirosLogFluxoRecebimento('DESCARGA 1 ANTES POST direto /status');
@@ -3442,6 +3450,7 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin) {
         atualizarUIBipagemTerceiros(_terceirosDocAtual);
         atualizarBotaoConclusaoTerceiros(getTerceirosPrefixo(), true);
         showMessage('Recebimento concluído.', 'success');
+        concluiu = true;
 
         window.setTimeout(function() {
             try { void loadTerceirosDocumentos(); } catch (e) { console.error(e); }
@@ -3450,9 +3459,25 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin) {
     } finally {
         _terceirosLogFluxoRecebimento('DESCARGA FINALLY executou');
         _terceirosRecebimentoConcluindo = false;
-        if (fin) {
+        if (fin && !concluiu) {
             fin.disabled = false;
             fin.textContent = fin.dataset.terFinDescLabel || 'Finalizar descarga';
+        }
+    }
+}
+
+async function acionarRecebimentoConcluidoTerceirosDireto(btn) {
+    if (btn) {
+        btn.disabled = true;
+        btn.dataset.terFinDescLabel = btn.dataset.terFinDescLabel || btn.textContent || 'Recebimento concluído';
+        btn.textContent = 'A guardar…';
+    }
+    try {
+        await concluirRecebimentoTerceirosPelaDescarga(btn);
+    } finally {
+        if (btn && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido) && btn.textContent === 'A guardar…') {
+            btn.disabled = false;
+            btn.textContent = btn.dataset.terFinDescLabel || 'Recebimento concluído';
         }
     }
 }
@@ -3653,7 +3678,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
 
 /** Fallback direto no HTML: funciona mesmo se initForms não registrou o listener. */
 window.marcarRecebimentoConcluidoTerceiros = function() {
-    void atualizarStatusTerceiros('recebimento', 'recebimento_concluido', 'sim').catch(function(e) {
+    void acionarRecebimentoConcluidoTerceirosDireto(document.getElementById('btn-ter-rec-concluir')).catch(function(e) {
         console.error(e);
         showMessage('Não foi possível concluir o recebimento.', 'error');
     });
@@ -4297,7 +4322,7 @@ function initForms() {
     if (btnTerRecConcluir && btnTerRecConcluir.dataset.bound !== '1') {
         btnTerRecConcluir.dataset.bound = '1';
         btnTerRecConcluir.addEventListener('click', function() {
-            void atualizarStatusTerceiros('recebimento', 'recebimento_concluido', 'sim').catch(function(e) {
+            void acionarRecebimentoConcluidoTerceirosDireto(btnTerRecConcluir).catch(function(e) {
                 console.error(e);
                 showMessage('Não foi possível concluir o recebimento.', 'error');
             });
