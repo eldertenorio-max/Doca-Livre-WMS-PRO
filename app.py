@@ -7437,6 +7437,15 @@ def api_terceiros_status(documento_id):
             )
             _registrar_evento_terceiros(conn, documento_id, campo, str(doc.get(campo) or ''), valor_norm, usuario)
         conn.commit()
+        if campo == 'recebimento_concluido':
+            doc_resp = dict(doc)
+            doc_resp.pop('xml_conteudo', None)
+            doc_resp['recebimento_concluido'] = bool(novo_bool)
+            doc_resp['recebimento_concluido_em'] = _fmt_datahora_br(agora)
+            doc_resp['recebimento_concluido_por'] = usuario
+            doc_resp['atualizado_em'] = _fmt_datahora_br(agora)
+            doc_resp['atualizado_por'] = usuario
+            return jsonify({'ok': True, 'documento': doc_resp})
         return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
     except Exception as e:
         conn.rollback()

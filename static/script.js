@@ -3279,7 +3279,7 @@ async function finalizarDescargaTerceiros() {
         fin.textContent = 'A guardar…';
     }
     try {
-        await atualizarStatusTerceiros('recebimento', 'recebimento_concluido', 'sim');
+        await concluirRecebimentoTerceirosPelaDescarga(fin);
     } finally {
         if (fin) {
             fin.disabled = false;
@@ -3341,6 +3341,122 @@ function _resolverIdDocumentoTerceirosParaStatus() {
     return _terceirosDocumentoIdAtualParaApi();
 }
 
+function _terceirosMontarDocumentoRecebidoLocal(documentoId, documentoApi) {
+    var doc = Object.assign({}, _terceirosDocAtual || {}, documentoApi || {});
+    doc.id = documentoId;
+    doc.area = doc.area || (_terceirosDocAtual && _terceirosDocAtual.area) || 'recebimento';
+    doc.recebimento_concluido = 'Sim';
+    doc.recebimento_concluido_em = doc.recebimento_concluido_em || new Date().toLocaleString('pt-BR');
+    if (doc.nota_lancada == null) doc.nota_lancada = (_terceirosDocAtual && _terceirosDocAtual.nota_lancada) || 'nao';
+    if (doc.enviar_para_mg == null) doc.enviar_para_mg = (_terceirosDocAtual && _terceirosDocAtual.enviar_para_mg) || 'nao';
+    if (doc.carga_recebida_mg == null) doc.carga_recebida_mg = (_terceirosDocAtual && _terceirosDocAtual.carga_recebida_mg) || 'nao';
+
+    var itens = window._terceirosBipagemItens || [];
+    if (itens.length) {
+        var totalXml = 0;
+        var totalBip = 0;
+        var divergentes = 0;
+        itens.forEach(function(item) {
+            var xml = parseFloat(item.quantidade_xml) || 0;
+            var bip = parseFloat(item.quantidade_bipada) || 0;
+            totalXml += xml;
+            totalBip += bip;
+            if (Math.abs(xml - bip) > 0.000001) divergentes += 1;
+        });
+        doc.quantidade_total_xml = totalXml;
+        doc.quantidade_total_bipada = totalBip;
+        doc.itens_divergentes = divergentes;
+    }
+    return doc;
+}
+
+async function _postRecebimentoConcluidoTerceirosDireto(documentoId, timeoutMs) {
+    timeoutMs = timeoutMs || 10000;
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timeoutId = null;
+    var timeoutPromise = new Promise(function(resolve) {
+        timeoutId = window.setTimeout(function() {
+            try {
+                if (controller) controller.abort();
+            } catch (e) {}
+            resolve({ ok: false, erro: 'Tempo esgotado ao concluir recebimento.', _timeout: true });
+        }, timeoutMs);
+    });
+    var requestPromise = fetch(API_BASE + '/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        keepalive: false,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campo: 'recebimento_concluido', valor: 'sim' }),
+        signal: controller ? controller.signal : undefined
+    }).then(function(response) {
+        return Promise.race([
+            response.json().catch(function() { return null; }),
+            new Promise(function(resolve) {
+                window.setTimeout(function() { resolve(null); }, 2000);
+            })
+        ]).then(function(data) {
+            if (!data || typeof data !== 'object') {
+                data = { ok: response.ok };
+            }
+            if (!response.ok && !data.erro) data.erro = 'HTTP ' + response.status;
+            return data;
+        });
+    }).catch(function(error) {
+        if (error && error.name === 'AbortError') {
+            return { ok: false, erro: 'Tempo esgotado ao concluir recebimento.', _timeout: true };
+        }
+        console.error(error);
+        return { ok: false, erro: 'Erro ao conectar com o servidor.' };
+    });
+
+    try {
+        return await Promise.race([requestPromise, timeoutPromise]);
+    } finally {
+        if (timeoutId) window.clearTimeout(timeoutId);
+    }
+}
+
+async function concluirRecebimentoTerceirosPelaDescarga(fin) {
+    var documentoId = _resolverIdDocumentoTerceirosParaStatus();
+    if (documentoId == null) {
+        showMessage('Selecione uma nota.', 'warning');
+        return;
+    }
+    _terceirosRecebimentoConcluindo = true;
+    try {
+        _terceirosLogFluxoRecebimento('DESCARGA 1 ANTES POST direto /status');
+        var resp = await _postRecebimentoConcluidoTerceirosDireto(documentoId, 10000);
+        _terceirosLogFluxoRecebimento('DESCARGA 2 DEPOIS POST direto /status');
+        if (!_terceirosRespostaApiOk(resp)) {
+            showMessage((resp && resp.erro) || 'Erro ao concluir recebimento.', 'error');
+            return;
+        }
+
+        var documentoAtualizado = _terceirosMontarDocumentoRecebidoLocal(documentoId, resp && resp.documento);
+        _terceirosDocAtual = Object.assign({}, _terceirosDocAtual || {}, documentoAtualizado);
+        definirDestaqueLinhaTerceirosDoc(documentoId);
+        aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado);
+        terceirosAplicarPainelAbaSomenteUi('fornecedores-recebidos');
+        atualizarUIBipagemTerceiros(_terceirosDocAtual);
+        atualizarBotaoConclusaoTerceiros(getTerceirosPrefixo(), true);
+        showMessage('Recebimento concluído.', 'success');
+
+        window.setTimeout(function() {
+            try { void loadTerceirosDocumentos(); } catch (e) { console.error(e); }
+            try { void loadTerceirosFornecedoresRecebidos(); } catch (e2) { console.error(e2); }
+        }, 0);
+    } finally {
+        _terceirosLogFluxoRecebimento('DESCARGA FINALLY executou');
+        _terceirosRecebimentoConcluindo = false;
+        if (fin) {
+            fin.disabled = false;
+            fin.textContent = fin.dataset.terFinDescLabel || 'Finalizar descarga';
+        }
+    }
+}
+
 async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
     var prefixo = getTerceirosPrefixo();
     var btnConcluir = document.getElementById('btn-' + prefixo + '-concluir');
@@ -3362,11 +3478,11 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         btnConcluir.disabled = true;
         btnConcluir.textContent = 'A guardar…';
         watchdogConcluir = window.setTimeout(function() {
-            console.error('[terceiros recebimento concluído] WATCHDOG: fluxo ainda pendente após 130s. Verifique o último PASSO no console e a requisição Pending no Network.');
+            console.error('[terceiros recebimento concluído] WATCHDOG: fluxo ainda pendente após 15s. Verifique o último PASSO no console e a requisição Pending no Network.');
             if (btnConcluir && btnConcluir.textContent === 'A guardar…') {
                 atualizarBotaoConclusaoTerceiros(prefixo, isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido));
             }
-        }, 130000);
+        }, 15000);
         restaurarBotaoConcluir = function() {
             btnConcluir.disabled = disAntesConcluir;
             btnConcluir.textContent = txtAntesConcluir;
@@ -3384,16 +3500,23 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         try {
             try {
                 if (pedidoConclusaoRecebimento) {
-                    _terceirosLogFluxoRecebimento('PASSO 1 ANTES await flush pendências');
-                    await Promise.race([
-                        _flushTerceirosAntesConcluirRecebimento(documentoId),
-                        new Promise(function(_, rej) {
-                            window.setTimeout(function() {
-                                rej(new Error('TERCEIROS_FLUSH_TOTAL_TIMEOUT'));
-                            }, 120000);
-                        })
-                    ]);
-                    _terceirosLogFluxoRecebimento('PASSO 2 DEPOIS await flush pendências');
+                    _terceirosLogFluxoRecebimento('PASSO 1 pausar flush; NÃO bloquear POST /status');
+                    try {
+                        var pFlushBg = window._terceirosBipagemPending;
+                        if (pFlushBg) {
+                            Object.keys(pFlushBg.addTimers || {}).forEach(function(k) {
+                                clearTimeout(pFlushBg.addTimers[k]);
+                            });
+                            Object.keys(pFlushBg.removeTimers || {}).forEach(function(k) {
+                                clearTimeout(pFlushBg.removeTimers[k]);
+                            });
+                            pFlushBg.addTimers = {};
+                            pFlushBg.removeTimers = {};
+                        }
+                    } catch (eBg0) {
+                        console.error(eBg0);
+                    }
+                    _terceirosLogFluxoRecebimento('PASSO 2 seguindo direto para POST /status');
                 } else {
                     await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 8000);
                 }
@@ -3435,7 +3558,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 method: 'POST',
                 body: JSON.stringify(payload),
                 keepalive: false
-            }, pedidoConclusaoRecebimento ? 45000 : 35000);
+            }, pedidoConclusaoRecebimento ? 12000 : 35000);
             if (pedidoConclusaoRecebimento) {
                 _terceirosLogFluxoRecebimento('PASSO 4 DEPOIS await POST /status');
             }
@@ -3469,6 +3592,13 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                     aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado);
                     await abrirAbaTerceirosSeDiferenteAsync('fornecedores-recebidos', false, true);
                     _terceirosLogFluxoRecebimento('PASSO 6 3ª aba aberta; recargas em background');
+                    try {
+                        void _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 3000).catch(function(eBg) {
+                            console.error(eBg);
+                        });
+                    } catch (eBg1) {
+                        console.error(eBg1);
+                    }
                     try {
                         void loadTerceirosDocumentos();
                     } catch (e) {
