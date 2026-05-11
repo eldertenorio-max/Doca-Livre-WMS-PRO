@@ -1,5 +1,6 @@
 // Variáveis globais
 const API_BASE = '/api';
+window._terceirosFornecedoresRecebidosLocais = window._terceirosFornecedoresRecebidosLocais || {};
 
 window._getIdViagemAtivo = function() {
     if (window._fluxoBipagemAtivo === 'devolucao') {
@@ -985,6 +986,47 @@ function getTerceirosRowsPorEtapa(rows, etapa) {
     return rows;
 }
 
+function _terceirosIdsRecebidosLocais() {
+    return Object.keys(window._terceirosFornecedoresRecebidosLocais || {});
+}
+
+function _terceirosGuardarFornecedorRecebidoLocal(row) {
+    if (!row || row.id == null) return;
+    var id = String(row.id);
+    window._terceirosFornecedoresRecebidosLocais = window._terceirosFornecedoresRecebidosLocais || {};
+    window._terceirosFornecedoresRecebidosLocais[id] = Object.assign({}, row, {
+        recebimento_concluido: 'Sim',
+        _recebido_local_em: Date.now()
+    });
+}
+
+function _terceirosAplicarRecebidosLocaisNaPendencia(rows) {
+    var ids = _terceirosIdsRecebidosLocais();
+    if (!ids.length) return rows;
+    var bloqueados = {};
+    ids.forEach(function(id) { bloqueados[id] = true; });
+    return (Array.isArray(rows) ? rows : []).filter(function(row) {
+        return !bloqueados[String(row.id)];
+    });
+}
+
+function _terceirosMesclarFornecedoresRecebidosLocais(rows) {
+    var out = Array.isArray(rows) ? rows.slice() : [];
+    var vistos = {};
+    out.forEach(function(row) {
+        if (row && row.id != null) vistos[String(row.id)] = true;
+    });
+    var locais = window._terceirosFornecedoresRecebidosLocais || {};
+    Object.keys(locais).forEach(function(id) {
+        if (vistos[id]) {
+            delete locais[id];
+            return;
+        }
+        out.unshift(locais[id]);
+    });
+    return out;
+}
+
 function _terPad2(n) {
     n = Number(n);
     return (n >= 0 && n < 10) ? '0' + n : String(n);
@@ -1486,7 +1528,7 @@ async function loadTerceirosDocumentos() {
             tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
             return;
         }
-        const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencia-recebimento');
+        const rows = _terceirosAplicarRecebidosLocaisNaPendencia(getTerceirosRowsPorEtapa(data.rows, 'pendencia-recebimento'));
         void atualizarAlertasTerceirosHeader(data.rows);
         window._terceirosPendenciaRowsCache = rows;
         const tipoFiltro = window._terceirosPendenciaFiltroTipo || 'todos';
@@ -1527,7 +1569,7 @@ async function loadTerceirosFornecedoresRecebidos() {
         _terceirosDestacarDocIdAposCarga = null;
         return;
     }
-    const rows = getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos');
+    const rows = _terceirosMesclarFornecedoresRecebidosLocais(getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos'));
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhuma NF com recebimento concluído ainda. Finalize a descarga na aba <strong>Pendência de Recebimento</strong>.</td></tr>';
         _terceirosDestacarDocIdAposCarga = null;
@@ -1561,6 +1603,7 @@ function removerDocumentoDaPendenciaRecebimentoLocal(documentoId) {
 
 function inserirDocumentoFornecedoresRecebidosLocal(row) {
     if (!row || row.id == null) return;
+    _terceirosGuardarFornecedorRecebidoLocal(row);
     var tbody = document.getElementById('ter-tbody-fornecedores-recebidos');
     if (!tbody) return;
     var id = String(row.id);
@@ -3447,6 +3490,9 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin) {
                     console.error('[terceiros recebimento concluído] Falha ao gravar status em background', resp);
                     showMessage((resp && resp.erro) || 'A tela foi atualizada, mas houve falha ao gravar no servidor.', 'error');
                     return;
+                }
+                if (resp && resp.documento) {
+                    _terceirosGuardarFornecedorRecebidoLocal(_terceirosMontarDocumentoRecebidoLocal(documentoId, resp.documento));
                 }
                 try { void loadTerceirosDocumentos(); } catch (e) { console.error(e); }
                 try { void loadTerceirosFornecedoresRecebidos(); } catch (e2) { console.error(e2); }
