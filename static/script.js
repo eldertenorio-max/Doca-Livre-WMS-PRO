@@ -3424,25 +3424,14 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin) {
         showMessage('Selecione uma nota.', 'warning');
         return;
     }
-    if (_terceirosRecebimentoConcluindo) {
-        showMessage('Conclusão de recebimento em curso. Aguarde.', 'warning');
-        return;
-    }
     if (isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido)) {
+        atualizarBotaoConclusaoTerceiros(getTerceirosPrefixo(), true);
         return;
     }
-    var concluiu = false;
     _terceirosRecebimentoConcluindo = true;
     try {
-        _terceirosLogFluxoRecebimento('DESCARGA 1 ANTES POST direto /status');
-        var resp = await _postRecebimentoConcluidoTerceirosDireto(documentoId, 10000);
-        _terceirosLogFluxoRecebimento('DESCARGA 2 DEPOIS POST direto /status');
-        if (!_terceirosRespostaApiOk(resp)) {
-            showMessage((resp && resp.erro) || 'Erro ao concluir recebimento.', 'error');
-            return;
-        }
-
-        var documentoAtualizado = _terceirosMontarDocumentoRecebidoLocal(documentoId, resp && resp.documento);
+        _terceirosLogFluxoRecebimento('DESCARGA 1 movimento local imediato; POST em background');
+        var documentoAtualizado = _terceirosMontarDocumentoRecebidoLocal(documentoId, null);
         _terceirosDocAtual = Object.assign({}, _terceirosDocAtual || {}, documentoAtualizado);
         definirDestaqueLinhaTerceirosDoc(documentoId);
         aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado);
@@ -3450,23 +3439,30 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin) {
         atualizarUIBipagemTerceiros(_terceirosDocAtual);
         atualizarBotaoConclusaoTerceiros(getTerceirosPrefixo(), true);
         showMessage('Recebimento concluído.', 'success');
-        concluiu = true;
 
         window.setTimeout(function() {
-            try { void loadTerceirosDocumentos(); } catch (e) { console.error(e); }
-            try { void loadTerceirosFornecedoresRecebidos(); } catch (e2) { console.error(e2); }
+            _postRecebimentoConcluidoTerceirosDireto(documentoId, 10000).then(function(resp) {
+                _terceirosLogFluxoRecebimento('DESCARGA 2 POST background finalizou');
+                if (!_terceirosRespostaApiOk(resp)) {
+                    console.error('[terceiros recebimento concluído] Falha ao gravar status em background', resp);
+                    showMessage((resp && resp.erro) || 'A tela foi atualizada, mas houve falha ao gravar no servidor.', 'error');
+                    return;
+                }
+                try { void loadTerceirosDocumentos(); } catch (e) { console.error(e); }
+                try { void loadTerceirosFornecedoresRecebidos(); } catch (e2) { console.error(e2); }
+            }).catch(function(e) {
+                console.error(e);
+                showMessage('A tela foi atualizada, mas houve falha ao gravar no servidor.', 'error');
+            });
         }, 0);
     } finally {
         _terceirosLogFluxoRecebimento('DESCARGA FINALLY executou');
         _terceirosRecebimentoConcluindo = false;
-        if (fin && !concluiu) {
-            fin.disabled = false;
-            fin.textContent = fin.dataset.terFinDescLabel || 'Finalizar descarga';
-        }
     }
 }
 
 async function acionarRecebimentoConcluidoTerceirosDireto(btn) {
+    _terceirosRecebimentoConcluindo = false;
     if (btn) {
         btn.disabled = true;
         btn.dataset.terFinDescLabel = btn.dataset.terFinDescLabel || btn.textContent || 'Recebimento concluído';
