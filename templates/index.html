@@ -18,6 +18,17 @@
         <header class="header">
             <a href="/entrada" class="header-link-inicio" title="Voltar à tela inicial de módulos">← Tela inicial</a>
             <h1>CONTROLE DE CARREGAMENTO ULTRAPÃO</h1>
+            <div class="header-alertas-terceiros" id="header-alertas-terceiros">
+                <button type="button" class="header-alertas-btn" id="btn-terceiros-alertas" title="Alertas de NFs paradas">
+                    🔔 <span id="terceiros-alertas-count" class="header-alertas-count">0</span>
+                </button>
+                <div class="header-alertas-menu" id="terceiros-alertas-menu" hidden>
+                    <div class="header-alertas-menu-titulo">NFs paradas no módulo terceiros</div>
+                    <div id="terceiros-alertas-lista" class="header-alertas-lista">
+                        <div class="header-alertas-vazio">Nenhum alerta.</div>
+                    </div>
+                </div>
+            </div>
             <button type="button" class="btn-atualizar-aba" id="btn-atualizar-aba" title="Atualizar apenas os dados da aba atual">🔄 Atualizar aba</button>
             <div class="header-perfil">
                 <span class="perfil-label">Logado como:</span>
