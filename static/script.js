@@ -255,14 +255,10 @@ function terceirosAplicarPainelAbaSomenteUi(aba) {
     }
 }
 
-/**
- * Diagnóstico: defina window.TERCEIROS_DEBUG_FLUXO = true ou localStorage 'terceiros_debug_fluxo' = '1'.
- */
+/** Diagnóstico sempre visível: o último PASSO no console mostra onde o fluxo ficou pendente. */
 function _terceirosLogFluxoRecebimento(etapa) {
     try {
-        if (window.TERCEIROS_DEBUG_FLUXO === true || (typeof localStorage !== 'undefined' && localStorage.getItem('terceiros_debug_fluxo') === '1')) {
-            console.log('[terceiros conclusão]', etapa, new Date().toISOString());
-        }
+        console.log('[terceiros recebimento concluído]', etapa, new Date().toISOString());
     } catch (e) {}
 }
 
@@ -3055,6 +3051,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
     var prefixo = getTerceirosPrefixo();
     var btnConcluir = document.getElementById('btn-' + prefixo + '-concluir');
     var pedidoConclusaoRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
+    var watchdogConcluir = null;
     if (pedidoConclusaoRecebimento) {
         if (_terceirosRecebimentoConcluindo) {
             showMessage('Conclusão de recebimento em curso. Aguarde.', 'warning');
@@ -3070,6 +3067,12 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         var disAntesConcluir = btnConcluir.disabled;
         btnConcluir.disabled = true;
         btnConcluir.textContent = 'A guardar…';
+        watchdogConcluir = window.setTimeout(function() {
+            console.error('[terceiros recebimento concluído] WATCHDOG: fluxo ainda pendente após 130s. Verifique o último PASSO no console e a requisição Pending no Network.');
+            if (btnConcluir && btnConcluir.textContent === 'A guardar…') {
+                atualizarBotaoConclusaoTerceiros(prefixo, isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido));
+            }
+        }, 130000);
         restaurarBotaoConcluir = function() {
             btnConcluir.disabled = disAntesConcluir;
             btnConcluir.textContent = txtAntesConcluir;
@@ -3087,7 +3090,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         try {
             try {
                 if (pedidoConclusaoRecebimento) {
-                    _terceirosLogFluxoRecebimento('1 antes flush');
+                    _terceirosLogFluxoRecebimento('PASSO 1 ANTES await flush pendências');
                     await Promise.race([
                         _flushTerceirosAntesConcluirRecebimento(documentoId),
                         new Promise(function(_, rej) {
@@ -3096,7 +3099,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                             }, 120000);
                         })
                     ]);
-                    _terceirosLogFluxoRecebimento('2 após flush');
+                    _terceirosLogFluxoRecebimento('PASSO 2 DEPOIS await flush pendências');
                 } else {
                     await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 8000);
                 }
@@ -3132,7 +3135,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 payload.forcar_lancamento_sem_recebimento = true;
             }
             if (pedidoConclusaoRecebimento) {
-                _terceirosLogFluxoRecebimento('3 antes POST /status');
+                _terceirosLogFluxoRecebimento('PASSO 3 ANTES await POST /status');
             }
             var resp = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
                 method: 'POST',
@@ -3140,7 +3143,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 keepalive: false
             }, pedidoConclusaoRecebimento ? 45000 : 35000);
             if (pedidoConclusaoRecebimento) {
-                _terceirosLogFluxoRecebimento('4 após POST /status');
+                _terceirosLogFluxoRecebimento('PASSO 4 DEPOIS await POST /status');
             }
             if (!_terceirosRespostaApiOk(resp)) {
                 if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !payload.forcar_lancamento_sem_recebimento) {
@@ -3163,17 +3166,17 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             var concluiuRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
             if (concluiuRecebimento) {
                 restaurarBotaoConcluir = null;
-                _terceirosDocAtual.recebimento_concluido = true;
+                _terceirosDocAtual.recebimento_concluido = 'Sim';
                 var prefixoConcl = getTerceirosPrefixo();
                 try {
-                    _terceirosLogFluxoRecebimento('5 antes loadTerceirosDocumentos');
+                    _terceirosLogFluxoRecebimento('PASSO 5 ANTES await recarregar origem (Pendência)');
                     try {
                         await loadTerceirosDocumentos();
                     } catch (e) {
                         console.error(e);
                         showMessage('Recebimento gravado, mas a lista de pendências não atualizou. Volte à 2ª aba ou atualize a página.', 'warning');
                     }
-                    _terceirosLogFluxoRecebimento('6 após pendência; antes fornecedores');
+                    _terceirosLogFluxoRecebimento('PASSO 6 DEPOIS origem; ANTES await recarregar destino (Fornecedores)');
                     terceirosReaplicarFiltroPrevisaoPendenciaSeAplicavel();
                     definirDestaqueLinhaTerceirosDoc(documentoId);
                     try {
@@ -3181,14 +3184,15 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                     } catch (e) {
                         console.error(e);
                     }
-                    _terceirosLogFluxoRecebimento('7 após fornecedores; antes abrirAbaAsync');
+                    _terceirosLogFluxoRecebimento('PASSO 7 DEPOIS destino; ANTES await abrir aba destino');
                     try {
                         await abrirAbaTerceirosSeDiferenteAsync('fornecedores-recebidos', false, true);
                     } catch (e) {
                         console.error(e);
                     }
-                    _terceirosLogFluxoRecebimento('8 fim fluxo conclusão (sem loadDetalhe)');
+                    _terceirosLogFluxoRecebimento('PASSO 8 DEPOIS abrir aba destino; fim fluxo conclusão');
                 } finally {
+                    _terceirosLogFluxoRecebimento('FINALLY INTERNO conclusão executou');
                     atualizarBotaoConclusaoTerceiros(prefixoConcl, true);
                 }
                 animarConclusaoTerceiros(prefixoConcl);
@@ -3216,7 +3220,10 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         }
     } finally {
         if (pedidoConclusaoRecebimento) {
-            _terceirosLogFluxoRecebimento('finally externo');
+            _terceirosLogFluxoRecebimento('FINALLY EXTERNO atualizarStatusTerceiros executou');
+        }
+        if (watchdogConcluir) {
+            window.clearTimeout(watchdogConcluir);
         }
         if (restaurarBotaoConcluir) restaurarBotaoConcluir();
         if (pedidoConclusaoRecebimento && btnConcluir && btnConcluir.textContent === 'A guardar…') {
@@ -3868,7 +3875,8 @@ function initForms() {
     if (btnTerCarretaUpload) btnTerCarretaUpload.addEventListener('click', function() { uploadXmlTerceirosCarreta(); });
 
     const btnTerRecConcluir = document.getElementById('btn-ter-rec-concluir');
-    if (btnTerRecConcluir) {
+    if (btnTerRecConcluir && btnTerRecConcluir.dataset.bound !== '1') {
+        btnTerRecConcluir.dataset.bound = '1';
         btnTerRecConcluir.addEventListener('click', function() {
             void atualizarStatusTerceiros('recebimento', 'recebimento_concluido', 'sim').catch(function(e) {
                 console.error(e);
