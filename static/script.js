@@ -134,7 +134,32 @@ let _terceirosDestacarDocIdAposCarga = null;
 
 /** Reabre a última NF após F5 (evita “sumir” bipagem que já está no servidor). */
 var TERCEIROS_SESS_DOC_KEY = 'terceiros_doc_restaurar_v1';
+/** Guarda só a sub-aba ativa (independente do documento — não é limpa ao fechar detalhe). */
+var TERCEIROS_SESS_SUBABA_KEY = 'terceiros_subaba_v1';
 var TERCEIROS_SESS_MAX_MS = 12 * 60 * 60 * 1000;
+
+function _persistirTerceirosSubabaNaSessao(tab) {
+    try {
+        var aba = _terceirosNormalizarAbaTab(tab);
+        sessionStorage.setItem(TERCEIROS_SESS_SUBABA_KEY, JSON.stringify({ tab: aba, t: Date.now() }));
+    } catch (e) {}
+}
+
+function _lerTerceirosSubabaNaSessao() {
+    try {
+        var raw = sessionStorage.getItem(TERCEIROS_SESS_SUBABA_KEY);
+        if (!raw) return null;
+        var o = JSON.parse(raw);
+        if (!o || !o.tab) return null;
+        if (o.t && Date.now() - o.t > TERCEIROS_SESS_MAX_MS) {
+            sessionStorage.removeItem(TERCEIROS_SESS_SUBABA_KEY);
+            return null;
+        }
+        return o;
+    } catch (e) {
+        return null;
+    }
+}
 
 function _limparTerceirosDocumentoNaSessao() {
     try {
@@ -252,6 +277,7 @@ function terceirosAplicarPainelAbaSomenteUi(aba) {
     recebimentosMg.classList.toggle('devolucoes-panel-active', aba === 'recebimentos-mg');
     pendenciasMg.classList.toggle('devolucoes-panel-active', aba === 'pendencias-mg');
     historico.classList.toggle('devolucoes-panel-active', aba === 'historico');
+    _persistirTerceirosSubabaNaSessao(aba);
     if (_terceirosDocAtual && _terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '') {
         _persistirTerceirosDocumentoNaSessao(_terceirosDocAtual.id, _terceirosDocAtual.area);
     }
@@ -501,8 +527,13 @@ function initTerceirosTabs() {
 
     window.terceirosMostrarAba = mostrarTerTab;
     var tabInicial = 'pendencia-recebimento';
-    var sessTab = _lerTerceirosDocumentoNaSessao();
-    if (sessTab && sessTab.tab) tabInicial = sessTab.tab;
+    var sub = _lerTerceirosSubabaNaSessao();
+    if (sub && sub.tab) {
+        tabInicial = sub.tab;
+    } else {
+        var sessTab = _lerTerceirosDocumentoNaSessao();
+        if (sessTab && sessTab.tab) tabInicial = sessTab.tab;
+    }
     mostrarTerTab(tabInicial);
 }
 
@@ -3579,34 +3610,23 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin) {
     }
     _terceirosRecebimentoConcluindo = true;
     try {
-        _terceirosLogFluxoRecebimento('DESCARGA 1 movimento local imediato; POST em background');
-        var documentoAtualizado = _terceirosMontarDocumentoRecebidoLocal(documentoId, null);
+        _terceirosLogFluxoRecebimento('DESCARGA 1 ANTES POST /status (gravar antes de fechar / F5)');
+        var resp = await _postRecebimentoConcluidoTerceirosDireto(documentoId, 25000);
+        _terceirosLogFluxoRecebimento('DESCARGA 2 DEPOIS POST /status');
+        if (!_terceirosRespostaApiOk(resp)) {
+            showMessage((resp && resp.erro) || 'Não foi possível gravar o recebimento no servidor. Tente de novo.', 'error');
+            return;
+        }
+        var documentoAtualizado = _terceirosMontarDocumentoRecebidoLocal(documentoId, resp.documento);
         _terceirosDocAtual = Object.assign({}, _terceirosDocAtual || {}, documentoAtualizado);
         definirDestaqueLinhaTerceirosDoc(documentoId);
         aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado);
         terceirosAplicarPainelAbaSomenteUi('fornecedores-recebidos');
         resetTerceirosDetalhe();
         showMessage('Recebimento concluído.', 'success');
+        try { void loadTerceirosDocumentos(); } catch (e) { console.error(e); }
+        try { void loadTerceirosFornecedoresRecebidos(); } catch (e2) { console.error(e2); }
         void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
-
-        window.setTimeout(function() {
-            _postRecebimentoConcluidoTerceirosDireto(documentoId, 10000).then(function(resp) {
-                _terceirosLogFluxoRecebimento('DESCARGA 2 POST background finalizou');
-                if (!_terceirosRespostaApiOk(resp)) {
-                    console.error('[terceiros recebimento concluído] Falha ao gravar status em background', resp);
-                    showMessage((resp && resp.erro) || 'A tela foi atualizada, mas houve falha ao gravar no servidor.', 'error');
-                    return;
-                }
-                if (resp && resp.documento) {
-                    _terceirosGuardarFornecedorRecebidoLocal(_terceirosMontarDocumentoRecebidoLocal(documentoId, resp.documento));
-                }
-                try { void loadTerceirosDocumentos(); } catch (e) { console.error(e); }
-                try { void loadTerceirosFornecedoresRecebidos(); } catch (e2) { console.error(e2); }
-            }).catch(function(e) {
-                console.error(e);
-                showMessage('A tela foi atualizada, mas houve falha ao gravar no servidor.', 'error');
-            });
-        }, 0);
     } finally {
         _terceirosLogFluxoRecebimento('DESCARGA FINALLY executou');
         _terceirosRecebimentoConcluindo = false;
