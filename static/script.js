@@ -1086,7 +1086,7 @@ function renderTerceirosPendenciaDocumentosTbodyHtml(rows) {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
         var badgeCarreta = (row.area === 'carreta') ? ' <span class="ter-origem-badge ter-origem-badge--carreta">Carreta</span>' : '';
         var plc = ((row.placa_carreta || '').trim() || '—');
-        return '<tr>'
+        return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
             + '<td><strong>' + escapeHtml(nf) + '</strong>' + badgeCarreta + '</td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
@@ -1204,6 +1204,41 @@ function renderTerceirosPendenciaRecebimentoAcoes(row) {
         + '<button type="button" class="btn btn-secondary btn-sm" data-ter-ver-detalhe-pend="' + id + '" data-ter-area="' + area + '">Ver detalhe</button>'
         + renderTerceirosExcluirButton(row, 'data-ter-excluir-doc')
         + '</span>';
+}
+
+function renderTerceirosFornecedorRecebidoRowHtml(row) {
+    var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+    var conferenciaHtml = renderTerceirosConferenciaResumoHtml(row);
+    return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
+        + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+        + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
+        + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
+        + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
+        + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
+        + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
+        + '<td>' + escapeHtml(isTerceirosFlagSim(row.recebimento_concluido) ? 'concluído' : 'pendente') + '</td>'
+        + '<td>' + conferenciaHtml + '</td>'
+        + '<td><strong>' + escapeHtml(textoResumoNotaLancadaTerceiros(row)) + '</strong><div class="ter-status-meta">' + escapeHtml(row.nota_lancada_em || '-') + '</div></td>'
+        + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'fornecedores-recebidos')
+            + ' <button type="button" class="btn btn-secondary btn-sm" data-ter-comprovante-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Gerar comprovante</button> '
+            + renderTerceirosExcluirButton(row, 'data-ter-excluir-fornecedor-doc') + '</td>'
+        + '</tr>';
+}
+
+function renderTerceirosConferenciaResumoHtml(row) {
+    var resumo = row.resumo || {};
+    var totalXml = parseFloat(row.quantidade_total_xml != null ? row.quantidade_total_xml : resumo.quantidade_total_xml) || 0;
+    var totalBip = parseFloat(row.quantidade_total_bipada != null ? row.quantidade_total_bipada : resumo.quantidade_total_bipada) || 0;
+    var divergentes = parseInt(row.itens_divergentes != null ? row.itens_divergentes : resumo.itens_com_pendencia, 10) || 0;
+    var completo = divergentes === 0 && Math.abs(totalXml - totalBip) <= 1e-6;
+    var conferenciaHtml = completo
+        ? '<span class="status-badge status-OK">✅ Completo</span>'
+        : '<span class="status-badge status-FALTA">⚠️ Divergente</span>';
+    conferenciaHtml += '<div class="ter-status-meta">XML: ' + escapeHtml(_formatTerQtdDisplay(totalXml))
+        + ' / Bipado: ' + escapeHtml(_formatTerQtdDisplay(totalBip))
+        + (divergentes ? (' / Itens: ' + escapeHtml(String(divergentes))) : '')
+        + '</div>';
+    return conferenciaHtml;
 }
 
 function scrollTerceirosRecebimentoDetalheSecao(secao) {
@@ -1404,6 +1439,19 @@ function bindTerceirosExcluirButtons(seletor) {
     });
 }
 
+function bindTerceirosComprovanteButtons(seletor) {
+    document.querySelectorAll(seletor).forEach(function(btn) {
+        if (btn.dataset.terComprovanteBound === '1') return;
+        btn.dataset.terComprovanteBound = '1';
+        btn.addEventListener('click', function() {
+            var id = parseInt(btn.getAttribute('data-ter-comprovante-doc') || '0', 10);
+            var area = btn.getAttribute('data-ter-area') || 'recebimento';
+            if (!id) return;
+            void gerarComprovanteTerceirosDocumento(id, area, btn);
+        });
+    });
+}
+
 async function loadTerceirosDocumentos() {
     var tbody = document.getElementById('ter-tbody-recebimento-documentos');
     if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando...</td></tr>';
@@ -1446,36 +1494,74 @@ async function loadTerceirosDocumentos() {
 async function loadTerceirosFornecedoresRecebidos() {
     var tbody = document.getElementById('ter-tbody-fornecedores-recebidos');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando...</td></tr>';
     const data = await fetchTerceirosDocumentosTodos();
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         _terceirosDestacarDocIdAposCarga = null;
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF com recebimento concluído ainda. Finalize a descarga na aba <strong>Pendência de Recebimento</strong>.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhuma NF com recebimento concluído ainda. Finalize a descarga na aba <strong>Pendência de Recebimento</strong>.</td></tr>';
         _terceirosDestacarDocIdAposCarga = null;
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
-        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-        return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
-            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
-            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
-            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
-            + '<td>' + escapeHtml(isTerceirosFlagSim(row.recebimento_concluido) ? 'concluído' : 'pendente') + '</td>'
-            + '<td><strong>' + escapeHtml(textoResumoNotaLancadaTerceiros(row)) + '</strong><div class="ter-status-meta">' + escapeHtml(row.nota_lancada_em || '-') + '</div></td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'fornecedores-recebidos') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-fornecedor-doc') + '</td>'
-            + '</tr>';
+        return renderTerceirosFornecedorRecebidoRowHtml(row);
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-fornecedor-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-fornecedor-doc]');
+    bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
     aplicarDestaqueLinhaTerceirosDoc(tbody);
+}
+
+function removerDocumentoDaPendenciaRecebimentoLocal(documentoId) {
+    var id = String(documentoId);
+    var tbody = document.getElementById('ter-tbody-recebimento-documentos');
+    if (tbody) {
+        var tr = tbody.querySelector('tr[data-ter-doc-id="' + id + '"]');
+        if (tr) tr.remove();
+        if (!tbody.querySelector('tr[data-ter-doc-id]')) {
+            tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
+        }
+    }
+    if (Array.isArray(window._terceirosPendenciaRowsCache)) {
+        window._terceirosPendenciaRowsCache = window._terceirosPendenciaRowsCache.filter(function(row) {
+            return String(row.id) !== id;
+        });
+    }
+}
+
+function inserirDocumentoFornecedoresRecebidosLocal(row) {
+    if (!row || row.id == null) return;
+    var tbody = document.getElementById('ter-tbody-fornecedores-recebidos');
+    if (!tbody) return;
+    var id = String(row.id);
+    var atual = tbody.querySelector('tr[data-ter-doc-id="' + id + '"]');
+    var html = renderTerceirosFornecedorRecebidoRowHtml(row);
+    if (atual) {
+        atual.outerHTML = html;
+    } else {
+        var loading = tbody.querySelector('tr.loading, td.loading');
+        if (loading || !tbody.querySelector('tr[data-ter-doc-id]')) {
+            tbody.innerHTML = html;
+        } else {
+            tbody.insertAdjacentHTML('afterbegin', html);
+        }
+    }
+    bindTerceirosAbrirButtons('[data-ter-fornecedor-doc]');
+    bindTerceirosExcluirButtons('[data-ter-excluir-fornecedor-doc]');
+    bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
+    aplicarDestaqueLinhaTerceirosDoc(tbody);
+}
+
+function aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado) {
+    removerDocumentoDaPendenciaRecebimentoLocal(documentoId);
+    if (documentoAtualizado) {
+        documentoAtualizado.recebimento_concluido = 'Sim';
+        inserirDocumentoFornecedoresRecebidosLocal(documentoAtualizado);
+    }
 }
 
 async function loadTerceirosPendentesLancamento() {
@@ -1726,16 +1812,16 @@ async function loadTerceirosPendenciasMg() {
 async function loadTerceirosHistorico() {
     var tbody = document.getElementById('ter-tbody-historico');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" class="loading">Carregando...</td></tr>';
     const data = await fetchTerceirosDocumentosTodos();
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="12" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
     const rows = data.rows;
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhuma NF com XML enviado ainda.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" class="loading">Nenhuma NF com XML enviado ainda.</td></tr>';
         return;
     }
 
@@ -1750,15 +1836,19 @@ async function loadTerceirosHistorico() {
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(recebimento) + '</td>'
+            + '<td>' + renderTerceirosConferenciaResumoHtml(row) + '</td>'
             + '<td>' + escapeHtml(row.nota_lancada || '-') + '</td>'
             + '<td>' + escapeHtml(row.enviar_para_mg || '-') + '</td>'
             + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
             + '<td>' + escapeHtml(row.carga_recebida_mg || '-') + '</td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-historico-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-historico-doc') + '</td>'
+            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-historico-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + ' <button type="button" class="btn btn-secondary btn-sm" data-ter-comprovante-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Gerar comprovante</button> '
+                + renderTerceirosExcluirButton(row, 'data-ter-excluir-historico-doc') + '</td>'
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-historico-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-historico-doc]');
+    bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
 }
 
 async function refreshTerceirosViews() {
@@ -1811,7 +1901,7 @@ async function refreshTerceirosViews() {
         if (_terceirosTabAtual === 'pendencias-mg') tbodyAtivo = document.getElementById('ter-tbody-pendencias-mg');
         if (_terceirosTabAtual === 'historico') tbodyAtivo = document.getElementById('ter-tbody-historico');
         if (tbodyAtivo) {
-            var cols = tbodyAtivo.id === 'ter-tbody-notas-lancadas' || tbodyAtivo.id === 'ter-tbody-recebimento-documentos' ? 11 : tbodyAtivo.id === 'ter-tbody-pendencias-mg' || tbodyAtivo.id === 'ter-tbody-recebimentos-mg' ? 10 : tbodyAtivo.id === 'ter-tbody-historico' ? 12 : 9;
+            var cols = tbodyAtivo.id === 'ter-tbody-notas-lancadas' || tbodyAtivo.id === 'ter-tbody-recebimento-documentos' ? 11 : tbodyAtivo.id === 'ter-tbody-pendencias-mg' || tbodyAtivo.id === 'ter-tbody-recebimentos-mg' ? 10 : tbodyAtivo.id === 'ter-tbody-historico' ? 13 : 9;
             tbodyAtivo.innerHTML = '<tr><td colspan="' + cols + '" class="loading" style="color:#c62828;">Erro ao carregar os dados desta aba.</td></tr>';
         }
         showMessage('Erro ao carregar dados do módulo de terceiros.', 'error');
@@ -2106,7 +2196,7 @@ async function _flushTerceirosAntesConcluirRecebimento(documentoId) {
         showMessage('A guardar últimas bipagens antes de concluir…', 'warning');
     }, avisoMs);
     try {
-        await _flushTerceirosPendingDocumento(documentoId);
+        await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 5000);
     } finally {
         window.clearTimeout(avisoT);
     }
@@ -2373,6 +2463,100 @@ window.imprimirComprovanteDescargaTerceiros = function(divergente) {
         w.print();
     } catch (e) { /* ignore */ }
 };
+
+function _terFormatarNfDoc(doc) {
+    return [(doc && doc.numero_nf) || '-', (doc && doc.serie_nf) ? ('Série ' + doc.serie_nf) : ''].filter(Boolean).join(' / ');
+}
+
+function imprimirComprovanteDescargaTerceirosDoc(doc) {
+    if (!doc || !Array.isArray(doc.itens) || !doc.itens.length) {
+        showMessage('Não há itens para o comprovante.', 'warning');
+        return;
+    }
+    var itens = doc.itens || [];
+    var divergente = itens.some(function(item) {
+        var xml = parseFloat(item.quantidade_xml) || 0;
+        var bip = parseFloat(item.quantidade_bipada) || 0;
+        return _statusBipagemTerLocais(xml, bip) !== 'COMPLETO';
+    });
+    var perfilU = document.getElementById('perfil-usuario');
+    var usuario = perfilU ? String(perfilU.textContent || '').trim() : '';
+    var agora = new Date().toLocaleString('pt-BR');
+    var rows = itens.map(function(item) {
+        var xml = parseFloat(item.quantidade_xml) || 0;
+        var bip = parseFloat(item.quantidade_bipada) || 0;
+        var st = _statusBipagemTerLocais(xml, bip);
+        var falta = Math.max(0, xml - bip);
+        var sobra = Math.max(0, bip - xml);
+        var faltaTxt = sobra > 1e-9
+            ? ('0 (+' + _formatTerQtdDisplay(sobra) + ' sobra)')
+            : _formatTerQtdDisplay(falta);
+        return '<tr>'
+            + '<td>' + escapeHtml(String(item.n_item != null ? item.n_item : '')) + '</td>'
+            + '<td>' + escapeHtml(String(item.codigo_ean || '')) + '</td>'
+            + '<td>' + escapeHtml(String(item.codigo_produto_xml || '')) + '</td>'
+            + '<td>' + escapeHtml(String(item.descricao_xml || '')) + '</td>'
+            + '<td style="text-align:right">' + escapeHtml(_formatTerQtdDisplay(xml)) + '</td>'
+            + '<td style="text-align:right">' + escapeHtml(_formatTerQtdDisplay(bip)) + '</td>'
+            + '<td style="text-align:right">' + escapeHtml(faltaTxt) + '</td>'
+            + '<td>' + escapeHtml(st) + '</td>'
+            + '</tr>';
+    }).join('');
+    var aviso = divergente
+        ? '<p style="color:#e65100;font-weight:bold;">Comprovante divergente — há itens pendentes ou excedentes.</p>'
+        : '<p style="color:#2e7d32;font-weight:bold;">Comprovante completo — todos os itens conferidos.</p>';
+    var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Comprovante descarga</title>'
+        + '<style>body{font-family:Arial,sans-serif;padding:16px;font-size:13px}'
+        + 'table{border-collapse:collapse;width:100%;margin-top:12px}'
+        + 'th,td{border:1px solid #ccc;padding:6px}'
+        + 'th{background:#f5f5f5;text-align:left}'
+        + '</style></head><body>'
+        + '<h2>Comprovante de descarga (terceiros)</h2>'
+        + aviso
+        + '<p><strong>NF:</strong> ' + escapeHtml(_terFormatarNfDoc(doc)) + ' &nbsp; <strong>Pedido:</strong> ' + escapeHtml(doc.numero_pedido || '-') + '</p>'
+        + '<p><strong>Remetente:</strong> ' + escapeHtml(doc.remetente_nome || '-') + '</p>'
+        + '<p><strong>Destinatário:</strong> ' + escapeHtml(doc.destinatario_nome || '-') + '</p>'
+        + '<p><strong>Emitido em:</strong> ' + escapeHtml(agora) + (usuario ? (' &nbsp; <strong>Usuário:</strong> ' + escapeHtml(usuario)) : '') + '</p>'
+        + '<table><thead><tr>'
+        + '<th>Item</th><th>EAN</th><th>Cód. XML</th><th>Descrição</th><th>Qtd. XML</th><th>Qtd. bipada</th><th>Falta</th><th>Status</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table>'
+        + '</body></html>';
+    var w = window.open('', '_blank');
+    if (!w) {
+        showMessage('Permita pop-ups para imprimir o comprovante.', 'warning');
+        return;
+    }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    try {
+        w.print();
+    } catch (e) { /* ignore */ }
+}
+
+async function gerarComprovanteTerceirosDocumento(documentoId, area, btn) {
+    var label = btn ? (btn.textContent || 'Gerar comprovante') : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Gerando...';
+    }
+    try {
+        var doc = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(documentoId), {}, 55000);
+        if (!doc || doc.erro) {
+            showMessage((doc && doc.erro) || 'Erro ao carregar NF para comprovante.', 'error');
+            return;
+        }
+        imprimirComprovanteDescargaTerceirosDoc(doc);
+    } catch (e) {
+        console.error(e);
+        showMessage('Erro ao gerar comprovante.', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = label || 'Gerar comprovante';
+        }
+    }
+}
 
 window.abrirModalComprovanteTerceirosDivergente = function() {
     var m = document.getElementById('modal-comprovante-terceiros-divergente');
@@ -3169,28 +3353,23 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 _terceirosDocAtual.recebimento_concluido = 'Sim';
                 var prefixoConcl = getTerceirosPrefixo();
                 try {
-                    _terceirosLogFluxoRecebimento('PASSO 5 ANTES await recarregar origem (Pendência)');
-                    try {
-                        await loadTerceirosDocumentos();
-                    } catch (e) {
-                        console.error(e);
-                        showMessage('Recebimento gravado, mas a lista de pendências não atualizou. Volte à 2ª aba ou atualize a página.', 'warning');
-                    }
-                    _terceirosLogFluxoRecebimento('PASSO 6 DEPOIS origem; ANTES await recarregar destino (Fornecedores)');
-                    terceirosReaplicarFiltroPrevisaoPendenciaSeAplicavel();
+                    _terceirosLogFluxoRecebimento('PASSO 5 movimento local e abrir 3ª aba');
+                    var documentoAtualizado = resp && resp.documento ? resp.documento : null;
                     definirDestaqueLinhaTerceirosDoc(documentoId);
+                    aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado);
+                    await abrirAbaTerceirosSeDiferenteAsync('fornecedores-recebidos', false, true);
+                    _terceirosLogFluxoRecebimento('PASSO 6 3ª aba aberta; recargas em background');
                     try {
-                        await loadTerceirosFornecedoresRecebidos();
+                        void loadTerceirosDocumentos();
                     } catch (e) {
                         console.error(e);
                     }
-                    _terceirosLogFluxoRecebimento('PASSO 7 DEPOIS destino; ANTES await abrir aba destino');
                     try {
-                        await abrirAbaTerceirosSeDiferenteAsync('fornecedores-recebidos', false, true);
+                        void loadTerceirosFornecedoresRecebidos();
                     } catch (e) {
                         console.error(e);
                     }
-                    _terceirosLogFluxoRecebimento('PASSO 8 DEPOIS abrir aba destino; fim fluxo conclusão');
+                    _terceirosLogFluxoRecebimento('PASSO 7 fluxo conclusão finalizado sem await de listas');
                 } finally {
                     _terceirosLogFluxoRecebimento('FINALLY INTERNO conclusão executou');
                     atualizarBotaoConclusaoTerceiros(prefixoConcl, true);

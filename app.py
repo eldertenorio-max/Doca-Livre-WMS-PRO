@@ -7089,13 +7089,15 @@ def api_terceiros_documentos():
             '''SELECT ''' + cols + ''',
                       COALESCE(si.total_itens, 0) AS total_itens,
                       COALESCE(si.quantidade_total_xml, 0) AS quantidade_total_xml,
-                      COALESCE(si.quantidade_total_bipada, 0) AS quantidade_total_bipada
+                      COALESCE(si.quantidade_total_bipada, 0) AS quantidade_total_bipada,
+                      COALESCE(si.itens_divergentes, 0) AS itens_divergentes
                FROM ''' + tbl_d + ''' d
                LEFT JOIN (
                    SELECT documento_id,
                           COUNT(id) AS total_itens,
                           COALESCE(SUM(quantidade_xml), 0) AS quantidade_total_xml,
-                          COALESCE(SUM(quantidade_bipada), 0) AS quantidade_total_bipada
+                          COALESCE(SUM(quantidade_bipada), 0) AS quantidade_total_bipada,
+                          SUM(CASE WHEN ABS(COALESCE(quantidade_xml, 0) - COALESCE(quantidade_bipada, 0)) > 0.000001 THEN 1 ELSE 0 END) AS itens_divergentes
                    FROM ''' + tbl_i + '''
                    GROUP BY documento_id
                ) si ON si.documento_id = d.id
@@ -7135,6 +7137,7 @@ def api_terceiros_documentos():
                 'total_itens': int(row.get('total_itens') or 0),
                 'quantidade_total_xml': float(row.get('quantidade_total_xml') or 0),
                 'quantidade_total_bipada': float(row.get('quantidade_total_bipada') or 0),
+                'itens_divergentes': int(row.get('itens_divergentes') or 0),
                 'criado_em': _fmt_datahora_br(row.get('criado_em') or ''),
                 'recebimento_concluido_em': _fmt_datahora_br(row.get('recebimento_concluido_em') or ''),
                 'nota_lancada_em': _fmt_datahora_br(row.get('nota_lancada_em') or ''),
