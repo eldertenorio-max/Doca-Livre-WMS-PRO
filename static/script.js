@@ -916,7 +916,7 @@ function _painelTerceirosStatsRapidasFromRows(rows) {
         if (isTerceirosFlagSim(row.recebimento_concluido)) s.recebimento_concluido += 1;
         if (_terceirosConsideraFornecedorRecebido(row)) s.fornecedores_recebidos += 1;
         if (_terceirosConsideraPendenteLancamento(row)) s.pendentes_lancamento += 1;
-        if (isTerceirosFlagSim(row.nota_lancada)) s.notas_lancadas += 1;
+        if (isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg)) s.notas_lancadas += 1;
         if (isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg)) s.pendencias_mg += 1;
         if (isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg)) s.recebimentos_mg += 1;
         if (_terceirosConsideraPendenciaRecebimento(row)) s.pendencia_recebimento += 1;
@@ -1300,7 +1300,7 @@ function fecharModalIrParaRecebimentosMg(confirmado) {
 function abrirModalIrParaRecebimentosMg() {
     var modal = document.getElementById('modal-terceiros-ir-recebimentos-mg');
     if (!modal) {
-        return Promise.resolve(window.confirm('Envio para MG registrado. Deseja ir para a 8ª aba — Recebimentos de MG?'));
+        return Promise.resolve(window.confirm('Enviado para MG registrado. Deseja ir para a 8ª aba — Recebimentos de MG?'));
     }
     modal.style.display = 'block';
     return new Promise(function(resolve) {
@@ -1308,7 +1308,7 @@ function abrirModalIrParaRecebimentosMg() {
     });
 }
 
-/** 6ª → 8ª aba: após marcar «Sim» em Envio MG. */
+/** 6ª → 8ª aba: após marcar «Sim» em Enviado para MG. */
 async function terceirosNavegarParaRecebimentosMgAposMarcarSim(documentoId) {
     if (documentoId == null) return;
     definirDestaqueLinhaTerceirosDoc(documentoId);
@@ -1328,30 +1328,27 @@ async function terceirosNavegarParaRecebimentosMgAposMarcarSim(documentoId) {
     }
 }
 
-/** Após salvar «Sim» em Envio MG: pergunta se vai à 8ª aba. */
+/** Após salvar «Sim» em Enviado para MG: pergunta se vai à 8ª aba. */
 async function _terceirosAposConfirmarEnviarMgSim(documentoId, documentoResp) {
     if (documentoId == null) return;
     invalidateTerceirosListaCache();
     var irAba8 = await abrirModalIrParaRecebimentosMg();
     if (irAba8) {
         await terceirosNavegarParaRecebimentosMgAposMarcarSim(documentoId);
-        showMessage('Envio para MG registrado. Você está na aba Recebimentos de MG.', 'success');
+        showMessage('Enviado para MG registrado. Você está na aba Recebimentos de MG.', 'success');
         return;
     }
     definirDestaqueLinhaTerceirosDoc(documentoId);
     try {
-        if (_terceirosTabAtual === 'pendencias-mg') {
-            await loadTerceirosPendenciasMg();
-        } else {
-            await recarregarListaTerceirosTab(_terceirosTabAtual);
-        }
-        void loadTerceirosRecebimentosMg();
+        await recarregarListaTerceirosTab(_terceirosTabAtual);
+        void loadTerceirosPendenciasMg();
         void loadTerceirosNotasLancadas();
+        void loadTerceirosRecebimentosMg();
         void atualizarAlertasTerceirosHeader();
     } catch (e) {
         console.error(e);
     }
-    showMessage('Envio para MG registrado.', 'success');
+    showMessage('Enviado para MG registrado.', 'success');
 }
 
 function fecharModalExcluirDocumento(confirmado) {
@@ -1674,7 +1671,7 @@ function getTerceirosRowsPorEtapa(rows, etapa) {
     }
     if (etapa === 'notas-lancadas') {
         return rows.filter(function(row) {
-            return isTerceirosFlagSim(row.nota_lancada);
+            return isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg);
         });
     }
     if (etapa === 'notas-enviadas-mg') {
@@ -2656,7 +2653,7 @@ async function loadTerceirosRecebimentosMg(dataPreloaded) {
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'recebimentos-mg');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF aguardando confirmação de recebimento em MG. As notas entram aqui após marcar <strong>Envio MG</strong> como Sim na 6ª aba.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF aguardando confirmação de recebimento em MG. As notas entram aqui após marcar <strong>Enviado para MG</strong> como Sim na 6ª aba.</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
@@ -2706,7 +2703,7 @@ async function loadTerceirosPendenciasMg(dataPreloaded) {
     const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencias-mg');
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF aguardando confirmação de <strong>Envio MG</strong>. As notas entram aqui após o lançamento fiscal na 5ª aba.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF aguardando <strong>Enviado para MG</strong>. As notas entram aqui após o lançamento fiscal na 5ª aba.</td></tr>';
         return;
     }
 
@@ -2729,11 +2726,14 @@ async function loadTerceirosPendenciasMg(dataPreloaded) {
                 + (isTerceirosMotoristaObrigatorio(row) ? '<div class="ter-status-meta ter-status-meta--alerta">Obrigatório para esta rota</div>' : '')
             + '</div></td>'
             + terceirosCelulaPlacaLista(row)
-            + '<td><select class="ter-select-inline" data-ter-enviar-mg-pend-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
-                + '<option value="">Selecione</option>'
-                + '<option value="sim"' + (isTerceirosFlagSim(row.enviar_para_mg) ? ' selected' : '') + '>Sim</option>'
-                + '<option value="nao"' + (isTerceirosFlagNao(row.enviar_para_mg) && !isTerceirosFlagSim(row.enviar_para_mg) ? ' selected' : '') + '>Não</option>'
-            + '</select>' + renderTerceirosUsuarioMeta(row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>'
+            + '<td>' + (isTerceirosFlagSim(row.enviar_para_mg)
+                ? renderTerceirosStatusComUsuario(textoResumoEnviarMgTerceiros(row), row.enviar_para_mg_por || '', row.enviar_para_mg_em || '')
+                : ('<select class="ter-select-inline" data-ter-enviar-mg-pend-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
+                    + '<option value="">Selecione</option>'
+                    + '<option value="sim">Sim</option>'
+                    + '<option value="nao"' + (isTerceirosFlagNao(row.enviar_para_mg) ? ' selected' : '') + '>Não</option>'
+                + '</select>' + renderTerceirosUsuarioMeta(row.enviar_para_mg_por || '', row.enviar_para_mg_em || '')))
+            + '</td>'
             + '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>'
             + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-pendencia-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-pendencia-doc') + '</td>'
             + '</tr>';
@@ -2925,7 +2925,7 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
     if (!documentoId) return;
     opcoes = opcoes || {};
     if (campo === 'enviar_para_mg' && _terceirosTabAtual !== 'pendencias-mg') {
-        showMessage('O campo Envio MG só pode ser alterado na aba 6 — Pendências envio MG.', 'warning');
+        showMessage('O campo Enviado para MG só pode ser alterado na aba 6 — Pendências envio MG.', 'warning');
         await refreshTerceirosViews();
         return;
     }
@@ -4454,7 +4454,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             return;
         }
         if (campo === 'enviar_para_mg' && _terceirosTabAtual !== 'pendencias-mg') {
-            showMessage('O campo Envio MG só pode ser alterado na aba 6 — Pendências envio MG.', 'warning');
+            showMessage('O campo Enviado para MG só pode ser alterado na aba 6 — Pendências envio MG.', 'warning');
             _terceirosSincronizarCampoEnviarMgDetalhe();
             return;
         }
