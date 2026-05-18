@@ -345,6 +345,51 @@ function terceirosReaplicarFiltroPrevisaoPendenciaSeAplicavel() {
     }
 }
 
+/** Atualiza cache local e remove NF da tabela da 4ª aba após marcar nota lançada. */
+function _terceirosAtualizarNotaLancadaLocal(documentoId, valorNorm) {
+    if (documentoId == null) return;
+    var id = String(documentoId);
+    var locais = window._terceirosFornecedoresRecebidosLocais || {};
+    if (locais[id]) {
+        locais[id] = Object.assign({}, locais[id], { nota_lancada: valorNorm });
+    }
+    if (_terceirosDocAtual && String(_terceirosDocAtual.id) === id) {
+        _terceirosDocAtual.nota_lancada = valorNorm;
+    }
+}
+
+function _terceirosRemoverLinhaPendentesLancamento(documentoId) {
+    var tbody = document.getElementById('ter-tbody-pendentes-lancamento');
+    if (!tbody || documentoId == null) return;
+    var tr = tbody.querySelector('tr[data-ter-doc-id="' + String(documentoId) + '"]');
+    if (tr) tr.remove();
+    if (!tbody.querySelector('tr[data-ter-doc-id]')) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF aguardando lançamento fiscal. As notas entram aqui quando aparecem em <strong>Fornecedores recebidos</strong> com <strong>Nota lançada</strong> ainda sem marcar como Sim.</td></tr>';
+    }
+}
+
+/** 4ª → 5ª aba: após marcar «Sim» em Nota lançada. */
+async function terceirosNavegarParaNotasLancadasAposMarcarSim(documentoId) {
+    if (documentoId == null) return;
+    _terceirosAtualizarNotaLancadaLocal(documentoId, 'sim');
+    _terceirosRemoverLinhaPendentesLancamento(documentoId);
+    definirDestaqueLinhaTerceirosDoc(documentoId);
+    abrirAbaTerceirosSeDiferente('notas-lancadas', true);
+    try {
+        await loadTerceirosNotasLancadas();
+        var tbody5 = document.getElementById('ter-tbody-notas-lancadas');
+        if (tbody5) aplicarDestaqueLinhaTerceirosDoc(tbody5);
+    } catch (e) {
+        console.error(e);
+    }
+    try {
+        void loadTerceirosPendentesLancamento();
+        void loadTerceirosFornecedoresRecebidos();
+    } catch (e2) {
+        console.error(e2);
+    }
+}
+
 /**
  * Fluxo padrão após POST /status com sucesso: origem → destino → filtros → destaque → aba → detalhe.
  * Ordem: reload origem; definir destaque; reload destino; abrir aba sem duplicar fetch.
@@ -355,10 +400,7 @@ async function moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor)
     if (!isTerceirosFlagSim(valor)) return false;
     try {
         if (campo === 'nota_lancada') {
-            await loadTerceirosPendentesLancamento();
-            definirDestaqueLinhaTerceirosDoc(documentoId);
-            await loadTerceirosNotasLancadas();
-            await abrirAbaTerceirosSeDiferenteAsync('notas-lancadas', false, true);
+            await terceirosNavegarParaNotasLancadasAposMarcarSim(documentoId);
             return true;
         }
         if (campo === 'enviar_para_mg') {
@@ -1417,7 +1459,8 @@ function renderTerceirosStatusComUsuario(valor, usuario, datahora, fallback) {
     return '<strong>' + escapeHtml(texto) + '</strong>' + renderTerceirosUsuarioMeta(usuario, datahora, fallback);
 }
 
-function renderTerceirosRecebimentoComUsuario(row) {
+function renderTerceirosRecebimentoComUsuario(row, opts) {
+    opts = opts || {};
     var concluido = isTerceirosFlagSim(row.recebimento_concluido);
     var statusTxt = 'pendente';
     var usuario = '';
@@ -1427,7 +1470,11 @@ function renderTerceirosRecebimentoComUsuario(row) {
         usuario = row.recebimento_concluido_por || '';
         datahora = row.recebimento_concluido_em || '';
     } else if (_terceirosTemBipagemIniciada(row)) {
-        statusTxt = 'bipagem em andamento';
+        statusTxt = opts.fornecedoresRecebidos ? 'recebido' : 'bipagem em andamento';
+        usuario = row.atualizado_por || row.criado_por || '';
+        datahora = row.atualizado_em || row.recebimento_concluido_em || '';
+    } else if (opts.fornecedoresRecebidos && _terceirosConsideraFornecedorRecebido(row)) {
+        statusTxt = 'recebido';
         usuario = row.atualizado_por || row.criado_por || '';
         datahora = row.atualizado_em || '';
     }
@@ -1453,7 +1500,7 @@ function renderTerceirosFornecedorRecebidoRowHtml(row) {
         + '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>'
         + '<td><strong>' + escapeHtml(plc) + '</strong></td>'
         + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
-        + '<td>' + renderTerceirosRecebimentoComUsuario(row) + '</td>'
+        + '<td>' + renderTerceirosRecebimentoComUsuario(row, { fornecedoresRecebidos: true }) + '</td>'
         + '<td>' + conferenciaHtml + '</td>'
         + '<td>' + renderTerceirosStatusComUsuario(textoResumoNotaLancadaTerceiros(row), row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
         + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'fornecedores-recebidos')
@@ -1937,7 +1984,9 @@ async function loadTerceirosPendentesLancamento() {
         select.addEventListener('change', function() {
             var id = parseInt(select.getAttribute('data-ter-nota-lancada-pend') || '0', 10);
             var recebimentoConcluido = select.getAttribute('data-ter-recebimento-concluido') === 'sim';
-            if (id && select.value) atualizarStatusTerceirosDireto(id, 'nota_lancada', select.value, {
+            var valor = (select.value || '').trim().toLowerCase();
+            if (!id || !valor) return;
+            void atualizarStatusTerceirosDireto(id, 'nota_lancada', valor, {
                 recebimento_concluido: recebimentoConcluido
             });
         });
@@ -2316,7 +2365,7 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
             forcar_lancamento_sem_recebimento: !!opcoes.forcar_lancamento_sem_recebimento
         })
     });
-    if (!resp || !resp.ok) {
+    if (!_terceirosRespostaApiOk(resp)) {
         if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !opcoes.forcar_lancamento_sem_recebimento) {
             var confirmou = await abrirModalLancamentoSemRecebimento();
             if (confirmou) {
@@ -2333,6 +2382,14 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
         await refreshTerceirosViews();
         return;
     }
+    if (resp && resp.documento) {
+        if (_terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
+            Object.assign(_terceirosDocAtual, resp.documento);
+        }
+        if (campo === 'nota_lancada' && isTerceirosFlagSim(valor)) {
+            _terceirosAtualizarNotaLancadaLocal(documentoId, resp.documento.nota_lancada || 'sim');
+        }
+    }
     var navegouFluxo = await moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor);
     if (!navegouFluxo) {
         if (_terceirosDocAtual.id === documentoId) {
@@ -2344,7 +2401,11 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
             console.error(e);
         }
     }
-    showMessage('Status atualizado.', 'success');
+    if (campo === 'nota_lancada' && isTerceirosFlagSim(valor)) {
+        showMessage('Nota lançada registrada. A NF foi para a aba 5 — Notas fiscais lançadas.', 'success');
+    } else {
+        showMessage('Status atualizado.', 'success');
+    }
 }
 
 async function salvarMotoristaTerceirosDireto(documentoId, motorista) {
