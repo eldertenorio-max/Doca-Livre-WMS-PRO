@@ -538,18 +538,37 @@ function initTerceirosTabs() {
 }
 
 /** Após init: reabre módulo + NF se havia sessão (F5). */
-function restaurarTerceirosUltimaNotaSeSessao() {
+async function restaurarTerceirosUltimaNotaSeSessao() {
     var o = _lerTerceirosDocumentoNaSessao();
     if (!o || !o.id) return;
     if (window.controleMostrarModulo) window.controleMostrarModulo('terceiros');
     var aba = o.tab || 'pendencia-recebimento';
+    var area = (o.area === 'expedicao' || o.area === 'carreta') ? o.area : 'recebimento';
+    try {
+        var data = await fetchTerceirosDocumentosTodos();
+        var rows = _terceirosMesclarRecebidosLocaisNasRows(data.rows || []);
+        var row = rows.filter(function(r) { return String(r.id) === String(o.id); })[0];
+        if (row && !_terceirosConsideraPendenciaRecebimento(row)) {
+            aba = 'fornecedores-recebidos';
+            _persistirTerceirosSubabaNaSessao(aba);
+            if (window.terceirosMostrarAba) window.terceirosMostrarAba(aba);
+            definirDestaqueLinhaTerceirosDoc(o.id);
+            try {
+                var u = new URL(window.location.href);
+                u.searchParams.set('modulo', 'terceiros');
+                history.replaceState({}, '', u.toString());
+            } catch (e2) {}
+            return;
+        }
+    } catch (e) {
+        console.error(e);
+    }
     if (window.terceirosMostrarAba) window.terceirosMostrarAba(aba);
     try {
         var u = new URL(window.location.href);
         u.searchParams.set('modulo', 'terceiros');
         history.replaceState({}, '', u.toString());
     } catch (e2) {}
-    var area = (o.area === 'expedicao' || o.area === 'carreta') ? o.area : 'recebimento';
     void loadTerceirosDocumentoDetalhe(area, o.id);
 }
 
@@ -988,8 +1007,51 @@ function _terceirosConsideraFornecedorRecebido(row) {
     return isTerceirosFlagSim(row && row.recebimento_concluido) || _terceirosTemBipagemIniciada(row);
 }
 
+/** 4ª aba: mesmas NFs da 3ª com nota lançada ainda sem «Sim» (Pendente ou Não). */
+function _terceirosConsideraPendenteLancamento(row) {
+    return _terceirosConsideraFornecedorRecebido(row) && !isTerceirosFlagSim(row && row.nota_lancada);
+}
+
 function _terceirosConsideraPendenciaRecebimento(row) {
     return !isTerceirosFlagSim(row && row.recebimento_concluido) && !_terceirosTemBipagemIniciada(row);
+}
+
+function _terceirosTotalBipadoItensLocais() {
+    var itens = window._terceirosBipagemItens || [];
+    var total = 0;
+    for (var i = 0; i < itens.length; i++) {
+        total += parseFloat(itens[i].quantidade_bipada) || 0;
+    }
+    return total;
+}
+
+/** Na 2ª aba: fecha descarga e leva à 3ª quando a NF já tem bipagem ou recebimento concluído. */
+function _terceirosFecharDescargaSeForaDaPendencia(documentoIdOpt) {
+    if (_terceirosTabAtual !== 'pendencia-recebimento') return;
+    var docId = documentoIdOpt != null ? Number(documentoIdOpt) : _terceirosDocumentoIdAtualParaApi();
+    if (!Number.isFinite(docId) || docId <= 0) return;
+    var detalhe = document.getElementById('ter-recebimento-detalhe');
+    if (!detalhe || detalhe.style.display === 'none') return;
+
+    var rowLike = {
+        recebimento_concluido: _terceirosDocAtual && _terceirosDocAtual.recebimento_concluido,
+        quantidade_total_bipada: _terceirosTotalBipadoItensLocais()
+    };
+    if (_terceirosConsideraPendenciaRecebimento(rowLike)) return;
+
+    resetTerceirosDetalhe();
+    definirDestaqueLinhaTerceirosDoc(docId);
+    terceirosAplicarPainelAbaSomenteUi('fornecedores-recebidos');
+    void loadTerceirosFornecedoresRecebidos();
+}
+
+function _terceirosFecharDescargaSeDocumentoNaoNaListaPendencia(rowsPendencia) {
+    var docId = _terceirosDocumentoIdAtualParaApi();
+    if (docId == null) return;
+    var naLista = (Array.isArray(rowsPendencia) ? rowsPendencia : []).some(function(r) {
+        return r && String(r.id) === String(docId);
+    });
+    if (!naLista) _terceirosFecharDescargaSeForaDaPendencia(docId);
 }
 
 function getTerceirosRowsPorEtapa(rows, etapa) {
@@ -1006,7 +1068,7 @@ function getTerceirosRowsPorEtapa(rows, etapa) {
     }
     if (etapa === 'pendentes-lancamento') {
         return rows.filter(function(row) {
-            return isTerceirosFlagSim(row.recebimento_concluido) && !isTerceirosFlagSim(row.nota_lancada);
+            return _terceirosConsideraPendenteLancamento(row);
         });
     }
     if (etapa === 'notas-lancadas') {
@@ -1379,13 +1441,17 @@ function renderTerceirosRecebimentoComUsuario(row) {
 
 function renderTerceirosFornecedorRecebidoRowHtml(row) {
     var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+    var badgeCarreta = (row.area === 'carreta') ? ' <span class="ter-origem-badge ter-origem-badge--carreta">Carreta</span>' : '';
+    var plc = ((row.placa_carreta || '').trim() || '—');
     var conferenciaHtml = renderTerceirosConferenciaResumoHtml(row);
     return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
-        + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
+        + '<td><strong>' + escapeHtml(nf) + '</strong>' + badgeCarreta + '</td>'
         + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
         + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
         + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
         + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
+        + '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>'
+        + '<td><strong>' + escapeHtml(plc) + '</strong></td>'
         + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
         + '<td>' + renderTerceirosRecebimentoComUsuario(row) + '</td>'
         + '<td>' + conferenciaHtml + '</td>'
@@ -1647,16 +1713,20 @@ async function loadTerceirosDocumentos() {
                 || (hidLista && String(hidLista.value || '').trim() !== '');
             var detalhe = document.getElementById('ter-recebimento-detalhe');
             var detalheVisivel = !!(detalhe && detalhe.style.display !== 'none');
-            if (!temNotaAbertaNaTela && !detalheVisivel) {
+            if (detalheVisivel) {
+                _terceirosFecharDescargaSeForaDaPendencia(_terceirosDocumentoIdAtualParaApi());
+            } else if (!temNotaAbertaNaTela) {
                 resetTerceirosDetalhe();
             }
             return;
         }
         if (!filtradas.length) {
             tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com <strong>previsão</strong> neste filtro. Use <strong>Todos</strong> ou escolha outra data.</td></tr>';
+            _terceirosFecharDescargaSeDocumentoNaoNaListaPendencia(filtradas);
             return;
         }
         tbody.innerHTML = renderTerceirosPendenciaDocumentosTbodyHtml(filtradas);
+        _terceirosFecharDescargaSeDocumentoNaoNaListaPendencia(filtradas);
     } catch (e) {
         console.error('loadTerceirosDocumentos:', e);
         tbody.innerHTML = '<tr><td colspan="11" class="loading" style="color:#c62828;">Erro ao carregar a lista. Atualize a página ou tente novamente.</td></tr>';
@@ -1666,17 +1736,17 @@ async function loadTerceirosDocumentos() {
 async function loadTerceirosFornecedoresRecebidos() {
     var tbody = document.getElementById('ter-tbody-fornecedores-recebidos');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando...</td></tr>';
     const data = await fetchTerceirosDocumentosTodos();
     void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows || []));
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         _terceirosDestacarDocIdAposCarga = null;
         return;
     }
     const rows = _terceirosMesclarFornecedoresRecebidosLocais(getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos'));
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhuma NF com recebimento concluído ainda. Finalize a descarga na aba <strong>Pendência de Recebimento</strong>.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhuma NF com recebimento concluído ainda. Finalize a descarga na aba <strong>Pendência de Recebimento</strong>.</td></tr>';
         _terceirosDestacarDocIdAposCarga = null;
         return;
     }
@@ -1748,7 +1818,7 @@ function _terceirosAlertaEtapa(row) {
     if (_terceirosConsideraPendenciaRecebimento(row)) {
         return { tab: 'pendencia-recebimento', etapa: 'Pendência de recebimento', usuario: row.criado_por || row.atualizado_por || '-', data: row.criado_em || row.atualizado_em || '' };
     }
-    if (!isTerceirosFlagSim(row.nota_lancada)) {
+    if (_terceirosConsideraPendenteLancamento(row)) {
         return { tab: 'pendentes-lancamento', etapa: 'NFs pendentes de lançamento', usuario: row.recebimento_concluido_por || row.atualizado_por || '-', data: row.recebimento_concluido_em || row.atualizado_em || '' };
     }
     if (!isTerceirosFlagSim(row.enviar_para_mg)) {
@@ -1835,9 +1905,12 @@ async function loadTerceirosPendentesLancamento() {
         tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
-    const rows = getTerceirosRowsPorEtapa(data.rows, 'pendentes-lancamento');
+    const rows = getTerceirosRowsPorEtapa(
+        _terceirosMesclarFornecedoresRecebidosLocais(_terceirosMesclarRecebidosLocaisNasRows(data.rows || [])),
+        'pendentes-lancamento'
+    );
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF aguardando lançamento fiscal. Todas já foram marcadas ou ainda estão na <strong>Pendência de Recebimento</strong>.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF aguardando lançamento fiscal. As notas entram aqui quando aparecem em <strong>Fornecedores recebidos</strong> com <strong>Nota lançada</strong> ainda sem marcar como Sim.</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
@@ -2891,8 +2964,10 @@ function _flushTerceirosAdd(itemId) {
                 showMessage('Item bipado com sucesso.', 'success');
             }
             return loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId).then(function() {
+                _terceirosFecharDescargaSeForaDaPendencia(documentoId);
                 try { void loadTerceirosDocumentos(); } catch (e) { console.error(e); }
                 try { void loadTerceirosFornecedoresRecebidos(); } catch (e2) { console.error(e2); }
+                try { void loadTerceirosPendentesLancamento(); } catch (e3) { console.error(e3); }
                 return refreshTerceirosViews();
             });
         }
@@ -2922,8 +2997,10 @@ function _flushTerceirosRemove(itemId) {
         if (resp && resp.ok) {
             showMessage(n + ' unidade(s) removida(s).', 'success');
             return loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId).then(function() {
+                _terceirosFecharDescargaSeForaDaPendencia(documentoId);
                 try { void loadTerceirosDocumentos(); } catch (e) { console.error(e); }
                 try { void loadTerceirosFornecedoresRecebidos(); } catch (e2) { console.error(e2); }
+                try { void loadTerceirosPendentesLancamento(); } catch (e3) { console.error(e3); }
                 return refreshTerceirosViews();
             });
         }
@@ -3223,6 +3300,9 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     atualizarResumoTotaisBipagemTerceiros();
     atualizarUIBipagemTerceiros(doc);
     _persistirTerceirosDocumentoNaSessao(doc.id, _terceirosDocAtual.area);
+    if (_terceirosTabAtual === 'pendencia-recebimento') {
+        _terceirosFecharDescargaSeForaDaPendencia(doc.id);
+    }
     if (!itens.length) {
         tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhum item encontrado no XML.</td></tr>';
         return;
