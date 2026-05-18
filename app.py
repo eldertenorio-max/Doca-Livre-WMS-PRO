@@ -7102,25 +7102,26 @@ def _terceiros_bool_sim_db(valor):
 
 
 def _terceiros_etapa_painel_row(row):
+  """Mesma lógica das abas do módulo (pendência → fornecedores → lançamento → MG)."""
   q_bip = float(row.get('quantidade_total_bipada') or 0)
   rc = _terceiros_bool_sim_db(row.get('recebimento_concluido'))
   if not rc and q_bip <= 1e-9:
     return 'pendencia_recebimento'
   nl = _valor_bool_texto(row.get('nota_lancada') or '')
   if nl != 'sim':
-    return 'pendentes_lancamento'
+    return 'fornecedores_recebidos'
   emg = _valor_bool_texto(row.get('enviar_para_mg') or '')
   if emg != 'sim':
-    return 'notas_lancadas'
+    return 'pendencias_mg'
   cmg = _valor_bool_texto(row.get('carga_recebida_mg') or '')
   if cmg != 'sim':
-    return 'pendencias_mg'
+    return 'recebimentos_mg'
   return 'recebimentos_mg'
 
 
 _ETAPAS_PAINEL_TERCEIROS_LABELS = {
   'pendencia_recebimento': 'Pendência de recebimento',
-  'pendentes_lancamento': 'Pendentes de lançamento',
+  'fornecedores_recebidos': 'Fornecedores recebidos',
   'notas_lancadas': 'Notas lançadas',
   'pendencias_mg': 'Pendências envio MG',
   'recebimentos_mg': 'Recebimentos MG',
@@ -7270,7 +7271,7 @@ def api_terceiros_painel():
         'pendencia_recebimento': etapa_counts.get('pendencia_recebimento', 0),
         'fornecedores_recebidos': fornecedores_recebidos,
         'recebimento_concluido': recebimento_concluido,
-        'pendentes_lancamento': etapa_counts.get('pendentes_lancamento', 0),
+        'pendentes_lancamento': etapa_counts.get('fornecedores_recebidos', 0),
         'notas_lancadas': etapa_counts.get('notas_lancadas', 0),
         'pendencias_mg': etapa_counts.get('pendencias_mg', 0),
         'recebimentos_mg': etapa_counts.get('recebimentos_mg', 0),

@@ -127,6 +127,8 @@ let _terceirosTabAtual = 'pendencia-recebimento';
 /** Evita reentrada em «Recebimento concluído» / finalizar descarga (duplo clique, Promises sobrepostas). */
 let _terceirosRecebimentoConcluindo = false;
 let _terceirosConfirmacaoLancamentoResolver = null;
+let _terceirosConfirmacaoIrNotasLancadasResolver = null;
+let _terceirosConfirmacaoIrRecebimentosMgResolver = null;
 let _terceirosExcluirDocumentoResolver = null;
 let _terceirosExcluirDocumentoAtual = null;
 /** Após mudar de etapa: destaca a linha desta NF na tabela da aba de destino (data-ter-doc-id). */
@@ -286,6 +288,27 @@ function terceirosAplicarPainelAbaSomenteUi(aba) {
     if (_terceirosDocAtual && _terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '') {
         _persistirTerceirosDocumentoNaSessao(_terceirosDocAtual.id, _terceirosDocAtual.area);
     }
+    if (aba === 'painel') {
+        _agendarChartsPainelTerceiros();
+    }
+    _terceirosSincronizarCampoEnviarMgDetalhe();
+    _terceirosSincronizarCampoRecebidaMgDetalhe();
+}
+
+function _terceirosSincronizarCampoEnviarMgDetalhe() {
+    var el = document.getElementById('ter-rec-enviar-mg');
+    if (!el) return;
+    var podeEditar = _terceirosTabAtual === 'pendencias-mg';
+    el.disabled = !podeEditar;
+    el.title = podeEditar ? '' : 'Alterar somente na aba 6 — Pendências envio MG';
+}
+
+function _terceirosSincronizarCampoRecebidaMgDetalhe() {
+    var el = document.getElementById('ter-rec-recebida-mg');
+    if (!el) return;
+    var podeEditar = _terceirosTabAtual === 'recebimentos-mg';
+    el.disabled = !podeEditar;
+    el.title = podeEditar ? '' : 'Alterar somente na aba 8 — Recebimentos de MG';
 }
 
 /** Diagnóstico sempre visível: o último PASSO no console mostra onde o fluxo ficou pendente. */
@@ -405,15 +428,10 @@ async function moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor)
     if (!isTerceirosFlagSim(valor)) return false;
     try {
         if (campo === 'nota_lancada') {
-            await terceirosNavegarParaNotasLancadasAposMarcarSim(documentoId);
-            return true;
+            return false;
         }
         if (campo === 'enviar_para_mg') {
-            await loadTerceirosNotasLancadas();
-            definirDestaqueLinhaTerceirosDoc(documentoId);
-            await loadTerceirosPendenciasMg();
-            await abrirAbaTerceirosSeDiferenteAsync('pendencias-mg', false, true);
-            return true;
+            return false;
         }
         if (campo === 'carga_recebida_mg') {
             await loadTerceirosPendenciasMg();
@@ -493,7 +511,11 @@ function initModulos() {
         } else if (id === 'terceiros') {
             var painelTer = document.getElementById('terceiros-panel-painel');
             if (painelTer && painelTer.classList.contains('devolucoes-panel-active')) {
-                void loadPainelTerceiros();
+                if (window._terceirosPainelUltimoData && !window._terceirosPainelUltimoData.erro) {
+                    _agendarChartsPainelTerceiros();
+                } else {
+                    void loadPainelTerceiros();
+                }
             } else {
                 refreshTerceirosViews();
             }
@@ -844,6 +866,90 @@ let terChartRemetentes = null;
 let terChartPlacas = null;
 let terChartUf = null;
 let terChartConferencia = null;
+window._terceirosPainelUltimoData = null;
+
+function _terceirosPainelModuloVisivel() {
+    var panel = document.getElementById('terceiros-panel-painel');
+    var mod = document.getElementById('modulo-terceiros');
+    return !!(panel && mod
+        && panel.classList.contains('devolucoes-panel-active')
+        && mod.classList.contains('modulo-area--ativo'));
+}
+
+function _agendarChartsPainelTerceiros() {
+    if (!_terceirosPainelModuloVisivel() || !window._terceirosPainelUltimoData || window._terceirosPainelUltimoData.erro) {
+        return;
+    }
+    requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+            if (_terceirosPainelModuloVisivel() && window._terceirosPainelUltimoData) {
+                renderPainelTerceirosCharts(window._terceirosPainelUltimoData);
+            }
+        });
+    });
+}
+
+function _painelTerceirosStatsRapidasFromRows(rows) {
+    rows = Array.isArray(rows) ? rows : [];
+    var s = {
+        total_nf: rows.length,
+        pendencia_recebimento: 0,
+        fornecedores_recebidos: 0,
+        recebimento_concluido: 0,
+        pendentes_lancamento: 0,
+        notas_lancadas: 0,
+        pendencias_mg: 0,
+        recebimentos_mg: 0,
+        quantidade_total_xml: 0,
+        quantidade_total_bipada: 0,
+        nfs_carreta: 0,
+        conferencia_ok: 0,
+        conferencia_divergente: 0
+    };
+    rows.forEach(function(row) {
+        var qXml = parseFloat(row.quantidade_total_xml) || 0;
+        var qBip = parseFloat(row.quantidade_total_bipada) || 0;
+        var divIt = parseInt(row.itens_divergentes, 10) || 0;
+        s.quantidade_total_xml += qXml;
+        s.quantidade_total_bipada += qBip;
+        if ((row.area || '').toLowerCase() === 'carreta') s.nfs_carreta += 1;
+        if (isTerceirosFlagSim(row.recebimento_concluido)) s.recebimento_concluido += 1;
+        if (_terceirosConsideraFornecedorRecebido(row)) s.fornecedores_recebidos += 1;
+        if (_terceirosConsideraPendenteLancamento(row)) s.pendentes_lancamento += 1;
+        if (isTerceirosFlagSim(row.nota_lancada)) s.notas_lancadas += 1;
+        if (isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg)) s.pendencias_mg += 1;
+        if (isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg)) s.recebimentos_mg += 1;
+        if (_terceirosConsideraPendenciaRecebimento(row)) s.pendencia_recebimento += 1;
+        if (divIt === 0 && Math.abs(qXml - qBip) <= 1e-6 && qXml > 1e-9) s.conferencia_ok += 1;
+        else if (qBip > 1e-9 || divIt > 0) s.conferencia_divergente += 1;
+    });
+    return s;
+}
+
+function _aplicarPainelTerceirosStats(s) {
+    s = s || {};
+    var set = function(id, val) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        if (typeof val === 'number' && !Number.isInteger(val)) {
+            el.textContent = _formatTerQtdDisplay(val);
+        } else {
+            el.textContent = val != null && val !== '' ? String(val) : '0';
+        }
+    };
+    set('ter-stat-total-nf', s.total_nf ?? 0);
+    set('ter-stat-pendencia', s.pendencia_recebimento ?? 0);
+    set('ter-stat-fornecedores', s.fornecedores_recebidos ?? 0);
+    set('ter-stat-receb-concluido', s.recebimento_concluido ?? 0);
+    set('ter-stat-pend-lanc', s.pendentes_lancamento ?? 0);
+    set('ter-stat-notas-lanc', s.notas_lancadas ?? 0);
+    set('ter-stat-qtd-xml', s.quantidade_total_xml ?? 0);
+    set('ter-stat-qtd-bip', s.quantidade_total_bipada ?? 0);
+    set('ter-stat-carreta', s.nfs_carreta ?? 0);
+    set('ter-stat-conf-ok', s.conferencia_ok ?? 0);
+    set('ter-stat-conf-div', s.conferencia_divergente ?? 0);
+    set('ter-stat-mg-ok', s.recebimentos_mg ?? 0);
+}
 
 function destroyPainelTerceirosCharts() {
     if (terChartEtapas) { terChartEtapas.destroy(); terChartEtapas = null; }
@@ -864,15 +970,28 @@ function renderPainelTerceirosCharts(data) {
         plugins: { legend: { display: false } }
     };
     var etapas = data.etapas || [];
+    var labelsEtapasPadrao = [
+        'Pendência de recebimento',
+        'Fornecedores recebidos',
+        'Notas lançadas',
+        'Pendências envio MG',
+        'Recebimentos MG'
+    ];
+    var mapaEtapas = {};
+    etapas.forEach(function(e) {
+        mapaEtapas[e.label || e.etapa] = e.total || 0;
+    });
+    var labelsE = labelsEtapasPadrao;
+    var dataE = labelsEtapasPadrao.map(function(lbl) { return mapaEtapas[lbl] || 0; });
     var ctxE = document.getElementById('ter-chart-etapas');
-    if (ctxE && etapas.length) {
+    if (ctxE && dataE.some(function(v) { return v > 0; })) {
         terChartEtapas = new Chart(ctxE, {
             type: 'bar',
             data: {
-                labels: etapas.map(function(e) { return e.label; }),
+                labels: labelsE,
                 datasets: [{
                     label: 'NFs',
-                    data: etapas.map(function(e) { return e.total || 0; }),
+                    data: dataE,
                     backgroundColor: '#366092',
                     borderColor: '#1a237e',
                     borderWidth: 1
@@ -976,8 +1095,17 @@ function renderPainelTerceirosCharts(data) {
 }
 
 async function loadPainelTerceiros() {
+    var cacheHit = _terceirosObterCacheLista();
+    if (cacheHit && cacheHit.rows && cacheHit.rows.length) {
+        _aplicarPainelTerceirosStats(_painelTerceirosStatsRapidasFromRows(
+            _terceirosMesclarRecebidosLocaisNasRows(cacheHit.rows)
+        ));
+    }
+
     var data = await fetchAPI('/terceiros/painel');
     if (!data) return;
+    window._terceirosPainelUltimoData = data;
+
     var statIds = [
         'ter-stat-total-nf', 'ter-stat-pendencia', 'ter-stat-fornecedores', 'ter-stat-receb-concluido',
         'ter-stat-pend-lanc', 'ter-stat-notas-lanc', 'ter-stat-qtd-xml', 'ter-stat-qtd-bip',
@@ -997,28 +1125,7 @@ async function loadPainelTerceiros() {
         });
         return;
     }
-    var s = data.estatisticas || {};
-    var set = function(id, val) {
-        var el = document.getElementById(id);
-        if (!el) return;
-        if (typeof val === 'number' && !Number.isInteger(val)) {
-            el.textContent = _formatTerQtdDisplay(val);
-        } else {
-            el.textContent = val != null && val !== '' ? String(val) : '0';
-        }
-    };
-    set('ter-stat-total-nf', s.total_nf ?? 0);
-    set('ter-stat-pendencia', s.pendencia_recebimento ?? 0);
-    set('ter-stat-fornecedores', s.fornecedores_recebidos ?? 0);
-    set('ter-stat-receb-concluido', s.recebimento_concluido ?? 0);
-    set('ter-stat-pend-lanc', s.pendentes_lancamento ?? 0);
-    set('ter-stat-notas-lanc', s.notas_lancadas ?? 0);
-    set('ter-stat-qtd-xml', s.quantidade_total_xml ?? 0);
-    set('ter-stat-qtd-bip', s.quantidade_total_bipada ?? 0);
-    set('ter-stat-carreta', s.nfs_carreta ?? 0);
-    set('ter-stat-conf-ok', s.conferencia_ok ?? 0);
-    set('ter-stat-conf-div', s.conferencia_divergente ?? 0);
-    set('ter-stat-mg-ok', s.recebimentos_mg ?? 0);
+    _aplicarPainelTerceirosStats(data.estatisticas || {});
 
     var preencher = function(tbodyId, rows, cols, emptyMsg, renderRow) {
         var tbody = document.getElementById(tbodyId);
@@ -1064,7 +1171,7 @@ async function loadPainelTerceiros() {
         return '<tr><td><strong>' + escapeHtml(p.nome || '-') + '</strong></td><td><strong>' + (p.total || 0) + '</strong></td></tr>';
     });
 
-    renderPainelTerceirosCharts(data);
+    _agendarChartsPainelTerceiros();
 }
 
 function getTerceirosPrefixo() {
@@ -1130,6 +1237,121 @@ function abrirModalLancamentoSemRecebimento() {
     return new Promise(function(resolve) {
         _terceirosConfirmacaoLancamentoResolver = resolve;
     });
+}
+
+function fecharModalIrParaNotasLancadas(confirmado) {
+    var modal = document.getElementById('modal-terceiros-ir-notas-lancadas');
+    if (modal) modal.style.display = 'none';
+    if (_terceirosConfirmacaoIrNotasLancadasResolver) {
+        _terceirosConfirmacaoIrNotasLancadasResolver(!!confirmado);
+        _terceirosConfirmacaoIrNotasLancadasResolver = null;
+    }
+}
+
+function abrirModalIrParaNotasLancadas() {
+    var modal = document.getElementById('modal-terceiros-ir-notas-lancadas');
+    if (!modal) {
+        return Promise.resolve(window.confirm('Nota lançada com sucesso. Deseja ir para a 5ª aba — Notas fiscais lançadas?'));
+    }
+    modal.style.display = 'block';
+    return new Promise(function(resolve) {
+        _terceirosConfirmacaoIrNotasLancadasResolver = resolve;
+    });
+}
+
+/** Após salvar «Sim» em Nota lançada: pergunta se vai à 5ª aba. */
+async function _terceirosAposConfirmarNotaLancadaSim(documentoId, documentoResp) {
+    if (documentoId == null) return;
+    var notaVal = (documentoResp && documentoResp.nota_lancada) ? documentoResp.nota_lancada : 'sim';
+    _terceirosAtualizarNotaLancadaLocal(documentoId, notaVal);
+    invalidateTerceirosListaCache();
+    var irAba5 = await abrirModalIrParaNotasLancadas();
+    if (irAba5) {
+        await terceirosNavegarParaNotasLancadasAposMarcarSim(documentoId);
+        showMessage('Nota lançada registrada. Você está na aba Notas fiscais lançadas.', 'success');
+        return;
+    }
+    _terceirosRemoverLinhaPendentesLancamento(documentoId);
+    definirDestaqueLinhaTerceirosDoc(documentoId);
+    try {
+        if (_terceirosTabAtual === 'pendentes-lancamento') {
+            await loadTerceirosPendentesLancamento();
+        } else {
+            await recarregarListaTerceirosTab(_terceirosTabAtual);
+        }
+        void loadTerceirosFornecedoresRecebidos();
+        void loadTerceirosNotasLancadas();
+        void atualizarAlertasTerceirosHeader();
+    } catch (e) {
+        console.error(e);
+    }
+    showMessage('Nota lançada registrada.', 'success');
+}
+
+function fecharModalIrParaRecebimentosMg(confirmado) {
+    var modal = document.getElementById('modal-terceiros-ir-recebimentos-mg');
+    if (modal) modal.style.display = 'none';
+    if (_terceirosConfirmacaoIrRecebimentosMgResolver) {
+        _terceirosConfirmacaoIrRecebimentosMgResolver(!!confirmado);
+        _terceirosConfirmacaoIrRecebimentosMgResolver = null;
+    }
+}
+
+function abrirModalIrParaRecebimentosMg() {
+    var modal = document.getElementById('modal-terceiros-ir-recebimentos-mg');
+    if (!modal) {
+        return Promise.resolve(window.confirm('Envio para MG registrado. Deseja ir para a 8ª aba — Recebimentos de MG?'));
+    }
+    modal.style.display = 'block';
+    return new Promise(function(resolve) {
+        _terceirosConfirmacaoIrRecebimentosMgResolver = resolve;
+    });
+}
+
+/** 6ª → 8ª aba: após marcar «Sim» em Envio MG. */
+async function terceirosNavegarParaRecebimentosMgAposMarcarSim(documentoId) {
+    if (documentoId == null) return;
+    definirDestaqueLinhaTerceirosDoc(documentoId);
+    abrirAbaTerceirosSeDiferente('recebimentos-mg', true);
+    try {
+        await loadTerceirosRecebimentosMg();
+        var tbody8 = document.getElementById('ter-tbody-recebimentos-mg');
+        if (tbody8) aplicarDestaqueLinhaTerceirosDoc(tbody8);
+    } catch (e) {
+        console.error(e);
+    }
+    try {
+        void loadTerceirosPendenciasMg();
+        void loadTerceirosNotasLancadas();
+    } catch (e2) {
+        console.error(e2);
+    }
+}
+
+/** Após salvar «Sim» em Envio MG: pergunta se vai à 8ª aba. */
+async function _terceirosAposConfirmarEnviarMgSim(documentoId, documentoResp) {
+    if (documentoId == null) return;
+    invalidateTerceirosListaCache();
+    var irAba8 = await abrirModalIrParaRecebimentosMg();
+    if (irAba8) {
+        await terceirosNavegarParaRecebimentosMgAposMarcarSim(documentoId);
+        showMessage('Envio para MG registrado. Você está na aba Recebimentos de MG.', 'success');
+        return;
+    }
+    definirDestaqueLinhaTerceirosDoc(documentoId);
+    try {
+        if (_terceirosTabAtual === 'pendencias-mg') {
+            await loadTerceirosPendenciasMg();
+        } else {
+            await recarregarListaTerceirosTab(_terceirosTabAtual);
+        }
+        void loadTerceirosRecebimentosMg();
+        void loadTerceirosNotasLancadas();
+        void atualizarAlertasTerceirosHeader();
+    } catch (e) {
+        console.error(e);
+    }
+    showMessage('Envio para MG registrado.', 'success');
 }
 
 function fecharModalExcluirDocumento(confirmado) {
@@ -1243,6 +1465,7 @@ function invalidateTerceirosListaCache() {
     _terceirosListaCache.rows = null;
     _terceirosListaCache.erro = null;
     _terceirosListaCache.ts = 0;
+    window._terceirosPainelUltimoData = null;
 }
 
 function _terceirosObterCacheLista() {
@@ -1322,6 +1545,41 @@ function textoResumoNotaLancadaTerceiros(row) {
     if (isTerceirosFlagSim(row.nota_lancada)) return 'Sim';
     if (isTerceirosFlagNao(row.nota_lancada)) return 'Não';
     return 'Pendente';
+}
+
+function textoResumoEnviarMgTerceiros(row) {
+    if (isTerceirosFlagSim(row && row.enviar_para_mg)) return 'Sim';
+    if (isTerceirosFlagNao(row && row.enviar_para_mg)) return 'Não';
+    return 'Pendente';
+}
+
+function textoResumoRecebidaMgTerceiros(row) {
+    if (isTerceirosFlagSim(row && row.carga_recebida_mg)) return 'Sim';
+    if (isTerceirosFlagNao(row && row.carga_recebida_mg)) return 'Não';
+    return 'Pendente';
+}
+
+function terceirosCelulaPlacaLista(row) {
+    var plc = ((row.placa_carreta || '').trim() || '—');
+    return '<td><strong>' + escapeHtml(plc) + '</strong></td>';
+}
+
+/** Coluna somente leitura fora da 6ª aba (Pendências envio MG). */
+function renderTerceirosEnviarMgSomenteLeitura(row) {
+    return renderTerceirosStatusComUsuario(
+        textoResumoEnviarMgTerceiros(row),
+        row.enviar_para_mg_por || '',
+        row.enviar_para_mg_em || ''
+    ) + '<div class="ter-status-meta">Alterar na aba <strong>Pendências envio MG</strong></div>';
+}
+
+/** Coluna somente leitura fora da 8ª aba (Recebimentos de MG). */
+function renderTerceirosRecebidaMgSomenteLeitura(row) {
+    return renderTerceirosStatusComUsuario(
+        textoResumoRecebidaMgTerceiros(row),
+        row.carga_recebida_mg_por || '',
+        row.carga_recebida_mg_em || ''
+    ) + '<div class="ter-status-meta">Alterar na aba <strong>Recebimentos de MG</strong></div>';
 }
 
 /** NF com pelo menos uma unidade bipada (sai da 2ª aba e entra em Fornecedores recebidos). */
@@ -1426,12 +1684,12 @@ function getTerceirosRowsPorEtapa(rows, etapa) {
     }
     if (etapa === 'pendencias-mg') {
         return rows.filter(function(row) {
-            return isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg);
+            return isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg);
         });
     }
     if (etapa === 'recebimentos-mg') {
         return rows.filter(function(row) {
-            return isTerceirosFlagSim(row.carga_recebida_mg);
+            return isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg);
         });
     }
     return rows;
@@ -2179,11 +2437,11 @@ function _terceirosAlertaEtapa(row) {
     if (_terceirosConsideraPendenteLancamento(row)) {
         return { tab: 'pendentes-lancamento', etapa: 'NFs pendentes de lançamento', usuario: row.recebimento_concluido_por || row.atualizado_por || '-', data: row.recebimento_concluido_em || row.atualizado_em || '' };
     }
-    if (!isTerceirosFlagSim(row.enviar_para_mg)) {
-        return { tab: 'notas-lancadas', etapa: 'Notas fiscais lançadas', usuario: row.nota_lancada_por || row.atualizado_por || '-', data: row.nota_lancada_em || row.atualizado_em || '' };
+    if (isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg)) {
+        return { tab: 'pendencias-mg', etapa: 'Pendências envio MG', usuario: row.nota_lancada_por || row.atualizado_por || '-', data: row.nota_lancada_em || row.atualizado_em || '' };
     }
-    if (!isTerceirosFlagSim(row.carga_recebida_mg)) {
-        return { tab: 'pendencias-mg', etapa: 'Pendências envio MG', usuario: row.enviar_para_mg_por || row.atualizado_por || '-', data: row.enviar_para_mg_em || row.atualizado_em || '' };
+    if (isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg)) {
+        return { tab: 'recebimentos-mg', etapa: 'Recebimentos de MG', usuario: row.enviar_para_mg_por || row.atualizado_por || '-', data: row.enviar_para_mg_em || row.atualizado_em || '' };
     }
     return null;
 }
@@ -2307,14 +2565,14 @@ async function loadTerceirosPendentesLancamento(dataPreloaded) {
 async function loadTerceirosNotasLancadas(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-notas-lancadas');
     if (!tbody) return;
-    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 11);
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 12);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'notas-lancadas');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF lançada ainda.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhuma NF lançada ainda.</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
@@ -2330,49 +2588,20 @@ async function loadTerceirosNotasLancadas(dataPreloaded) {
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + avisoMotorista + '</td>'
             + '<td>' + renderTerceirosStatusComUsuario(row.nota_lancada || '-', row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
-            + '<td><select class="ter-select-inline" data-ter-enviar-mg-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
-                + '<option value="">Selecione</option>'
-                + '<option value="sim"' + (isTerceirosFlagSim(row.enviar_para_mg) ? ' selected' : '') + '>Sim</option>'
-                + '<option value="nao"' + (isTerceirosFlagNao(row.enviar_para_mg) && !isTerceirosFlagSim(row.enviar_para_mg) ? ' selected' : '') + '>Não</option>'
-            + '</select>' + renderTerceirosUsuarioMeta(row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>'
+            + '<td>' + renderTerceirosEnviarMgSomenteLeitura(row) + '</td>'
             + '<td><div class="ter-inline-stack">'
                 + '<input type="text" class="ter-input-inline" data-ter-motorista-doc="' + escapeHtml(String(row.id)) + '" value="' + escapeHtml(row.motorista_carreta || '') + '" placeholder="Motorista">'
                 + '<button type="button" class="btn btn-secondary btn-sm" data-ter-salvar-motorista-doc="' + escapeHtml(String(row.id)) + '">Salvar</button>'
                 + renderTerceirosUsuarioMeta(row.atualizado_por || '', row.motorista_carreta_em || '')
                 + (isTerceirosMotoristaObrigatorio(row) ? '<div class="ter-status-meta ter-status-meta--alerta">Obrigatório para esta rota</div>' : '')
             + '</div></td>'
-            + '<td><select class="ter-select-inline" data-ter-recebida-mg-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
-                + '<option value="">Selecione</option>'
-                + '<option value="sim"' + (isTerceirosFlagSim(row.carga_recebida_mg) ? ' selected' : '') + '>Sim</option>'
-                + '<option value="nao"' + (isTerceirosFlagNao(row.carga_recebida_mg) && !isTerceirosFlagSim(row.carga_recebida_mg) ? ' selected' : '') + '>Não</option>'
-            + '</select>' + renderTerceirosUsuarioMeta(row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
+            + terceirosCelulaPlacaLista(row)
+            + '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>'
             + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-lancada-doc') + '</td>'
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-lancada-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-lancada-doc]');
-    tbody.querySelectorAll('[data-ter-enviar-mg-doc]').forEach(function(select) {
-        select.addEventListener('change', function() {
-            var id = parseInt(select.getAttribute('data-ter-enviar-mg-doc') || '0', 10);
-            var motoristaObrigatorio = select.getAttribute('data-ter-motorista-obrigatorio') === 'sim';
-            var motoristaAtual = select.getAttribute('data-ter-motorista-atual') || '';
-            if (id && select.value) atualizarStatusTerceirosDireto(id, 'enviar_para_mg', select.value, {
-                motorista_obrigatorio: motoristaObrigatorio,
-                motorista_atual: motoristaAtual
-            });
-        });
-    });
-    tbody.querySelectorAll('[data-ter-recebida-mg-doc]').forEach(function(select) {
-        select.addEventListener('change', function() {
-            var id = parseInt(select.getAttribute('data-ter-recebida-mg-doc') || '0', 10);
-            var motoristaObrigatorio = select.getAttribute('data-ter-motorista-obrigatorio') === 'sim';
-            var motoristaAtual = select.getAttribute('data-ter-motorista-atual') || '';
-            if (id && select.value) atualizarStatusTerceirosDireto(id, 'carga_recebida_mg', select.value, {
-                motorista_obrigatorio: motoristaObrigatorio,
-                motorista_atual: motoristaAtual
-            });
-        });
-    });
     tbody.querySelectorAll('[data-ter-salvar-motorista-doc]').forEach(function(btn) {
         btn.addEventListener('click', function() {
             var id = parseInt(btn.getAttribute('data-ter-salvar-motorista-doc') || '0', 10);
@@ -2387,14 +2616,14 @@ async function loadTerceirosNotasLancadas(dataPreloaded) {
 async function loadTerceirosNotasEnviadasMg(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-notas-enviadas-mg');
     if (!tbody) return;
-    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 9);
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 10);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'notas-enviadas-mg');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Nenhuma NF concluída em MG.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhuma NF concluída em MG.</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
@@ -2406,7 +2635,8 @@ async function loadTerceirosNotasEnviadasMg(dataPreloaded) {
             + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
-            + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>'
+            + terceirosCelulaPlacaLista(row)
             + '<td>' + renderTerceirosStatusComUsuario(row.carga_recebida_mg || '-', row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
             + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-enviada-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-enviada-doc') + '</td>'
             + '</tr>';
@@ -2419,14 +2649,14 @@ async function loadTerceirosNotasEnviadasMg(dataPreloaded) {
 async function loadTerceirosRecebimentosMg(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-recebimentos-mg');
     if (!tbody) return;
-    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 10);
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 11);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'recebimentos-mg');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhuma NF com recebimento confirmado em MG.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF aguardando confirmação de recebimento em MG. As notas entram aqui após marcar <strong>Envio MG</strong> como Sim na 6ª aba.</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
@@ -2438,7 +2668,8 @@ async function loadTerceirosRecebimentosMg(dataPreloaded) {
             + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
-            + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>'
+            + terceirosCelulaPlacaLista(row)
             + '<td>' + renderTerceirosStatusComUsuario(row.enviar_para_mg || '-', row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>'
             + '<td><select class="ter-select-inline" data-ter-recebida-mg-receb-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
                 + '<option value="">Selecione</option>'
@@ -2467,35 +2698,69 @@ async function loadTerceirosRecebimentosMg(dataPreloaded) {
 async function loadTerceirosPendenciasMg(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-pendencias-mg');
     if (!tbody) return;
-    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 10);
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 11);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencias-mg');
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhuma NF pendente de envio para MG.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF aguardando confirmação de <strong>Envio MG</strong>. As notas entram aqui após o lançamento fiscal na 5ª aba.</td></tr>';
         return;
     }
 
     tbody.innerHTML = rows.map(function(row) {
         var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
+        var avisoMotorista = isTerceirosMotoristaObrigatorio(row)
+            ? '<div class="ter-status-meta ter-status-meta--alerta">Motorista obrigatório</div>'
+            : '';
         return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
             + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
             + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
             + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
             + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
-            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
-            + '<td>' + escapeHtml(row.motorista_carreta || '-') + '</td>'
-            + '<td>' + renderTerceirosStatusComUsuario(row.enviar_para_mg || '-', row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>'
-            + '<td>' + renderTerceirosStatusComUsuario(row.carga_recebida_mg || 'pendente', row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
+            + '<td>' + escapeHtml(row.previsao_chegada || '-') + avisoMotorista + '</td>'
+            + '<td><div class="ter-inline-stack">'
+                + '<input type="text" class="ter-input-inline" data-ter-motorista-pend-mg-doc="' + escapeHtml(String(row.id)) + '" value="' + escapeHtml(row.motorista_carreta || '') + '" placeholder="Motorista">'
+                + '<button type="button" class="btn btn-secondary btn-sm" data-ter-salvar-motorista-pend-mg-doc="' + escapeHtml(String(row.id)) + '">Salvar</button>'
+                + renderTerceirosUsuarioMeta(row.atualizado_por || '', row.motorista_carreta_em || '')
+                + (isTerceirosMotoristaObrigatorio(row) ? '<div class="ter-status-meta ter-status-meta--alerta">Obrigatório para esta rota</div>' : '')
+            + '</div></td>'
+            + terceirosCelulaPlacaLista(row)
+            + '<td><select class="ter-select-inline" data-ter-enviar-mg-pend-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
+                + '<option value="">Selecione</option>'
+                + '<option value="sim"' + (isTerceirosFlagSim(row.enviar_para_mg) ? ' selected' : '') + '>Sim</option>'
+                + '<option value="nao"' + (isTerceirosFlagNao(row.enviar_para_mg) && !isTerceirosFlagSim(row.enviar_para_mg) ? ' selected' : '') + '>Não</option>'
+            + '</select>' + renderTerceirosUsuarioMeta(row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>'
+            + '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>'
             + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-pendencia-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-pendencia-doc') + '</td>'
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-pendencia-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-pendencia-doc]');
+    tbody.querySelectorAll('[data-ter-enviar-mg-pend-doc]').forEach(function(select) {
+        select.addEventListener('change', function() {
+            var id = parseInt(select.getAttribute('data-ter-enviar-mg-pend-doc') || '0', 10);
+            var motoristaObrigatorio = select.getAttribute('data-ter-motorista-obrigatorio') === 'sim';
+            var motoristaAtual = select.getAttribute('data-ter-motorista-atual') || '';
+            var inputMot = document.querySelector('[data-ter-motorista-pend-mg-doc="' + String(id) + '"]');
+            if (inputMot && inputMot.value.trim()) motoristaAtual = inputMot.value.trim();
+            if (id && select.value) atualizarStatusTerceirosDireto(id, 'enviar_para_mg', select.value, {
+                motorista_obrigatorio: motoristaObrigatorio,
+                motorista_atual: motoristaAtual
+            });
+        });
+    });
+    tbody.querySelectorAll('[data-ter-salvar-motorista-pend-mg-doc]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = parseInt(btn.getAttribute('data-ter-salvar-motorista-pend-mg-doc') || '0', 10);
+            var input = document.querySelector('[data-ter-motorista-pend-mg-doc="' + String(id) + '"]');
+            var motorista = input ? input.value.trim() : '';
+            if (id) salvarMotoristaTerceirosDireto(id, motorista);
+        });
+    });
     aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
@@ -2620,8 +2885,10 @@ async function refreshTerceirosViews() {
             if (tbodyAtivo.id === 'ter-tbody-fornecedores-recebidos' || tbodyAtivo.id === 'ter-tbody-pendentes-lancamento') {
                 cols = TERCEIROS_COLS_LISTA_POS_RECEBIMENTO;
             } else if (tbodyAtivo.id === 'ter-tbody-notas-lancadas' || tbodyAtivo.id === 'ter-tbody-recebimento-documentos') {
-                cols = 11;
+                cols = 12;
             } else if (tbodyAtivo.id === 'ter-tbody-pendencias-mg' || tbodyAtivo.id === 'ter-tbody-recebimentos-mg') {
+                cols = 11;
+            } else if (tbodyAtivo.id === 'ter-tbody-notas-enviadas-mg') {
                 cols = 10;
             } else if (tbodyAtivo.id === 'ter-tbody-historico') {
                 cols = 14;
@@ -2657,6 +2924,16 @@ async function excluirDocumentoTerceiros(documentoId) {
 async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes) {
     if (!documentoId) return;
     opcoes = opcoes || {};
+    if (campo === 'enviar_para_mg' && _terceirosTabAtual !== 'pendencias-mg') {
+        showMessage('O campo Envio MG só pode ser alterado na aba 6 — Pendências envio MG.', 'warning');
+        await refreshTerceirosViews();
+        return;
+    }
+    if (campo === 'carga_recebida_mg' && _terceirosTabAtual !== 'recebimentos-mg' && !opcoes.forcar_aba_recebimentos_mg) {
+        showMessage('O campo Recebida MG só pode ser alterado na aba 8 — Recebimentos de MG.', 'warning');
+        await refreshTerceirosViews();
+        return;
+    }
     if ((campo === 'enviar_para_mg' || campo === 'carga_recebida_mg') && String(valor).toLowerCase() === 'sim' && opcoes.motorista_obrigatorio && !String(opcoes.motorista_atual || '').trim()) {
         showMessage('Para esta rota, informe o motorista da carreta antes de continuar.', 'warning');
         await refreshTerceirosViews();
@@ -2700,9 +2977,14 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
         if (_terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
             Object.assign(_terceirosDocAtual, resp.documento);
         }
-        if (campo === 'nota_lancada' && isTerceirosFlagSim(valor)) {
-            _terceirosAtualizarNotaLancadaLocal(documentoId, resp.documento.nota_lancada || 'sim');
-        }
+    }
+    if (campo === 'nota_lancada' && isTerceirosFlagSim(valor)) {
+        await _terceirosAposConfirmarNotaLancadaSim(documentoId, resp && resp.documento);
+        return;
+    }
+    if (campo === 'enviar_para_mg' && isTerceirosFlagSim(valor)) {
+        await _terceirosAposConfirmarEnviarMgSim(documentoId, resp && resp.documento);
+        return;
     }
     var navegouFluxo = await moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor);
     if (!navegouFluxo) {
@@ -2715,11 +2997,7 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
             console.error(e);
         }
     }
-    if (campo === 'nota_lancada' && isTerceirosFlagSim(valor)) {
-        showMessage('Nota lançada registrada. A NF foi para a aba 5 — Notas fiscais lançadas.', 'success');
-    } else {
-        showMessage('Status atualizado.', 'success');
-    }
+    showMessage('Status atualizado.', 'success');
 }
 
 async function salvarMotoristaTerceirosDireto(documentoId, motorista) {
@@ -3674,6 +3952,8 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
     });
     atualizarResumoTotaisBipagemTerceiros();
     atualizarUIBipagemTerceiros(doc);
+    _terceirosSincronizarCampoEnviarMgDetalhe();
+    _terceirosSincronizarCampoRecebidaMgDetalhe();
     _persistirTerceirosDocumentoNaSessao(doc.id, _terceirosDocAtual.area);
     if (_terceirosTabAtual === 'pendencia-recebimento') {
         _terceirosFecharDescargaSeForaDaPendencia(doc.id);
@@ -4173,6 +4453,16 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             showMessage('Selecione uma nota (Ver detalhe ou Começar descarga) antes de marcar o recebimento como concluído.', 'warning');
             return;
         }
+        if (campo === 'enviar_para_mg' && _terceirosTabAtual !== 'pendencias-mg') {
+            showMessage('O campo Envio MG só pode ser alterado na aba 6 — Pendências envio MG.', 'warning');
+            _terceirosSincronizarCampoEnviarMgDetalhe();
+            return;
+        }
+        if (campo === 'carga_recebida_mg' && _terceirosTabAtual !== 'recebimentos-mg') {
+            showMessage('O campo Recebida MG só pode ser alterado na aba 8 — Recebimentos de MG.', 'warning');
+            _terceirosSincronizarCampoRecebidaMgDetalhe();
+            return;
+        }
         if (pedidoConclusaoRecebimento) {
             _terceirosRecebimentoConcluindo = true;
         }
@@ -4307,6 +4597,14 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 }, 0);
                 return;
             }
+            if (campo === 'nota_lancada' && isTerceirosFlagSim(valor)) {
+                await _terceirosAposConfirmarNotaLancadaSim(documentoId, resp && resp.documento);
+                return;
+            }
+            if (campo === 'enviar_para_mg' && isTerceirosFlagSim(valor)) {
+                await _terceirosAposConfirmarEnviarMgSim(documentoId, resp && resp.documento);
+                return;
+            }
             showMessage('Status atualizado.', 'success');
             var navegouFluxo = await moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor);
             if (!navegouFluxo) {
@@ -4395,6 +4693,22 @@ function initForms() {
     // Fechar modal ao clicar no X
     document.querySelector('.close').addEventListener('click', closeModal);
 
+    const modalTerIrRecebMg = document.getElementById('modal-terceiros-ir-recebimentos-mg');
+    const btnTerIrRecebMg = document.getElementById('btn-ter-ir-recebimentos-mg');
+    const btnTerFicarPendMg = document.getElementById('btn-ter-ficar-pendencias-mg');
+    const btnTerIrRecebMgClose = document.getElementById('modal-terceiros-ir-recebimentos-mg-close');
+    if (btnTerIrRecebMg) btnTerIrRecebMg.addEventListener('click', function() { fecharModalIrParaRecebimentosMg(true); });
+    if (btnTerFicarPendMg) btnTerFicarPendMg.addEventListener('click', function() { fecharModalIrParaRecebimentosMg(false); });
+    if (btnTerIrRecebMgClose) btnTerIrRecebMgClose.addEventListener('click', function() { fecharModalIrParaRecebimentosMg(false); });
+
+    const modalTerIrNotasLanc = document.getElementById('modal-terceiros-ir-notas-lancadas');
+    const btnTerIrNotasLanc = document.getElementById('btn-ter-ir-notas-lancadas');
+    const btnTerFicarPendLanc = document.getElementById('btn-ter-ficar-pendentes-lancamento');
+    const btnTerIrNotasLancClose = document.getElementById('modal-terceiros-ir-notas-lancadas-close');
+    if (btnTerIrNotasLanc) btnTerIrNotasLanc.addEventListener('click', function() { fecharModalIrParaNotasLancadas(true); });
+    if (btnTerFicarPendLanc) btnTerFicarPendLanc.addEventListener('click', function() { fecharModalIrParaNotasLancadas(false); });
+    if (btnTerIrNotasLancClose) btnTerIrNotasLancClose.addEventListener('click', function() { fecharModalIrParaNotasLancadas(false); });
+
     const modalTerSemReceb = document.getElementById('modal-terceiros-lancar-sem-recebimento');
     const btnTerSemRecebConfirmar = document.getElementById('btn-ter-confirmar-lancar-sem-recebimento');
     const btnTerSemRecebCancelar = document.getElementById('btn-ter-cancelar-lancar-sem-recebimento');
@@ -4424,6 +4738,12 @@ function initForms() {
         const modal = document.getElementById('edit-modal');
         if (e.target === modal) {
             closeModal();
+        }
+        if (modalTerIrRecebMg && e.target === modalTerIrRecebMg) {
+            fecharModalIrParaRecebimentosMg(false);
+        }
+        if (modalTerIrNotasLanc && e.target === modalTerIrNotasLanc) {
+            fecharModalIrParaNotasLancadas(false);
         }
         if (modalTerSemReceb && e.target === modalTerSemReceb) {
             fecharModalLancamentoSemRecebimento(false);
