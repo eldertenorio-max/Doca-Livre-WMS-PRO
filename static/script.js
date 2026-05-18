@@ -293,6 +293,24 @@ function terceirosAplicarPainelAbaSomenteUi(aba) {
     }
     _terceirosSincronizarCampoEnviarMgDetalhe();
     _terceirosSincronizarCampoRecebidaMgDetalhe();
+    _terceirosSincronizarCamposCarretaEnviarXml();
+}
+
+/** Motorista/placa editáveis só na 1ª aba (Enviar XML) e na 6ª (Pendências envio MG). */
+function _terceirosPodeEditarMotoristaPlaca() {
+    var aba = _terceirosTabAtual;
+    return aba === 'enviar-xml' || aba === 'pendencias-mg';
+}
+
+function _terceirosSincronizarCamposCarretaEnviarXml() {
+    var pode = _terceirosTabAtual === 'enviar-xml';
+    var titulo = 'Alterar somente na aba 1 — Enviar XML';
+    ['ter-carreta-motorista', 'ter-carreta-placa'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = !pode;
+        el.title = pode ? '' : titulo;
+    });
 }
 
 function _terceirosSincronizarCampoEnviarMgDetalhe() {
@@ -1561,6 +1579,45 @@ function terceirosCelulaPlacaLista(row) {
     return '<td><strong>' + escapeHtml(plc) + '</strong></td>';
 }
 
+function terceirosCelulaMotoristaListaLeitura(row) {
+    return '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>';
+}
+
+function renderTerceirosCelulasMotoristaPlacaLista(row, attrPrefix) {
+    if (!_terceirosPodeEditarMotoristaPlaca()) {
+        return terceirosCelulaMotoristaListaLeitura(row) + terceirosCelulaPlacaLista(row);
+    }
+    attrPrefix = attrPrefix || 'doc';
+    var id = String(row.id);
+    var aviso = isTerceirosMotoristaObrigatorio(row)
+        ? '<div class="ter-status-meta ter-status-meta--alerta">Obrigatório para esta rota</div>'
+        : '';
+    return '<td><div class="ter-inline-stack">'
+            + '<input type="text" class="ter-input-inline" data-ter-motorista-' + attrPrefix + '-doc="' + escapeHtml(id) + '" value="' + escapeHtml(row.motorista_carreta || '') + '" placeholder="Motorista">'
+            + renderTerceirosUsuarioMeta(row.atualizado_por || '', row.motorista_carreta_em || '')
+            + aviso
+        + '</div></td>'
+        + '<td><div class="ter-inline-stack">'
+            + '<input type="text" class="ter-input-inline" data-ter-placa-' + attrPrefix + '-doc="' + escapeHtml(id) + '" value="' + escapeHtml(row.placa_carreta || '') + '" placeholder="Placa" style="text-transform: uppercase;">'
+            + '<button type="button" class="btn btn-secondary btn-sm" data-ter-salvar-mot-placa-' + attrPrefix + '-doc="' + escapeHtml(id) + '">Salvar</button>'
+        + '</div></td>';
+}
+
+function bindTerceirosSalvarMotoristaPlacaLista(tbody, attrPrefix) {
+    if (!tbody || !_terceirosPodeEditarMotoristaPlaca()) return;
+    attrPrefix = attrPrefix || 'doc';
+    tbody.querySelectorAll('[data-ter-salvar-mot-placa-' + attrPrefix + '-doc]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = parseInt(btn.getAttribute('data-ter-salvar-mot-placa-' + attrPrefix + '-doc') || '0', 10);
+            var inputMot = document.querySelector('[data-ter-motorista-' + attrPrefix + '-doc="' + String(id) + '"]');
+            var inputPla = document.querySelector('[data-ter-placa-' + attrPrefix + '-doc="' + String(id) + '"]');
+            var motorista = inputMot ? inputMot.value.trim() : '';
+            var placa = inputPla ? inputPla.value.trim() : '';
+            if (id) void salvarMotoristaPlacaTerceirosDireto(id, motorista, placa);
+        });
+    });
+}
+
 /** Coluna somente leitura fora da 6ª aba (Pendências envio MG). */
 function renderTerceirosEnviarMgSomenteLeitura(row) {
     return renderTerceirosStatusComUsuario(
@@ -2586,27 +2643,14 @@ async function loadTerceirosNotasLancadas(dataPreloaded) {
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + avisoMotorista + '</td>'
             + '<td>' + renderTerceirosStatusComUsuario(row.nota_lancada || '-', row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
             + '<td>' + renderTerceirosEnviarMgSomenteLeitura(row) + '</td>'
-            + '<td><div class="ter-inline-stack">'
-                + '<input type="text" class="ter-input-inline" data-ter-motorista-doc="' + escapeHtml(String(row.id)) + '" value="' + escapeHtml(row.motorista_carreta || '') + '" placeholder="Motorista">'
-                + '<button type="button" class="btn btn-secondary btn-sm" data-ter-salvar-motorista-doc="' + escapeHtml(String(row.id)) + '">Salvar</button>'
-                + renderTerceirosUsuarioMeta(row.atualizado_por || '', row.motorista_carreta_em || '')
-                + (isTerceirosMotoristaObrigatorio(row) ? '<div class="ter-status-meta ter-status-meta--alerta">Obrigatório para esta rota</div>' : '')
-            + '</div></td>'
-            + terceirosCelulaPlacaLista(row)
+            + renderTerceirosCelulasMotoristaPlacaLista(row, 'lanc')
             + '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>'
             + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-lancada-doc') + '</td>'
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-lancada-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-lancada-doc]');
-    tbody.querySelectorAll('[data-ter-salvar-motorista-doc]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var id = parseInt(btn.getAttribute('data-ter-salvar-motorista-doc') || '0', 10);
-            var input = document.querySelector('[data-ter-motorista-doc="' + String(id) + '"]');
-            var motorista = input ? input.value.trim() : '';
-            if (id) salvarMotoristaTerceirosDireto(id, motorista);
-        });
-    });
+    bindTerceirosSalvarMotoristaPlacaLista(tbody, 'lanc');
     aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
@@ -2719,13 +2763,7 @@ async function loadTerceirosPendenciasMg(dataPreloaded) {
             + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + avisoMotorista + '</td>'
-            + '<td><div class="ter-inline-stack">'
-                + '<input type="text" class="ter-input-inline" data-ter-motorista-pend-mg-doc="' + escapeHtml(String(row.id)) + '" value="' + escapeHtml(row.motorista_carreta || '') + '" placeholder="Motorista">'
-                + '<button type="button" class="btn btn-secondary btn-sm" data-ter-salvar-motorista-pend-mg-doc="' + escapeHtml(String(row.id)) + '">Salvar</button>'
-                + renderTerceirosUsuarioMeta(row.atualizado_por || '', row.motorista_carreta_em || '')
-                + (isTerceirosMotoristaObrigatorio(row) ? '<div class="ter-status-meta ter-status-meta--alerta">Obrigatório para esta rota</div>' : '')
-            + '</div></td>'
-            + terceirosCelulaPlacaLista(row)
+            + renderTerceirosCelulasMotoristaPlacaLista(row, 'pend-mg')
             + '<td>' + (isTerceirosFlagSim(row.enviar_para_mg)
                 ? renderTerceirosStatusComUsuario(textoResumoEnviarMgTerceiros(row), row.enviar_para_mg_por || '', row.enviar_para_mg_em || '')
                 : ('<select class="ter-select-inline" data-ter-enviar-mg-pend-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
@@ -2746,21 +2784,28 @@ async function loadTerceirosPendenciasMg(dataPreloaded) {
             var motoristaObrigatorio = select.getAttribute('data-ter-motorista-obrigatorio') === 'sim';
             var motoristaAtual = select.getAttribute('data-ter-motorista-atual') || '';
             var inputMot = document.querySelector('[data-ter-motorista-pend-mg-doc="' + String(id) + '"]');
+            var inputPla = document.querySelector('[data-ter-placa-pend-mg-doc="' + String(id) + '"]');
             if (inputMot && inputMot.value.trim()) motoristaAtual = inputMot.value.trim();
+            if (id && select.value === 'sim' && inputMot && inputPla) {
+                var motVal = inputMot.value.trim();
+                var plaVal = inputPla.value.trim();
+                if (motVal || plaVal) {
+                    void salvarMotoristaPlacaTerceirosDireto(id, motVal, plaVal).then(function() {
+                        if (select.value) atualizarStatusTerceirosDireto(id, 'enviar_para_mg', select.value, {
+                            motorista_obrigatorio: motoristaObrigatorio,
+                            motorista_atual: motVal || motoristaAtual
+                        });
+                    });
+                    return;
+                }
+            }
             if (id && select.value) atualizarStatusTerceirosDireto(id, 'enviar_para_mg', select.value, {
                 motorista_obrigatorio: motoristaObrigatorio,
                 motorista_atual: motoristaAtual
             });
         });
     });
-    tbody.querySelectorAll('[data-ter-salvar-motorista-pend-mg-doc]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var id = parseInt(btn.getAttribute('data-ter-salvar-motorista-pend-mg-doc') || '0', 10);
-            var input = document.querySelector('[data-ter-motorista-pend-mg-doc="' + String(id) + '"]');
-            var motorista = input ? input.value.trim() : '';
-            if (id) salvarMotoristaTerceirosDireto(id, motorista);
-        });
-    });
+    bindTerceirosSalvarMotoristaPlacaLista(tbody, 'pend-mg');
     aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
@@ -3002,23 +3047,40 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
 
 async function salvarMotoristaTerceirosDireto(documentoId, motorista) {
     if (!documentoId) return;
+    if (!_terceirosPodeEditarMotoristaPlaca()) {
+        showMessage('Motorista e placa só podem ser alterados nas abas Enviar XML e Pendências envio MG.', 'warning');
+        return;
+    }
+    return salvarMotoristaPlacaTerceirosDireto(documentoId, motorista, null);
+}
+
+async function salvarMotoristaPlacaTerceirosDireto(documentoId, motorista, placa) {
+    if (!documentoId) return;
+    if (!_terceirosPodeEditarMotoristaPlaca()) {
+        showMessage('Motorista e placa só podem ser alterados nas abas Enviar XML e Pendências envio MG.', 'warning');
+        return;
+    }
+    motorista = (motorista != null ? String(motorista) : '').trim();
+    if (placa != null) placa = String(placa).trim().toUpperCase();
     if (!motorista) {
         showMessage('Digite o motorista da carreta.', 'warning');
         return;
     }
+    var body = { motorista: motorista };
+    if (placa != null) body.placa = placa;
     var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/motorista', {
         method: 'POST',
-        body: JSON.stringify({ motorista: motorista })
+        body: JSON.stringify(body)
     });
     if (!resp || !resp.ok) {
-        showMessage((resp && resp.erro) || 'Erro ao salvar motorista.', 'error');
+        showMessage((resp && resp.erro) || 'Erro ao salvar motorista e placa.', 'error');
         return;
     }
     if (_terceirosDocAtual.id === documentoId) {
         await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
     }
     await refreshTerceirosViews();
-    showMessage('Motorista salvo.', 'success');
+    showMessage(placa != null ? 'Motorista e placa salvos.' : 'Motorista salvo.', 'success');
 }
 
 function resetTerceirosDetalhe() {
@@ -4647,6 +4709,10 @@ window.marcarRecebimentoConcluidoTerceiros = function() {
 async function salvarMotoristaTerceiros(area) {
     var documentoId = _terceirosDocumentoIdAtualParaApi();
     if (documentoId == null) return;
+    if (!_terceirosPodeEditarMotoristaPlaca()) {
+        showMessage('Motorista e placa só podem ser alterados nas abas Enviar XML e Pendências envio MG.', 'warning');
+        return;
+    }
     var prefixo = getTerceirosPrefixo();
     var input = document.getElementById(prefixo + '-motorista');
     var motorista = input ? input.value.trim() : '';

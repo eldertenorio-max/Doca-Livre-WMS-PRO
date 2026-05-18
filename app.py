@@ -7688,28 +7688,45 @@ def api_terceiros_status(documento_id):
 def api_terceiros_motorista(documento_id):
     data = request.get_json() or {}
     motorista = (data.get('motorista') or '').strip()
+    placa_informada = 'placa' in data
+    placa = (data.get('placa') or '').strip().upper() if placa_informada else None
     if not motorista:
         return jsonify({'ok': False, 'erro': 'Informe o motorista da carreta.'}), 400
     usuario = session.get('usuario', '')
     conn = get_db()
     try:
         _ensure_terceiros_schema(conn)
-        row = conn.execute('SELECT motorista_carreta, remetente_nome, destinatario_nome FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,)).fetchone()
+        row = conn.execute(
+            'SELECT motorista_carreta, placa_carreta, remetente_nome, destinatario_nome FROM '
+            + _tbl_terceiros_documentos(conn) + ' WHERE id = ?',
+            (documento_id,)
+        ).fetchone()
         if not row:
             return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
         row_d = dict(row) if hasattr(row, 'keys') else {
             'motorista_carreta': row[0] if len(row) > 0 else '',
-            'remetente_nome': row[1] if len(row) > 1 else '',
-            'destinatario_nome': row[2] if len(row) > 2 else '',
+            'placa_carreta': row[1] if len(row) > 1 else '',
+            'remetente_nome': row[2] if len(row) > 2 else '',
+            'destinatario_nome': row[3] if len(row) > 3 else '',
         }
         valor_antigo = (row_d.get('motorista_carreta') or '')
         if _motorista_obrigatorio_terceiros(row_d) and not motorista:
             return jsonify({'ok': False, 'erro': 'Para esta rota, informe o motorista da carreta.'}), 400
         agora = _agora_iso()
-        conn.execute(
-            'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET motorista_carreta = ?, motorista_carreta_em = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
-            (motorista, agora, agora, usuario, documento_id)
-        )
+        if placa_informada:
+            placa_antiga = (row_d.get('placa_carreta') or '')
+            conn.execute(
+                'UPDATE ' + _tbl_terceiros_documentos(conn)
+                + ' SET motorista_carreta = ?, motorista_carreta_em = ?, placa_carreta = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+                (motorista, agora, placa or None, agora, usuario, documento_id)
+            )
+            if placa != placa_antiga:
+                _registrar_evento_terceiros(conn, documento_id, 'placa_carreta', placa_antiga, placa, usuario)
+        else:
+            conn.execute(
+                'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET motorista_carreta = ?, motorista_carreta_em = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+                (motorista, agora, agora, usuario, documento_id)
+            )
         _registrar_evento_terceiros(conn, documento_id, 'motorista_carreta', valor_antigo, motorista, usuario)
         conn.commit()
         return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
