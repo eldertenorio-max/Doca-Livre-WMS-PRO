@@ -977,16 +977,31 @@ function textoResumoNotaLancadaTerceiros(row) {
     return 'Pendente';
 }
 
+/** NF com pelo menos uma unidade bipada (sai da 2ª aba e entra em Fornecedores recebidos). */
+function _terceirosTemBipagemIniciada(row) {
+    if (!row) return false;
+    var q = parseFloat(row.quantidade_total_bipada);
+    return !isNaN(q) && q > 1e-9;
+}
+
+function _terceirosConsideraFornecedorRecebido(row) {
+    return isTerceirosFlagSim(row && row.recebimento_concluido) || _terceirosTemBipagemIniciada(row);
+}
+
+function _terceirosConsideraPendenciaRecebimento(row) {
+    return !isTerceirosFlagSim(row && row.recebimento_concluido) && !_terceirosTemBipagemIniciada(row);
+}
+
 function getTerceirosRowsPorEtapa(rows, etapa) {
     rows = Array.isArray(rows) ? rows : [];
     if (etapa === 'pendencia-recebimento') {
         return rows.filter(function(row) {
-            return !isTerceirosFlagSim(row.recebimento_concluido);
+            return _terceirosConsideraPendenciaRecebimento(row);
         });
     }
     if (etapa === 'fornecedores-recebidos') {
         return rows.filter(function(row) {
-            return isTerceirosFlagSim(row.recebimento_concluido);
+            return _terceirosConsideraFornecedorRecebido(row);
         });
     }
     if (etapa === 'pendentes-lancamento') {
@@ -1342,10 +1357,22 @@ function renderTerceirosStatusComUsuario(valor, usuario, datahora, fallback) {
 
 function renderTerceirosRecebimentoComUsuario(row) {
     var concluido = isTerceirosFlagSim(row.recebimento_concluido);
+    var statusTxt = 'pendente';
+    var usuario = '';
+    var datahora = '';
+    if (concluido) {
+        statusTxt = 'concluído';
+        usuario = row.recebimento_concluido_por || '';
+        datahora = row.recebimento_concluido_em || '';
+    } else if (_terceirosTemBipagemIniciada(row)) {
+        statusTxt = 'bipagem em andamento';
+        usuario = row.atualizado_por || row.criado_por || '';
+        datahora = row.atualizado_em || '';
+    }
     return renderTerceirosStatusComUsuario(
-        concluido ? 'concluído' : 'pendente',
-        row.recebimento_concluido_por || '',
-        row.recebimento_concluido_em || '',
+        statusTxt,
+        usuario,
+        datahora,
         row.criado_por ? ('criado por ' + row.criado_por) : ''
     );
 }
@@ -1718,7 +1745,7 @@ function _terceirosNfTexto(row) {
 }
 
 function _terceirosAlertaEtapa(row) {
-    if (!isTerceirosFlagSim(row.recebimento_concluido)) {
+    if (_terceirosConsideraPendenciaRecebimento(row)) {
         return { tab: 'pendencia-recebimento', etapa: 'Pendência de recebimento', usuario: row.criado_por || row.atualizado_por || '-', data: row.criado_em || row.atualizado_em || '' };
     }
     if (!isTerceirosFlagSim(row.nota_lancada)) {
@@ -2055,11 +2082,11 @@ async function loadTerceirosHistorico() {
     }
     var rowsMerged = _terceirosMesclarRecebidosLocaisNasRows(data.rows || []);
     var rows = rowsMerged.filter(function(row) {
-        return isTerceirosFlagSim(row.recebimento_concluido);
+        return _terceirosConsideraFornecedorRecebido(row);
     });
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="13" class="loading">Nenhuma NF no histórico enquanto todas estiverem na <strong>Pendência de recebimento</strong>. Após concluir a descarga (recebimento), a nota passa a aparecer aqui.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" class="loading">Nenhuma NF no histórico. Aparecem aqui as notas que já saíram da <strong>Pendência de recebimento</strong> (com bipagem ou recebimento concluído).</td></tr>';
         return;
     }
 
@@ -2864,6 +2891,8 @@ function _flushTerceirosAdd(itemId) {
                 showMessage('Item bipado com sucesso.', 'success');
             }
             return loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId).then(function() {
+                try { void loadTerceirosDocumentos(); } catch (e) { console.error(e); }
+                try { void loadTerceirosFornecedoresRecebidos(); } catch (e2) { console.error(e2); }
                 return refreshTerceirosViews();
             });
         }
@@ -2893,6 +2922,8 @@ function _flushTerceirosRemove(itemId) {
         if (resp && resp.ok) {
             showMessage(n + ' unidade(s) removida(s).', 'success');
             return loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId).then(function() {
+                try { void loadTerceirosDocumentos(); } catch (e) { console.error(e); }
+                try { void loadTerceirosFornecedoresRecebidos(); } catch (e2) { console.error(e2); }
                 return refreshTerceirosViews();
             });
         }
