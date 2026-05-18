@@ -227,6 +227,7 @@ function aplicarDestaqueLinhaTerceirosDoc(tbody) {
  * @param {string} tab mesmo valor de data-ter-tab / _terceirosTabAtual
  */
 async function recarregarListaTerceirosTab(tab) {
+    if (tab === 'painel') return loadPainelTerceiros();
     if (tab === 'pendencia-recebimento' || tab === 'enviar-xml') return loadTerceirosDocumentos();
     if (tab === 'fornecedores-recebidos') return loadTerceirosFornecedoresRecebidos();
     if (tab === 'pendentes-lancamento') return loadTerceirosPendentesLancamento();
@@ -239,8 +240,10 @@ async function recarregarListaTerceirosTab(tab) {
 }
 
 function _terceirosNormalizarAbaTab(tab) {
-    var aba = 'pendencia-recebimento';
+    var aba = 'painel';
+    if (tab === 'painel') aba = 'painel';
     if (tab === 'enviar-xml') aba = 'enviar-xml';
+    if (tab === 'pendencia-recebimento') aba = 'pendencia-recebimento';
     if (tab === 'fornecedores-recebidos') aba = 'fornecedores-recebidos';
     if (tab === 'pendentes-lancamento') aba = 'pendentes-lancamento';
     if (tab === 'notas-lancadas') aba = 'notas-lancadas';
@@ -255,6 +258,7 @@ function _terceirosNormalizarAbaTab(tab) {
 function terceirosAplicarPainelAbaSomenteUi(aba) {
     _terceirosTabAtual = aba;
     var botoes = document.querySelectorAll('.terceiros-subtab[data-ter-tab]');
+    var painel = document.getElementById('terceiros-panel-painel');
     var enviarXml = document.getElementById('terceiros-panel-enviar-xml');
     var recebimento = document.getElementById('terceiros-panel-recebimento');
     var fornecedoresRecebidos = document.getElementById('terceiros-panel-fornecedores-recebidos');
@@ -264,10 +268,11 @@ function terceirosAplicarPainelAbaSomenteUi(aba) {
     var recebimentosMg = document.getElementById('terceiros-panel-recebimentos-mg');
     var pendenciasMg = document.getElementById('terceiros-panel-pendencias-mg');
     var historico = document.getElementById('terceiros-panel-historico');
-    if (!botoes.length || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico) return;
+    if (!botoes.length || !painel || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico) return;
     botoes.forEach(function(btn) {
         btn.classList.toggle('active', btn.getAttribute('data-ter-tab') === aba);
     });
+    painel.classList.toggle('devolucoes-panel-active', aba === 'painel');
     enviarXml.classList.toggle('devolucoes-panel-active', aba === 'enviar-xml');
     recebimento.classList.toggle('devolucoes-panel-active', aba === 'pendencia-recebimento');
     fornecedoresRecebidos.classList.toggle('devolucoes-panel-active', aba === 'fornecedores-recebidos');
@@ -486,7 +491,12 @@ function initModulos() {
                 loadPainelDevolucoes();
             }
         } else if (id === 'terceiros') {
-            refreshTerceirosViews();
+            var painelTer = document.getElementById('terceiros-panel-painel');
+            if (painelTer && painelTer.classList.contains('devolucoes-panel-active')) {
+                void loadPainelTerceiros();
+            } else {
+                refreshTerceirosViews();
+            }
         }
     }
 
@@ -544,6 +554,7 @@ function initDevolucoesTabs() {
 
 function initTerceirosTabs() {
     var botoes = document.querySelectorAll('.terceiros-subtab[data-ter-tab]');
+    var painel = document.getElementById('terceiros-panel-painel');
     var enviarXml = document.getElementById('terceiros-panel-enviar-xml');
     var recebimento = document.getElementById('terceiros-panel-recebimento');
     var fornecedoresRecebidos = document.getElementById('terceiros-panel-fornecedores-recebidos');
@@ -553,7 +564,7 @@ function initTerceirosTabs() {
     var recebimentosMg = document.getElementById('terceiros-panel-recebimentos-mg');
     var pendenciasMg = document.getElementById('terceiros-panel-pendencias-mg');
     var historico = document.getElementById('terceiros-panel-historico');
-    if (!botoes.length || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico) return;
+    if (!botoes.length || !painel || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico) return;
 
     function mostrarTerTab(tab) {
         var aba = _terceirosNormalizarAbaTab(tab);
@@ -563,12 +574,12 @@ function initTerceirosTabs() {
 
     botoes.forEach(function(btn) {
         btn.addEventListener('click', function() {
-            mostrarTerTab(btn.getAttribute('data-ter-tab') || 'pendencia-recebimento');
+            mostrarTerTab(btn.getAttribute('data-ter-tab') || 'painel');
         });
     });
 
     window.terceirosMostrarAba = mostrarTerTab;
-    var tabInicial = 'pendencia-recebimento';
+    var tabInicial = 'painel';
     var sub = _lerTerceirosSubabaNaSessao();
     if (sub && sub.tab) {
         tabInicial = sub.tab;
@@ -577,12 +588,16 @@ function initTerceirosTabs() {
         if (sessTab && sessTab.tab) tabInicial = sessTab.tab;
     }
     mostrarTerTab(tabInicial);
+    setTimeout(function() {
+        void fetchTerceirosDocumentosTodos();
+    }, 400);
 }
 
 /** Após init: reabre módulo + NF se havia sessão (F5). */
 async function restaurarTerceirosUltimaNotaSeSessao() {
     var o = _lerTerceirosDocumentoNaSessao();
     if (!o || !o.id) return;
+    if ((o.tab || '') === 'painel') return;
     if (window.controleMostrarModulo) window.controleMostrarModulo('terceiros');
     var aba = o.tab || 'pendencia-recebimento';
     var area = (o.area === 'expedicao' || o.area === 'carreta') ? o.area : 'recebimento';
@@ -823,6 +838,235 @@ async function loadPainelDevolucoes() {
     renderPainelDevolucoesCharts(data);
 }
 
+let terChartEtapas = null;
+let terChartBipagemXml = null;
+let terChartRemetentes = null;
+let terChartPlacas = null;
+let terChartUf = null;
+let terChartConferencia = null;
+
+function destroyPainelTerceirosCharts() {
+    if (terChartEtapas) { terChartEtapas.destroy(); terChartEtapas = null; }
+    if (terChartBipagemXml) { terChartBipagemXml.destroy(); terChartBipagemXml = null; }
+    if (terChartRemetentes) { terChartRemetentes.destroy(); terChartRemetentes = null; }
+    if (terChartPlacas) { terChartPlacas.destroy(); terChartPlacas = null; }
+    if (terChartUf) { terChartUf.destroy(); terChartUf = null; }
+    if (terChartConferencia) { terChartConferencia.destroy(); terChartConferencia = null; }
+}
+
+function renderPainelTerceirosCharts(data) {
+    destroyPainelTerceirosCharts();
+    if (typeof Chart === 'undefined') return;
+    var cores = ['#366092', '#5c6bc0', '#26a69a', '#ffa726', '#ef5350', '#7e57c2', '#42a5f5', '#66bb6a'];
+    var optsBar = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } }
+    };
+    var etapas = data.etapas || [];
+    var ctxE = document.getElementById('ter-chart-etapas');
+    if (ctxE && etapas.length) {
+        terChartEtapas = new Chart(ctxE, {
+            type: 'bar',
+            data: {
+                labels: etapas.map(function(e) { return e.label; }),
+                datasets: [{
+                    label: 'NFs',
+                    data: etapas.map(function(e) { return e.total || 0; }),
+                    backgroundColor: '#366092',
+                    borderColor: '#1a237e',
+                    borderWidth: 1
+                }]
+            },
+            options: Object.assign({}, optsBar, {
+                indexAxis: 'y',
+                scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            })
+        });
+    }
+    var stats = data.estatisticas || {};
+    var ctxB = document.getElementById('ter-chart-bipagem-xml');
+    if (ctxB) {
+        terChartBipagemXml = new Chart(ctxB, {
+            type: 'bar',
+            data: {
+                labels: ['XML', 'Bipado'],
+                datasets: [{
+                    label: 'Quantidade',
+                    data: [stats.quantidade_total_xml || 0, stats.quantidade_total_bipada || 0],
+                    backgroundColor: ['#5c6bc0', '#2e7d32'],
+                    borderWidth: 1
+                }]
+            },
+            options: Object.assign({}, optsBar, {
+                scales: { y: { beginAtZero: true } }
+            })
+        });
+    }
+    var topRem = (data.top_remetentes || []).slice(0, 8);
+    var ctxR = document.getElementById('ter-chart-remetentes');
+    if (ctxR && topRem.length) {
+        terChartRemetentes = new Chart(ctxR, {
+            type: 'bar',
+            data: {
+                labels: topRem.map(function(r) { return r.nome; }),
+                datasets: [{
+                    data: topRem.map(function(r) { return r.total || 0; }),
+                    backgroundColor: '#26a69a',
+                    borderWidth: 1
+                }]
+            },
+            options: Object.assign({}, optsBar, {
+                indexAxis: 'y',
+                scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            })
+        });
+    }
+    var topPl = (data.top_placas || []).slice(0, 8);
+    var ctxP = document.getElementById('ter-chart-placas');
+    if (ctxP && topPl.length) {
+        terChartPlacas = new Chart(ctxP, {
+            type: 'bar',
+            data: {
+                labels: topPl.map(function(p) { return p.nome; }),
+                datasets: [{
+                    data: topPl.map(function(p) { return p.total || 0; }),
+                    backgroundColor: '#7b1fa2',
+                    borderWidth: 1
+                }]
+            },
+            options: Object.assign({}, optsBar, {
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            })
+        });
+    }
+    var porUf = (data.por_uf || []).slice(0, 8);
+    var ctxU = document.getElementById('ter-chart-uf');
+    if (ctxU && porUf.length) {
+        terChartUf = new Chart(ctxU, {
+            type: 'doughnut',
+            data: {
+                labels: porUf.map(function(u) { return u.nome; }),
+                datasets: [{
+                    data: porUf.map(function(u) { return u.total || 0; }),
+                    backgroundColor: cores.slice(0, porUf.length),
+                    borderColor: '#fff',
+                    borderWidth: 2
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+        });
+    }
+    var ctxC = document.getElementById('ter-chart-conferencia');
+    if (ctxC) {
+        terChartConferencia = new Chart(ctxC, {
+            type: 'pie',
+            data: {
+                labels: ['Completo', 'Divergente'],
+                datasets: [{
+                    data: [stats.conferencia_ok || 0, stats.conferencia_divergente || 0],
+                    backgroundColor: ['#2e7d32', '#c62828'],
+                    borderColor: '#fff',
+                    borderWidth: 2
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+        });
+    }
+}
+
+async function loadPainelTerceiros() {
+    var data = await fetchAPI('/terceiros/painel');
+    if (!data) return;
+    var statIds = [
+        'ter-stat-total-nf', 'ter-stat-pendencia', 'ter-stat-fornecedores', 'ter-stat-receb-concluido',
+        'ter-stat-pend-lanc', 'ter-stat-notas-lanc', 'ter-stat-qtd-xml', 'ter-stat-qtd-bip',
+        'ter-stat-carreta', 'ter-stat-conf-ok', 'ter-stat-conf-div', 'ter-stat-mg-ok'
+    ];
+    if (data.erro) {
+        statIds.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.textContent = '—';
+        });
+        destroyPainelTerceirosCharts();
+        var msg = escapeHtml(data.erro);
+        [['ter-tbody-painel-ultimas', 8], ['ter-tbody-painel-itens', 3], ['ter-tbody-painel-remetentes', 2],
+            ['ter-tbody-painel-motoristas', 2], ['ter-tbody-painel-placas', 2]].forEach(function(pair) {
+            var tb = document.getElementById(pair[0]);
+            if (tb) tb.innerHTML = '<tr><td colspan="' + pair[1] + '" class="loading">' + msg + '</td></tr>';
+        });
+        return;
+    }
+    var s = data.estatisticas || {};
+    var set = function(id, val) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        if (typeof val === 'number' && !Number.isInteger(val)) {
+            el.textContent = _formatTerQtdDisplay(val);
+        } else {
+            el.textContent = val != null && val !== '' ? String(val) : '0';
+        }
+    };
+    set('ter-stat-total-nf', s.total_nf ?? 0);
+    set('ter-stat-pendencia', s.pendencia_recebimento ?? 0);
+    set('ter-stat-fornecedores', s.fornecedores_recebidos ?? 0);
+    set('ter-stat-receb-concluido', s.recebimento_concluido ?? 0);
+    set('ter-stat-pend-lanc', s.pendentes_lancamento ?? 0);
+    set('ter-stat-notas-lanc', s.notas_lancadas ?? 0);
+    set('ter-stat-qtd-xml', s.quantidade_total_xml ?? 0);
+    set('ter-stat-qtd-bip', s.quantidade_total_bipada ?? 0);
+    set('ter-stat-carreta', s.nfs_carreta ?? 0);
+    set('ter-stat-conf-ok', s.conferencia_ok ?? 0);
+    set('ter-stat-conf-div', s.conferencia_divergente ?? 0);
+    set('ter-stat-mg-ok', s.recebimentos_mg ?? 0);
+
+    var preencher = function(tbodyId, rows, cols, emptyMsg, renderRow) {
+        var tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        if (!rows || !rows.length) {
+            tbody.innerHTML = '<tr><td colspan="' + cols + '" class="loading">' + escapeHtml(emptyMsg) + '</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(renderRow).join('');
+    };
+
+    preencher('ter-tbody-painel-ultimas', data.ultimas_nfs || [], 8, 'Nenhuma NF cadastrada ainda.', function(n) {
+        var origem = (n.area === 'carreta') ? 'Carreta' : ((n.area === 'expedicao') ? 'Expedição' : 'Recebimento');
+        return '<tr>'
+            + '<td><strong>' + escapeHtml(n.nf || '-') + '</strong></td>'
+            + '<td>' + terceirosListaCellTextoLongo(n.remetente) + '</td>'
+            + '<td>' + terceirosListaCellTextoLongo(n.destinatario) + '</td>'
+            + '<td>' + escapeHtml(n.uf || '-') + '</td>'
+            + '<td>' + escapeHtml(n.etapa || '-') + '</td>'
+            + '<td>' + escapeHtml(_formatTerQtdDisplay(n.qtd_xml)) + '</td>'
+            + '<td><strong>' + escapeHtml(_formatTerQtdDisplay(n.qtd_bipada)) + '</strong></td>'
+            + '<td>' + escapeHtml(origem) + '</td>'
+            + '</tr>';
+    });
+
+    preencher('ter-tbody-painel-itens', data.top_itens || [], 3, 'Nenhum item bipado ainda.', function(i) {
+        return '<tr>'
+            + '<td>' + terceirosListaCellTextoLongo(i.produto) + '</td>'
+            + '<td>' + escapeHtml(i.codigo_ean || '-') + '</td>'
+            + '<td><strong>' + escapeHtml(_formatTerQtdDisplay(i.total)) + '</strong></td>'
+            + '</tr>';
+    });
+
+    preencher('ter-tbody-painel-remetentes', data.top_remetentes || [], 2, 'Sem remetentes.', function(r) {
+        return '<tr><td>' + terceirosListaCellTextoLongo(r.nome) + '</td><td><strong>' + (r.total || 0) + '</strong></td></tr>';
+    });
+
+    preencher('ter-tbody-painel-motoristas', data.top_motoristas || [], 2, 'Sem motoristas cadastrados.', function(m) {
+        return '<tr><td>' + terceirosListaCellTextoLongo(m.motorista) + '</td><td><strong>' + (m.nfs || 0) + '</strong></td></tr>';
+    });
+
+    preencher('ter-tbody-painel-placas', data.top_placas || [], 2, 'Sem placas registradas.', function(p) {
+        return '<tr><td><strong>' + escapeHtml(p.nome || '-') + '</strong></td><td><strong>' + (p.total || 0) + '</strong></td></tr>';
+    });
+
+    renderPainelTerceirosCharts(data);
+}
+
 function getTerceirosPrefixo() {
     return 'ter-rec';
 }
@@ -992,17 +1236,59 @@ async function uploadXmlTerceirosCarreta() {
     return uploadXmlTerceirosComPrefixo('ter-carreta', 'carreta', { exigeMotoristaPlaca: true });
 }
 
-async function fetchTerceirosDocumentosTodos() {
-    const resp = await fetchAPIComTimeout('/terceiros/documentos?area=' + encodeURIComponent('todas'), {}, 55000);
-    if (!resp || resp.erro) {
-        return { erro: (resp && resp.erro) || 'Erro ao carregar documentos.', rows: [] };
+var _terceirosListaCache = { rows: null, erro: null, ts: 0, promise: null };
+var TERCEIROS_LISTA_CACHE_MS = 90000;
+
+function invalidateTerceirosListaCache() {
+    _terceirosListaCache.rows = null;
+    _terceirosListaCache.erro = null;
+    _terceirosListaCache.ts = 0;
+}
+
+function _terceirosObterCacheLista() {
+    var now = Date.now();
+    if (_terceirosListaCache.rows && (now - _terceirosListaCache.ts) < TERCEIROS_LISTA_CACHE_MS) {
+        return { rows: _terceirosListaCache.rows, erro: _terceirosListaCache.erro };
     }
-    const rows = Array.isArray(resp.rows) ? resp.rows : [];
-    return {
-        rows: rows.slice().sort(function(a, b) {
+    return null;
+}
+
+/** Uma requisição compartilhada; abas leem do cache ou reutilizam fetch em andamento. */
+async function fetchTerceirosDocumentosTodos(opcoes) {
+    opcoes = opcoes || {};
+    var force = !!opcoes.force;
+    var now = Date.now();
+    if (!force) {
+        var hit = _terceirosObterCacheLista();
+        if (hit) return hit;
+        if (_terceirosListaCache.promise) return _terceirosListaCache.promise;
+    }
+    var executar = async function() {
+        const resp = await fetchAPIComTimeout('/terceiros/documentos?area=' + encodeURIComponent('todas'), {}, 45000);
+        var erro = (!resp || resp.erro) ? ((resp && resp.erro) || 'Erro ao carregar documentos.') : null;
+        const rows = Array.isArray(resp && resp.rows) ? resp.rows : [];
+        var ordenadas = rows.slice().sort(function(a, b) {
             return Number(b.id || 0) - Number(a.id || 0);
-        })
+        });
+        _terceirosListaCache.rows = ordenadas;
+        _terceirosListaCache.erro = erro;
+        _terceirosListaCache.ts = Date.now();
+        return { erro: erro, rows: ordenadas };
     };
+    _terceirosListaCache.promise = executar().finally(function() {
+        _terceirosListaCache.promise = null;
+    });
+    return _terceirosListaCache.promise;
+}
+
+async function _terceirosResolverDadosLista(dataPreloaded, tbody, colspan) {
+    if (dataPreloaded && (dataPreloaded.rows || dataPreloaded.erro)) return dataPreloaded;
+    var hit = _terceirosObterCacheLista();
+    if (hit) return hit;
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="loading">Carregando...</td></tr>';
+    }
+    return fetchTerceirosDocumentosTodos();
 }
 
 function isTerceirosSim(valor) {
@@ -1047,6 +1333,21 @@ function _terceirosTemBipagemIniciada(row) {
 
 function _terceirosConsideraFornecedorRecebido(row) {
     return isTerceirosFlagSim(row && row.recebimento_concluido) || _terceirosTemBipagemIniciada(row);
+}
+
+/** Lançamento fiscal sem modal de aviso: recebimento concluído ou descarga já iniciada (bipagem). */
+function _terceirosPodeLancarNotaSemConfirmacaoRecebimento(rowLike) {
+    if (!rowLike) return false;
+    return _terceirosConsideraFornecedorRecebido(rowLike);
+}
+
+function _terceirosOpPodeLancarNotaSemConfirmacao(opcoes) {
+    opcoes = opcoes || {};
+    if (opcoes.forcar_lancamento_sem_recebimento) return true;
+    if (opcoes.fornecedor_recebido === true) return true;
+    if (opcoes.recebimento_concluido === true || isTerceirosFlagSim(opcoes.recebimento_concluido)) return true;
+    if (opcoes.row && _terceirosPodeLancarNotaSemConfirmacaoRecebimento(opcoes.row)) return true;
+    return false;
 }
 
 /** 4ª aba: mesmas NFs da 3ª com nota lançada ainda sem «Sim» (Pendente ou Não). */
@@ -1748,12 +2049,11 @@ function bindTerceirosComprovanteButtons(seletor) {
     });
 }
 
-async function loadTerceirosDocumentos() {
+async function loadTerceirosDocumentos(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-recebimento-documentos');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando...</td></tr>';
     if (!tbody) return;
     try {
-        const data = await fetchTerceirosDocumentosTodos();
+        const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 11);
         if (data.erro) {
             tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
             return;
@@ -1792,11 +2092,10 @@ async function loadTerceirosDocumentos() {
     }
 }
 
-async function loadTerceirosFornecedoresRecebidos() {
+async function loadTerceirosFornecedoresRecebidos(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-fornecedores-recebidos');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando...</td></tr>';
-    const data = await fetchTerceirosDocumentosTodos();
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 12);
     void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows || []));
     if (data.erro) {
         tbody.innerHTML = '<tr><td colspan="12" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
@@ -1896,7 +2195,8 @@ async function atualizarAlertasTerceirosHeader(rowsOpt) {
     if (!btn || !countEl || !lista) return;
     var rows = rowsOpt;
     if (!Array.isArray(rows)) {
-        var data = await fetchTerceirosDocumentosTodos();
+        var hit = _terceirosObterCacheLista();
+        var data = hit || await fetchTerceirosDocumentosTodos();
         rows = data && Array.isArray(data.rows) ? data.rows : [];
     }
     rows = _terceirosMesclarRecebidosLocaisNasRows(rows);
@@ -1952,14 +2252,15 @@ function initTerceirosAlertasHeader() {
             menu.hidden = true;
         }
     });
-    void atualizarAlertasTerceirosHeader();
+    setTimeout(function() {
+        void atualizarAlertasTerceirosHeader();
+    }, 600);
 }
 
-async function loadTerceirosPendentesLancamento() {
+async function loadTerceirosPendentesLancamento(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-pendentes-lancamento');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_POS_RECEBIMENTO + '" class="loading">Carregando...</td></tr>';
-    const data = await fetchTerceirosDocumentosTodos();
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_POS_RECEBIMENTO);
     if (data.erro) {
         tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_POS_RECEBIMENTO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
@@ -1977,7 +2278,7 @@ async function loadTerceirosPendentesLancamento() {
             + renderTerceirosCelulasNfAtePrevisao(row)
             + '<td>' + renderTerceirosRecebimentoComUsuario(row) + '</td>'
             + '<td>' + renderTerceirosConferenciaResumoHtml(row) + '</td>'
-            + '<td><select class="ter-select-inline" data-ter-nota-lancada-pend="' + escapeHtml(String(row.id)) + '" data-ter-recebimento-concluido="' + escapeHtml(isTerceirosFlagSim(row.recebimento_concluido) ? 'sim' : 'nao') + '">'
+            + '<td><select class="ter-select-inline" data-ter-nota-lancada-pend="' + escapeHtml(String(row.id)) + '" data-ter-recebimento-concluido="' + escapeHtml(isTerceirosFlagSim(row.recebimento_concluido) ? 'sim' : 'nao') + '" data-ter-fornecedor-recebido="' + escapeHtml(_terceirosConsideraFornecedorRecebido(row) ? 'sim' : 'nao') + '">'
                 + '<option value="">Selecione</option>'
                 + '<option value="sim"' + (isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Sim</option>'
                 + '<option value="nao"' + (isTerceirosFlagNao(row.nota_lancada) && !isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Não</option>'
@@ -1991,21 +2292,22 @@ async function loadTerceirosPendentesLancamento() {
         select.addEventListener('change', function() {
             var id = parseInt(select.getAttribute('data-ter-nota-lancada-pend') || '0', 10);
             var recebimentoConcluido = select.getAttribute('data-ter-recebimento-concluido') === 'sim';
+            var fornecedorRecebido = select.getAttribute('data-ter-fornecedor-recebido') === 'sim';
             var valor = (select.value || '').trim().toLowerCase();
             if (!id || !valor) return;
             void atualizarStatusTerceirosDireto(id, 'nota_lancada', valor, {
-                recebimento_concluido: recebimentoConcluido
+                recebimento_concluido: recebimentoConcluido,
+                fornecedor_recebido: fornecedorRecebido
             });
         });
     });
     aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
-async function loadTerceirosNotasLancadas() {
+async function loadTerceirosNotasLancadas(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-notas-lancadas');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando...</td></tr>';
-    const data = await fetchTerceirosDocumentosTodos();
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 11);
     if (data.erro) {
         tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
@@ -2082,11 +2384,10 @@ async function loadTerceirosNotasLancadas() {
     aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
-async function loadTerceirosNotasEnviadasMg() {
+async function loadTerceirosNotasEnviadasMg(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-notas-enviadas-mg');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando...</td></tr>';
-    const data = await fetchTerceirosDocumentosTodos();
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 9);
     if (data.erro) {
         tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
@@ -2115,11 +2416,10 @@ async function loadTerceirosNotasEnviadasMg() {
     aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
-async function loadTerceirosRecebimentosMg() {
+async function loadTerceirosRecebimentosMg(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-recebimentos-mg');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando...</td></tr>';
-    const data = await fetchTerceirosDocumentosTodos();
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 10);
     if (data.erro) {
         tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
@@ -2164,11 +2464,10 @@ async function loadTerceirosRecebimentosMg() {
     aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
-async function loadTerceirosPendenciasMg() {
+async function loadTerceirosPendenciasMg(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-pendencias-mg');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="10" class="loading">Carregando...</td></tr>';
-    const data = await fetchTerceirosDocumentosTodos();
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 10);
     if (data.erro) {
         tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
@@ -2200,12 +2499,11 @@ async function loadTerceirosPendenciasMg() {
     aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
-async function loadTerceirosHistorico() {
+async function loadTerceirosHistorico(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-historico');
     if (!tbody) return;
     var colsHist = 14;
-    tbody.innerHTML = '<tr><td colspan="' + colsHist + '" class="loading">Carregando...</td></tr>';
-    const data = await fetchTerceirosDocumentosTodos();
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, colsHist);
     if (data.erro) {
         tbody.innerHTML = '<tr><td colspan="' + colsHist + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
@@ -2244,26 +2542,32 @@ async function loadTerceirosHistorico() {
  * Mantém a sub-aba ativa só na UI; os dados de todas as listas ficam alinhados ao servidor.
  */
 async function recarregarTodasListasTerceiros() {
-    var loaders = [
-        loadTerceirosDocumentos,
-        loadTerceirosFornecedoresRecebidos,
-        loadTerceirosPendentesLancamento,
-        loadTerceirosNotasLancadas,
-        loadTerceirosPendenciasMg,
-        loadTerceirosNotasEnviadasMg,
-        loadTerceirosRecebimentosMg,
-        loadTerceirosHistorico
-    ];
-    await Promise.all(loaders.map(function(fn) {
-        return fn().catch(function(err) {
+    var data = await fetchTerceirosDocumentosTodos({ force: true });
+    await Promise.all([
+        loadPainelTerceiros().catch(function(err) { console.error('recarregarTodasListasTerceiros painel:', err); }),
+        loadTerceirosDocumentos(data),
+        loadTerceirosFornecedoresRecebidos(data),
+        loadTerceirosPendentesLancamento(data),
+        loadTerceirosNotasLancadas(data),
+        loadTerceirosPendenciasMg(data),
+        loadTerceirosNotasEnviadasMg(data),
+        loadTerceirosRecebimentosMg(data),
+        loadTerceirosHistorico(data)
+    ].map(function(p) {
+        return Promise.resolve(p).catch(function(err) {
             console.error('recarregarTodasListasTerceiros:', err);
         });
     }));
-    void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
+    void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows || []));
 }
 
 async function refreshTerceirosViews() {
+    invalidateTerceirosListaCache();
     try {
+        if (_terceirosTabAtual === 'painel') {
+            await loadPainelTerceiros();
+            return;
+        }
         if (_terceirosTabAtual === 'enviar-xml') {
             await loadTerceirosDocumentos();
             return;
@@ -2358,7 +2662,7 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
         await refreshTerceirosViews();
         return;
     }
-    if (campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && opcoes.recebimento_concluido === false && !opcoes.forcar_lancamento_sem_recebimento) {
+    if (campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !_terceirosOpPodeLancarNotaSemConfirmacao(opcoes)) {
         var confirmouLocal = await abrirModalLancamentoSemRecebimento();
         if (!confirmouLocal) {
             showMessage('Lançamento cancelado. A nota segue sem recebimento confirmado.', 'warning');
@@ -2376,7 +2680,7 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
         })
     });
     if (!_terceirosRespostaApiOk(resp)) {
-        if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !opcoes.forcar_lancamento_sem_recebimento) {
+        if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !opcoes.forcar_lancamento_sem_recebimento && !_terceirosOpPodeLancarNotaSemConfirmacao(opcoes)) {
             var confirmou = await abrirModalLancamentoSemRecebimento();
             if (confirmou) {
                 await atualizarStatusTerceirosDireto(documentoId, campo, valor, Object.assign({}, opcoes, {
@@ -3913,7 +4217,14 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 valor: valor,
                 forcar_lancamento_sem_recebimento: !!opcoes.forcar_lancamento_sem_recebimento
             };
-            if (campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido) && !payload.forcar_lancamento_sem_recebimento) {
+            var rowLanc = {
+                recebimento_concluido: _terceirosDocAtual.recebimento_concluido,
+                quantidade_total_bipada: Math.max(
+                    parseFloat(_terceirosDocAtual.quantidade_total_bipada) || 0,
+                    _terceirosTotalBipadoItensLocais()
+                )
+            };
+            if (campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !_terceirosPodeLancarNotaSemConfirmacaoRecebimento(rowLanc) && !payload.forcar_lancamento_sem_recebimento) {
                 var confirmouLocal = await abrirModalLancamentoSemRecebimento();
                 if (!confirmouLocal) {
                     showMessage('Lançamento cancelado. A nota segue sem recebimento confirmado.', 'warning');
@@ -3938,7 +4249,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 _terceirosLogFluxoRecebimento('PASSO 4 DEPOIS await POST /status');
             }
             if (!_terceirosRespostaApiOk(resp)) {
-                if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !payload.forcar_lancamento_sem_recebimento) {
+                if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !payload.forcar_lancamento_sem_recebimento && !_terceirosPodeLancarNotaSemConfirmacaoRecebimento(rowLanc)) {
                     var confirmou = await abrirModalLancamentoSemRecebimento();
                     if (confirmou) {
                         await atualizarStatusTerceiros(area, campo, valor, { forcar_lancamento_sem_recebimento: true });

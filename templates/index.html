@@ -1352,9 +1352,10 @@
 
         <div id="modulo-terceiros" class="modulo-area modulo-devolucoes" hidden aria-label="Recebimento e expedição de terceiros">
             <div class="devolucoes-conteudo">
-                <nav class="tabs devolucoes-subtabs" aria-label="Abas do módulo de terceiros — passos 1 a 8 e histórico">
+                <nav class="tabs devolucoes-subtabs" aria-label="Abas do módulo de terceiros — painel e passos do recebimento">
+                    <button type="button" class="tab-button terceiros-subtab active" data-ter-tab="painel" title="Painel geral">PAINEL</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="enviar-xml" title="Passo 1">1° ENVIAR XML</button>
-                    <button type="button" class="tab-button terceiros-subtab active" data-ter-tab="pendencia-recebimento" title="Passo 2">2° PENDÊNCIA DE RECEBIMENTO</button>
+                    <button type="button" class="tab-button terceiros-subtab" data-ter-tab="pendencia-recebimento" title="Passo 2">2° PENDÊNCIA DE RECEBIMENTO</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="fornecedores-recebidos" title="Passo 3">3° FORNECEDORES RECEBIDOS</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="pendentes-lancamento" title="Passo 4">4° NFS PENDENTES DE LANÇAMENTO</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="notas-lancadas" title="Passo 5">5° NOTAS FISCAIS LANÇADAS</button>
@@ -1363,6 +1364,76 @@
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="recebimentos-mg" title="Passo 8">8° RECEBIMENTOS DE MG</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="historico" title="Histórico — notas com recebimento já concluído">HISTÓRICO</button>
                 </nav>
+
+
+                <div id="terceiros-panel-painel" class="devolucoes-panel devolucoes-panel-active">
+                    <div class="painel-titulo">
+                        <span class="painel-titulo-icon">📊</span>
+                        <h2 class="painel-titulo-texto">Painel de Recebimento de Terceiros</h2>
+                        <p class="painel-titulo-sub">Visão geral das NF-e, bipagem, etapas do fluxo e envio para MG</p>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-card"><h3>Total de NFs</h3><p class="stat-number" id="ter-stat-total-nf">0</p></div>
+                        <div class="stat-card"><h3>Pendência de recebimento</h3><p class="stat-number" id="ter-stat-pendencia">0</p></div>
+                        <div class="stat-card"><h3>Fornecedores recebidos</h3><p class="stat-number" id="ter-stat-fornecedores">0</p></div>
+                        <div class="stat-card"><h3>Recebimento concluído</h3><p class="stat-number" id="ter-stat-receb-concluido">0</p></div>
+                        <div class="stat-card"><h3>Pendentes de lançamento</h3><p class="stat-number" id="ter-stat-pend-lanc">0</p></div>
+                        <div class="stat-card"><h3>Notas lançadas</h3><p class="stat-number" id="ter-stat-notas-lanc">0</p></div>
+                        <div class="stat-card"><h3>Qtd. XML (itens)</h3><p class="stat-number" id="ter-stat-qtd-xml">0</p></div>
+                        <div class="stat-card"><h3>Qtd. bipada</h3><p class="stat-number" id="ter-stat-qtd-bip">0</p></div>
+                        <div class="stat-card"><h3>NFs carreta</h3><p class="stat-number" id="ter-stat-carreta">0</p></div>
+                        <div class="stat-card"><h3>Conferência OK</h3><p class="stat-number" id="ter-stat-conf-ok">0</p></div>
+                        <div class="stat-card"><h3>Com divergência</h3><p class="stat-number" id="ter-stat-conf-div">0</p></div>
+                        <div class="stat-card"><h3>Recebimentos MG</h3><p class="stat-number" id="ter-stat-mg-ok">0</p></div>
+                    </div>
+                    <div class="painel-charts">
+                        <div class="chart-box"><h3>NFs por etapa do fluxo</h3><canvas id="ter-chart-etapas" height="220"></canvas></div>
+                        <div class="chart-box"><h3>Quantidade XML vs bipada</h3><canvas id="ter-chart-bipagem-xml" height="220"></canvas></div>
+                        <div class="chart-box"><h3>Top remetentes</h3><canvas id="ter-chart-remetentes" height="220"></canvas></div>
+                        <div class="chart-box"><h3>Placas (carreta)</h3><canvas id="ter-chart-placas" height="220"></canvas></div>
+                        <div class="chart-box"><h3>Distribuição por UF</h3><canvas id="ter-chart-uf" height="220"></canvas></div>
+                        <div class="chart-box"><h3>Conferência da descarga</h3><canvas id="ter-chart-conferencia" height="220"></canvas></div>
+                    </div>
+                    <h2 style="margin-top: 30px;">ÚLTIMAS NOTAS FISCAIS</h2>
+                    <div class="table-container" style="margin-bottom: 24px;">
+                        <table class="data-table">
+                            <thead><tr><th>NF</th><th>Remetente</th><th>Destinatário</th><th>UF</th><th>Etapa</th><th>Qtd. XML</th><th>Qtd. bipada</th><th>Origem</th></tr></thead>
+                            <tbody id="ter-tbody-painel-ultimas"><tr><td colspan="8" class="loading">Carregando...</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div class="romaneio-charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-bottom: 24px;">
+                        <div class="table-container">
+                            <h3 style="margin-bottom: 10px;">Itens mais bipados</h3>
+                            <table class="data-table">
+                                <thead><tr><th>Produto</th><th>Código de barras</th><th>Qtd. bipada</th></tr></thead>
+                                <tbody id="ter-tbody-painel-itens"><tr><td colspan="3" class="loading">Carregando...</td></tr></tbody>
+                            </table>
+                        </div>
+                        <div class="table-container">
+                            <h3 style="margin-bottom: 10px;">Top remetentes</h3>
+                            <table class="data-table">
+                                <thead><tr><th>Remetente</th><th>NFs</th></tr></thead>
+                                <tbody id="ter-tbody-painel-remetentes"><tr><td colspan="2" class="loading">Carregando...</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="romaneio-charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px;">
+                        <div class="table-container">
+                            <h3 style="margin-bottom: 10px;">Motoristas (carreta)</h3>
+                            <table class="data-table">
+                                <thead><tr><th>Motorista</th><th>NFs</th></tr></thead>
+                                <tbody id="ter-tbody-painel-motoristas"><tr><td colspan="2" class="loading">Carregando...</td></tr></tbody>
+                            </table>
+                        </div>
+                        <div class="table-container">
+                            <h3 style="margin-bottom: 10px;">Placas mais frequentes</h3>
+                            <table class="data-table">
+                                <thead><tr><th>Placa</th><th>NFs</th></tr></thead>
+                                <tbody id="ter-tbody-painel-placas"><tr><td colspan="2" class="loading">Carregando...</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
 
                 <div id="terceiros-panel-enviar-xml" class="devolucoes-panel terceiros-panel-unico">
                     <div class="painel-titulo">
@@ -1428,7 +1499,7 @@
                     </div>
                 </div>
 
-                <div id="terceiros-panel-recebimento" class="devolucoes-panel devolucoes-panel-active terceiros-panel-unico">
+                <div id="terceiros-panel-recebimento" class="devolucoes-panel terceiros-panel-unico">
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">📦</span>
                         <h2 class="painel-titulo-texto">Pendência de Recebimento</h2>
@@ -1452,7 +1523,7 @@
                                         </label>
                                     </div>
                                 </div>
-                                <table class="data-table">
+                                <table class="data-table ter-tabela-lista ter-cols-11">
                                     <thead>
                                         <tr>
                                             <th>NF</th>
@@ -1460,7 +1531,7 @@
                                             <th>Remetente</th>
                                             <th>Destinatário</th>
                                             <th>UF</th>
-                                            <th>Motorista (carreta)</th>
+                                            <th>Motorista</th>
                                             <th>Placa</th>
                                             <th>Previsão</th>
                                             <th>Itens</th>
@@ -1658,7 +1729,7 @@
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
                         <h3 style="margin-top: 0; color: #366092;">NFS COM RECEBIMENTO CONCLUÍDO</h3>
                         <div class="table-container">
-                            <table class="data-table">
+                            <table class="data-table ter-tabela-lista ter-cols-12">
                                 <thead>
                                     <tr>
                                         <th>NF</th>
@@ -1666,7 +1737,7 @@
                                         <th>Remetente</th>
                                         <th>Destinatário</th>
                                         <th>UF</th>
-                                        <th>Motorista (carreta)</th>
+                                        <th>Motorista</th>
                                         <th>Placa</th>
                                         <th>Previsão</th>
                                         <th>Recebimento</th>
@@ -1693,7 +1764,7 @@
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
                         <h3 style="margin-top: 0; color: #366092;">AGUARDANDO REGISTRO DE LANÇAMENTO</h3>
                         <div class="table-container">
-                            <table class="data-table">
+                            <table class="data-table ter-tabela-lista ter-cols-12">
                                 <thead>
                                     <tr>
                                         <th>NF</th>
@@ -1701,7 +1772,7 @@
                                         <th>Remetente</th>
                                         <th>Destinatário</th>
                                         <th>UF</th>
-                                        <th>Motorista (carreta)</th>
+                                        <th>Motorista</th>
                                         <th>Placa</th>
                                         <th>Previsão</th>
                                         <th>Recebimento</th>
@@ -1728,7 +1799,7 @@
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
                         <h3 style="margin-top: 0; color: #366092;">NFS COM LANÇAMENTO FISCAL</h3>
                         <div class="table-container">
-                            <table class="data-table">
+                            <table class="data-table ter-tabela-lista ter-cols-11-lanc">
                                 <thead>
                                     <tr>
                                         <th>NF</th>
@@ -1762,7 +1833,7 @@
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
                         <h3 style="margin-top: 0; color: #366092;">NFs PENDENTES DE ENVIO / RECEBIMENTO EM MG</h3>
                         <div class="table-container">
-                            <table class="data-table">
+                            <table class="data-table ter-tabela-lista ter-cols-10">
                                 <thead>
                                     <tr>
                                         <th>NF</th>
@@ -1795,7 +1866,7 @@
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
                         <h3 style="margin-top: 0; color: #366092;">NFS FINALIZADAS EM MG</h3>
                         <div class="table-container">
-                            <table class="data-table">
+                            <table class="data-table ter-tabela-lista ter-cols-9">
                                 <thead>
                                     <tr>
                                         <th>NF</th>
@@ -1827,7 +1898,7 @@
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
                         <h3 style="margin-top: 0; color: #366092;">NFS COM RECEBIMENTO CONFIRMADO EM MG</h3>
                         <div class="table-container">
-                            <table class="data-table">
+                            <table class="data-table ter-tabela-lista ter-cols-10">
                                 <thead>
                                     <tr>
                                         <th>NF</th>
@@ -1860,7 +1931,7 @@
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
                         <h3 style="margin-top: 0; color: #366092;">NFS COM RECEBIMENTO CONCLUÍDO — VISÃO GERAL</h3>
                         <div class="table-container">
-                            <table class="data-table">
+                            <table class="data-table ter-tabela-lista ter-cols-14">
                                 <thead>
                                     <tr>
                                         <th>NF</th>
@@ -1868,7 +1939,7 @@
                                         <th>Remetente</th>
                                         <th>Destinatário</th>
                                         <th>UF</th>
-                                        <th>Motorista (carreta)</th>
+                                        <th>Motorista</th>
                                         <th>Placa</th>
                                         <th>Previsão</th>
                                         <th>Recebimento</th>

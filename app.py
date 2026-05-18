@@ -6865,6 +6865,34 @@ def _valor_bool_texto(valor):
     return txt if txt in ('sim', 'nao') else ''
 
 
+def _terceiros_bool_sim_db(valor):
+    if valor is True or valor == 1:
+        return True
+    txt = str(valor or '').strip().lower()
+    return txt in ('sim', 's', 'true', '1', 'yes')
+
+
+def _terceiros_doc_tem_bipagem_iniciada(conn, documento_id):
+    tbl_i = _tbl_terceiros_documento_itens(conn)
+    row = conn.execute(
+        'SELECT COALESCE(SUM(quantidade_bipada), 0) AS total FROM ' + tbl_i + ' WHERE documento_id = ?',
+        (documento_id,),
+    ).fetchone()
+    if not row:
+        return False
+    try:
+        total = float(row['total'] if hasattr(row, 'keys') else row[0])
+    except (TypeError, ValueError):
+        total = 0.0
+    return total > 1e-9
+
+
+def _terceiros_pode_lancar_nota_sem_confirmacao_recebimento(conn, doc, documento_id):
+    if _terceiros_bool_sim_db(doc.get('recebimento_concluido')):
+        return True
+    return _terceiros_doc_tem_bipagem_iniciada(conn, documento_id)
+
+
 def _registrar_evento_terceiros(conn, documento_id, evento, valor_anterior='', valor_novo='', usuario='', detalhes=''):
     conn.execute(
         '''INSERT INTO ''' + _tbl_terceiros_documento_eventos(conn) + ''' (documento_id, evento, valor_anterior, valor_novo, usuario, criado_em, detalhes)
@@ -7064,6 +7092,207 @@ def api_terceiros_upload_xml():
         return jsonify({'ok': False, 'erro': str(e), 'criados': criados, 'erros': erros}), 500
     finally:
         conn.close()
+
+
+def _terceiros_bool_sim_db(valor):
+  if valor is True or valor == 1:
+    return True
+  txt = str(valor or '').strip().lower()
+  return txt in ('sim', 's', 'true', '1', 'yes')
+
+
+def _terceiros_etapa_painel_row(row):
+  q_bip = float(row.get('quantidade_total_bipada') or 0)
+  rc = _terceiros_bool_sim_db(row.get('recebimento_concluido'))
+  if not rc and q_bip <= 1e-9:
+    return 'pendencia_recebimento'
+  nl = _valor_bool_texto(row.get('nota_lancada') or '')
+  if nl != 'sim':
+    return 'pendentes_lancamento'
+  emg = _valor_bool_texto(row.get('enviar_para_mg') or '')
+  if emg != 'sim':
+    return 'notas_lancadas'
+  cmg = _valor_bool_texto(row.get('carga_recebida_mg') or '')
+  if cmg != 'sim':
+    return 'pendencias_mg'
+  return 'recebimentos_mg'
+
+
+_ETAPAS_PAINEL_TERCEIROS_LABELS = {
+  'pendencia_recebimento': 'Pendência de recebimento',
+  'pendentes_lancamento': 'Pendentes de lançamento',
+  'notas_lancadas': 'Notas lançadas',
+  'pendencias_mg': 'Pendências envio MG',
+  'recebimentos_mg': 'Recebimentos MG',
+}
+
+
+@app.route('/api/terceiros/painel', methods=['GET'])
+def api_terceiros_painel():
+  """Resumo e agregações para o painel de recebimento de terceiros."""
+  conn = get_db()
+  try:
+    _ensure_terceiros_schema(conn)
+    tbl_d = _tbl_terceiros_documentos(conn)
+    tbl_i = _tbl_terceiros_documento_itens(conn)
+    cols = _sql_cols_terceiros_documentos_listagem('d')
+    doc_rows = conn.execute(
+      '''SELECT ''' + cols + ''',
+                COALESCE(si.total_itens, 0) AS total_itens,
+                COALESCE(si.quantidade_total_xml, 0) AS quantidade_total_xml,
+                COALESCE(si.quantidade_total_bipada, 0) AS quantidade_total_bipada,
+                COALESCE(si.itens_divergentes, 0) AS itens_divergentes
+         FROM ''' + tbl_d + ''' d
+         LEFT JOIN (
+             SELECT documento_id,
+                    COUNT(id) AS total_itens,
+                    COALESCE(SUM(quantidade_xml), 0) AS quantidade_total_xml,
+                    COALESCE(SUM(quantidade_bipada), 0) AS quantidade_total_bipada,
+                    SUM(CASE WHEN ABS(COALESCE(quantidade_xml, 0) - COALESCE(quantidade_bipada, 0)) > 0.000001 THEN 1 ELSE 0 END) AS itens_divergentes
+             FROM ''' + tbl_i + '''
+             GROUP BY documento_id
+         ) si ON si.documento_id = d.id
+         ORDER BY d.criado_em DESC, d.id DESC''',
+    ).fetchall()
+
+    def _row_dict(r):
+      return dict(r) if hasattr(r, 'keys') else {}
+
+    docs = [_row_dict(r) for r in (doc_rows or [])]
+    etapa_counts = {k: 0 for k in _ETAPAS_PAINEL_TERCEIROS_LABELS}
+    remetente_agg = {}
+    placa_agg = {}
+    uf_agg = {}
+    conferencia_ok = 0
+    conferencia_div = 0
+    total_qtd_xml = 0.0
+    total_qtd_bip = 0.0
+    total_itens_nf = 0
+    nfs_carreta = 0
+    recebimento_concluido = 0
+    fornecedores_recebidos = 0
+
+    ultimas = []
+    for row in docs:
+      q_xml = float(row.get('quantidade_total_xml') or 0)
+      q_bip = float(row.get('quantidade_total_bipada') or 0)
+      div_it = int(row.get('itens_divergentes') or 0)
+      total_qtd_xml += q_xml
+      total_qtd_bip += q_bip
+      total_itens_nf += int(row.get('total_itens') or 0)
+      if (row.get('area') or '').strip().lower() == 'carreta':
+        nfs_carreta += 1
+      if _terceiros_bool_sim_db(row.get('recebimento_concluido')):
+        recebimento_concluido += 1
+      if _terceiros_bool_sim_db(row.get('recebimento_concluido')) or q_bip > 1e-9:
+        fornecedores_recebidos += 1
+      etapa = _terceiros_etapa_painel_row(row)
+      etapa_counts[etapa] = etapa_counts.get(etapa, 0) + 1
+      if div_it == 0 and abs(q_xml - q_bip) <= 1e-6 and q_xml > 1e-9:
+        conferencia_ok += 1
+      elif q_bip > 1e-9 or div_it > 0:
+        conferencia_div += 1
+      rem = (row.get('remetente_nome') or '').strip() or 'Sem remetente'
+      remetente_agg[rem] = remetente_agg.get(rem, 0) + 1
+      uf = (row.get('destinatario_uf') or '').strip() or '—'
+      uf_agg[uf] = uf_agg.get(uf, 0) + 1
+      plc = (row.get('placa_carreta') or '').strip().upper()
+      if plc:
+        placa_agg[plc] = placa_agg.get(plc, 0) + 1
+      if len(ultimas) < 30:
+        nf_txt = '/'.join(filter(None, [str(row.get('numero_nf') or '').strip(), str(row.get('serie_nf') or '').strip()])) or '-'
+        ultimas.append({
+          'id': row.get('id'),
+          'nf': nf_txt,
+          'remetente': rem,
+          'destinatario': (row.get('destinatario_nome') or '').strip() or '-',
+          'uf': uf,
+          'previsao': _fmt_datahora_br(row.get('previsao_chegada') or ''),
+          'etapa': _ETAPAS_PAINEL_TERCEIROS_LABELS.get(etapa, etapa),
+          'qtd_xml': q_xml,
+          'qtd_bipada': q_bip,
+          'recebimento_concluido': _terceiros_bool_sim_db(row.get('recebimento_concluido')),
+          'nota_lancada': row.get('nota_lancada') or '',
+          'area': row.get('area') or '',
+        })
+
+    def _top_dict(agg, limit=12):
+      return [{'nome': k, 'total': v} for k, v in sorted(agg.items(), key=lambda x: (-x[1], x[0]))[:limit]]
+
+    itens_rows = conn.execute(
+      '''SELECT COALESCE(NULLIF(TRIM(i.descricao_xml), ''), NULLIF(TRIM(i.codigo_ean), ''), 'Item') AS produto,
+                COALESCE(NULLIF(TRIM(i.codigo_ean), ''), '-') AS codigo_ean,
+                COALESCE(SUM(i.quantidade_bipada), 0) AS total
+         FROM ''' + tbl_i + ''' i
+         INNER JOIN ''' + tbl_d + ''' d ON d.id = i.documento_id
+         WHERE COALESCE(i.quantidade_bipada, 0) > 0
+         GROUP BY i.descricao_xml, i.codigo_ean
+         ORDER BY total DESC
+         LIMIT 20''',
+    ).fetchall()
+
+    motorista_rows = conn.execute(
+      '''SELECT COALESCE(NULLIF(TRIM(motorista_carreta), ''), 'Sem motorista') AS motorista,
+                COUNT(*) AS nfs
+         FROM ''' + tbl_d + '''
+         WHERE motorista_carreta IS NOT NULL AND TRIM(COALESCE(motorista_carreta, '')) != ''
+         GROUP BY motorista_carreta
+         ORDER BY nfs DESC
+         LIMIT 15''',
+    ).fetchall()
+
+    top_itens = []
+    for r in itens_rows or []:
+      rd = _row_dict(r)
+      top_itens.append({
+        'produto': rd.get('produto') or 'Item',
+        'codigo_ean': rd.get('codigo_ean') or '-',
+        'total': float(rd.get('total') or 0),
+      })
+
+    top_motoristas = []
+    for r in motorista_rows or []:
+      rd = _row_dict(r)
+      top_motoristas.append({
+        'motorista': rd.get('motorista') or '-',
+        'nfs': int(rd.get('nfs') or 0),
+      })
+
+    etapas_chart = [
+      {'etapa': k, 'label': _ETAPAS_PAINEL_TERCEIROS_LABELS[k], 'total': etapa_counts.get(k, 0)}
+      for k in _ETAPAS_PAINEL_TERCEIROS_LABELS
+      if etapa_counts.get(k, 0) > 0
+    ]
+
+    return jsonify({
+      'estatisticas': {
+        'total_nf': len(docs),
+        'pendencia_recebimento': etapa_counts.get('pendencia_recebimento', 0),
+        'fornecedores_recebidos': fornecedores_recebidos,
+        'recebimento_concluido': recebimento_concluido,
+        'pendentes_lancamento': etapa_counts.get('pendentes_lancamento', 0),
+        'notas_lancadas': etapa_counts.get('notas_lancadas', 0),
+        'pendencias_mg': etapa_counts.get('pendencias_mg', 0),
+        'recebimentos_mg': etapa_counts.get('recebimentos_mg', 0),
+        'total_itens': total_itens_nf,
+        'quantidade_total_xml': total_qtd_xml,
+        'quantidade_total_bipada': total_qtd_bip,
+        'nfs_carreta': nfs_carreta,
+        'conferencia_ok': conferencia_ok,
+        'conferencia_divergente': conferencia_div,
+      },
+      'etapas': etapas_chart,
+      'top_remetentes': _top_dict(remetente_agg),
+      'top_placas': _top_dict(placa_agg),
+      'por_uf': _top_dict(uf_agg, 10),
+      'ultimas_nfs': ultimas,
+      'top_itens': top_itens,
+      'top_motoristas': top_motoristas,
+    })
+  except Exception as e:
+    return jsonify({'erro': str(e)}), 500
+  finally:
+    conn.close()
 
 
 @app.route('/api/terceiros/documentos', methods=['GET'])
@@ -7416,7 +7645,7 @@ def api_terceiros_status(documento_id):
             valor_norm = _valor_bool_texto(valor)
             if not valor_norm:
                 return jsonify({'ok': False, 'erro': 'Use sim ou nao.'}), 400
-            if campo == 'nota_lancada' and valor_norm == 'sim' and not bool(doc.get('recebimento_concluido')) and not forcar_lancamento_sem_recebimento:
+            if campo == 'nota_lancada' and valor_norm == 'sim' and not forcar_lancamento_sem_recebimento and not _terceiros_pode_lancar_nota_sem_confirmacao_recebimento(conn, doc, documento_id):
                 return jsonify({
                     'ok': False,
                     'erro': 'A nota fiscal precisa ser recebida antes de ser lançada.',
