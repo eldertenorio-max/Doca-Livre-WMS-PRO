@@ -1771,11 +1771,12 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">📋</span>
                         <h2 class="painel-titulo-texto">Notas fiscais pendentes de lançamento</h2>
-                        <p class="painel-titulo-sub">Recebimento concluído (ou bipagem em andamento) com <strong>Nota lançada</strong> ainda sem <strong>Sim</strong>. Cada NF aparece só nesta aba até o lançamento ser confirmado.</p>
+                        <p class="painel-titulo-sub">Recebimento concluído (ou bipagem em andamento) com <strong>Nota lançada</strong> ainda sem <strong>Sim</strong>. As notas ficam separadas por <strong>UF do destinatário</strong> (MG e SP) até o lançamento ser confirmado.</p>
                     </div>
 
-                    <div class="conferencia-bloco form-container terceiros-lista-bloco">
-                        <h3 style="margin-top: 0; color: #366092;">AGUARDANDO REGISTRO DE LANÇAMENTO</h3>
+                    <div class="ter-pend-lanc-por-uf">
+                        <div class="conferencia-bloco form-container terceiros-lista-bloco ter-pend-lanc-uf-bloco ter-pend-lanc-uf-bloco--mg">
+                            <h3 class="ter-pend-lanc-uf-titulo">MINAS GERAIS — MG <span class="ter-pend-lanc-uf-contador" id="ter-pend-lanc-count-mg">0</span></h3>
                         <div class="table-container">
                             <table class="data-table ter-tabela-lista ter-cols-14">
                                 <thead>
@@ -1796,10 +1797,67 @@
                                         <th>Ações</th>
                                     </tr>
                                 </thead>
-                                <tbody id="ter-tbody-pendentes-lancamento">
+                                <tbody id="ter-tbody-pendentes-lancamento-mg">
                                     <tr><td colspan="14" class="loading">Carregando...</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        </div>
+                        <div class="conferencia-bloco form-container terceiros-lista-bloco ter-pend-lanc-uf-bloco ter-pend-lanc-uf-bloco--sp">
+                            <h3 class="ter-pend-lanc-uf-titulo">SÃO PAULO — SP <span class="ter-pend-lanc-uf-contador" id="ter-pend-lanc-count-sp">0</span></h3>
+                            <div class="table-container">
+                                <table class="data-table ter-tabela-lista ter-cols-14">
+                                    <thead>
+                                        <tr>
+                                            <th>NF</th>
+                                            <th>Pedido</th>
+                                            <th>Remetente</th>
+                                            <th>Destinatário</th>
+                                            <th>UF</th>
+                                            <th>Motorista</th>
+                                            <th>Placa</th>
+                                            <th>Previsão</th>
+                                            <th title="Recebimento">Receb.</th>
+                                            <th title="Conferência">Conf.</th>
+                                            <th title="Nota lançada">Lançada</th>
+                                            <th title="Enviado para Minas Gerais">Enviar MG</th>
+                                            <th title="Recebida em Minas Gerais">Recebida MG</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ter-tbody-pendentes-lancamento-sp">
+                                        <tr><td colspan="14" class="loading">Carregando...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div id="ter-pend-lanc-bloco-outras" class="conferencia-bloco form-container terceiros-lista-bloco ter-pend-lanc-uf-bloco ter-pend-lanc-uf-bloco--outras" hidden>
+                            <h3 class="ter-pend-lanc-uf-titulo">DEMAIS UFs <span class="ter-pend-lanc-uf-contador" id="ter-pend-lanc-count-outras">0</span></h3>
+                            <div class="table-container">
+                                <table class="data-table ter-tabela-lista ter-cols-14">
+                                    <thead>
+                                        <tr>
+                                            <th>NF</th>
+                                            <th>Pedido</th>
+                                            <th>Remetente</th>
+                                            <th>Destinatário</th>
+                                            <th>UF</th>
+                                            <th>Motorista</th>
+                                            <th>Placa</th>
+                                            <th>Previsão</th>
+                                            <th title="Recebimento">Receb.</th>
+                                            <th title="Conferência">Conf.</th>
+                                            <th title="Nota lançada">Lançada</th>
+                                            <th title="Enviado para Minas Gerais">Enviar MG</th>
+                                            <th title="Recebida em Minas Gerais">Recebida MG</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ter-tbody-pendentes-lancamento-outras">
+                                        <tr><td colspan="14" class="loading">Carregando...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>

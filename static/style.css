@@ -335,76 +335,88 @@ body {
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-/* Cores por aba — botões (inativo = tom suave; ativo = destaque) */
+/* Cores por aba — botões (inativo = tom médio; ativo = mais forte) */
 #modulo-terceiros .terceiros-subtab[data-ter-tab="painel"] {
-    --ter-aba-cor: #455a64;
-    --ter-aba-bg: #eceff1;
+    --ter-aba-cor: #263238;
+    --ter-aba-bg: #b0bec5;
+    --ter-aba-bg-ativo: #90a4ae;
 }
 #modulo-terceiros .terceiros-subtab[data-ter-tab="enviar-xml"] {
-    --ter-aba-cor: #1565c0;
-    --ter-aba-bg: #e3f2fd;
+    --ter-aba-cor: #0d47a1;
+    --ter-aba-bg: #90caf9;
+    --ter-aba-bg-ativo: #64b5f6;
 }
 #modulo-terceiros .terceiros-subtab[data-ter-tab="pendencia-recebimento"] {
-    --ter-aba-cor: #e65100;
-    --ter-aba-bg: #fff3e0;
+    --ter-aba-cor: #bf360c;
+    --ter-aba-bg: #ffcc80;
+    --ter-aba-bg-ativo: #ffb74d;
 }
 #modulo-terceiros .terceiros-subtab[data-ter-tab="fornecedores-recebidos"] {
-    --ter-aba-cor: #2e7d32;
-    --ter-aba-bg: #e8f5e9;
+    --ter-aba-cor: #1b5e20;
+    --ter-aba-bg: #a5d6a7;
+    --ter-aba-bg-ativo: #81c784;
 }
 #modulo-terceiros .terceiros-subtab[data-ter-tab="pendentes-lancamento"] {
-    --ter-aba-cor: #f9a825;
-    --ter-aba-bg: #fff8e1;
+    --ter-aba-cor: #e65100;
+    --ter-aba-bg: #ffe082;
+    --ter-aba-bg-ativo: #ffd54f;
 }
 #modulo-terceiros .terceiros-subtab[data-ter-tab="notas-lancadas"] {
-    --ter-aba-cor: #00695c;
-    --ter-aba-bg: #e0f2f1;
+    --ter-aba-cor: #004d40;
+    --ter-aba-bg: #80cbc4;
+    --ter-aba-bg-ativo: #4db6ac;
 }
 #modulo-terceiros .terceiros-subtab[data-ter-tab="pendencias-mg"] {
-    --ter-aba-cor: #7b1fa2;
-    --ter-aba-bg: #f3e5f5;
+    --ter-aba-cor: #4a148c;
+    --ter-aba-bg: #ce93d8;
+    --ter-aba-bg-ativo: #ba68c8;
 }
 #modulo-terceiros .terceiros-subtab[data-ter-tab="notas-enviadas-mg"] {
-    --ter-aba-cor: #283593;
-    --ter-aba-bg: #e8eaf6;
+    --ter-aba-cor: #1a237e;
+    --ter-aba-bg: #9fa8da;
+    --ter-aba-bg-ativo: #7986cb;
 }
 #modulo-terceiros .terceiros-subtab[data-ter-tab="recebimentos-mg"] {
-    --ter-aba-cor: #0277bd;
-    --ter-aba-bg: #e1f5fe;
+    --ter-aba-cor: #01579b;
+    --ter-aba-bg: #81d4fa;
+    --ter-aba-bg-ativo: #4fc3f7;
 }
 #modulo-terceiros .terceiros-subtab[data-ter-tab="relatorios"] {
-    --ter-aba-cor: #5d4037;
-    --ter-aba-bg: #efebe9;
+    --ter-aba-cor: #3e2723;
+    --ter-aba-bg: #bcaaa4;
+    --ter-aba-bg-ativo: #a1887f;
 }
 #modulo-terceiros .terceiros-subtab[data-ter-tab="historico"] {
-    --ter-aba-cor: #37474f;
-    --ter-aba-bg: #cfd8dc;
+    --ter-aba-cor: #263238;
+    --ter-aba-bg: #90a4ae;
+    --ter-aba-bg-ativo: #78909c;
 }
 
 #modulo-terceiros .devolucoes-subtabs {
     flex-wrap: wrap;
-    gap: 2px;
-    background: #f5f5f5;
+    gap: 3px;
+    background: #e0e0e0;
     border-radius: 8px 8px 0 0;
-    padding: 4px 4px 0;
+    padding: 5px 5px 0;
 }
 
 #modulo-terceiros .terceiros-subtab:not(.active) {
-    background: var(--ter-aba-bg, #eee);
+    background: var(--ter-aba-bg, #bdbdbd);
     color: var(--ter-aba-cor, #366092);
+    font-weight: 600;
 }
 
 #modulo-terceiros .terceiros-subtab:not(.active):hover {
-    filter: brightness(0.97);
+    filter: brightness(1.05);
     color: var(--ter-aba-cor, #366092);
 }
 
 #modulo-terceiros .terceiros-subtab.active {
-    background: #fff;
+    background: var(--ter-aba-bg-ativo, var(--ter-aba-bg, #fff));
     color: var(--ter-aba-cor, #366092);
-    border-bottom-color: var(--ter-aba-cor, #366092);
+    border-bottom: 4px solid var(--ter-aba-cor, #366092);
     font-weight: 700;
-    box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
 }
 
 /* Painel ativo — faixa colorida no título e cabeçalho da tabela */
@@ -457,6 +469,93 @@ body {
 
 #modulo-terceiros .devolucoes-panel-active .relatorios-secao {
     border-left: 4px solid var(--ter-painel-cor, #366092);
+}
+
+/* Pendentes de lançamento — blocos por UF */
+#modulo-terceiros .ter-pend-lanc-por-uf {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-bloco {
+    margin-bottom: 0;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-titulo {
+    margin: 0 0 12px 0;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-contador {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.6em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.3;
+    background: rgba(0, 0, 0, 0.08);
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-bloco--mg {
+    border-left-color: #7b1fa2 !important;
+    background: linear-gradient(180deg, #f3e5f5 0%, #fff 100px) !important;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-bloco--mg .ter-pend-lanc-uf-titulo {
+    color: #6a1b9a;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-bloco--mg .ter-pend-lanc-uf-contador {
+    background: #7b1fa2;
+    color: #fff;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-bloco--mg .ter-tabela-lista thead th {
+    background: #7b1fa2;
+    border-color: #7b1fa2;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-bloco--sp {
+    border-left-color: #1565c0 !important;
+    background: linear-gradient(180deg, #e3f2fd 0%, #fff 100px) !important;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-bloco--sp .ter-pend-lanc-uf-titulo {
+    color: #1565c0;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-bloco--sp .ter-pend-lanc-uf-contador {
+    background: #1565c0;
+    color: #fff;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-bloco--sp .ter-tabela-lista thead th {
+    background: #1565c0;
+    border-color: #1565c0;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-bloco--outras {
+    border-left-color: #5d4037 !important;
+    background: linear-gradient(180deg, #efebe9 0%, #fff 100px) !important;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-bloco--outras .ter-pend-lanc-uf-titulo {
+    color: #5d4037;
+}
+
+#modulo-terceiros .ter-pend-lanc-uf-bloco--outras .ter-tabela-lista thead th {
+    background: #5d4037;
+    border-color: #5d4037;
 }
 
 #modulo-terceiros .stats-grid {
