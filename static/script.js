@@ -1966,6 +1966,19 @@ async function _terceirosAposConcluirCarretaNoHistorico(documentoId, documentoRe
     showMessage('NF de carreta registrada no histórico.', 'success');
 }
 
+/** Após marcar que não é necessário envio para MG — vai ao Histórico. */
+async function _terceirosAposConfirmarEnviarMgNao(documentoId, documentoResp) {
+    if (documentoResp && isTerceirosAreaCarreta(documentoResp)) {
+        showMessage('NF de carreta não utiliza envio para MG. Conclua na 5ª aba — Notas lançadas.', 'warning');
+        return;
+    }
+    if (documentoId == null) return;
+    _terceirosAtualizarEnviarMgLocal(documentoId, 'nao');
+    invalidateTerceirosListaCache();
+    await terceirosNavegarParaHistoricoAposEnviarMg(documentoId);
+    showMessage('Registrado: envio para MG não necessário. A NF está no Histórico.', 'success');
+}
+
 /** Após salvar «Sim» em Enviado para MG: remove da 6ª aba e pergunta se vai ao Histórico. */
 async function _terceirosAposConfirmarEnviarMgSim(documentoId, documentoResp) {
     if (documentoResp && isTerceirosAreaCarreta(documentoResp)) {
@@ -2251,27 +2264,53 @@ function _terceirosUsaFluxoMg(row) {
     return !isTerceirosAreaCarreta(row);
 }
 
-/** 5ª aba: NF lançada aguardando conclusão (MG ou carreta). */
+/** 5ª aba: NF lançada aguardando ação (carreta ou definição de envio MG). */
 function _terceirosConsideraNotasLancadas(row) {
+    row = _terceirosRowEstadoMesclado(row);
     if (!isTerceirosFlagSim(row && row.nota_lancada)) return false;
     if (isTerceirosAreaCarreta(row)) {
         return !isTerceirosFlagSim(row.carga_recebida_mg);
     }
+    if (isTerceirosFlagNao(row.enviar_para_mg)) return false;
     return !isTerceirosFlagSim(row.enviar_para_mg);
 }
 
-/** Histórico: carreta concluída na 5ª aba; demais rotas após envio MG. */
+/** Histórico: carreta concluída; MG dispensado (Não) ou fluxo MG finalizado. */
 function _terceirosConsideraHistorico(row) {
-    if (!_terceirosConsideraFornecedorRecebido(row)) return false;
+    row = _terceirosRowEstadoMesclado(row);
+    if (!row || row.id == null) return false;
+    if (!isTerceirosFlagSim(row.recebimento_concluido)) return false;
+    if (!isTerceirosFlagSim(row.nota_lancada)) return false;
     if (isTerceirosAreaCarreta(row)) {
-        return isTerceirosFlagSim(row.nota_lancada) && isTerceirosFlagSim(row.carga_recebida_mg);
+        return isTerceirosFlagSim(row.carga_recebida_mg);
     }
+    if (isTerceirosFlagNao(row.enviar_para_mg)) return true;
+    if (isTerceirosFlagSim(row.carga_recebida_mg)) return true;
     return isTerceirosFlagSim(row.enviar_para_mg);
 }
 
 function textoResumoEnviarMgHistorico(row) {
     if (isTerceirosAreaCarreta(row)) return 'N/A';
+    if (isTerceirosFlagNao(row.enviar_para_mg)) return 'Não — sem envio';
     return row.enviar_para_mg || '-';
+}
+
+function _terceirosLabelEtapaAtual(row) {
+    var etapa = _terceirosEtapaExclusivaDoRow(row);
+    return TERCEIROS_LABEL_ABA[etapa] || etapa || '—';
+}
+
+/** 5ª aba — todas as NFs com lançamento Sim (histórico completo da etapa). */
+function getTerceirosRowsNotasLancadasComHistorico(rows) {
+    return _terceirosRowsEstadoMesclado(rows)
+        .filter(function(row) {
+            return isTerceirosFlagSim(row.nota_lancada);
+        })
+        .sort(function(a, b) {
+            var da = String(a.nota_lancada_em || a.atualizado_em || '');
+            var db = String(b.nota_lancada_em || b.atualizado_em || '');
+            return db.localeCompare(da);
+        });
 }
 
 function textoResumoRecebidaMgHistorico(row) {
@@ -2353,7 +2392,7 @@ function renderTerceirosEnviarMgSomenteLeitura(row) {
         textoResumoEnviarMgTerceiros(row),
         row.enviar_para_mg_por || '',
         row.enviar_para_mg_em || ''
-    ) + '<div class="ter-status-meta">Alterar na aba <strong>Pendências envio MG</strong></div>';
+    ) + '<div class="ter-status-meta">Alterar na aba <strong>Notas lançadas</strong> ou <strong>Pendências envio MG</strong></div>';
 }
 
 /** Coluna somente leitura fora da 8ª aba (Recebimentos de MG). */
@@ -2470,7 +2509,9 @@ function _terceirosEtapaExclusivaDoRow(row) {
     if (_terceirosConsideraNotasLancadas(row)) return 'notas-lancadas';
     if (_terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.carga_recebida_mg)) return 'notas-enviadas-mg';
     if (_terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.enviar_para_mg)) return 'recebimentos-mg';
-    if (_terceirosUsaFluxoMg(row)) return 'pendencias-mg';
+    if (_terceirosUsaFluxoMg(row) && !isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagNao(row.enviar_para_mg)) {
+        return 'pendencias-mg';
+    }
     return '';
 }
 
@@ -2962,6 +3003,17 @@ function renderTerceirosCelulaLancadaFluxo(row, etapa) {
 
 function renderTerceirosCelulaEnviarMgFluxo(row, etapa) {
     if (etapa === 'pendencia') return renderTerceirosCelulaIndisponivelFluxo();
+    if (etapa === 'notas-lancadas') {
+        if (_terceirosConsideraNotasLancadas(row) && _terceirosUsaFluxoMg(row)) {
+            return '<td><select class="ter-select-inline" data-ter-enviar-mg-lanc-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
+                + '<option value="">Selecione</option>'
+                + '<option value="sim">Sim — enviar para MG</option>'
+                + '<option value="nao"' + (isTerceirosFlagNao(row.enviar_para_mg) ? ' selected' : '') + '>Não — não enviar</option>'
+            + '</select>' + renderTerceirosUsuarioMeta(row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>';
+        }
+        return '<td>' + renderTerceirosStatusComUsuario(textoResumoEnviarMgTerceiros(row), row.enviar_para_mg_por || '', row.enviar_para_mg_em || '')
+            + '<div class="ter-status-meta">Etapa atual: <strong>' + escapeHtml(_terceirosLabelEtapaAtual(row)) + '</strong></div></td>';
+    }
     if (etapa === 'pendencias-mg') {
         if (isTerceirosFlagSim(row.enviar_para_mg)) {
             return '<td>' + renderTerceirosStatusComUsuario(textoResumoEnviarMgTerceiros(row), row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>';
@@ -3609,6 +3661,45 @@ async function loadTerceirosPendentesLancamento(dataPreloaded) {
     if (painel) aplicarDestaqueLinhaTerceirosDoc(painel);
 }
 
+function renderTerceirosNotasLancadasRowHtml(row) {
+    var ativa = _terceirosConsideraNotasLancadas(row);
+    var trClass = ativa ? '' : ' class="ter-nota-lanc-row-arquivo"';
+    return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '"' + trClass + '>'
+        + renderTerceirosCelulasNfAtePrevisao(row, { motoristaPlacaPrefix: ativa ? 'lanc' : null, avisoMotoristaNaPrevisao: ativa })
+        + renderTerceirosCelulasStatusFluxo(row, 'notas-lancadas')
+        + renderTerceirosListaAcoesCelula(
+            renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento')
+            + renderTerceirosBotoesPdfXmlNf(row)
+            + renderTerceirosComprovanteButton(row)
+            + renderTerceirosExcluirButton(row, 'data-ter-excluir-lancada-doc')
+        )
+        + '</tr>';
+}
+
+function bindTerceirosEnviarMgNotasLancadas(tbody) {
+    if (!tbody) return;
+    if (!window._terceirosEnviarMgLancEmAndamento) window._terceirosEnviarMgLancEmAndamento = {};
+    tbody.querySelectorAll('[data-ter-enviar-mg-lanc-doc]').forEach(function(select) {
+        if (select.dataset.terEnviarMgLancBound === '1') return;
+        select.dataset.terEnviarMgLancBound = '1';
+        select.addEventListener('change', function() {
+            var id = parseInt(select.getAttribute('data-ter-enviar-mg-lanc-doc') || '0', 10);
+            var valor = (select.value || '').trim().toLowerCase();
+            if (!id || !valor) return;
+            if (window._terceirosEnviarMgLancEmAndamento[id]) return;
+            window._terceirosEnviarMgLancEmAndamento[id] = true;
+            select.disabled = true;
+            atualizarStatusTerceirosDireto(id, 'enviar_para_mg', valor, {
+                motorista_obrigatorio: select.getAttribute('data-ter-motorista-obrigatorio') === 'sim',
+                motorista_atual: select.getAttribute('data-ter-motorista-atual') || ''
+            }).finally(function() {
+                delete window._terceirosEnviarMgLancEmAndamento[id];
+                if (select.isConnected) select.disabled = false;
+            });
+        });
+    });
+}
+
 async function loadTerceirosNotasLancadas(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-notas-lancadas');
     if (!tbody) return;
@@ -3617,27 +3708,17 @@ async function loadTerceirosNotasLancadas(dataPreloaded) {
         tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
-    const rows = getTerceirosRowsPorEtapa(data.rows, 'notas-lancadas');
+    const rows = getTerceirosRowsNotasLancadasComHistorico(data.rows);
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF lançada ainda.</td></tr>';
         return;
     }
-    tbody.innerHTML = rows.map(function(row) {
-        return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
-            + renderTerceirosCelulasNfAtePrevisao(row, { motoristaPlacaPrefix: 'lanc', avisoMotoristaNaPrevisao: true })
-            + renderTerceirosCelulasStatusFluxo(row, 'notas-lancadas')
-            + renderTerceirosListaAcoesCelula(
-                renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento')
-                + renderTerceirosBotoesPdfXmlNf(row)
-                + renderTerceirosComprovanteButton(row)
-                + renderTerceirosExcluirButton(row, 'data-ter-excluir-lancada-doc')
-            )
-            + '</tr>';
-    }).join('');
+    tbody.innerHTML = rows.map(renderTerceirosNotasLancadasRowHtml).join('');
     bindTerceirosAbrirButtons('[data-ter-lancada-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-lancada-doc]');
     bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
     bindTerceirosSalvarMotoristaPlacaLista(tbody, 'lanc');
+    bindTerceirosEnviarMgNotasLancadas(tbody);
     if (!window._terceirosConcluirCarretaEmAndamento) window._terceirosConcluirCarretaEmAndamento = {};
     tbody.querySelectorAll('[data-ter-concluir-carreta-doc]').forEach(function(btn) {
         btn.addEventListener('click', function() {
@@ -3814,7 +3895,7 @@ async function loadTerceirosHistorico(dataPreloaded) {
     });
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF no histórico. <strong>Carreta:</strong> após concluir na aba Notas Fiscais Lançadas. <strong>Demais rotas:</strong> após <strong>Enviar MG</strong> = Sim.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF no histórico. <strong>Carreta:</strong> após concluir na aba Notas lançadas. <strong>Demais rotas:</strong> após <strong>Enviar MG</strong> = Não (sem envio) ou fluxo MG concluído.</td></tr>';
         return;
     }
 
@@ -3923,8 +4004,8 @@ async function excluirDocumentoTerceiros(documentoId) {
 async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes) {
     if (!documentoId) return;
     opcoes = opcoes || {};
-    if (campo === 'enviar_para_mg' && _terceirosTabAtual !== 'pendencias-mg') {
-        showMessage('O campo Enviado para MG só pode ser alterado na aba 6 — Pendências envio MG.', 'warning');
+    if (campo === 'enviar_para_mg' && _terceirosTabAtual !== 'pendencias-mg' && _terceirosTabAtual !== 'notas-lancadas') {
+        showMessage('O campo Enviar MG só pode ser alterado na aba 5 — Notas lançadas ou 6 — Pendências envio MG.', 'warning');
         await refreshTerceirosViews();
         return;
     }
@@ -3989,6 +4070,10 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
     }
     if (campo === 'enviar_para_mg' && isTerceirosFlagSim(valor)) {
         await _terceirosAposConfirmarEnviarMgSim(documentoId, resp && resp.documento);
+        return;
+    }
+    if (campo === 'enviar_para_mg' && isTerceirosFlagNao(valor)) {
+        await _terceirosAposConfirmarEnviarMgNao(documentoId, resp && resp.documento);
         return;
     }
     if (campo === 'carga_recebida_mg' && isTerceirosFlagSim(valor) && opcoes.forcar_fluxo_carreta) {

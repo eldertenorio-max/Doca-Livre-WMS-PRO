@@ -7941,11 +7941,13 @@ def _terceiros_etapa_painel_row(row):
       return 'notas_lancadas'
     return 'historico'
   emg = _valor_bool_texto(row.get('enviar_para_mg') or '')
+  if emg == 'nao':
+    return 'historico'
   if emg != 'sim':
-    return 'pendencias_mg'
+    return 'notas_lancadas'
   cmg = _valor_bool_texto(row.get('carga_recebida_mg') or '')
-  if cmg != 'sim':
-    return 'recebimentos_mg'
+  if cmg == 'sim':
+    return 'historico'
   return 'recebimentos_mg'
 
 
