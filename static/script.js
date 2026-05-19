@@ -89,6 +89,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initTerceirosAlertasHeader();
     initTerceirosPendenciaRecebimentoDelegacao();
     initTerceirosBotoesPdfXmlDelegacao();
+    initTerceirosModalConfirmarRecebimentoFornecedores();
     initTerceirosConferenciaAcoesDelegacao();
     initForms();
     initFiltrosBase();
@@ -131,6 +132,7 @@ let _terceirosRecebimentoConcluindo = false;
 let _terceirosConfirmacaoLancamentoResolver = null;
 let _terceirosConfirmacaoIrNotasLancadasResolver = null;
 let _terceirosConfirmacaoIrRecebimentosMgResolver = null;
+let _terceirosConfirmacaoRecebimentoFornecedoresResolver = null;
 /** Evita fechar modal de confirmação no mesmo clique que abriu (ex.: «Sim» no select + backdrop). */
 let _terceirosIgnorarCliqueBackdropModalAte = 0;
 let _terceirosExcluirDocumentoResolver = null;
@@ -1647,10 +1649,40 @@ function abrirModalIrParaNotasLancadas() {
 function fecharModalConfirmarRecebimentoFornecedores(escolha) {
     var modal = document.getElementById('modal-terceiros-confirmar-recebimento-fornecedores');
     _terceirosOcultarModalOverlay(modal);
-    if (_terceirosConfirmacaoRecebimentoFornecedoresResolver) {
-        _terceirosConfirmacaoRecebimentoFornecedoresResolver(escolha || false);
-        _terceirosConfirmacaoRecebimentoFornecedoresResolver = null;
-    }
+    var resolver = _terceirosConfirmacaoRecebimentoFornecedoresResolver;
+    _terceirosConfirmacaoRecebimentoFornecedoresResolver = null;
+    if (!resolver) return;
+    var valor = (escolha === 'ir' || escolha === 'ficar') ? escolha : false;
+    resolver(valor);
+}
+window.fecharModalConfirmarRecebimentoFornecedores = fecharModalConfirmarRecebimentoFornecedores;
+
+/** Delegação no modal (não depende só de initForms). */
+function initTerceirosModalConfirmarRecebimentoFornecedores() {
+    if (window._terceirosModalConfRecebFornOk) return;
+    var modal = document.getElementById('modal-terceiros-confirmar-recebimento-fornecedores');
+    if (!modal) return;
+    window._terceirosModalConfRecebFornOk = true;
+    modal.addEventListener('click', function(ev) {
+        if (!ev.target || typeof ev.target.closest !== 'function') return;
+        if (ev.target.closest('#btn-ter-ir-fornecedores-recebidos')) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            fecharModalConfirmarRecebimentoFornecedores('ir');
+            return;
+        }
+        if (ev.target.closest('#btn-ter-ficar-pendencia-recebimento')) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            fecharModalConfirmarRecebimentoFornecedores('ficar');
+            return;
+        }
+        if (ev.target.closest('#modal-terceiros-confirmar-recebimento-fornecedores-close')) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            fecharModalConfirmarRecebimentoFornecedores(false);
+        }
+    });
 }
 
 /** Antes de concluir recebimento: «ir» | «ficar» | false (cancelar). */
@@ -1666,12 +1698,28 @@ function abrirModalConfirmarRecebimentoFornecedores() {
         return Promise.resolve(false);
     }
     return new Promise(function(resolve) {
+        if (_terceirosConfirmacaoRecebimentoFornecedoresResolver) {
+            try {
+                _terceirosConfirmacaoRecebimentoFornecedoresResolver(false);
+            } catch (e) {
+                console.error(e);
+            }
+        }
         _terceirosConfirmacaoRecebimentoFornecedoresResolver = resolve;
         _terceirosPrepararModalConfirmacaoBackdrop();
         window.setTimeout(function() {
             _terceirosExibirModalOverlay(modal);
+            var btnIr = document.getElementById('btn-ter-ir-fornecedores-recebidos');
+            if (btnIr) btnIr.focus();
         }, 0);
     });
+}
+
+function _terceirosPrepararBotaoRecebimentoSalvando(btn) {
+    if (!btn || btn.tagName !== 'BUTTON') return;
+    btn.disabled = true;
+    btn.dataset.terFinDescLabel = btn.dataset.terFinDescLabel || btn.textContent || 'Recebimento concluído';
+    btn.textContent = 'A guardar…';
 }
 
 async function _terceirosAplicarUiAposRecebimentoConcluido(documentoId, documentoAtualizado, irParaFornecedores) {
@@ -5263,6 +5311,11 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin, opcoes) {
         opcoes.irFornecedores = escolhaPre === 'ir';
     }
     var irParaFornecedores = opcoes.irFornecedores !== false;
+    _terceirosPrepararBotaoRecebimentoSalvando(fin);
+    if (_terceirosRecebimentoConcluindo) {
+        showMessage('Conclusão de recebimento em curso. Aguarde.', 'warning');
+        return;
+    }
     _terceirosRecebimentoConcluindo = true;
     try {
         _terceirosLogFluxoRecebimento('DESCARGA 1 ANTES POST /status (gravar antes de fechar / F5)');
@@ -5282,14 +5335,15 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin, opcoes) {
 }
 
 async function acionarRecebimentoConcluidoTerceirosDireto(btn) {
-    _terceirosRecebimentoConcluindo = false;
-    if (btn) {
-        btn.disabled = true;
-        btn.dataset.terFinDescLabel = btn.dataset.terFinDescLabel || btn.textContent || 'Recebimento concluído';
-        btn.textContent = 'A guardar…';
+    if (_terceirosRecebimentoConcluindo) {
+        showMessage('Conclusão de recebimento em curso. Aguarde.', 'warning');
+        return;
     }
     try {
         await concluirRecebimentoTerceirosPelaDescarga(btn);
+    } catch (e) {
+        console.error(e);
+        showMessage('Não foi possível concluir o recebimento.', 'error');
     } finally {
         if (btn && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido) && btn.textContent === 'A guardar…') {
             btn.disabled = false;
@@ -5593,9 +5647,21 @@ function initForms() {
     const btnTerIrForn = document.getElementById('btn-ter-ir-fornecedores-recebidos');
     const btnTerFicarPendRec = document.getElementById('btn-ter-ficar-pendencia-recebimento');
     const btnTerConfFornClose = document.getElementById('modal-terceiros-confirmar-recebimento-fornecedores-close');
-    if (btnTerIrForn) btnTerIrForn.addEventListener('click', function() { fecharModalConfirmarRecebimentoFornecedores('ir'); });
-    if (btnTerFicarPendRec) btnTerFicarPendRec.addEventListener('click', function() { fecharModalConfirmarRecebimentoFornecedores('ficar'); });
-    if (btnTerConfFornClose) btnTerConfFornClose.addEventListener('click', function() { fecharModalConfirmarRecebimentoFornecedores(false); });
+    if (btnTerIrForn) btnTerIrForn.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        fecharModalConfirmarRecebimentoFornecedores('ir');
+    });
+    if (btnTerFicarPendRec) btnTerFicarPendRec.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        fecharModalConfirmarRecebimentoFornecedores('ficar');
+    });
+    if (btnTerConfFornClose) btnTerConfFornClose.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        fecharModalConfirmarRecebimentoFornecedores(false);
+    });
 
     const modalTerSemReceb = document.getElementById('modal-terceiros-lancar-sem-recebimento');
     const btnTerSemRecebConfirmar = document.getElementById('btn-ter-confirmar-lancar-sem-recebimento');
