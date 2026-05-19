@@ -2854,16 +2854,46 @@ function renderTerceirosExcluirButton(row, atributo) {
         + '</button>';
 }
 
-function abrirDanfeNotaFiscalTerceiros(documentoId) {
+async function abrirDanfeNotaFiscalTerceiros(documentoId) {
     documentoId = parseInt(documentoId, 10);
     if (!Number.isFinite(documentoId) || documentoId <= 0) {
         showMessage('Não foi possível identificar a nota.', 'warning');
         return;
     }
     var url = API_BASE + '/terceiros/documentos/' + encodeURIComponent(documentoId) + '/danfe';
-    var janela = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!janela) {
-        showMessage('Permita pop-ups para visualizar o PDF da nota fiscal.', 'warning');
+    showMessage('Gerando DANFE a partir do XML (Meu Danfe)...', 'info');
+    try {
+        var resp = await fetch(url, { credentials: 'same-origin' });
+        var contentType = (resp.headers.get('content-type') || '').toLowerCase();
+        if (!resp.ok) {
+            var errMsg = await resp.text();
+            showMessage((errMsg || 'Erro ao gerar PDF da NF.').trim(), 'error');
+            return;
+        }
+        if (contentType.indexOf('application/pdf') >= 0) {
+            var blob = await resp.blob();
+            var blobUrl = URL.createObjectURL(blob);
+            var janela = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+            if (!janela) {
+                showMessage('Permita pop-ups para visualizar o PDF da nota fiscal.', 'warning');
+            } else {
+                setTimeout(function() {
+                    try { URL.revokeObjectURL(blobUrl); } catch (e) { /* ignore */ }
+                }, 120000);
+            }
+            return;
+        }
+        var html = await resp.text();
+        var janelaHtml = window.open('', '_blank', 'noopener,noreferrer');
+        if (!janelaHtml) {
+            showMessage('Permita pop-ups para visualizar o DANFE.', 'warning');
+            return;
+        }
+        janelaHtml.document.open();
+        janelaHtml.document.write(html);
+        janelaHtml.document.close();
+    } catch (e) {
+        showMessage('Erro ao gerar DANFE: ' + (e && e.message ? e.message : String(e)), 'error');
     }
 }
 
@@ -2885,7 +2915,7 @@ function baixarXmlNotaFiscalTerceiros(documentoId) {
 
 function renderTerceirosBotoesPdfXmlNf(row) {
     var id = escapeHtml(String(row.id));
-    return '<button type="button" class="btn btn-secondary btn-sm" data-ter-ver-pdf-doc="' + id + '" title="Abrir DANFE para imprimir ou salvar como PDF">Ver PDF da NF</button>'
+    return '<button type="button" class="btn btn-secondary btn-sm" data-ter-ver-pdf-doc="' + id + '" title="Gerar DANFE em PDF a partir do XML (Meu Danfe)">Ver PDF da NF</button>'
         + '<button type="button" class="btn btn-secondary btn-sm" data-ter-baixar-xml-doc="' + id + '" title="Baixar o arquivo XML original da NF">Baixar XML</button>';
 }
 

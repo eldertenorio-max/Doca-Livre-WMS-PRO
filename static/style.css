@@ -393,11 +393,24 @@ body {
 }
 
 #modulo-terceiros .devolucoes-subtabs {
-    flex-wrap: wrap;
+    display: flex;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
     gap: 3px;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
     background: #e0e0e0;
     border-radius: 8px 8px 0 0;
     padding: 5px 5px 0;
+}
+
+#modulo-terceiros .devolucoes-subtabs .terceiros-subtab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 12px 14px;
 }
 
 #modulo-terceiros .terceiros-subtab:not(.active) {

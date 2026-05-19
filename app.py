@@ -14,6 +14,7 @@ import queue
 import json
 import importlib.util
 import re
+import base64
 import xml.etree.ElementTree as ET
 import openpyxl
 from openpyxl.styles import Font
@@ -58,6 +59,11 @@ try:
 except Exception:
     psycopg = None
     dict_row = None
+
+try:
+    import requests as http_requests  # type: ignore
+except Exception:
+    http_requests = None
 
 # Quando instalado (PyInstaller): dados em AppData; planilha pode ficar na pasta do exe
 if getattr(sys, 'frozen', False):
@@ -8276,21 +8282,103 @@ def api_terceiros_documento_detalhe(documento_id):
         conn.close()
 
 
+def _meu_danfe_api_key():
+    return (
+        os.environ.get('MEU_DANFE_API_KEY')
+        or os.environ.get('MEUDANFE_API_KEY')
+        or ''
+    ).strip()
+
+
+def _meu_danfe_converter_xml_para_pdf(xml_texto):
+    """Converte XML NF-e/CT-e em PDF (DANFE) via API Meu Danfe. Retorna (bytes, nome_arquivo) ou (None, mensagem_erro)."""
+    api_key = _meu_danfe_api_key()
+    if not api_key:
+        return None, 'Configure a variável MEU_DANFE_API_KEY no servidor (.env) para gerar o PDF pelo Meu Danfe.'
+    if not http_requests:
+        return None, 'Biblioteca requests não instalada no servidor.'
+    xml_texto = (xml_texto or '').strip()
+    if not xml_texto:
+        return None, 'XML da nota fiscal está vazio.'
+    url = (
+        os.environ.get('MEU_DANFE_API_URL')
+        or 'https://api.meudanfe.com.br/v2/fd/convert/xml-to-da'
+    ).strip()
+    try:
+        resp = http_requests.post(
+            url,
+            data=xml_texto.encode('utf-8'),
+            headers={
+                'Api-Key': api_key,
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Accept': 'application/json',
+            },
+            timeout=int(os.environ.get('MEU_DANFE_TIMEOUT', '60') or 60),
+        )
+    except Exception as exc:
+        return None, 'Falha ao contactar a API Meu Danfe: %s' % exc
+    if resp.status_code == 401:
+        return None, 'Api-Key Meu Danfe inválida ou não informada.'
+    if resp.status_code == 403:
+        return None, 'Api-Key Meu Danfe foi substituída. Atualize MEU_DANFE_API_KEY no servidor.'
+    if resp.status_code == 400:
+        return None, 'XML inválido ou vazio para o Meu Danfe. Confira o arquivo XML desta NF.'
+    if resp.status_code >= 500:
+        return None, 'Meu Danfe indisponível no momento. Tente novamente mais tarde.'
+    if not resp.ok:
+        det = ''
+        try:
+            det = (resp.json() or {}).get('message') or (resp.json() or {}).get('error') or ''
+        except Exception:
+            det = (resp.text or '')[:300]
+        return None, 'Meu Danfe retornou erro %s%s' % (resp.status_code, (': ' + det) if det else '')
+    try:
+        payload = resp.json()
+    except Exception:
+        return None, 'Resposta inválida da API Meu Danfe.'
+    b64_pdf = (payload.get('data') or '').strip()
+    if not b64_pdf:
+        return None, 'Meu Danfe não retornou o PDF (campo data vazio).'
+    try:
+        pdf_bytes = base64.b64decode(b64_pdf, validate=False)
+    except Exception:
+        return None, 'PDF retornado pelo Meu Danfe está corrompido (Base64 inválido).'
+    if not pdf_bytes:
+        return None, 'PDF retornado pelo Meu Danfe está vazio.'
+    nome = secure_filename((payload.get('name') or 'danfe.pdf').strip()) or 'danfe.pdf'
+    if not nome.lower().endswith('.pdf'):
+        nome += '.pdf'
+    return pdf_bytes, nome
+
+
 @app.route('/api/terceiros/documentos/<int:documento_id>/danfe', methods=['GET'])
 def api_terceiros_documento_danfe(documento_id):
-    """Visualização imprimível da NF (DANFE) a partir do XML armazenado — salvar como PDF pelo navegador."""
+    """DANFE em PDF a partir do XML (API Meu Danfe). Sem Api-Key, fallback HTML imprimível."""
     conn = get_db()
     try:
         _ensure_terceiros_schema(conn)
         doc = _carregar_documento_terceiros(conn, documento_id)
         if not doc:
             return Response('Documento não encontrado.', status=404, mimetype='text/plain; charset=utf-8')
-        if not (doc.get('xml_conteudo') or '').strip():
+        xml_texto = (doc.get('xml_conteudo') or '').strip()
+        if not xml_texto:
             return Response(
                 'XML da nota fiscal não disponível para esta NF.',
                 status=404,
-                mimetype='text/plain; charset=utf-8'
+                mimetype='text/plain; charset=utf-8',
             )
+        pdf_bytes, pdf_ou_erro = _meu_danfe_converter_xml_para_pdf(xml_texto)
+        if pdf_bytes is not None:
+            return Response(
+                pdf_bytes,
+                mimetype='application/pdf',
+                headers={
+                    'Content-Disposition': 'inline; filename="%s"' % pdf_ou_erro,
+                    'Cache-Control': 'no-store',
+                },
+            )
+        if _meu_danfe_api_key():
+            return Response(pdf_ou_erro, status=502, mimetype='text/plain; charset=utf-8')
         html = _render_danfe_html_terceiros(doc)
         return Response(html, mimetype='text/html; charset=utf-8')
     except Exception as e:
