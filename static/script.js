@@ -1062,6 +1062,8 @@ function _painelTerceirosStatsRapidasFromRows(rows) {
         conferencia_divergente: 0
     };
     rows.forEach(function(row) {
+        row = _terceirosRowEstadoMesclado(row);
+        var etapaEx = _terceirosEtapaExclusivaDoRow(row);
         var qXml = parseFloat(row.quantidade_total_xml) || 0;
         var qBip = parseFloat(row.quantidade_total_bipada) || 0;
         var divIt = parseInt(row.itens_divergentes, 10) || 0;
@@ -1069,12 +1071,12 @@ function _painelTerceirosStatsRapidasFromRows(rows) {
         s.quantidade_total_bipada += qBip;
         if ((row.area || '').toLowerCase() === 'carreta') s.nfs_carreta += 1;
         if (isTerceirosFlagSim(row.recebimento_concluido)) s.recebimento_concluido += 1;
-        if (_terceirosConsideraFornecedorRecebido(row)) s.fornecedores_recebidos += 1;
-        if (_terceirosConsideraPendenteLancamento(row)) s.pendentes_lancamento += 1;
-        if (_terceirosConsideraNotasLancadas(row)) s.notas_lancadas += 1;
-        if (_terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg)) s.pendencias_mg += 1;
-        if (isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg)) s.recebimentos_mg += 1;
-        if (_terceirosConsideraPendenciaRecebimento(row)) s.pendencia_recebimento += 1;
+        if (etapaEx === 'fornecedores-recebidos') s.fornecedores_recebidos += 1;
+        if (etapaEx === 'pendentes-lancamento') s.pendentes_lancamento += 1;
+        if (etapaEx === 'notas-lancadas') s.notas_lancadas += 1;
+        if (etapaEx === 'pendencias-mg') s.pendencias_mg += 1;
+        if (etapaEx === 'recebimentos-mg') s.recebimentos_mg += 1;
+        if (etapaEx === 'pendencia-recebimento') s.pendencia_recebimento += 1;
         if (divIt === 0 && Math.abs(qXml - qBip) <= 1e-6 && qXml > 1e-9) s.conferencia_ok += 1;
         else if (qBip > 1e-9 || divIt > 0) s.conferencia_divergente += 1;
     });
@@ -2280,9 +2282,53 @@ function _terceirosTemBipagemIniciada(row) {
     return !isNaN(q) && q > 1e-9;
 }
 
-/** 3ª aba — somente após clicar em «Recebimento concluído» / finalizar descarga. */
+/** Mescla cache local (recebimento / status) sobre a linha vinda da API. */
+function _terceirosRowEstadoMesclado(row) {
+    if (!row || row.id == null) return row || {};
+    var locais = window._terceirosFornecedoresRecebidosLocais || {};
+    var local = locais[String(row.id)];
+    if (!local) return row;
+    return Object.assign({}, row, {
+        recebimento_concluido: local.recebimento_concluido != null ? local.recebimento_concluido : row.recebimento_concluido,
+        recebimento_concluido_em: local.recebimento_concluido_em || row.recebimento_concluido_em,
+        recebimento_concluido_por: local.recebimento_concluido_por || row.recebimento_concluido_por,
+        nota_lancada: local.nota_lancada != null ? local.nota_lancada : row.nota_lancada,
+        nota_lancada_em: local.nota_lancada_em || row.nota_lancada_em,
+        nota_lancada_por: local.nota_lancada_por || row.nota_lancada_por,
+        enviar_para_mg: local.enviar_para_mg != null ? local.enviar_para_mg : row.enviar_para_mg,
+        enviar_para_mg_em: local.enviar_para_mg_em || row.enviar_para_mg_em,
+        enviar_para_mg_por: local.enviar_para_mg_por || row.enviar_para_mg_por,
+        carga_recebida_mg: local.carga_recebida_mg != null ? local.carga_recebida_mg : row.carga_recebida_mg,
+        carga_recebida_mg_em: local.carga_recebida_mg_em || row.carga_recebida_mg_em,
+        carga_recebida_mg_por: local.carga_recebida_mg_por || row.carga_recebida_mg_por,
+        quantidade_total_bipada: local.quantidade_total_bipada != null ? local.quantidade_total_bipada : row.quantidade_total_bipada,
+        quantidade_total_xml: local.quantidade_total_xml != null ? local.quantidade_total_xml : row.quantidade_total_xml,
+        itens_divergentes: local.itens_divergentes != null ? local.itens_divergentes : row.itens_divergentes
+    });
+}
+
+function _terceirosRowsEstadoMesclado(rows) {
+    return (Array.isArray(rows) ? rows : []).map(_terceirosRowEstadoMesclado);
+}
+
+/** 2ª aba — recebimento em aberto, sem bipagem iniciada. */
+function _terceirosConsideraPendenciaRecebimento(row) {
+    row = _terceirosRowEstadoMesclado(row);
+    if (!row || row.id == null) return false;
+    if (isTerceirosFlagSim(row.recebimento_concluido)) return false;
+    if (_terceirosTemBipagemIniciada(row)) return false;
+    return true;
+}
+
+/** 3ª aba — recebimento concluído e lançamento fiscal já marcado como Sim (antes das etapas MG / histórico). */
 function _terceirosConsideraFornecedorRecebido(row) {
-    return isTerceirosFlagSim(row && row.recebimento_concluido);
+    row = _terceirosRowEstadoMesclado(row);
+    if (!row || row.id == null) return false;
+    if (!isTerceirosFlagSim(row.recebimento_concluido)) return false;
+    if (!isTerceirosFlagSim(row.nota_lancada)) return false;
+    if (_terceirosConsideraNotasLancadas(row)) return false;
+    if (_terceirosConsideraHistorico(row)) return false;
+    return true;
 }
 
 /** Lançamento fiscal sem modal de aviso: recebimento concluído ou descarga já iniciada (bipagem). */
@@ -2300,13 +2346,28 @@ function _terceirosOpPodeLancarNotaSemConfirmacao(opcoes) {
     return false;
 }
 
-/** 4ª aba: mesmas NFs da 3ª com nota lançada ainda sem «Sim» (Pendente ou Não). */
+/** 4ª aba — recebimento concluído (ou bipagem) com lançamento fiscal ainda sem «Sim». */
 function _terceirosConsideraPendenteLancamento(row) {
-    return _terceirosConsideraFornecedorRecebido(row) && !isTerceirosFlagSim(row && row.nota_lancada);
+    row = _terceirosRowEstadoMesclado(row);
+    if (!row || row.id == null) return false;
+    if (isTerceirosFlagSim(row.nota_lancada)) return false;
+    if (isTerceirosFlagSim(row.recebimento_concluido)) return true;
+    return _terceirosTemBipagemIniciada(row);
 }
 
-function _terceirosConsideraPendenciaRecebimento(row) {
-    return !isTerceirosFlagSim(row && row.recebimento_concluido);
+/** Uma NF só pode estar numa aba do fluxo (2ª → 8ª / histórico). */
+function _terceirosEtapaExclusivaDoRow(row) {
+    row = _terceirosRowEstadoMesclado(row);
+    if (!row || row.id == null) return '';
+    if (_terceirosConsideraPendenciaRecebimento(row)) return 'pendencia-recebimento';
+    if (_terceirosConsideraPendenteLancamento(row)) return 'pendentes-lancamento';
+    if (_terceirosConsideraFornecedorRecebido(row)) return 'fornecedores-recebidos';
+    if (_terceirosConsideraHistorico(row)) return 'historico';
+    if (_terceirosConsideraNotasLancadas(row)) return 'notas-lancadas';
+    if (_terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.carga_recebida_mg)) return 'notas-enviadas-mg';
+    if (_terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.enviar_para_mg)) return 'recebimentos-mg';
+    if (_terceirosUsaFluxoMg(row)) return 'pendencias-mg';
+    return '';
 }
 
 function _terceirosTotalBipadoItensLocais() {
@@ -2347,43 +2408,15 @@ function _terceirosFecharDescargaSeDocumentoNaoNaListaPendencia(rowsPendencia) {
 }
 
 function getTerceirosRowsPorEtapa(rows, etapa) {
-    rows = Array.isArray(rows) ? rows : [];
-    if (etapa === 'pendencia-recebimento') {
+    rows = _terceirosRowsEstadoMesclado(rows);
+    if (etapa === 'historico') {
         return rows.filter(function(row) {
-            return _terceirosConsideraPendenciaRecebimento(row);
+            return _terceirosConsideraHistorico(row);
         });
     }
-    if (etapa === 'fornecedores-recebidos') {
-        return rows.filter(function(row) {
-            return _terceirosConsideraFornecedorRecebido(row);
-        });
-    }
-    if (etapa === 'pendentes-lancamento') {
-        return rows.filter(function(row) {
-            return _terceirosConsideraPendenteLancamento(row);
-        });
-    }
-    if (etapa === 'notas-lancadas') {
-        return rows.filter(function(row) {
-            return _terceirosConsideraNotasLancadas(row);
-        });
-    }
-    if (etapa === 'notas-enviadas-mg') {
-        return rows.filter(function(row) {
-            return _terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.carga_recebida_mg);
-        });
-    }
-    if (etapa === 'pendencias-mg') {
-        return rows.filter(function(row) {
-            return _terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg);
-        });
-    }
-    if (etapa === 'recebimentos-mg') {
-        return rows.filter(function(row) {
-            return _terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg);
-        });
-    }
-    return rows;
+    return rows.filter(function(row) {
+        return _terceirosEtapaExclusivaDoRow(row) === etapa;
+    });
 }
 
 function _terceirosIdsRecebidosLocais() {
@@ -2400,51 +2433,13 @@ function _terceirosGuardarFornecedorRecebidoLocal(row) {
     });
 }
 
-function _terceirosAplicarRecebidosLocaisNaPendencia(rows) {
-    var ids = _terceirosIdsRecebidosLocais();
-    if (!ids.length) return rows;
-    var bloqueados = {};
-    ids.forEach(function(id) { bloqueados[id] = true; });
-    return (Array.isArray(rows) ? rows : []).filter(function(row) {
-        return !bloqueados[String(row.id)];
-    });
+/** Sobrepõe estado local sobre rows da API (sininho / listas sem esperar o backend). */
+function _terceirosMesclarRecebidosLocaisNasRows(rows) {
+    return _terceirosRowsEstadoMesclado(rows);
 }
 
 function _terceirosMesclarFornecedoresRecebidosLocais(rows) {
-    var out = Array.isArray(rows) ? rows.slice() : [];
-    var vistos = {};
-    out.forEach(function(row) {
-        if (row && row.id != null) vistos[String(row.id)] = true;
-    });
-    var locais = window._terceirosFornecedoresRecebidosLocais || {};
-    Object.keys(locais).forEach(function(id) {
-        if (vistos[id]) {
-            delete locais[id];
-            return;
-        }
-        out.unshift(locais[id]);
-    });
-    return out;
-}
-
-/** Sobrepõe estado «recebimento concluído» local sobre rows da API (sininho / alertas sem esperar o backend). */
-function _terceirosMesclarRecebidosLocaisNasRows(rows) {
-    var locais = window._terceirosFornecedoresRecebidosLocais || {};
-    var ids = Object.keys(locais);
-    if (!ids.length) return Array.isArray(rows) ? rows : [];
-    return (Array.isArray(rows) ? rows : []).map(function(row) {
-        if (!row || row.id == null) return row;
-        var local = locais[String(row.id)];
-        if (!local) return row;
-        return Object.assign({}, row, {
-            recebimento_concluido: local.recebimento_concluido != null ? local.recebimento_concluido : row.recebimento_concluido,
-            recebimento_concluido_em: local.recebimento_concluido_em || row.recebimento_concluido_em,
-            recebimento_concluido_por: local.recebimento_concluido_por || row.recebimento_concluido_por,
-            nota_lancada: local.nota_lancada != null ? local.nota_lancada : row.nota_lancada,
-            enviar_para_mg: local.enviar_para_mg != null ? local.enviar_para_mg : row.enviar_para_mg,
-            carga_recebida_mg: local.carga_recebida_mg != null ? local.carga_recebida_mg : row.carga_recebida_mg
-        });
-    });
+    return _terceirosRowsEstadoMesclado(rows);
 }
 
 async function atualizarAlertasTerceirosHeaderAposMudancaRecebimento() {
@@ -3180,7 +3175,7 @@ async function loadTerceirosDocumentos(dataPreloaded) {
             tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
             return;
         }
-        const rows = _terceirosAplicarRecebidosLocaisNaPendencia(getTerceirosRowsPorEtapa(data.rows, 'pendencia-recebimento'));
+        const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencia-recebimento');
         void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows));
         window._terceirosPendenciaRowsCache = rows;
         const tipoFiltro = window._terceirosPendenciaFiltroTipo || 'todos';
@@ -3224,9 +3219,9 @@ async function loadTerceirosFornecedoresRecebidos(dataPreloaded) {
         _terceirosDestacarDocIdAposCarga = null;
         return;
     }
-    const rows = _terceirosMesclarFornecedoresRecebidosLocais(getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos'));
+    const rows = getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhuma NF com recebimento concluído ainda. Finalize a descarga na aba <strong>Pendência de Recebimento</strong>.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhuma NF nesta etapa. Após marcar <strong>Nota lançada = Sim</strong> na 4ª aba, as notas aparecem aqui até seguirem para MG ou histórico.</td></tr>';
         _terceirosDestacarDocIdAposCarga = null;
         return;
     }
@@ -3295,20 +3290,31 @@ function _terceirosNfTexto(row) {
 }
 
 function _terceirosAlertaEtapa(row) {
-    if (_terceirosConsideraPendenciaRecebimento(row)) {
+    row = _terceirosRowEstadoMesclado(row);
+    var etapa = _terceirosEtapaExclusivaDoRow(row);
+    if (etapa === 'pendencia-recebimento') {
         return { tab: 'pendencia-recebimento', etapa: 'Pendência de recebimento', usuario: row.criado_por || row.atualizado_por || '-', data: row.criado_em || row.atualizado_em || '' };
     }
-    if (_terceirosConsideraPendenteLancamento(row)) {
+    if (etapa === 'pendentes-lancamento') {
         return { tab: 'pendentes-lancamento', etapa: 'NFs pendentes de lançamento', usuario: row.recebimento_concluido_por || row.atualizado_por || '-', data: row.recebimento_concluido_em || row.atualizado_em || '' };
     }
-    if (_terceirosConsideraNotasLancadas(row)) {
-        if (isTerceirosAreaCarreta(row)) {
-            return { tab: 'notas-lancadas', etapa: 'Notas lançadas (carreta)', usuario: row.nota_lancada_por || row.atualizado_por || '-', data: row.nota_lancada_em || row.atualizado_em || '' };
-        }
-        return { tab: 'pendencias-mg', etapa: 'Pendências envio MG', usuario: row.nota_lancada_por || row.atualizado_por || '-', data: row.nota_lancada_em || row.atualizado_em || '' };
+    if (etapa === 'fornecedores-recebidos') {
+        return { tab: 'fornecedores-recebidos', etapa: 'Fornecedores recebidos', usuario: row.nota_lancada_por || row.recebimento_concluido_por || '-', data: row.nota_lancada_em || row.recebimento_concluido_em || '' };
     }
-    if (isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg)) {
-        return { tab: 'recebimentos-mg', etapa: 'Recebimentos de MG', usuario: row.enviar_para_mg_por || row.atualizado_por || '-', data: row.enviar_para_mg_em || row.atualizado_em || '' };
+    if (etapa === 'notas-lancadas') {
+        return { tab: 'notas-lancadas', etapa: 'Notas fiscais lançadas', usuario: row.nota_lancada_por || '', data: row.nota_lancada_em || '' };
+    }
+    if (etapa === 'pendencias-mg') {
+        return { tab: 'pendencias-mg', etapa: 'Pendências envio MG', usuario: row.nota_lancada_por || '', data: row.nota_lancada_em || '' };
+    }
+    if (etapa === 'recebimentos-mg') {
+        return { tab: 'recebimentos-mg', etapa: 'Recebimentos de MG', usuario: row.enviar_para_mg_por || '', data: row.enviar_para_mg_em || '' };
+    }
+    if (etapa === 'notas-enviadas-mg') {
+        return { tab: 'notas-enviadas-mg', etapa: 'Notas enviadas para MG', usuario: row.enviar_para_mg_por || '', data: row.enviar_para_mg_em || '' };
+    }
+    if (etapa === 'historico') {
+        return { tab: 'historico', etapa: 'Histórico', usuario: row.atualizado_por || '', data: row.atualizado_em || '' };
     }
     return null;
 }
@@ -3388,10 +3394,7 @@ async function loadTerceirosPendentesLancamento(dataPreloaded) {
         tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_POS_RECEBIMENTO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
-    const rows = getTerceirosRowsPorEtapa(
-        _terceirosMesclarFornecedoresRecebidosLocais(_terceirosMesclarRecebidosLocaisNasRows(data.rows || [])),
-        'pendentes-lancamento'
-    );
+    const rows = getTerceirosRowsPorEtapa(data.rows, 'pendentes-lancamento');
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_POS_RECEBIMENTO + '" class="loading">Nenhuma NF aguardando lançamento fiscal. As notas entram aqui quando aparecem em <strong>Fornecedores recebidos</strong> com <strong>Nota lançada</strong> ainda sem marcar como Sim.</td></tr>';
         return;
