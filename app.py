@@ -806,14 +806,14 @@ def _sql_cols_terceiros_documentos_listagem(alias):
     return (
         '%s.id, %s.area, %s.chave_nfe, %s.numero_nf, %s.serie_nf, %s.data_emissao, '
         '%s.remetente_nome, %s.remetente_cnpj, %s.destinatario_nome, %s.destinatario_cnpj, %s.destinatario_uf, '
-        '%s.previsao_chegada, %s.arquivo_nome, '
+        '%s.numero_pedido, %s.previsao_chegada, %s.arquivo_nome, '
         '%s.recebimento_concluido, %s.recebimento_concluido_em, %s.recebimento_concluido_por, '
         '%s.nota_lancada, %s.nota_lancada_em, %s.nota_lancada_por, '
         '%s.enviar_para_mg, %s.enviar_para_mg_em, %s.enviar_para_mg_por, '
         '%s.motorista_carreta, %s.motorista_carreta_em, %s.placa_carreta, '
         '%s.carga_recebida_mg, %s.carga_recebida_mg_em, %s.carga_recebida_mg_por, '
         '%s.criado_em, %s.criado_por, %s.atualizado_em, %s.atualizado_por'
-    ) % ((a,) * 32)
+    ) % ((a,) * 33)
 
 
 def _ensure_terceiros_schema(conn):
@@ -983,6 +983,7 @@ def _ensure_terceiros_schema(conn):
         if getattr(conn, 'kind', None) == 'pg':
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS placa_carreta TEXT')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS destinatario_uf TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS numero_pedido TEXT')
         else:
             info = conn.execute('PRAGMA table_info(terceiros_documentos)').fetchall()
             nomes = [r[1] for r in (info or [])]
@@ -990,6 +991,12 @@ def _ensure_terceiros_schema(conn):
                 conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN placa_carreta TEXT')
             if 'destinatario_uf' not in nomes:
                 conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN destinatario_uf TEXT')
+            if 'numero_pedido' not in nomes:
+                conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN numero_pedido TEXT')
+    except Exception:
+        pass
+    try:
+        _terceiros_backfill_numero_pedido_pendentes(conn, limite=150)
     except Exception:
         pass
     try:
@@ -6807,12 +6814,15 @@ def _parse_nfe_xml(xml_texto):
             'descricao_base': (base or {}).get('descricao_base', ''),
         })
 
+    if not numero_pedido and ide is not None:
+        compra = ide.find('nfe:compra', ns) if ns else ide.find('compra')
+        if compra is not None:
+            numero_pedido = _find_first(compra, ['nfe:xPed', 'xPed'], ns)
+
     if not numero_pedido:
         info_adic = infnfe.find('nfe:infAdic', ns) if ns else infnfe.find('infAdic')
         info_complementar = _find_first(info_adic, ['nfe:infCpl', 'infCpl'], ns)
-        match = re.search(r'Numero do Pedido do Cliente:\s*([^\|\n\r]+)', info_complementar or '', re.IGNORECASE)
-        if match:
-            numero_pedido = (match.group(1) or '').strip()
+        numero_pedido = _extrair_numero_pedido_inf_cpl(info_complementar)
 
     return {
         'chave_nfe': (infnfe.attrib.get('Id') or '').replace('NFe', '').strip(),
@@ -6830,19 +6840,83 @@ def _parse_nfe_xml(xml_texto):
     }
 
 
-def _numero_pedido_terceiros(doc):
+def _extrair_numero_pedido_inf_cpl(texto):
+    if not texto:
+        return ''
+    patterns = (
+        r'Numero do Pedido do Cliente:\s*([^\|\n\r]+)',
+        r'N[uú]mero\s+do\s+Pedido[^:]*:\s*([^\|\n\r]+)',
+        r'Pedido\s*(?:n[º°\.]|N[º°]|No\.?|#)?\s*:?\s*([0-9A-Za-z][0-9A-Za-z\-\/]*)',
+        r'\bPED\.?\s*:?\s*([0-9A-Za-z][0-9A-Za-z\-\/]*)',
+        r'\bOC\s*:?\s*([0-9A-Za-z][0-9A-Za-z\-\/]*)',
+    )
+    for pat in patterns:
+        match = re.search(pat, texto, re.IGNORECASE)
+        if match:
+            valor = (match.group(1) or '').strip().strip('|').strip()
+            if valor:
+                return valor
+    return ''
+
+
+def _terceiros_backfill_numero_pedido_pendentes(conn, limite=150):
+    """Preenche numero_pedido a partir do XML para NFs antigas (listagem não carrega xml_conteudo)."""
+    limite = max(1, min(int(limite or 150), 500))
+    tbl = _tbl_terceiros_documentos(conn)
+    rows = conn.execute(
+        'SELECT id, xml_conteudo FROM ' + tbl
+        + ' WHERE COALESCE(numero_pedido, \'\') = \'\' AND xml_conteudo IS NOT NULL AND TRIM(xml_conteudo) != \'\''
+        + ' ORDER BY id DESC LIMIT ?',
+        (limite,)
+    ).fetchall()
+    atualizados = 0
+    for r in rows or []:
+        row = dict(r) if hasattr(r, 'keys') else {'id': r[0], 'xml_conteudo': r[1]}
+        doc_id = row.get('id')
+        xml_texto = row.get('xml_conteudo') or ''
+        if not doc_id or not xml_texto:
+            continue
+        try:
+            ped = (_parse_nfe_xml(xml_texto).get('numero_pedido') or '').strip()
+        except Exception:
+            ped = ''
+        if not ped:
+            continue
+        conn.execute(
+            'UPDATE ' + tbl + ' SET numero_pedido = ? WHERE id = ? AND COALESCE(numero_pedido, \'\') = \'\'',
+            (ped, doc_id)
+        )
+        atualizados += 1
+    if atualizados:
+        conn.commit()
+    return atualizados
+
+
+def _numero_pedido_terceiros(doc, conn=None, documento_id=None):
     if not doc:
         return ''
-    if doc.get('numero_pedido'):
-        return doc.get('numero_pedido') or ''
+    col = (doc.get('numero_pedido') or '').strip()
+    if col:
+        return col
     xml_texto = doc.get('xml_conteudo') or ''
     if not xml_texto:
         return ''
     try:
-        parsed = _parse_nfe_xml(xml_texto)
-        return parsed.get('numero_pedido') or ''
+        ped = (_parse_nfe_xml(xml_texto).get('numero_pedido') or '').strip()
     except Exception:
-        return ''
+        ped = ''
+    doc_id = documento_id or doc.get('id')
+    if ped and conn is not None and doc_id:
+        try:
+            conn.execute(
+                'UPDATE ' + _tbl_terceiros_documentos(conn)
+                + ' SET numero_pedido = ? WHERE id = ? AND COALESCE(numero_pedido, \'\') = \'\'',
+                (ped, doc_id)
+            )
+            conn.commit()
+        except Exception:
+            pass
+    return ped
 
 
 def _uf_destinatario_terceiros(doc):
@@ -6909,15 +6983,16 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
         row = conn.execute(
             '''INSERT INTO ''' + _tbl_terceiros_documentos(conn) + ''' (
                    area, chave_nfe, numero_nf, serie_nf, data_emissao, remetente_nome, remetente_cnpj,
-                   destinatario_nome, destinatario_cnpj, destinatario_uf, previsao_chegada, arquivo_nome, xml_conteudo,
+                   destinatario_nome, destinatario_cnpj, destinatario_uf, numero_pedido, previsao_chegada, arquivo_nome, xml_conteudo,
                    motorista_carreta, motorista_carreta_em, placa_carreta,
                    criado_em, criado_por, atualizado_em, atualizado_por
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id''',
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id''',
             (
                 area, xml_data.get('chave_nfe') or '', xml_data.get('numero_nf') or '', xml_data.get('serie_nf') or '',
                 xml_data.get('data_emissao') or '', xml_data.get('remetente_nome') or '', _somente_digitos(xml_data.get('remetente_cnpj') or ''),
                 xml_data.get('destinatario_nome') or '', _somente_digitos(xml_data.get('destinatario_cnpj') or ''),
                 (xml_data.get('destinatario_uf') or '').strip(),
+                (xml_data.get('numero_pedido') or '').strip(),
                 previsao_chegada or '', arquivo_nome or '', xml_texto,
                 mot, mot_em, plc,
                 _agora_iso(), usuario or '', _agora_iso(), usuario or ''
@@ -6928,15 +7003,16 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
         conn.execute(
             '''INSERT INTO ''' + _tbl_terceiros_documentos(conn) + ''' (
                    area, chave_nfe, numero_nf, serie_nf, data_emissao, remetente_nome, remetente_cnpj,
-                   destinatario_nome, destinatario_cnpj, destinatario_uf, previsao_chegada, arquivo_nome, xml_conteudo,
+                   destinatario_nome, destinatario_cnpj, destinatario_uf, numero_pedido, previsao_chegada, arquivo_nome, xml_conteudo,
                    motorista_carreta, motorista_carreta_em, placa_carreta,
                    criado_em, criado_por, atualizado_em, atualizado_por
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (
                 area, xml_data.get('chave_nfe') or '', xml_data.get('numero_nf') or '', xml_data.get('serie_nf') or '',
                 xml_data.get('data_emissao') or '', xml_data.get('remetente_nome') or '', _somente_digitos(xml_data.get('remetente_cnpj') or ''),
                 xml_data.get('destinatario_nome') or '', _somente_digitos(xml_data.get('destinatario_cnpj') or ''),
                 (xml_data.get('destinatario_uf') or '').strip(),
+                (xml_data.get('numero_pedido') or '').strip(),
                 previsao_chegada or '', arquivo_nome or '', xml_texto,
                 mot, mot_em, plc,
                 _agora_iso(), usuario or '', _agora_iso(), usuario or ''
@@ -6966,7 +7042,7 @@ def _carregar_documento_terceiros(conn, documento_id):
     if not row:
         return None
     doc = dict(row) if hasattr(row, 'keys') else {}
-    doc['numero_pedido'] = _numero_pedido_terceiros(doc)
+    doc['numero_pedido'] = _numero_pedido_terceiros(doc, conn, documento_id)
     doc['destinatario_uf'] = _uf_destinatario_terceiros(doc)
     itens_rows = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE documento_id = ? ORDER BY n_item, id', (documento_id,)).fetchall()
     eventos_rows = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_eventos(conn) + ' WHERE documento_id = ? ORDER BY criado_em DESC, id DESC', (documento_id,)).fetchall()
@@ -6992,6 +7068,10 @@ def _carregar_documento_terceiros(conn, documento_id):
 
 def _normalizar_texto_regra_terceiros(valor):
     return re.sub(r'[^a-z0-9]+', ' ', str(valor or '').lower()).strip()
+
+
+def _terceiros_eh_area_carreta(doc):
+    return str((doc or {}).get('area') or '').strip().lower() == 'carreta'
 
 
 def _motorista_obrigatorio_terceiros(doc):
@@ -7029,6 +7109,410 @@ def _documento_terceiros_ja_existe(conn, xml_data):
         tuple(valor.split('|'))
     ).fetchone()
     return bool(row)
+
+
+def _terceiros_periodo_request_args():
+    de = (request.args.get('data_criacao_inicio') or request.args.get('data_inicio') or '').strip()
+    ate = (request.args.get('data_criacao_fim') or request.args.get('data_fim') or '').strip()
+    return de, ate
+
+
+def _terceiros_sql_periodo_criado(alias, data_inicio, data_fim):
+    parts = []
+    params = []
+    if data_inicio:
+        d0 = (data_inicio[:10] + ' 00:00:00') if len(data_inicio) <= 10 else data_inicio
+        parts.append(alias + '.criado_em >= ?')
+        params.append(d0)
+    if data_fim:
+        d1 = (data_fim[:10] + ' 23:59:59') if len(data_fim) <= 10 else data_fim
+        parts.append(alias + '.criado_em <= ?')
+        params.append(d1)
+    return parts, params
+
+
+def _terceiros_workbook_simple(headers, rows):
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    header_font = Font(bold=True)
+    for col, h in enumerate(headers, 1):
+        ws.cell(row=1, column=col, value=h).font = header_font
+    for row_idx, row in enumerate(rows, 2):
+        for col_idx, val in enumerate(row, 1):
+            ws.cell(row=row_idx, column=col_idx, value=val)
+    return wb
+
+
+def _terceiros_send_workbook(wb, download_name):
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=download_name,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+
+
+def _terceiros_docs_com_resumo(conn, data_inicio='', data_fim=''):
+    _ensure_terceiros_schema(conn)
+    tbl_d = _tbl_terceiros_documentos(conn)
+    tbl_i = _tbl_terceiros_documento_itens(conn)
+    cols = _sql_cols_terceiros_documentos_listagem('d')
+    where_parts = []
+    params = []
+    wp, pp = _terceiros_sql_periodo_criado('d', data_inicio, data_fim)
+    where_parts.extend(wp)
+    params.extend(pp)
+    sql = (
+        'SELECT ' + cols + ''',
+                COALESCE(si.total_itens, 0) AS total_itens,
+                COALESCE(si.quantidade_total_xml, 0) AS quantidade_total_xml,
+                COALESCE(si.quantidade_total_bipada, 0) AS quantidade_total_bipada,
+                COALESCE(si.itens_divergentes, 0) AS itens_divergentes,
+                si.inicio_descarga
+         FROM ''' + tbl_d + ''' d
+         LEFT JOIN (
+             SELECT documento_id,
+                    COUNT(id) AS total_itens,
+                    COALESCE(SUM(quantidade_xml), 0) AS quantidade_total_xml,
+                    COALESCE(SUM(quantidade_bipada), 0) AS quantidade_total_bipada,
+                    SUM(CASE WHEN ABS(COALESCE(quantidade_xml, 0) - COALESCE(quantidade_bipada, 0)) > 0.000001 THEN 1 ELSE 0 END) AS itens_divergentes,
+                    MIN(CASE WHEN COALESCE(quantidade_bipada, 0) > 0 THEN atualizado_em ELSE NULL END) AS inicio_descarga
+             FROM ''' + tbl_i + '''
+             GROUP BY documento_id
+         ) si ON si.documento_id = d.id
+    ''')
+    if where_parts:
+        sql += ' WHERE ' + ' AND '.join(where_parts)
+    sql += ' ORDER BY d.criado_em DESC, d.id DESC'
+    rows = conn.execute(sql, params).fetchall()
+    out = []
+    for r in rows or []:
+        row = dict(r) if hasattr(r, 'keys') else {}
+        etapa = _terceiros_etapa_painel_row(row)
+        out.append({
+            'row': row,
+            'etapa': _ETAPAS_PAINEL_TERCEIROS_LABELS.get(etapa, etapa),
+        })
+    return out
+
+
+def _relatorio_terceiros_resumo_nf(data_inicio='', data_fim=''):
+    conn = get_db()
+    try:
+        docs = _terceiros_docs_com_resumo(conn, data_inicio, data_fim)
+    finally:
+        conn.close()
+    linhas = []
+    for item in docs:
+        row = item['row']
+        nf = '/'.join(filter(None, [str(row.get('numero_nf') or '').strip(), str(row.get('serie_nf') or '').strip()])) or '-'
+        linhas.append([
+            row.get('id'),
+            nf,
+            row.get('numero_pedido') or '',
+            (row.get('area') or '').strip(),
+            row.get('remetente_nome') or '',
+            row.get('destinatario_nome') or '',
+            row.get('destinatario_uf') or '',
+            _fmt_datahora_br(row.get('previsao_chegada') or ''),
+            _fmt_datahora_br(row.get('criado_em') or ''),
+            _fmt_datahora_br(row.get('inicio_descarga') or ''),
+            _fmt_datahora_br(row.get('recebimento_concluido_em') or ''),
+            item['etapa'],
+            float(row.get('quantidade_total_xml') or 0),
+            float(row.get('quantidade_total_bipada') or 0),
+            int(row.get('itens_divergentes') or 0),
+            'Sim' if _terceiros_bool_sim_db(row.get('recebimento_concluido')) else 'Não',
+            row.get('nota_lancada') or '',
+            row.get('enviar_para_mg') or '',
+            row.get('carga_recebida_mg') or '',
+            row.get('motorista_carreta') or '',
+            row.get('placa_carreta') or '',
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'Pedido', 'Área', 'Remetente', 'Destinatário', 'UF',
+            'Previsão chegada', 'Cadastro NF', 'Início descarga', 'Recebimento concluído',
+            'Etapa atual', 'Qtd. XML', 'Qtd. bipada', 'Itens divergentes',
+            'Receb. concluído', 'Nota lançada', 'Enviar MG', 'Recebida MG',
+            'Motorista', 'Placa',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Resumo NFs'
+    return wb
+
+
+def _relatorio_terceiros_itens_bipados(data_inicio='', data_fim=''):
+    conn = get_db()
+    try:
+        _ensure_terceiros_schema(conn)
+        tbl_d = _tbl_terceiros_documentos(conn)
+        tbl_i = _tbl_terceiros_documento_itens(conn)
+        where_parts = ['COALESCE(i.quantidade_bipada, 0) > 0']
+        params = []
+        wp, pp = _terceiros_sql_periodo_criado('d', data_inicio, data_fim)
+        where_parts.extend(wp)
+        params.extend(pp)
+        sql = (
+            '''SELECT d.id AS documento_id, d.numero_nf, d.serie_nf, d.area, d.remetente_nome,
+                      i.codigo_ean, i.descricao_xml, i.quantidade_xml, i.quantidade_bipada,
+                      i.status_bipagem, i.atualizado_em, i.atualizado_por
+               FROM ''' + tbl_i + ''' i
+               INNER JOIN ''' + tbl_d + ''' d ON d.id = i.documento_id
+               WHERE ''' + ' AND '.join(where_parts) + '''
+               ORDER BY i.atualizado_em DESC, i.id DESC'''
+        )
+        rows = conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+    linhas = []
+    for r in rows or []:
+        rd = dict(r) if hasattr(r, 'keys') else {}
+        nf = '/'.join(filter(None, [str(rd.get('numero_nf') or '').strip(), str(rd.get('serie_nf') or '').strip()])) or '-'
+        linhas.append([
+            rd.get('documento_id'),
+            nf,
+            rd.get('area') or '',
+            rd.get('remetente_nome') or '',
+            rd.get('codigo_ean') or '',
+            (rd.get('descricao_xml') or '')[:120],
+            float(rd.get('quantidade_xml') or 0),
+            float(rd.get('quantidade_bipada') or 0),
+            rd.get('status_bipagem') or '',
+            _fmt_datahora_br(rd.get('atualizado_em') or ''),
+            rd.get('atualizado_por') or '',
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID NF', 'NF', 'Área', 'Remetente', 'Código barras', 'Produto',
+            'Qtd. XML', 'Qtd. bipada', 'Status', 'Última bipagem', 'Usuário',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Itens bipados'
+    return wb
+
+
+def _relatorio_terceiros_itens_mais_bipados(data_inicio='', data_fim=''):
+    conn = get_db()
+    try:
+        _ensure_terceiros_schema(conn)
+        tbl_d = _tbl_terceiros_documentos(conn)
+        tbl_i = _tbl_terceiros_documento_itens(conn)
+        where_parts = ['COALESCE(i.quantidade_bipada, 0) > 0']
+        params = []
+        wp, pp = _terceiros_sql_periodo_criado('d', data_inicio, data_fim)
+        where_parts.extend(wp)
+        params.extend(pp)
+        sql = (
+            '''SELECT COALESCE(NULLIF(TRIM(i.descricao_xml), ''), NULLIF(TRIM(i.codigo_ean), ''), 'Item') AS produto,
+                      COALESCE(NULLIF(TRIM(i.codigo_ean), ''), '-') AS codigo_ean,
+                      COALESCE(SUM(i.quantidade_bipada), 0) AS total,
+                      COUNT(DISTINCT i.documento_id) AS num_nfs
+               FROM ''' + tbl_i + ''' i
+               INNER JOIN ''' + tbl_d + ''' d ON d.id = i.documento_id
+               WHERE ''' + ' AND '.join(where_parts) + '''
+               GROUP BY i.descricao_xml, i.codigo_ean
+               ORDER BY total DESC'''
+        )
+        rows = conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+    linhas = []
+    for r in rows or []:
+        rd = dict(r) if hasattr(r, 'keys') else {}
+        linhas.append([
+            rd.get('codigo_ean') or '',
+            (rd.get('produto') or '')[:120],
+            float(rd.get('total') or 0),
+            int(rd.get('num_nfs') or 0),
+        ])
+    wb = _terceiros_workbook_simple(
+        ['Código barras', 'Produto', 'Total bipado', 'Qtd. NFs'],
+        linhas,
+    )
+    wb.active.title = 'Itens mais bipados'
+    return wb
+
+
+def _relatorio_terceiros_divergencias(data_inicio='', data_fim=''):
+    conn = get_db()
+    try:
+        docs = _terceiros_docs_com_resumo(conn, data_inicio, data_fim)
+    finally:
+        conn.close()
+    linhas = []
+    for item in docs:
+        row = item['row']
+        q_xml = float(row.get('quantidade_total_xml') or 0)
+        q_bip = float(row.get('quantidade_total_bipada') or 0)
+        div_it = int(row.get('itens_divergentes') or 0)
+        if div_it == 0 and abs(q_xml - q_bip) <= 1e-6:
+            continue
+        if q_bip <= 1e-9 and div_it == 0:
+            continue
+        nf = '/'.join(filter(None, [str(row.get('numero_nf') or '').strip(), str(row.get('serie_nf') or '').strip()])) or '-'
+        linhas.append([
+            row.get('id'),
+            nf,
+            row.get('remetente_nome') or '',
+            q_xml,
+            q_bip,
+            q_xml - q_bip,
+            div_it,
+            item['etapa'],
+            _fmt_datahora_br(row.get('recebimento_concluido_em') or ''),
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'Remetente', 'Qtd. XML', 'Qtd. bipada', 'Diferença',
+            'Itens divergentes', 'Etapa', 'Recebimento concluído',
+        ],
+        linhas,
+    )
+    wb.active.title = 'NFs divergentes'
+    return wb
+
+
+def _relatorio_terceiros_carreta(data_inicio='', data_fim=''):
+    conn = get_db()
+    try:
+        docs = _terceiros_docs_com_resumo(conn, data_inicio, data_fim)
+    finally:
+        conn.close()
+    linhas = []
+    for item in docs:
+        row = item['row']
+        if (row.get('area') or '').strip().lower() != 'carreta':
+            continue
+        nf = '/'.join(filter(None, [str(row.get('numero_nf') or '').strip(), str(row.get('serie_nf') or '').strip()])) or '-'
+        linhas.append([
+            row.get('id'),
+            nf,
+            row.get('motorista_carreta') or '',
+            (row.get('placa_carreta') or '').upper(),
+            _fmt_datahora_br(row.get('previsao_chegada') or ''),
+            _fmt_datahora_br(row.get('inicio_descarga') or ''),
+            _fmt_datahora_br(row.get('recebimento_concluido_em') or ''),
+            item['etapa'],
+            float(row.get('quantidade_total_xml') or 0),
+            float(row.get('quantidade_total_bipada') or 0),
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'Motorista', 'Placa', 'Previsão chegada', 'Início descarga',
+            'Recebimento concluído', 'Etapa', 'Qtd. XML', 'Qtd. bipada',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Carreta'
+    return wb
+
+
+def _relatorio_terceiros_nf_detalhe(documento_id):
+    conn = get_db()
+    try:
+        _ensure_terceiros_schema(conn)
+        tbl_d = _tbl_terceiros_documentos(conn)
+        tbl_i = _tbl_terceiros_documento_itens(conn)
+        cols = _sql_cols_terceiros_documentos_listagem('d')
+        doc_row = conn.execute(
+            'SELECT ' + cols + ' FROM ' + tbl_d + ' d WHERE d.id = ?',
+            (documento_id,),
+        ).fetchone()
+        if not doc_row:
+            return None
+        doc = dict(doc_row) if hasattr(doc_row, 'keys') else {}
+        itens = conn.execute(
+            '''SELECT n_item, codigo_ean, descricao_xml, quantidade_xml, quantidade_bipada,
+                      status_bipagem, atualizado_em, atualizado_por
+               FROM ''' + tbl_i + ''' WHERE documento_id = ? ORDER BY n_item, id''',
+            (documento_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws_nf = wb.active
+    ws_nf.title = 'NF'
+    hf = Font(bold=True)
+    nf = '/'.join(filter(None, [str(doc.get('numero_nf') or '').strip(), str(doc.get('serie_nf') or '').strip()])) or '-'
+    cabecalho = [
+        ('ID', doc.get('id')),
+        ('NF', nf),
+        ('Área', doc.get('area') or ''),
+        ('Remetente', doc.get('remetente_nome') or ''),
+        ('Destinatário', doc.get('destinatario_nome') or ''),
+        ('Previsão', _fmt_datahora_br(doc.get('previsao_chegada') or '')),
+        ('Motorista', doc.get('motorista_carreta') or ''),
+        ('Placa', doc.get('placa_carreta') or ''),
+        ('Recebimento concluído', 'Sim' if _terceiros_bool_sim_db(doc.get('recebimento_concluido')) else 'Não'),
+        ('Receb. concluído em', _fmt_datahora_br(doc.get('recebimento_concluido_em') or '')),
+    ]
+    for ri, (lb, val) in enumerate(cabecalho, 1):
+        ws_nf.cell(row=ri, column=1, value=lb).font = hf
+        ws_nf.cell(row=ri, column=2, value=val)
+    ws_it = wb.create_sheet('Itens')
+    headers = ['Item', 'Código', 'Produto', 'Qtd. XML', 'Qtd. bipada', 'Status', 'Atualizado em', 'Usuário']
+    for col, h in enumerate(headers, 1):
+        ws_it.cell(row=1, column=col, value=h).font = hf
+    for row_idx, r in enumerate(itens or [], 2):
+        rd = dict(r) if hasattr(r, 'keys') else {}
+        ws_it.cell(row=row_idx, column=1, value=rd.get('n_item'))
+        ws_it.cell(row=row_idx, column=2, value=rd.get('codigo_ean') or '')
+        ws_it.cell(row=row_idx, column=3, value=(rd.get('descricao_xml') or '')[:120])
+        ws_it.cell(row=row_idx, column=4, value=float(rd.get('quantidade_xml') or 0))
+        ws_it.cell(row=row_idx, column=5, value=float(rd.get('quantidade_bipada') or 0))
+        ws_it.cell(row=row_idx, column=6, value=rd.get('status_bipagem') or '')
+        ws_it.cell(row=row_idx, column=7, value=_fmt_datahora_br(rd.get('atualizado_em') or ''))
+        ws_it.cell(row=row_idx, column=8, value=rd.get('atualizado_por') or '')
+    return wb
+
+
+@app.route('/api/terceiros/relatorios/excel/resumo_nf', methods=['GET'])
+def export_terceiros_resumo_nf():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_resumo_nf(de, ate), 'relatorio_terceiros_resumo_nf.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/itens_bipados', methods=['GET'])
+def export_terceiros_itens_bipados():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_itens_bipados(de, ate), 'relatorio_terceiros_itens_bipados.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/itens_mais_bipados', methods=['GET'])
+def export_terceiros_itens_mais_bipados():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_itens_mais_bipados(de, ate), 'relatorio_terceiros_itens_mais_bipados.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/divergencias', methods=['GET'])
+def export_terceiros_divergencias():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_divergencias(de, ate), 'relatorio_terceiros_divergencias.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/carreta', methods=['GET'])
+def export_terceiros_carreta():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_carreta(de, ate), 'relatorio_terceiros_carreta.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/nf', methods=['GET'])
+def export_terceiros_nf_detalhe():
+    doc_id = request.args.get('documento_id', type=int) or request.args.get('id', type=int)
+    if not doc_id:
+        return jsonify({'erro': 'Informe o ID da NF (documento_id).'}), 400
+    wb = _relatorio_terceiros_nf_detalhe(doc_id)
+    if wb is None:
+        return jsonify({'erro': 'NF não encontrada.'}), 404
+    return _terceiros_send_workbook(wb, 'relatorio_terceiros_nf_%s.xlsx' % doc_id)
 
 
 @app.route('/api/terceiros/upload-xml', methods=['POST'])
@@ -7102,14 +7586,18 @@ def _terceiros_bool_sim_db(valor):
 
 
 def _terceiros_etapa_painel_row(row):
-  """Mesma lógica das abas do módulo (pendência → fornecedores → lançamento → MG)."""
-  q_bip = float(row.get('quantidade_total_bipada') or 0)
+  """Mesma lógica das abas do módulo (pendência → fornecedores → lançamento → MG ou histórico carreta)."""
   rc = _terceiros_bool_sim_db(row.get('recebimento_concluido'))
-  if not rc and q_bip <= 1e-9:
+  if not rc:
     return 'pendencia_recebimento'
   nl = _valor_bool_texto(row.get('nota_lancada') or '')
   if nl != 'sim':
     return 'fornecedores_recebidos'
+  if _terceiros_eh_area_carreta(row):
+    cmg = _valor_bool_texto(row.get('carga_recebida_mg') or '')
+    if cmg != 'sim':
+      return 'notas_lancadas'
+    return 'historico'
   emg = _valor_bool_texto(row.get('enviar_para_mg') or '')
   if emg != 'sim':
     return 'pendencias_mg'
@@ -7125,6 +7613,7 @@ _ETAPAS_PAINEL_TERCEIROS_LABELS = {
   'notas_lancadas': 'Notas lançadas',
   'pendencias_mg': 'Pendências envio MG',
   'recebimentos_mg': 'Recebimentos MG',
+  'historico': 'Histórico',
 }
 
 
@@ -7185,7 +7674,6 @@ def api_terceiros_painel():
         nfs_carreta += 1
       if _terceiros_bool_sim_db(row.get('recebimento_concluido')):
         recebimento_concluido += 1
-      if _terceiros_bool_sim_db(row.get('recebimento_concluido')) or q_bip > 1e-9:
         fornecedores_recebidos += 1
       etapa = _terceiros_etapa_painel_row(row)
       etapa_counts[etapa] = etapa_counts.get(etapa, 0) + 1
@@ -7236,10 +7724,27 @@ def api_terceiros_painel():
       '''SELECT COALESCE(NULLIF(TRIM(motorista_carreta), ''), 'Sem motorista') AS motorista,
                 COUNT(*) AS nfs
          FROM ''' + tbl_d + '''
-         WHERE motorista_carreta IS NOT NULL AND TRIM(COALESCE(motorista_carreta, '')) != ''
+         WHERE LOWER(TRIM(COALESCE(area, ''))) = 'carreta'
+           AND motorista_carreta IS NOT NULL AND TRIM(COALESCE(motorista_carreta, '')) != ''
          GROUP BY motorista_carreta
          ORDER BY nfs DESC
-         LIMIT 15''',
+         LIMIT 12''',
+    ).fetchall()
+
+    chegadas_rows = conn.execute(
+      '''SELECT d.id,
+                d.numero_nf,
+                d.serie_nf,
+                COALESCE(NULLIF(TRIM(d.motorista_carreta), ''), '-') AS motorista,
+                COALESCE(NULLIF(TRIM(d.placa_carreta), ''), '-') AS placa,
+                MIN(i.atualizado_em) AS inicio_descarga
+         FROM ''' + tbl_d + ''' d
+         INNER JOIN ''' + tbl_i + ''' i ON i.documento_id = d.id
+         WHERE LOWER(TRIM(COALESCE(d.area, ''))) = 'carreta'
+           AND COALESCE(i.quantidade_bipada, 0) > 0
+         GROUP BY d.id, d.numero_nf, d.serie_nf, d.motorista_carreta, d.placa_carreta
+         ORDER BY inicio_descarga DESC
+         LIMIT 20''',
     ).fetchall()
 
     top_itens = []
@@ -7258,6 +7763,20 @@ def api_terceiros_painel():
         'motorista': rd.get('motorista') or '-',
         'nfs': int(rd.get('nfs') or 0),
       })
+
+    chegadas_carreta = []
+    for r in chegadas_rows or []:
+      rd = _row_dict(r)
+      nf_txt = '/'.join(filter(None, [str(rd.get('numero_nf') or '').strip(), str(rd.get('serie_nf') or '').strip()])) or '-'
+      inicio_raw = rd.get('inicio_descarga')
+      chegadas_carreta.append({
+        'nf': nf_txt,
+        'motorista': rd.get('motorista') or '-',
+        'placa': (rd.get('placa') or '-').upper() if rd.get('placa') else '-',
+        'inicio_descarga': _fmt_datahora_br(inicio_raw),
+        'inicio_descarga_ordem': inicio_raw.isoformat() if hasattr(inicio_raw, 'isoformat') else str(inicio_raw or ''),
+      })
+    chegadas_carreta.reverse()
 
     etapas_chart = [
       {'etapa': k, 'label': _ETAPAS_PAINEL_TERCEIROS_LABELS[k], 'total': etapa_counts.get(k, 0)}
@@ -7289,6 +7808,7 @@ def api_terceiros_painel():
       'ultimas_nfs': ultimas,
       'top_itens': top_itens,
       'top_motoristas': top_motoristas,
+      'chegadas_carreta': chegadas_carreta,
     })
   except Exception as e:
     return jsonify({'erro': str(e)}), 500
@@ -7350,7 +7870,7 @@ def api_terceiros_documentos():
                 'area': row.get('area') or '',
                 'numero_nf': row.get('numero_nf') or '',
                 'serie_nf': row.get('serie_nf') or '',
-                'numero_pedido': _numero_pedido_terceiros(row),
+                'numero_pedido': (row.get('numero_pedido') or '').strip() or _numero_pedido_terceiros(row),
                 'chave_nfe': row.get('chave_nfe') or '',
                 'data_emissao': _fmt_data_br(row.get('data_emissao') or ''),
                 'remetente_nome': row.get('remetente_nome') or '',
@@ -7624,6 +8144,7 @@ def api_terceiros_status(documento_id):
     campo = (data.get('campo') or '').strip()
     valor = (data.get('valor') or '').strip()
     forcar_lancamento_sem_recebimento = bool(data.get('forcar_lancamento_sem_recebimento'))
+    forcar_fluxo_carreta = bool(data.get('forcar_fluxo_carreta'))
     usuario = session.get('usuario', '')
     if campo not in ('recebimento_concluido', 'nota_lancada', 'enviar_para_mg', 'carga_recebida_mg'):
         return jsonify({'ok': False, 'erro': 'Campo inválido.'}), 400
@@ -7634,6 +8155,11 @@ def api_terceiros_status(documento_id):
         if not row:
             return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
         doc = dict(row) if hasattr(row, 'keys') else {}
+        if campo == 'enviar_para_mg' and _terceiros_eh_area_carreta(doc):
+            return jsonify({
+                'ok': False,
+                'erro': 'NF de carreta não utiliza envio para MG. Conclua na 5ª aba — Notas lançadas.'
+            }), 400
         agora = _agora_iso()
         if campo == 'recebimento_concluido':
             novo_bool = 1 if str(valor).strip().lower() in ('1', 'true', 'sim', 's', 'yes') else 0

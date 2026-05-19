@@ -20,7 +20,8 @@
             <h1>CONTROLE DE CARREGAMENTO ULTRAPÃO</h1>
             <div class="header-alertas-terceiros" id="header-alertas-terceiros">
                 <button type="button" class="header-alertas-btn" id="btn-terceiros-alertas" title="Alertas de NFs paradas">
-                    🔔 <span id="terceiros-alertas-count" class="header-alertas-count">0</span>
+                    <span class="header-alertas-icone" aria-hidden="true">🔔</span>
+                    <span id="terceiros-alertas-count" class="header-alertas-count">0</span>
                 </button>
                 <div class="header-alertas-menu" id="terceiros-alertas-menu" hidden>
                     <div class="header-alertas-menu-titulo">NFs paradas no módulo terceiros</div>
@@ -1362,6 +1363,7 @@
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="pendencias-mg" title="Passo 6">6° PENDÊNCIAS ENVIO MG</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="notas-enviadas-mg" title="Passo 7">7° NOTAS FISCAIS ENVIADAS PARA MG</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="recebimentos-mg" title="Passo 8">8° RECEBIMENTOS DE MG</button>
+                    <button type="button" class="tab-button terceiros-subtab" data-ter-tab="relatorios" title="Relatórios em Excel">RELATÓRIOS</button>
                     <button type="button" class="tab-button terceiros-subtab" data-ter-tab="historico" title="Histórico — notas com recebimento já concluído">HISTÓRICO</button>
                 </nav>
 
@@ -1393,6 +1395,8 @@
                         <div class="chart-box"><h3>Placas (carreta)</h3><canvas id="ter-chart-placas" height="220"></canvas></div>
                         <div class="chart-box"><h3>Distribuição por UF</h3><canvas id="ter-chart-uf" height="220"></canvas></div>
                         <div class="chart-box"><h3>Conferência da descarga</h3><canvas id="ter-chart-conferencia" height="220"></canvas></div>
+                        <div class="chart-box"><h3>Motoristas (carreta)</h3><canvas id="ter-chart-motoristas" height="220"></canvas></div>
+                        <div class="chart-box"><h3>Início da descarga — carreta</h3><p class="chart-box-subtitulo">Data/hora da 1ª bipagem (chegada para recebimento)</p><canvas id="ter-chart-chegadas-carreta" height="220"></canvas></div>
                     </div>
                     <h2 class="ter-painel-secao-titulo">ÚLTIMAS NOTAS FISCAIS</h2>
                     <div class="table-container ter-painel-tabela-wrap">
@@ -1465,7 +1469,7 @@
                                 <span class="painel-titulo-icon" aria-hidden="true">📤</span>
                                 <div class="terceiros-carreta-banner-texto">
                                     <h2 class="painel-titulo-texto terceiros-carreta-banner-titulo">Enviar XML da carreta</h2>
-                                    <p class="painel-titulo-sub terceiros-carreta-banner-sub">Envie a NF-e da carga transportada na carreta. É <strong>obrigatório</strong> informar o <strong>nome do motorista</strong> e a <strong>placa</strong> antes dos arquivos. As notas entram na aba Pendência de Recebimento com a etiqueta <strong>Carreta</strong>.</p>
+                                    <p class="painel-titulo-sub terceiros-carreta-banner-sub">Envie a NF-e da carga transportada na carreta. É <strong>obrigatório</strong> informar o <strong>nome do motorista</strong> e a <strong>placa</strong> antes dos arquivos. O fluxo segue pelas abas <strong>2ª a 5ª</strong> e vai ao <strong>Histórico</strong> — <strong>sem envio para MG</strong> (etiqueta <strong>Carreta</strong>).</p>
                                 </div>
                             </div>
                         </div>
@@ -1793,7 +1797,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🧾</span>
                         <h2 class="painel-titulo-texto">Notas Fiscais Lançadas</h2>
-                        <p class="painel-titulo-sub">Notas com lançamento fiscal concluído e <strong>Envio MG</strong> ainda não confirmado. <strong>Motorista</strong> e <strong>placa</strong> são editados na <strong>1ª aba (Enviar XML)</strong> ou na <strong>6ª aba (Pendências envio MG)</strong>. Marque <strong>Enviado para MG</strong> na 6ª aba; para <strong>Recebida MG</strong>, use a 8ª aba.</p>
+                        <p class="painel-titulo-sub">Notas com lançamento fiscal concluído. <strong>Carreta:</strong> use <strong>Registrar no histórico</strong> (sem MG). <strong>Demais rotas:</strong> marque <strong>Enviado para MG</strong> na 6ª aba; <strong>Recebida MG</strong> na 8ª aba.</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
@@ -1809,10 +1813,10 @@
                                         <th>UF</th>
                                         <th>Previsão</th>
                                         <th title="Nota lançada">Lançada</th>
-                                        <th title="Enviar para MG">Env. MG</th>
+                                        <th>Enviar MG</th>
                                         <th>Motorista</th>
                                         <th>Placa</th>
-                                        <th title="Recebida em MG">Rec. MG</th>
+                                        <th>Recebida MG</th>
                                         <th>Ações</th>
                                     </tr>
                                 </thead>
@@ -1828,7 +1832,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🚚</span>
                         <h2 class="painel-titulo-texto">Pendência Envio MG</h2>
-                        <p class="painel-titulo-sub">Notas aguardando confirmação de <strong>Enviado para MG</strong>. Ajuste <strong>motorista</strong> e <strong>placa</strong> na lista abaixo; marque <strong>Sim</strong> em Enviado para MG. Ao confirmar, o sistema pergunta se deseja ir à <strong>8ª aba — Recebimentos de MG</strong>.</p>
+                        <p class="painel-titulo-sub">Notas aguardando confirmação de <strong>Enviado para MG</strong>. Ajuste <strong>motorista</strong> e <strong>placa</strong> na lista abaixo; marque <strong>Sim</strong> em Enviado para MG. A NF sai desta lista e o sistema pergunta se deseja ir ao <strong>Histórico</strong>.</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
@@ -1845,8 +1849,8 @@
                                         <th>Previsão</th>
                                         <th>Motorista</th>
                                         <th>Placa</th>
-                                        <th title="Enviado para MG">Env. MG</th>
-                                        <th title="Recebida em MG">Rec. MG</th>
+                                        <th>Enviado para MG</th>
+                                        <th>Recebida MG</th>
                                         <th>Ações</th>
                                     </tr>
                                 </thead>
@@ -1879,7 +1883,7 @@
                                         <th>Previsão</th>
                                         <th>Motorista</th>
                                         <th>Placa</th>
-                                        <th title="Recebida em MG">Rec. MG</th>
+                                        <th>Recebida MG</th>
                                         <th>Ações</th>
                                     </tr>
                                 </thead>
@@ -1912,8 +1916,8 @@
                                         <th>Previsão</th>
                                         <th>Motorista</th>
                                         <th>Placa</th>
-                                        <th title="Envio para MG">Env. MG</th>
-                                        <th title="Recebida em MG">Rec. MG</th>
+                                        <th>Envio MG</th>
+                                        <th>Recebida MG</th>
                                         <th>Ações</th>
                                     </tr>
                                 </thead>
@@ -1925,11 +1929,74 @@
                     </div>
                 </div>
 
+
+                <div id="terceiros-panel-relatorios" class="devolucoes-panel">
+                    <h2 class="devolucoes-titulo-principal">RELATÓRIOS — TERCEIROS</h2>
+                    <p class="info-text">Gere relatórios em Excel para análise e backup das notas fiscais de terceiros.</p>
+
+                    <div class="form-container relatorios-secao" style="background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                        <h3 style="margin-top: 0; color: #1565c0;">Filtro por data de cadastro da NF (opcional)</h3>
+                        <p class="info-text" style="margin-bottom: 12px;">Quando preenchido, os relatórios consideram apenas NFs cadastradas no intervalo.</p>
+                        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <label for="ter-relatorio-data-inicio">De:</label>
+                            <input type="date" id="ter-relatorio-data-inicio" title="Data inicial">
+                            <label for="ter-relatorio-data-fim">Até:</label>
+                            <input type="date" id="ter-relatorio-data-fim" title="Data final">
+                        </div>
+                    </div>
+
+                    <div class="form-container relatorios-secao">
+                        <h3 style="margin-top: 0; color: #366092;">Nota fiscal</h3>
+                        <div class="relatorios-lista">
+                            <div class="relatorio-item">
+                                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                    <label for="ter-relatorio-nf-id">ID da NF:</label>
+                                    <input type="number" id="ter-relatorio-nf-id" placeholder="Ex.: 42" style="width: 120px;" min="1">
+                                    <button type="button" class="btn btn-primary" onclick="exportarRelatorioTerceirosNf()">📥 Exportar NF e itens</button>
+                                </div>
+                                <span>Planilha com dados da NF e todos os itens (XML x bipado).</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-container relatorios-secao">
+                        <h3 style="margin-top: 0; color: #366092;">Resumo e bipagem</h3>
+                        <div class="relatorios-lista">
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosResumoNf()">📥 Resumo por NF</button>
+                                <span>Uma linha por nota: etapa, quantidades, status e carreta.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosItensBipados()">📥 Tudo que foi bipado</button>
+                                <span>Todos os itens com quantidade bipada.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosItensMaisBipados()">📥 Itens mais bipados</button>
+                                <span>Ranking de produtos por quantidade total bipada.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-container relatorios-secao">
+                        <h3 style="margin-top: 0; color: #366092;">Divergências e carreta</h3>
+                        <div class="relatorios-lista">
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-secondary" onclick="gerarRelatorioTerceirosDivergencias()">📥 NFs com divergência</button>
+                                <span>Notas com diferença entre XML e bipagem ou itens divergentes.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosCarreta()">📥 Carreta — motorista e chegada</button>
+                                <span>NFs da área carreta com previsão, início da descarga e recebimento.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="terceiros-panel-historico" class="devolucoes-panel">
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🗂️</span>
                         <h2 class="painel-titulo-texto">Histórico de NFs</h2>
-                        <p class="painel-titulo-sub">Notas que já saíram da <strong>Pendência de recebimento</strong> (recebimento concluído). O andamento das demais etapas aparece nas colunas seguintes.</p>
+                        <p class="painel-titulo-sub"><strong>Carreta:</strong> após concluir na 5ª aba. <strong>Demais rotas:</strong> após <strong>Enviado para MG</strong> = Sim na 6ª aba.</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
@@ -1949,8 +2016,8 @@
                                         <th title="Recebimento">Receb.</th>
                                         <th title="Conferência">Conf.</th>
                                         <th title="Nota lançada">Lançada</th>
-                                        <th title="Enviar para MG">Env. MG</th>
-                                        <th title="Recebida em MG">Rec. MG</th>
+                                        <th>Enviar MG</th>
+                                        <th>Recebida MG</th>
                                         <th>Ações</th>
                                     </tr>
                                 </thead>
@@ -2116,16 +2183,16 @@
     <div id="modal-terceiros-ir-recebimentos-mg" class="modal" style="display: none;">
         <div class="modal-content" style="max-width: 480px; border-top: 4px solid #366092;">
             <span class="close" id="modal-terceiros-ir-recebimentos-mg-close">&times;</span>
-            <h3 style="margin-top: 0; color: #366092;">Enviado para MG registrado</h3>
+            <h3 style="margin-top: 0; color: #366092;">Etapa concluída</h3>
             <p style="margin: 12px 0; color: #455a64;">
-                O envio desta NF para MG foi confirmado.
+                O registro foi salvo com sucesso.
             </p>
             <p style="margin: 0 0 20px 0; color: #607d8b;">
-                Deseja ir para a <strong>8ª aba — Recebimentos de MG</strong> para registrar o recebimento da carga?
+                Deseja ir para o <strong>Histórico</strong> para acompanhar esta NF? O recebimento em MG, se necessário, pode ser registrado depois na <strong>8ª aba — Recebimentos de MG</strong>.
             </p>
             <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
                 <button type="button" class="btn btn-secondary" id="btn-ter-ficar-pendencias-mg">Não, ficar nesta aba</button>
-                <button type="button" class="btn btn-primary" id="btn-ter-ir-recebimentos-mg">Sim, ir para Recebimentos de MG</button>
+                <button type="button" class="btn btn-primary" id="btn-ter-ir-recebimentos-mg">Sim, ir para o Histórico</button>
             </div>
         </div>
     </div>
@@ -2182,6 +2249,23 @@
         </div>
     </div>
 
+    <div id="modal-terceiros-upload-xml-concluido" class="modal modal-ter-upload-sucesso" style="display: none;" role="alertdialog" aria-modal="true" aria-labelledby="ter-upload-sucesso-titulo" aria-describedby="ter-upload-sucesso-resumo">
+        <div class="modal-content modal-ter-upload-sucesso-box">
+            <span class="close" id="modal-terceiros-upload-xml-concluido-close" title="Fechar">&times;</span>
+            <div class="ter-upload-sucesso-icone-wrap" aria-hidden="true">
+                <span class="ter-upload-sucesso-icone">✓</span>
+            </div>
+            <h3 id="ter-upload-sucesso-titulo" class="ter-upload-sucesso-titulo">Upload concluído!</h3>
+            <p id="ter-upload-sucesso-resumo" class="ter-upload-sucesso-resumo"></p>
+            <div id="ter-upload-sucesso-detalhes" class="ter-upload-sucesso-detalhes"></div>
+            <ul id="ter-upload-sucesso-erros" class="ter-upload-sucesso-erros-lista" hidden></ul>
+            <div class="ter-upload-sucesso-acoes">
+                <button type="button" class="btn btn-primary" id="btn-ter-upload-ir-pendencia">Ver Pendência de recebimento</button>
+                <button type="button" class="btn btn-secondary" id="btn-ter-upload-fechar">Fechar</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modal-terceiros-recebimento-concluido" class="modal modal-terceiros-recebimento-concluido" style="display: none;" role="alertdialog" aria-modal="true" aria-labelledby="ter-rec-concluido-aviso-titulo" aria-describedby="ter-rec-concluido-aviso-texto">
         <div class="modal-content modal-terceiros-recebimento-concluido-box" style="max-width: 420px; border-top: 4px solid #366092;">
             <span class="close" id="modal-terceiros-recebimento-concluido-close" title="Fechar">&times;</span>
@@ -2201,6 +2285,18 @@
                 <button type="button" class="btn btn-secondary" id="btn-ter-proxima-etapa-lancamento">Próxima etapa: NFs pendentes de lançamento</button>
                 <button type="button" class="btn btn-primary" id="btn-ter-fechar-recebimento-concluido">Fechar</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Carregando ao abrir descarga (terceiros) -->
+    <div id="ter-descarga-loading-overlay" class="ter-descarga-loading-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="ter-descarga-loading-text" aria-busy="true">
+        <div class="ter-descarga-loading-box">
+            <p id="ter-descarga-loading-text" class="ter-descarga-loading-text">Abrindo descarga…</p>
+            <div class="ter-descarga-loading-bar-track" aria-hidden="true">
+                <div class="ter-descarga-loading-bar"></div>
+            </div>
+            <p class="ter-descarga-loading-sub">Aguarde enquanto a nota fiscal é carregada.</p>
+            <button type="button" class="btn btn-secondary ter-descarga-loading-cancel" id="btn-ter-descarga-loading-cancel">Cancelar</button>
         </div>
     </div>
 

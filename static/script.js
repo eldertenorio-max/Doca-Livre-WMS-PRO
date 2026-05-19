@@ -130,6 +130,8 @@ let _terceirosRecebimentoConcluindo = false;
 let _terceirosConfirmacaoLancamentoResolver = null;
 let _terceirosConfirmacaoIrNotasLancadasResolver = null;
 let _terceirosConfirmacaoIrRecebimentosMgResolver = null;
+/** Evita fechar modal de confirmação no mesmo clique que abriu (ex.: «Sim» no select + backdrop). */
+let _terceirosIgnorarCliqueBackdropModalAte = 0;
 let _terceirosExcluirDocumentoResolver = null;
 let _terceirosExcluirDocumentoAtual = null;
 /** Após mudar de etapa: destaca a linha desta NF na tabela da aba de destino (data-ter-doc-id). */
@@ -192,13 +194,18 @@ function _persistirTerceirosDocumentoNaSessao(documentoId, area) {
             _limparTerceirosDocumentoNaSessao();
             return;
         }
+        /* Só persiste NF aberta na pendência (descarga/bipagem). Evita reabrir MG/listas após o sininho. */
+        if (_terceirosTabAtual !== 'pendencia-recebimento') {
+            _limparTerceirosDocumentoNaSessao();
+            return;
+        }
         var aid = Number(documentoId);
         if (!Number.isFinite(aid) || aid <= 0) return;
         var ar = (area === 'expedicao' || area === 'carreta') ? area : 'recebimento';
         var payload = {
             id: aid,
             area: ar,
-            tab: typeof _terceirosTabAtual !== 'undefined' ? _terceirosTabAtual : 'pendencia-recebimento',
+            tab: 'pendencia-recebimento',
             t: Date.now()
         };
         sessionStorage.setItem(TERCEIROS_SESS_DOC_KEY, JSON.stringify(payload));
@@ -253,8 +260,37 @@ async function recarregarListaTerceirosTab(tab) {
     if (tab === 'notas-enviadas-mg') return loadTerceirosNotasEnviadasMg(pre);
     if (tab === 'recebimentos-mg') return loadTerceirosRecebimentosMg(pre);
     if (tab === 'historico') return loadTerceirosHistorico(pre);
+    if (tab === 'relatorios') return undefined;
     return undefined;
 }
+
+var TERCEIROS_FLUXO_ABAS = [
+    'painel',
+    'enviar-xml',
+    'pendencia-recebimento',
+    'fornecedores-recebidos',
+    'pendentes-lancamento',
+    'notas-lancadas',
+    'pendencias-mg',
+    'notas-enviadas-mg',
+    'recebimentos-mg',
+    'historico',
+    'relatorios'
+];
+
+var TERCEIROS_LABEL_ABA = {
+    'painel': 'Painel',
+    'enviar-xml': 'Enviar XML',
+    'pendencia-recebimento': 'Pendência de recebimento',
+    'fornecedores-recebidos': 'Fornecedores recebidos',
+    'pendentes-lancamento': 'NFs pendentes de lançamento',
+    'notas-lancadas': 'Notas fiscais lançadas',
+    'pendencias-mg': 'Pendências envio MG',
+    'notas-enviadas-mg': 'Notas enviadas para MG',
+    'recebimentos-mg': 'Recebimentos de MG',
+    'historico': 'Histórico',
+    'relatorios': 'Relatórios'
+};
 
 function _terceirosNormalizarAbaTab(tab) {
     var aba = 'painel';
@@ -268,7 +304,61 @@ function _terceirosNormalizarAbaTab(tab) {
     if (tab === 'recebimentos-mg') aba = 'recebimentos-mg';
     if (tab === 'pendencias-mg') aba = 'pendencias-mg';
     if (tab === 'historico') aba = 'historico';
+    if (tab === 'relatorios') aba = 'relatorios';
     return aba;
+}
+
+function _terceirosIndiceAbaFluxo(aba) {
+    return TERCEIROS_FLUXO_ABAS.indexOf(_terceirosNormalizarAbaTab(aba));
+}
+
+function terceirosAbaAnteriorNoFluxo(aba) {
+    var idx = _terceirosIndiceAbaFluxo(aba);
+    if (idx <= 0) return null;
+    return TERCEIROS_FLUXO_ABAS[idx - 1];
+}
+
+/** A partir da 3ª etapa numerada (Fornecedores recebidos). */
+function terceirosDeveExibirVoltarAba(aba) {
+    return _terceirosIndiceAbaFluxo(aba) >= 3;
+}
+
+function terceirosVoltarParaAbaAnterior(abaAtual) {
+    var anterior = terceirosAbaAnteriorNoFluxo(abaAtual || _terceirosTabAtual);
+    if (!anterior) return;
+    if (window.terceirosMostrarAba) window.terceirosMostrarAba(anterior);
+}
+window.terceirosVoltarParaAbaAnterior = terceirosVoltarParaAbaAnterior;
+
+function initTerceirosBotaoVoltarAbas() {
+    if (window._terceirosBotaoVoltarAbasOk) return;
+    window._terceirosBotaoVoltarAbasOk = true;
+    TERCEIROS_FLUXO_ABAS.forEach(function(aba) {
+        if (!terceirosDeveExibirVoltarAba(aba)) return;
+        var panel = document.getElementById('terceiros-panel-' + aba);
+        if (!panel) return;
+        if (panel.querySelector('.ter-btn-voltar-aba[data-ter-voltar-de="' + aba + '"]')) return;
+        var anterior = terceirosAbaAnteriorNoFluxo(aba);
+        if (!anterior) return;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-secondary ter-btn-voltar-aba';
+        btn.setAttribute('data-ter-voltar-de', aba);
+        var lbl = TERCEIROS_LABEL_ABA[anterior] || anterior;
+        btn.textContent = '← Voltar: ' + lbl;
+        btn.title = 'Voltar para ' + lbl;
+        btn.addEventListener('click', function() {
+            terceirosVoltarParaAbaAnterior(aba);
+        });
+        var cabecalho = panel.querySelector('.painel-titulo');
+        if (cabecalho) {
+            cabecalho.insertBefore(btn, cabecalho.firstChild);
+        } else {
+            var tituloPrincipal = panel.querySelector('h2.devolucoes-titulo-principal');
+            if (tituloPrincipal) panel.insertBefore(btn, tituloPrincipal);
+            else panel.insertBefore(btn, panel.firstChild);
+        }
+    });
 }
 
 /** Atualiza botões e painéis da sub-aba (sem fetch). */
@@ -285,7 +375,8 @@ function terceirosAplicarPainelAbaSomenteUi(aba) {
     var recebimentosMg = document.getElementById('terceiros-panel-recebimentos-mg');
     var pendenciasMg = document.getElementById('terceiros-panel-pendencias-mg');
     var historico = document.getElementById('terceiros-panel-historico');
-    if (!botoes.length || !painel || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico) return;
+    var relatorios = document.getElementById('terceiros-panel-relatorios');
+    if (!botoes.length || !painel || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico || !relatorios) return;
     botoes.forEach(function(btn) {
         btn.classList.toggle('active', btn.getAttribute('data-ter-tab') === aba);
     });
@@ -299,8 +390,11 @@ function terceirosAplicarPainelAbaSomenteUi(aba) {
     recebimentosMg.classList.toggle('devolucoes-panel-active', aba === 'recebimentos-mg');
     pendenciasMg.classList.toggle('devolucoes-panel-active', aba === 'pendencias-mg');
     historico.classList.toggle('devolucoes-panel-active', aba === 'historico');
+    relatorios.classList.toggle('devolucoes-panel-active', aba === 'relatorios');
     _persistirTerceirosSubabaNaSessao(aba);
-    if (_terceirosDocAtual && _terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '') {
+    if (aba !== 'pendencia-recebimento') {
+        _limparTerceirosDocumentoNaSessao();
+    } else if (_terceirosDocAtual && _terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '') {
         _persistirTerceirosDocumentoNaSessao(_terceirosDocAtual.id, _terceirosDocAtual.area);
     }
     if (aba === 'painel') {
@@ -426,6 +520,28 @@ function _terceirosRemoverLinhaPendentesLancamento(documentoId) {
     if (tr) tr.remove();
     if (!tbody.querySelector('tr[data-ter-doc-id]')) {
         tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_POS_RECEBIMENTO + '" class="loading">Nenhuma NF aguardando lançamento fiscal. As notas entram aqui quando aparecem em <strong>Fornecedores recebidos</strong> com <strong>Nota lançada</strong> ainda sem marcar como Sim.</td></tr>';
+    }
+}
+
+function _terceirosAtualizarEnviarMgLocal(documentoId, valorNorm) {
+    if (documentoId == null) return;
+    var id = String(documentoId);
+    var locais = window._terceirosFornecedoresRecebidosLocais || {};
+    if (locais[id]) {
+        locais[id] = Object.assign({}, locais[id], { enviar_para_mg: valorNorm });
+    }
+    if (_terceirosDocAtual && String(_terceirosDocAtual.id) === id) {
+        _terceirosDocAtual.enviar_para_mg = valorNorm;
+    }
+}
+
+function _terceirosRemoverLinhaPendenciasMg(documentoId) {
+    var tbody = document.getElementById('ter-tbody-pendencias-mg');
+    if (!tbody || documentoId == null) return;
+    var tr = tbody.querySelector('tr[data-ter-doc-id="' + String(documentoId) + '"]');
+    if (tr) tr.remove();
+    if (!tbody.querySelector('tr[data-ter-doc-id]')) {
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF aguardando <strong>Enviado para MG</strong>. As notas entram aqui após o lançamento fiscal na 5ª aba.</td></tr>';
     }
 }
 
@@ -609,6 +725,10 @@ function initDevolucoesTabs() {
 }
 
 function initTerceirosTabs() {
+    var sessDoc = _lerTerceirosDocumentoNaSessao();
+    if (sessDoc && sessDoc.tab && sessDoc.tab !== 'pendencia-recebimento') {
+        _limparTerceirosDocumentoNaSessao();
+    }
     var botoes = document.querySelectorAll('.terceiros-subtab[data-ter-tab]');
     var painel = document.getElementById('terceiros-panel-painel');
     var enviarXml = document.getElementById('terceiros-panel-enviar-xml');
@@ -620,7 +740,8 @@ function initTerceirosTabs() {
     var recebimentosMg = document.getElementById('terceiros-panel-recebimentos-mg');
     var pendenciasMg = document.getElementById('terceiros-panel-pendencias-mg');
     var historico = document.getElementById('terceiros-panel-historico');
-    if (!botoes.length || !painel || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico) return;
+    var relatorios = document.getElementById('terceiros-panel-relatorios');
+    if (!botoes.length || !painel || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico || !relatorios) return;
 
     function mostrarTerTab(tab) {
         var aba = _terceirosNormalizarAbaTab(tab);
@@ -635,6 +756,10 @@ function initTerceirosTabs() {
     });
 
     window.terceirosMostrarAba = mostrarTerTab;
+    var btnTerDescargaCancel = document.getElementById('btn-ter-descarga-loading-cancel');
+    if (btnTerDescargaCancel) {
+        btnTerDescargaCancel.addEventListener('click', cancelarCarregandoDescargaTerceiros);
+    }
     var tabInicial = 'painel';
     var sub = _lerTerceirosSubabaNaSessao();
     if (sub && sub.tab) {
@@ -643,43 +768,42 @@ function initTerceirosTabs() {
         var sessTab = _lerTerceirosDocumentoNaSessao();
         if (sessTab && sessTab.tab) tabInicial = sessTab.tab;
     }
+    initTerceirosBotaoVoltarAbas();
     mostrarTerTab(tabInicial);
     void _terceirosGarantirPrefetchLista();
 }
 
-/** Após init: reabre módulo + NF se havia sessão (F5). */
+/** Após init: reabre pendência + NF só com ?modulo=terceiros (F5 na descarga). Não rouba outras telas. */
 async function restaurarTerceirosUltimaNotaSeSessao() {
+    var urlMod = '';
+    try {
+        urlMod = (new URL(window.location.href).searchParams.get('modulo') || '').toLowerCase();
+    } catch (e) {}
+    if (urlMod !== 'terceiros') return;
+
     var o = _lerTerceirosDocumentoNaSessao();
     if (!o || !o.id) return;
-    if ((o.tab || '') === 'painel') return;
+    if ((o.tab || '') !== 'pendencia-recebimento') {
+        _limparTerceirosDocumentoNaSessao();
+        return;
+    }
     if (window.controleMostrarModulo) window.controleMostrarModulo('terceiros');
-    var aba = o.tab || 'pendencia-recebimento';
     var area = (o.area === 'expedicao' || o.area === 'carreta') ? o.area : 'recebimento';
     try {
         var data = await fetchTerceirosDocumentosTodos();
         var rows = _terceirosMesclarRecebidosLocaisNasRows(data.rows || []);
         var row = rows.filter(function(r) { return String(r.id) === String(o.id); })[0];
         if (row && !_terceirosConsideraPendenciaRecebimento(row)) {
-            aba = 'fornecedores-recebidos';
-            _persistirTerceirosSubabaNaSessao(aba);
-            if (window.terceirosMostrarAba) window.terceirosMostrarAba(aba);
+            _limparTerceirosDocumentoNaSessao();
+            _persistirTerceirosSubabaNaSessao('fornecedores-recebidos');
+            if (window.terceirosMostrarAba) window.terceirosMostrarAba('fornecedores-recebidos');
             definirDestaqueLinhaTerceirosDoc(o.id);
-            try {
-                var u = new URL(window.location.href);
-                u.searchParams.set('modulo', 'terceiros');
-                history.replaceState({}, '', u.toString());
-            } catch (e2) {}
             return;
         }
     } catch (e) {
         console.error(e);
     }
-    if (window.terceirosMostrarAba) window.terceirosMostrarAba(aba);
-    try {
-        var u = new URL(window.location.href);
-        u.searchParams.set('modulo', 'terceiros');
-        history.replaceState({}, '', u.toString());
-    } catch (e2) {}
+    if (window.terceirosMostrarAba) window.terceirosMostrarAba('pendencia-recebimento');
     void loadTerceirosDocumentoDetalhe(area, o.id);
 }
 
@@ -898,6 +1022,8 @@ let terChartRemetentes = null;
 let terChartPlacas = null;
 let terChartUf = null;
 let terChartConferencia = null;
+let terChartMotoristas = null;
+let terChartChegadasCarreta = null;
 window._terceirosPainelUltimoData = null;
 
 function _terceirosPainelModuloVisivel() {
@@ -948,8 +1074,8 @@ function _painelTerceirosStatsRapidasFromRows(rows) {
         if (isTerceirosFlagSim(row.recebimento_concluido)) s.recebimento_concluido += 1;
         if (_terceirosConsideraFornecedorRecebido(row)) s.fornecedores_recebidos += 1;
         if (_terceirosConsideraPendenteLancamento(row)) s.pendentes_lancamento += 1;
-        if (isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg)) s.notas_lancadas += 1;
-        if (isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg)) s.pendencias_mg += 1;
+        if (_terceirosConsideraNotasLancadas(row)) s.notas_lancadas += 1;
+        if (_terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg)) s.pendencias_mg += 1;
         if (isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg)) s.recebimentos_mg += 1;
         if (_terceirosConsideraPendenciaRecebimento(row)) s.pendencia_recebimento += 1;
         if (divIt === 0 && Math.abs(qXml - qBip) <= 1e-6 && qXml > 1e-9) s.conferencia_ok += 1;
@@ -990,6 +1116,30 @@ function destroyPainelTerceirosCharts() {
     if (terChartPlacas) { terChartPlacas.destroy(); terChartPlacas = null; }
     if (terChartUf) { terChartUf.destroy(); terChartUf = null; }
     if (terChartConferencia) { terChartConferencia.destroy(); terChartConferencia = null; }
+    if (terChartMotoristas) { terChartMotoristas.destroy(); terChartMotoristas = null; }
+    if (terChartChegadasCarreta) { terChartChegadasCarreta.destroy(); terChartChegadasCarreta = null; }
+    document.querySelectorAll('#terceiros-panel-painel .chart-box--oculto').forEach(function(box) {
+        box.classList.remove('chart-box--oculto');
+    });
+}
+
+function _terceirosMarcarChartBoxPainel(canvasId, temGrafico) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var box = canvas.closest('.chart-box');
+    if (box) box.classList.toggle('chart-box--oculto', !temGrafico);
+}
+
+function _terPainelLabelCurtoDatahora(datahoraBr) {
+    if (!datahoraBr) return '-';
+    var s = String(datahoraBr).trim();
+    var partes = s.split(/\s+/);
+    if (partes.length < 2) return s.length > 14 ? s.slice(0, 14) : s;
+    var data = partes[0];
+    var hora = partes[1];
+    if (data.length >= 5) data = data.slice(0, 5);
+    if (hora.length >= 5) hora = hora.slice(0, 5);
+    return data + ' ' + hora;
 }
 
 function renderPainelTerceirosCharts(data) {
@@ -1124,6 +1274,98 @@ function renderPainelTerceirosCharts(data) {
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
         });
     }
+    var topMot = (data.top_motoristas || []).slice(0, 10);
+    var ctxMot = document.getElementById('ter-chart-motoristas');
+    if (ctxMot && topMot.length) {
+        terChartMotoristas = new Chart(ctxMot, {
+            type: 'bar',
+            data: {
+                labels: topMot.map(function(m) {
+                    var nome = (m.motorista || '-').trim();
+                    return nome.length > 28 ? nome.slice(0, 26) + '…' : nome;
+                }),
+                datasets: [{
+                    label: 'NFs',
+                    data: topMot.map(function(m) { return m.nfs || 0; }),
+                    backgroundColor: '#ef6c00',
+                    borderColor: '#e65100',
+                    borderWidth: 1
+                }]
+            },
+            options: Object.assign({}, optsBar, {
+                indexAxis: 'y',
+                scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: function(items) {
+                                var idx = items[0] && items[0].dataIndex;
+                                return (topMot[idx] && topMot[idx].motorista) || '';
+                            }
+                        }
+                    }
+                }
+            })
+        });
+    }
+    var chegadas = (data.chegadas_carreta || []).slice(-15);
+    var ctxCh = document.getElementById('ter-chart-chegadas-carreta');
+    if (ctxCh && chegadas.length) {
+        terChartChegadasCarreta = new Chart(ctxCh, {
+            type: 'bar',
+            data: {
+                labels: chegadas.map(function(c) {
+                    return _terPainelLabelCurtoDatahora(c.inicio_descarga);
+                }),
+                datasets: [{
+                    label: 'Início descarga',
+                    data: chegadas.map(function() { return 1; }),
+                    backgroundColor: '#1565c0',
+                    borderColor: '#0d47a1',
+                    borderWidth: 1
+                }]
+            },
+            options: Object.assign({}, optsBar, {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 1.2,
+                        ticks: { display: false },
+                        grid: { display: false }
+                    },
+                    x: {
+                        ticks: { maxRotation: 55, minRotation: 35, font: { size: 10 } }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                var c = chegadas[ctx.dataIndex];
+                                if (!c) return '';
+                                return [
+                                    'Início: ' + (c.inicio_descarga || '-'),
+                                    'Motorista: ' + (c.motorista || '-'),
+                                    'Placa: ' + (c.placa || '-'),
+                                    'NF: ' + (c.nf || '-')
+                                ];
+                            }
+                        }
+                    }
+                }
+            })
+        });
+    }
+    _terceirosMarcarChartBoxPainel('ter-chart-etapas', !!terChartEtapas);
+    _terceirosMarcarChartBoxPainel('ter-chart-bipagem-xml', !!terChartBipagemXml);
+    _terceirosMarcarChartBoxPainel('ter-chart-remetentes', !!terChartRemetentes);
+    _terceirosMarcarChartBoxPainel('ter-chart-placas', !!terChartPlacas);
+    _terceirosMarcarChartBoxPainel('ter-chart-uf', !!terChartUf);
+    _terceirosMarcarChartBoxPainel('ter-chart-conferencia', !!terChartConferencia);
+    _terceirosMarcarChartBoxPainel('ter-chart-motoristas', !!terChartMotoristas);
+    _terceirosMarcarChartBoxPainel('ter-chart-chegadas-carreta', !!terChartChegadasCarreta);
 }
 
 async function loadPainelTerceiros() {
@@ -1239,6 +1481,92 @@ function fecharModalRecebimentoConcluidoTerceiros() {
     abrirAbaTerceirosSeDiferente('fornecedores-recebidos');
 }
 
+function _terceirosLabelAreaUpload(areaChave) {
+    if (areaChave === 'carreta') return 'Carreta';
+    if (areaChave === 'expedicao') return 'Expedição';
+    return 'Recebimento';
+}
+
+function _terceirosFormatarPrevisaoUpload(isoLocal) {
+    if (!isoLocal) return '';
+    var d = new Date(isoLocal);
+    if (isNaN(d.getTime())) return isoLocal;
+    try {
+        return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+        return isoLocal;
+    }
+}
+
+function abrirModalUploadXmlTerceirosConcluido(opcoes) {
+    opcoes = opcoes || {};
+    var modal = document.getElementById('modal-terceiros-upload-xml-concluido');
+    if (!modal) return;
+    var total = opcoes.totalCriados || 0;
+    var erros = opcoes.erros || [];
+    var tituloEl = document.getElementById('ter-upload-sucesso-titulo');
+    var resumoEl = document.getElementById('ter-upload-sucesso-resumo');
+    var detalhesEl = document.getElementById('ter-upload-sucesso-detalhes');
+    var errosEl = document.getElementById('ter-upload-sucesso-erros');
+    var btnPendencia = document.getElementById('btn-ter-upload-ir-pendencia');
+    var sucesso = total > 0;
+    modal.classList.toggle('modal-ter-upload-sucesso--aviso', !sucesso);
+    if (tituloEl) tituloEl.textContent = sucesso ? 'Upload concluído!' : 'Nenhum XML aceito';
+    if (resumoEl) {
+        if (sucesso) {
+            var n = total === 1 ? 'nota fiscal' : 'notas fiscais';
+            resumoEl.textContent = total + ' ' + n + ' registrada(s) com sucesso.';
+        } else {
+            resumoEl.textContent = 'Revise os arquivos enviados e tente novamente.';
+        }
+    }
+    if (detalhesEl) {
+        var partes = [];
+        if (opcoes.areaLabel) partes.push('<strong>Área:</strong> ' + opcoes.areaLabel);
+        if (opcoes.previsao) partes.push('<strong>Previsão de chegada:</strong> ' + _terceirosFormatarPrevisaoUpload(opcoes.previsao));
+        if (sucesso) {
+            partes.push('As notas aparecem na aba <strong>Pendência de recebimento</strong> para conferência.');
+        }
+        detalhesEl.innerHTML = partes.join('<br>');
+    }
+    if (errosEl) {
+        errosEl.innerHTML = '';
+        if (erros.length) {
+            erros.forEach(function(msg) {
+                var li = document.createElement('li');
+                li.textContent = msg;
+                errosEl.appendChild(li);
+            });
+            errosEl.hidden = false;
+        } else {
+            errosEl.hidden = true;
+        }
+    }
+    if (btnPendencia) btnPendencia.style.display = sucesso ? '' : 'none';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    var btnFechar = document.getElementById('btn-ter-upload-fechar');
+    window.setTimeout(function() {
+        if (btnFechar) btnFechar.focus();
+    }, 50);
+}
+
+function fecharModalUploadXmlTerceirosConcluido() {
+    var modal = document.getElementById('modal-terceiros-upload-xml-concluido');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.style.alignItems = '';
+        modal.style.justifyContent = '';
+        modal.classList.remove('modal-ter-upload-sucesso--aviso');
+    }
+}
+
+function terceirosIrParaPendenciaAposUpload() {
+    fecharModalUploadXmlTerceirosConcluido();
+    if (window.terceirosMostrarAba) window.terceirosMostrarAba('pendencia-recebimento');
+}
+
 /** Fecha o modal e leva à próxima aba do fluxo (NFs pendentes de lançamento). */
 function terceirosIrParaProximaEtapaLancamento() {
     var modal = document.getElementById('modal-terceiros-recebimento-concluido');
@@ -1251,9 +1579,33 @@ function terceirosIrParaProximaEtapaLancamento() {
 }
 window.terceirosIrParaProximaEtapaLancamento = terceirosIrParaProximaEtapaLancamento;
 
+function _terceirosPrepararModalConfirmacaoBackdrop() {
+    _terceirosIgnorarCliqueBackdropModalAte = Date.now() + 400;
+}
+
+function _terceirosDeveIgnorarCliqueBackdropModal() {
+    return Date.now() < _terceirosIgnorarCliqueBackdropModalAte;
+}
+
+function _terceirosExibirModalOverlay(modal) {
+    if (!modal) return;
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.zIndex = '10050';
+}
+
+function _terceirosOcultarModalOverlay(modal) {
+    if (!modal) return;
+    modal.style.display = 'none';
+    modal.style.alignItems = '';
+    modal.style.justifyContent = '';
+    modal.style.zIndex = '';
+}
+
 function fecharModalLancamentoSemRecebimento(confirmado) {
     var modal = document.getElementById('modal-terceiros-lancar-sem-recebimento');
-    if (modal) modal.style.display = 'none';
+    _terceirosOcultarModalOverlay(modal);
     if (_terceirosConfirmacaoLancamentoResolver) {
         _terceirosConfirmacaoLancamentoResolver(!!confirmado);
         _terceirosConfirmacaoLancamentoResolver = null;
@@ -1265,15 +1617,18 @@ function abrirModalLancamentoSemRecebimento() {
     if (!modal) {
         return Promise.resolve(window.confirm('Esta nota fiscal ainda não foi recebida. Deseja lançar mesmo assim?'));
     }
-    modal.style.display = 'block';
     return new Promise(function(resolve) {
         _terceirosConfirmacaoLancamentoResolver = resolve;
+        _terceirosPrepararModalConfirmacaoBackdrop();
+        window.setTimeout(function() {
+            _terceirosExibirModalOverlay(modal);
+        }, 0);
     });
 }
 
 function fecharModalIrParaNotasLancadas(confirmado) {
     var modal = document.getElementById('modal-terceiros-ir-notas-lancadas');
-    if (modal) modal.style.display = 'none';
+    _terceirosOcultarModalOverlay(modal);
     if (_terceirosConfirmacaoIrNotasLancadasResolver) {
         _terceirosConfirmacaoIrNotasLancadasResolver(!!confirmado);
         _terceirosConfirmacaoIrNotasLancadasResolver = null;
@@ -1285,9 +1640,12 @@ function abrirModalIrParaNotasLancadas() {
     if (!modal) {
         return Promise.resolve(window.confirm('Nota lançada com sucesso. Deseja ir para a 5ª aba — Notas fiscais lançadas?'));
     }
-    modal.style.display = 'block';
     return new Promise(function(resolve) {
         _terceirosConfirmacaoIrNotasLancadasResolver = resolve;
+        _terceirosPrepararModalConfirmacaoBackdrop();
+        window.setTimeout(function() {
+            _terceirosExibirModalOverlay(modal);
+        }, 0);
     });
 }
 
@@ -1322,7 +1680,7 @@ async function _terceirosAposConfirmarNotaLancadaSim(documentoId, documentoResp)
 
 function fecharModalIrParaRecebimentosMg(confirmado) {
     var modal = document.getElementById('modal-terceiros-ir-recebimentos-mg');
-    if (modal) modal.style.display = 'none';
+    _terceirosOcultarModalOverlay(modal);
     if (_terceirosConfirmacaoIrRecebimentosMgResolver) {
         _terceirosConfirmacaoIrRecebimentosMgResolver(!!confirmado);
         _terceirosConfirmacaoIrRecebimentosMgResolver = null;
@@ -1332,49 +1690,97 @@ function fecharModalIrParaRecebimentosMg(confirmado) {
 function abrirModalIrParaRecebimentosMg() {
     var modal = document.getElementById('modal-terceiros-ir-recebimentos-mg');
     if (!modal) {
-        return Promise.resolve(window.confirm('Enviado para MG registrado. Deseja ir para a 8ª aba — Recebimentos de MG?'));
+        return Promise.resolve(window.confirm('Enviado para MG registrado. Deseja ir para o Histórico?'));
     }
-    modal.style.display = 'block';
     return new Promise(function(resolve) {
         _terceirosConfirmacaoIrRecebimentosMgResolver = resolve;
+        _terceirosPrepararModalConfirmacaoBackdrop();
+        window.setTimeout(function() {
+            _terceirosExibirModalOverlay(modal);
+        }, 0);
     });
 }
 
-/** 6ª → 8ª aba: após marcar «Sim» em Enviado para MG. */
-async function terceirosNavegarParaRecebimentosMgAposMarcarSim(documentoId) {
+/** 6ª aba → Histórico: após marcar «Sim» em Enviado para MG. */
+async function terceirosNavegarParaHistoricoAposEnviarMg(documentoId) {
     if (documentoId == null) return;
     definirDestaqueLinhaTerceirosDoc(documentoId);
-    abrirAbaTerceirosSeDiferente('recebimentos-mg', true);
+    abrirAbaTerceirosSeDiferente('historico', true);
     try {
-        await loadTerceirosRecebimentosMg();
-        var tbody8 = document.getElementById('ter-tbody-recebimentos-mg');
-        if (tbody8) aplicarDestaqueLinhaTerceirosDoc(tbody8);
+        await loadTerceirosHistorico();
+        var tbodyHist = document.getElementById('ter-tbody-historico');
+        if (tbodyHist) aplicarDestaqueLinhaTerceirosDoc(tbodyHist);
     } catch (e) {
         console.error(e);
     }
     try {
         void loadTerceirosPendenciasMg();
         void loadTerceirosNotasLancadas();
+        void loadTerceirosRecebimentosMg();
     } catch (e2) {
         console.error(e2);
     }
 }
 
-/** Após salvar «Sim» em Enviado para MG: pergunta se vai à 8ª aba. */
-async function _terceirosAposConfirmarEnviarMgSim(documentoId, documentoResp) {
+/** 5ª aba — carreta: encerra fluxo local (sem MG) e vai ao Histórico. */
+async function _terceirosConcluirCarretaNoHistorico(documentoId) {
     if (documentoId == null) return;
+    await atualizarStatusTerceirosDireto(documentoId, 'carga_recebida_mg', 'sim', { forcar_fluxo_carreta: true });
+}
+
+async function _terceirosAposConcluirCarretaNoHistorico(documentoId, documentoResp) {
+    if (documentoId == null) return;
+    if (documentoResp && _terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
+        Object.assign(_terceirosDocAtual, documentoResp);
+    }
     invalidateTerceirosListaCache();
-    var irAba8 = await abrirModalIrParaRecebimentosMg();
-    if (irAba8) {
-        await terceirosNavegarParaRecebimentosMgAposMarcarSim(documentoId);
-        showMessage('Enviado para MG registrado. Você está na aba Recebimentos de MG.', 'success');
+    var irHistorico = await abrirModalIrParaRecebimentosMg();
+    if (irHistorico) {
+        await terceirosNavegarParaHistoricoAposEnviarMg(documentoId);
+        showMessage('NF de carreta registrada no histórico.', 'success');
         return;
     }
     definirDestaqueLinhaTerceirosDoc(documentoId);
     try {
-        await recarregarListaTerceirosTab(_terceirosTabAtual);
-        void loadTerceirosPendenciasMg();
+        if (_terceirosTabAtual === 'notas-lancadas') {
+            await loadTerceirosNotasLancadas();
+        } else {
+            await recarregarListaTerceirosTab(_terceirosTabAtual);
+        }
+        void loadTerceirosHistorico();
+        void atualizarAlertasTerceirosHeader();
+    } catch (e) {
+        console.error(e);
+    }
+    showMessage('NF de carreta registrada no histórico.', 'success');
+}
+
+/** Após salvar «Sim» em Enviado para MG: remove da 6ª aba e pergunta se vai ao Histórico. */
+async function _terceirosAposConfirmarEnviarMgSim(documentoId, documentoResp) {
+    if (documentoResp && isTerceirosAreaCarreta(documentoResp)) {
+        showMessage('NF de carreta não utiliza envio para MG. Conclua na 5ª aba — Notas lançadas.', 'warning');
+        return;
+    }
+    if (documentoId == null) return;
+    var envVal = (documentoResp && documentoResp.enviar_para_mg) ? documentoResp.enviar_para_mg : 'sim';
+    _terceirosAtualizarEnviarMgLocal(documentoId, envVal);
+    invalidateTerceirosListaCache();
+    var irHistorico = await abrirModalIrParaRecebimentosMg();
+    if (irHistorico) {
+        await terceirosNavegarParaHistoricoAposEnviarMg(documentoId);
+        showMessage('Enviado para MG registrado. Você está no Histórico.', 'success');
+        return;
+    }
+    _terceirosRemoverLinhaPendenciasMg(documentoId);
+    definirDestaqueLinhaTerceirosDoc(documentoId);
+    try {
+        if (_terceirosTabAtual === 'pendencias-mg') {
+            await loadTerceirosPendenciasMg();
+        } else {
+            await recarregarListaTerceirosTab(_terceirosTabAtual);
+        }
         void loadTerceirosNotasLancadas();
+        void loadTerceirosHistorico();
         void loadTerceirosRecebimentosMg();
         void atualizarAlertasTerceirosHeader();
     } catch (e) {
@@ -1464,16 +1870,17 @@ async function uploadXmlTerceirosComPrefixo(prefixo, areaChave, opcoes) {
             resultadoEl.textContent = (data && data.erro) ? data.erro : 'Erro ao enviar XMLs.';
             return;
         }
-        resultadoEl.textContent = 'Upload concluído. ' + (data.total_criados || 0) + ' nota(s) criada(s).' + ((data.erros && data.erros.length) ? ' Erros: ' + data.erros.join(' | ') : '');
+        resultadoEl.textContent = '';
         filesEl.value = '';
         if (opcoes.exigeMotoristaPlaca && motEl) motEl.value = '';
         if (opcoes.exigeMotoristaPlaca && plaEl) plaEl.value = '';
         void recarregarTodasListasTerceiros();
-        if (data.total_criados > 0) {
-            showMessage('XMLs processados com sucesso.', 'success');
-        } else if (data.erros && data.erros.length) {
-            showMessage('Nenhum XML foi aceito neste envio.', 'warning');
-        }
+        abrirModalUploadXmlTerceirosConcluido({
+            totalCriados: data.total_criados || 0,
+            erros: data.erros || [],
+            previsao: previsaoEl.value.trim(),
+            areaLabel: _terceirosLabelAreaUpload(areaChave)
+        });
     } catch (e) {
         resultadoEl.textContent = 'Erro ao enviar XMLs.';
     }
@@ -1623,6 +2030,46 @@ function isTerceirosMotoristaObrigatorio(row) {
     return !!(row && row.motorista_obrigatorio);
 }
 
+/** XML enviado pelo bloco «Dados do envio (carreta)». */
+function isTerceirosAreaCarreta(row) {
+    return !!(row && String(row.area || '').toLowerCase() === 'carreta');
+}
+
+/** Rotas que passam pelas abas 6ª–8ª (envio/recebimento MG). */
+function _terceirosUsaFluxoMg(row) {
+    return !isTerceirosAreaCarreta(row);
+}
+
+/** 5ª aba: NF lançada aguardando conclusão (MG ou carreta). */
+function _terceirosConsideraNotasLancadas(row) {
+    if (!isTerceirosFlagSim(row && row.nota_lancada)) return false;
+    if (isTerceirosAreaCarreta(row)) {
+        return !isTerceirosFlagSim(row.carga_recebida_mg);
+    }
+    return !isTerceirosFlagSim(row.enviar_para_mg);
+}
+
+/** Histórico: carreta concluída na 5ª aba; demais rotas após envio MG. */
+function _terceirosConsideraHistorico(row) {
+    if (!_terceirosConsideraFornecedorRecebido(row)) return false;
+    if (isTerceirosAreaCarreta(row)) {
+        return isTerceirosFlagSim(row.nota_lancada) && isTerceirosFlagSim(row.carga_recebida_mg);
+    }
+    return isTerceirosFlagSim(row.enviar_para_mg);
+}
+
+function textoResumoEnviarMgHistorico(row) {
+    if (isTerceirosAreaCarreta(row)) return 'N/A';
+    return row.enviar_para_mg || '-';
+}
+
+function textoResumoRecebidaMgHistorico(row) {
+    if (isTerceirosAreaCarreta(row)) {
+        return isTerceirosFlagSim(row.carga_recebida_mg) ? 'Concluído' : '-';
+    }
+    return row.carga_recebida_mg || '-';
+}
+
 /** Resumo legível do status de nota lançada (aba Fornecedores recebidos). */
 function textoResumoNotaLancadaTerceiros(row) {
     if (isTerceirosFlagSim(row.nota_lancada)) return 'Sim';
@@ -1688,6 +2135,9 @@ function bindTerceirosSalvarMotoristaPlacaLista(tbody, attrPrefix) {
 
 /** Coluna somente leitura fora da 6ª aba (Pendências envio MG). */
 function renderTerceirosEnviarMgSomenteLeitura(row) {
+    if (isTerceirosAreaCarreta(row)) {
+        return '<span class="ter-status-meta">N/A — carga na carreta (sem envio MG)</span>';
+    }
     return renderTerceirosStatusComUsuario(
         textoResumoEnviarMgTerceiros(row),
         row.enviar_para_mg_por || '',
@@ -1697,6 +2147,9 @@ function renderTerceirosEnviarMgSomenteLeitura(row) {
 
 /** Coluna somente leitura fora da 8ª aba (Recebimentos de MG). */
 function renderTerceirosRecebidaMgSomenteLeitura(row) {
+    if (isTerceirosAreaCarreta(row)) {
+        return '<span class="ter-status-meta">Use o botão «Registrar no histórico» nesta linha</span>';
+    }
     return renderTerceirosStatusComUsuario(
         textoResumoRecebidaMgTerceiros(row),
         row.carga_recebida_mg_por || '',
@@ -1704,21 +2157,33 @@ function renderTerceirosRecebidaMgSomenteLeitura(row) {
     ) + '<div class="ter-status-meta">Alterar na aba <strong>Recebimentos de MG</strong></div>';
 }
 
-/** NF com pelo menos uma unidade bipada (sai da 2ª aba e entra em Fornecedores recebidos). */
+/** 5ª aba — carreta: concluir fluxo sem MG. */
+function renderTerceirosConclusaoCarretaTab5(row) {
+    if (!isTerceirosAreaCarreta(row)) {
+        return '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>';
+    }
+    return '<td><div class="ter-inline-stack">'
+        + '<button type="button" class="btn btn-primary btn-sm" data-ter-concluir-carreta-doc="' + escapeHtml(String(row.id)) + '">Registrar no histórico</button>'
+        + '<span class="ter-status-meta">Sem envio para MG</span>'
+        + '</div></td>';
+}
+
+/** NF com pelo menos uma unidade bipada (permanece na pendência até recebimento concluído). */
 function _terceirosTemBipagemIniciada(row) {
     if (!row) return false;
     var q = parseFloat(row.quantidade_total_bipada);
     return !isNaN(q) && q > 1e-9;
 }
 
+/** 3ª aba — somente após clicar em «Recebimento concluído» / finalizar descarga. */
 function _terceirosConsideraFornecedorRecebido(row) {
-    return isTerceirosFlagSim(row && row.recebimento_concluido) || _terceirosTemBipagemIniciada(row);
+    return isTerceirosFlagSim(row && row.recebimento_concluido);
 }
 
 /** Lançamento fiscal sem modal de aviso: recebimento concluído ou descarga já iniciada (bipagem). */
 function _terceirosPodeLancarNotaSemConfirmacaoRecebimento(rowLike) {
     if (!rowLike) return false;
-    return _terceirosConsideraFornecedorRecebido(rowLike);
+    return isTerceirosFlagSim(rowLike.recebimento_concluido) || _terceirosTemBipagemIniciada(rowLike);
 }
 
 function _terceirosOpPodeLancarNotaSemConfirmacao(opcoes) {
@@ -1736,7 +2201,7 @@ function _terceirosConsideraPendenteLancamento(row) {
 }
 
 function _terceirosConsideraPendenciaRecebimento(row) {
-    return !isTerceirosFlagSim(row && row.recebimento_concluido) && !_terceirosTemBipagemIniciada(row);
+    return !isTerceirosFlagSim(row && row.recebimento_concluido);
 }
 
 function _terceirosTotalBipadoItensLocais() {
@@ -1748,7 +2213,7 @@ function _terceirosTotalBipadoItensLocais() {
     return total;
 }
 
-/** Na 2ª aba: fecha descarga e leva à 3ª quando a NF já tem bipagem ou recebimento concluído. */
+/** Na 2ª aba: fecha descarga e leva à 3ª somente quando o recebimento foi marcado como concluído. */
 function _terceirosFecharDescargaSeForaDaPendencia(documentoIdOpt) {
     if (_terceirosTabAtual !== 'pendencia-recebimento') return;
     var docId = documentoIdOpt != null ? Number(documentoIdOpt) : _terceirosDocumentoIdAtualParaApi();
@@ -1757,8 +2222,7 @@ function _terceirosFecharDescargaSeForaDaPendencia(documentoIdOpt) {
     if (!detalhe || detalhe.style.display === 'none') return;
 
     var rowLike = {
-        recebimento_concluido: _terceirosDocAtual && _terceirosDocAtual.recebimento_concluido,
-        quantidade_total_bipada: _terceirosTotalBipadoItensLocais()
+        recebimento_concluido: _terceirosDocAtual && _terceirosDocAtual.recebimento_concluido
     };
     if (_terceirosConsideraPendenciaRecebimento(rowLike)) return;
 
@@ -1796,22 +2260,22 @@ function getTerceirosRowsPorEtapa(rows, etapa) {
     }
     if (etapa === 'notas-lancadas') {
         return rows.filter(function(row) {
-            return isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg);
+            return _terceirosConsideraNotasLancadas(row);
         });
     }
     if (etapa === 'notas-enviadas-mg') {
         return rows.filter(function(row) {
-            return isTerceirosFlagSim(row.carga_recebida_mg);
+            return _terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.carga_recebida_mg);
         });
     }
     if (etapa === 'pendencias-mg') {
         return rows.filter(function(row) {
-            return isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg);
+            return _terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg);
         });
     }
     if (etapa === 'recebimentos-mg') {
         return rows.filter(function(row) {
-            return isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg);
+            return _terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg);
         });
     }
     return rows;
@@ -2112,6 +2576,10 @@ function renderTerceirosAbrirButton(row, atributo, rotulo, tabDestino) {
         + '</button>';
 }
 
+function renderTerceirosComprovanteButton(row) {
+    return '<button type="button" class="btn btn-secondary btn-sm" data-ter-comprovante-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Gerar comprovante</button>';
+}
+
 function renderTerceirosExcluirButton(row, atributo) {
     var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
     return '<button type="button" class="btn btn-sm" style="background:#c62828;color:#fff;" '
@@ -2165,7 +2633,6 @@ function renderTerceirosCelulasNfAtePrevisao(row) {
 }
 
 function renderTerceirosRecebimentoComUsuario(row) {
-    var posPendencia = _terceirosJaSaiuPendenciaRecebimento(row);
     var concluido = isTerceirosFlagSim(row.recebimento_concluido);
     var statusTxt = 'pendente';
     var usuario = '';
@@ -2175,11 +2642,7 @@ function renderTerceirosRecebimentoComUsuario(row) {
         usuario = row.recebimento_concluido_por || '';
         datahora = row.recebimento_concluido_em || '';
     } else if (_terceirosTemBipagemIniciada(row)) {
-        statusTxt = posPendencia ? 'recebido' : 'bipagem em andamento';
-        usuario = row.atualizado_por || row.criado_por || '';
-        datahora = row.atualizado_em || row.recebimento_concluido_em || '';
-    } else if (posPendencia && _terceirosConsideraFornecedorRecebido(row)) {
-        statusTxt = 'recebido';
+        statusTxt = 'bipagem em andamento';
         usuario = row.atualizado_por || row.criado_por || '';
         datahora = row.atualizado_em || '';
     }
@@ -2202,7 +2665,7 @@ function renderTerceirosFornecedorRecebidoRowHtml(row) {
         + '<td>' + renderTerceirosStatusComUsuario(textoResumoNotaLancadaTerceiros(row), row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
         + renderTerceirosListaAcoesCelula(
             renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'fornecedores-recebidos')
-            + '<button type="button" class="btn btn-secondary btn-sm" data-ter-comprovante-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Gerar comprovante</button>'
+            + renderTerceirosComprovanteButton(row)
             + renderTerceirosExcluirButton(row, 'data-ter-excluir-fornecedor-doc')
         )
         + '</tr>';
@@ -2248,12 +2711,71 @@ function abrirAbaTerceirosSeDiferente(tab, forcarRecarregarLista) {
     if (btn) btn.click();
 }
 
-async function abrirPendenciaTerceirosComScroll(area, documentoId, secao) {
-    abrirAbaTerceirosSeDiferente('pendencia-recebimento');
-    // Rolagem já no clique: o carregamento pode esperar flush + API; sem isso parece “travado”.
-    scrollTerceirosRecebimentoDetalheSecao(secao);
-    await loadTerceirosDocumentoDetalhe(area, documentoId);
-    scrollTerceirosRecebimentoDetalheSecao(secao);
+var _terceirosDescargaLoadAbort = null;
+
+function abrirModalCarregandoDescargaTerceiros(mensagem) {
+    window._terceirosDescargaLoadCancelado = false;
+    _terceirosDescargaLoadAbort = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var el = document.getElementById('ter-descarga-loading-overlay');
+    var text = document.getElementById('ter-descarga-loading-text');
+    if (text) text.textContent = mensagem || 'Abrindo descarga…';
+    if (el) {
+        el.style.display = 'flex';
+        el.setAttribute('aria-busy', 'true');
+    }
+}
+
+function fecharModalCarregandoDescargaTerceiros() {
+    var el = document.getElementById('ter-descarga-loading-overlay');
+    if (el) {
+        el.style.display = 'none';
+        el.setAttribute('aria-busy', 'false');
+    }
+    _terceirosDescargaLoadAbort = null;
+}
+
+function cancelarCarregandoDescargaTerceiros() {
+    window._terceirosDescargaLoadCancelado = true;
+    window._terceirosDetalheCargaSeq = (window._terceirosDetalheCargaSeq || 0) + 1;
+    if (_terceirosDescargaLoadAbort) {
+        try {
+            _terceirosDescargaLoadAbort.abort();
+        } catch (e) {}
+    }
+    fecharModalCarregandoDescargaTerceiros();
+}
+
+function terceirosDescargaFoiCancelado() {
+    return !!window._terceirosDescargaLoadCancelado;
+}
+
+function terceirosDescargaAbortSignal() {
+    return _terceirosDescargaLoadAbort && _terceirosDescargaLoadAbort.signal;
+}
+
+function _terceirosErroDescargaCancelada(err) {
+    return !!(err && (err.name === 'AbortError' || String(err.message || '').toLowerCase() === 'cancelado'));
+}
+
+async function abrirPendenciaTerceirosComScroll(area, documentoId, secao, opcoes) {
+    opcoes = opcoes || {};
+    var comModal = opcoes.modalLoading !== false;
+    if (comModal) abrirModalCarregandoDescargaTerceiros(opcoes.mensagemLoading || 'Abrindo nota fiscal e preparando descarga…');
+    try {
+        if (terceirosDescargaFoiCancelado()) throw new Error('cancelado');
+        abrirAbaTerceirosSeDiferente('pendencia-recebimento');
+        if (terceirosDescargaFoiCancelado()) throw new Error('cancelado');
+        scrollTerceirosRecebimentoDetalheSecao(secao);
+        if (terceirosDescargaFoiCancelado()) throw new Error('cancelado');
+        await loadTerceirosDocumentoDetalhe(area, documentoId, { descargaLoad: comModal });
+        if (terceirosDescargaFoiCancelado()) throw new Error('cancelado');
+        scrollTerceirosRecebimentoDetalheSecao(secao);
+    } catch (err) {
+        if (_terceirosErroDescargaCancelada(err) || terceirosDescargaFoiCancelado()) return;
+        throw err;
+    } finally {
+        if (comModal) fecharModalCarregandoDescargaTerceiros();
+    }
 }
 
 /** ID numérico de documento a partir do atributo data (evita clique sem efeito quando o id não é válido). */
@@ -2305,17 +2827,17 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
                 return;
             }
             var btnDesc = desc;
-            var labelAnterior = btnDesc.textContent;
             btnDesc.disabled = true;
-            btnDesc.textContent = 'Carregando...';
-            void abrirPendenciaTerceirosComScroll(areaD, idD, 'bipagem').then(function() {
+            void abrirPendenciaTerceirosComScroll(areaD, idD, 'bipagem', { modalLoading: true }).then(function() {
                 btnDesc.disabled = false;
-                btnDesc.textContent = labelAnterior || 'Começar descarga';
             }).catch(function(err) {
+                if (_terceirosErroDescargaCancelada(err) || terceirosDescargaFoiCancelado()) {
+                    btnDesc.disabled = false;
+                    return;
+                }
                 console.error(err);
                 showMessage('Erro ao abrir a nota.', 'error');
                 btnDesc.disabled = false;
-                btnDesc.textContent = labelAnterior || 'Começar descarga';
             });
             return;
         }
@@ -2565,7 +3087,10 @@ function _terceirosAlertaEtapa(row) {
     if (_terceirosConsideraPendenteLancamento(row)) {
         return { tab: 'pendentes-lancamento', etapa: 'NFs pendentes de lançamento', usuario: row.recebimento_concluido_por || row.atualizado_por || '-', data: row.recebimento_concluido_em || row.atualizado_em || '' };
     }
-    if (isTerceirosFlagSim(row.nota_lancada) && !isTerceirosFlagSim(row.enviar_para_mg)) {
+    if (_terceirosConsideraNotasLancadas(row)) {
+        if (isTerceirosAreaCarreta(row)) {
+            return { tab: 'notas-lancadas', etapa: 'Notas lançadas (carreta)', usuario: row.nota_lancada_por || row.atualizado_por || '-', data: row.nota_lancada_em || row.atualizado_em || '' };
+        }
         return { tab: 'pendencias-mg', etapa: 'Pendências envio MG', usuario: row.nota_lancada_por || row.atualizado_por || '-', data: row.nota_lancada_em || row.atualizado_em || '' };
     }
     if (isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagSim(row.carga_recebida_mg)) {
@@ -2607,15 +3132,13 @@ async function atualizarAlertasTerceirosHeader(rowsOpt) {
     lista.querySelectorAll('[data-ter-alerta-doc]').forEach(function(item) {
         item.addEventListener('click', function() {
             var id = parseInt(item.getAttribute('data-ter-alerta-doc') || '0', 10);
-            var area = item.getAttribute('data-ter-alerta-area') || 'recebimento';
             var tab = item.getAttribute('data-ter-alerta-tab') || 'pendencia-recebimento';
             var menu = document.getElementById('terceiros-alertas-menu');
             if (menu) menu.hidden = true;
+            _limparTerceirosDocumentoNaSessao();
+            if (id) definirDestaqueLinhaTerceirosDoc(id);
             if (window.controleMostrarModulo) window.controleMostrarModulo('terceiros');
-            void abrirAbaTerceirosSeDiferenteAsync(tab, true, false).then(function() {
-                if (id) return loadTerceirosDocumentoDetalhe(area, id);
-                return null;
-            }).catch(function(e) {
+            void abrirAbaTerceirosSeDiferenteAsync(tab, true, false).catch(function(e) {
                 console.error(e);
                 showMessage('Erro ao abrir alerta da NF.', 'error');
             });
@@ -2671,12 +3194,15 @@ async function loadTerceirosPendentesLancamento(dataPreloaded) {
             + '</select>' + renderTerceirosUsuarioMeta(row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-pend-lanc-doc', 'Abrir detalhe', 'pendentes-lancamento')
+                + renderTerceirosComprovanteButton(row)
                 + renderTerceirosExcluirButton(row, 'data-ter-excluir-pend-lanc-doc')
             )
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-pend-lanc-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-pend-lanc-doc]');
+    bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
+    if (!window._terceirosNotaLancadaPendEmAndamento) window._terceirosNotaLancadaPendEmAndamento = {};
     tbody.querySelectorAll('[data-ter-nota-lancada-pend]').forEach(function(select) {
         select.addEventListener('change', function() {
             var id = parseInt(select.getAttribute('data-ter-nota-lancada-pend') || '0', 10);
@@ -2684,9 +3210,15 @@ async function loadTerceirosPendentesLancamento(dataPreloaded) {
             var fornecedorRecebido = select.getAttribute('data-ter-fornecedor-recebido') === 'sim';
             var valor = (select.value || '').trim().toLowerCase();
             if (!id || !valor) return;
-            void atualizarStatusTerceirosDireto(id, 'nota_lancada', valor, {
+            if (window._terceirosNotaLancadaPendEmAndamento[id]) return;
+            window._terceirosNotaLancadaPendEmAndamento[id] = true;
+            select.disabled = true;
+            atualizarStatusTerceirosDireto(id, 'nota_lancada', valor, {
                 recebimento_concluido: recebimentoConcluido,
                 fornecedor_recebido: fornecedorRecebido
+            }).finally(function() {
+                delete window._terceirosNotaLancadaPendEmAndamento[id];
+                if (select.isConnected) select.disabled = false;
             });
         });
     });
@@ -2721,16 +3253,31 @@ async function loadTerceirosNotasLancadas(dataPreloaded) {
             + '<td>' + renderTerceirosStatusComUsuario(row.nota_lancada || '-', row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
             + '<td>' + renderTerceirosEnviarMgSomenteLeitura(row) + '</td>'
             + renderTerceirosCelulasMotoristaPlacaLista(row, 'lanc')
-            + '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>'
+            + renderTerceirosConclusaoCarretaTab5(row)
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + renderTerceirosComprovanteButton(row)
                 + renderTerceirosExcluirButton(row, 'data-ter-excluir-lancada-doc')
             )
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-lancada-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-lancada-doc]');
+    bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
     bindTerceirosSalvarMotoristaPlacaLista(tbody, 'lanc');
+    if (!window._terceirosConcluirCarretaEmAndamento) window._terceirosConcluirCarretaEmAndamento = {};
+    tbody.querySelectorAll('[data-ter-concluir-carreta-doc]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = parseInt(btn.getAttribute('data-ter-concluir-carreta-doc') || '0', 10);
+            if (!id || window._terceirosConcluirCarretaEmAndamento[id]) return;
+            window._terceirosConcluirCarretaEmAndamento[id] = true;
+            btn.disabled = true;
+            _terceirosConcluirCarretaNoHistorico(id).finally(function() {
+                delete window._terceirosConcluirCarretaEmAndamento[id];
+                if (btn.isConnected) btn.disabled = false;
+            });
+        });
+    });
     aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
@@ -2761,12 +3308,14 @@ async function loadTerceirosNotasEnviadasMg(dataPreloaded) {
             + '<td>' + renderTerceirosStatusComUsuario(row.carga_recebida_mg || '-', row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-enviada-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + renderTerceirosComprovanteButton(row)
                 + renderTerceirosExcluirButton(row, 'data-ter-excluir-enviada-doc')
             )
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-enviada-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-enviada-doc]');
+    bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
     aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
@@ -2802,12 +3351,14 @@ async function loadTerceirosRecebimentosMg(dataPreloaded) {
             + '</select>' + renderTerceirosUsuarioMeta(row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-receb-mg-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + renderTerceirosComprovanteButton(row)
                 + renderTerceirosExcluirButton(row, 'data-ter-excluir-receb-mg-doc')
             )
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-receb-mg-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-receb-mg-doc]');
+    bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
     tbody.querySelectorAll('[data-ter-recebida-mg-receb-doc]').forEach(function(select) {
         select.addEventListener('change', function() {
             var id = parseInt(select.getAttribute('data-ter-recebida-mg-receb-doc') || '0', 10);
@@ -2861,12 +3412,15 @@ async function loadTerceirosPendenciasMg(dataPreloaded) {
             + '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>'
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-pendencia-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + renderTerceirosComprovanteButton(row)
                 + renderTerceirosExcluirButton(row, 'data-ter-excluir-pendencia-doc')
             )
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-pendencia-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-pendencia-doc]');
+    bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
+    if (!window._terceirosEnviarMgPendEmAndamento) window._terceirosEnviarMgPendEmAndamento = {};
     tbody.querySelectorAll('[data-ter-enviar-mg-pend-doc]').forEach(function(select) {
         select.addEventListener('change', function() {
             var id = parseInt(select.getAttribute('data-ter-enviar-mg-pend-doc') || '0', 10);
@@ -2875,22 +3429,33 @@ async function loadTerceirosPendenciasMg(dataPreloaded) {
             var inputMot = document.querySelector('[data-ter-motorista-pend-mg-doc="' + String(id) + '"]');
             var inputPla = document.querySelector('[data-ter-placa-pend-mg-doc="' + String(id) + '"]');
             if (inputMot && inputMot.value.trim()) motoristaAtual = inputMot.value.trim();
-            if (id && select.value === 'sim' && inputMot && inputPla) {
+            var valor = (select.value || '').trim().toLowerCase();
+            if (!id || !valor) return;
+            if (window._terceirosEnviarMgPendEmAndamento[id]) return;
+            window._terceirosEnviarMgPendEmAndamento[id] = true;
+            select.disabled = true;
+            var opcoesStatus = {
+                motorista_obrigatorio: motoristaObrigatorio,
+                motorista_atual: motoristaAtual
+            };
+            var promessa;
+            if (valor === 'sim' && inputMot && inputPla) {
                 var motVal = inputMot.value.trim();
                 var plaVal = inputPla.value.trim();
                 if (motVal || plaVal) {
-                    void salvarMotoristaPlacaTerceirosDireto(id, motVal, plaVal).then(function() {
-                        if (select.value) atualizarStatusTerceirosDireto(id, 'enviar_para_mg', select.value, {
-                            motorista_obrigatorio: motoristaObrigatorio,
-                            motorista_atual: motVal || motoristaAtual
-                        });
+                    opcoesStatus.motorista_atual = motVal || motoristaAtual;
+                    promessa = salvarMotoristaPlacaTerceirosDireto(id, motVal, plaVal).then(function() {
+                        return atualizarStatusTerceirosDireto(id, 'enviar_para_mg', valor, opcoesStatus);
                     });
-                    return;
+                } else {
+                    promessa = atualizarStatusTerceirosDireto(id, 'enviar_para_mg', valor, opcoesStatus);
                 }
+            } else {
+                promessa = atualizarStatusTerceirosDireto(id, 'enviar_para_mg', valor, opcoesStatus);
             }
-            if (id && select.value) atualizarStatusTerceirosDireto(id, 'enviar_para_mg', select.value, {
-                motorista_obrigatorio: motoristaObrigatorio,
-                motorista_atual: motoristaAtual
+            promessa.finally(function() {
+                delete window._terceirosEnviarMgPendEmAndamento[id];
+                if (select.isConnected) select.disabled = false;
             });
         });
     });
@@ -2909,11 +3474,11 @@ async function loadTerceirosHistorico(dataPreloaded) {
     }
     var rowsMerged = _terceirosMesclarRecebidosLocaisNasRows(data.rows || []);
     var rows = rowsMerged.filter(function(row) {
-        return _terceirosConsideraFornecedorRecebido(row);
+        return _terceirosConsideraHistorico(row);
     });
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="' + colsHist + '" class="loading">Nenhuma NF no histórico. Aparecem aqui as notas que já saíram da <strong>Pendência de recebimento</strong> (com bipagem ou recebimento concluído).</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + colsHist + '" class="loading">Nenhuma NF no histórico. <strong>Carreta:</strong> após concluir na 5ª aba. <strong>Demais rotas:</strong> após <strong>Enviado para MG</strong> = Sim.</td></tr>';
         return;
     }
 
@@ -2923,11 +3488,11 @@ async function loadTerceirosHistorico(dataPreloaded) {
             + '<td>' + renderTerceirosRecebimentoComUsuario(row) + '</td>'
             + '<td>' + renderTerceirosConferenciaResumoHtml(row) + '</td>'
             + '<td>' + renderTerceirosStatusComUsuario(textoResumoNotaLancadaTerceiros(row), row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
-            + '<td>' + renderTerceirosStatusComUsuario(row.enviar_para_mg || '-', row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>'
-            + '<td>' + renderTerceirosStatusComUsuario(row.carga_recebida_mg || '-', row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
+            + '<td>' + renderTerceirosStatusComUsuario(textoResumoEnviarMgHistorico(row), row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>'
+            + '<td>' + renderTerceirosStatusComUsuario(textoResumoRecebidaMgHistorico(row), row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-historico-doc', 'Abrir detalhe', 'historico')
-                + '<button type="button" class="btn btn-secondary btn-sm" data-ter-comprovante-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Gerar comprovante</button>'
+                + renderTerceirosComprovanteButton(row)
                 + renderTerceirosExcluirButton(row, 'data-ter-excluir-historico-doc')
             )
             + '</tr>';
@@ -3030,7 +3595,12 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
         await refreshTerceirosViews();
         return;
     }
-    if (campo === 'carga_recebida_mg' && _terceirosTabAtual !== 'recebimentos-mg' && !opcoes.forcar_aba_recebimentos_mg) {
+    if (campo === 'enviar_para_mg' && opcoes.row && isTerceirosAreaCarreta(opcoes.row)) {
+        showMessage('NF de carreta não utiliza envio para MG. Conclua na 5ª aba — Notas lançadas.', 'warning');
+        await refreshTerceirosViews();
+        return;
+    }
+    if (campo === 'carga_recebida_mg' && _terceirosTabAtual !== 'recebimentos-mg' && !opcoes.forcar_aba_recebimentos_mg && !opcoes.forcar_fluxo_carreta) {
         showMessage('O campo Recebida MG só pode ser alterado na aba 8 — Recebimentos de MG.', 'warning');
         await refreshTerceirosViews();
         return;
@@ -3054,11 +3624,12 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
         body: JSON.stringify({
             campo: campo,
             valor: valor,
-            forcar_lancamento_sem_recebimento: !!opcoes.forcar_lancamento_sem_recebimento
+            forcar_lancamento_sem_recebimento: !!opcoes.forcar_lancamento_sem_recebimento,
+            forcar_fluxo_carreta: !!opcoes.forcar_fluxo_carreta
         })
     });
     if (!_terceirosRespostaApiOk(resp)) {
-        if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !opcoes.forcar_lancamento_sem_recebimento && !_terceirosOpPodeLancarNotaSemConfirmacao(opcoes)) {
+        if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !opcoes.forcar_lancamento_sem_recebimento) {
             var confirmou = await abrirModalLancamentoSemRecebimento();
             if (confirmou) {
                 await atualizarStatusTerceirosDireto(documentoId, campo, valor, Object.assign({}, opcoes, {
@@ -3085,6 +3656,10 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
     }
     if (campo === 'enviar_para_mg' && isTerceirosFlagSim(valor)) {
         await _terceirosAposConfirmarEnviarMgSim(documentoId, resp && resp.documento);
+        return;
+    }
+    if (campo === 'carga_recebida_mg' && isTerceirosFlagSim(valor) && opcoes.forcar_fluxo_carreta) {
+        await _terceirosAposConcluirCarretaNoHistorico(documentoId, resp && resp.documento);
         return;
     }
     var navegouFluxo = await moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor);
@@ -3942,10 +4517,12 @@ window.zerarBipagemTerceirosDocumento = async function() {
     }
 };
 
-async function loadTerceirosDocumentoDetalhe(area, documentoId) {
+async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
+    opcoes = opcoes || {};
     if (area !== 'expedicao' && area !== 'carreta') area = 'recebimento';
     var idAlvo = parseInt(documentoId, 10);
     if (isNaN(idAlvo)) return;
+    if (terceirosDescargaFoiCancelado()) return;
 
     var seq = (window._terceirosDetalheCargaSeq = (window._terceirosDetalheCargaSeq || 0) + 1);
     var docAnterior = _terceirosDocAtual.id;
@@ -3971,8 +4548,10 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
             try {
                 await _flushTerceirosPendingDocumento(idAntNum);
             } catch (e) {
+                if (_terceirosErroDescargaCancelada(e)) throw e;
                 console.error(e);
             }
+            if (terceirosDescargaFoiCancelado()) return;
             if (tbody && seq === window._terceirosDetalheCargaSeq) {
                 tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando detalhe…</td></tr>';
             }
@@ -3980,14 +4559,20 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId) {
         _limparPendenciasBipagemTerceiros();
     }
 
+    if (terceirosDescargaFoiCancelado()) return;
+
     var doc;
+    var fetchOpts = {};
+    var sigDescarga = opcoes.descargaLoad ? terceirosDescargaAbortSignal() : null;
+    if (sigDescarga) fetchOpts.signal = sigDescarga;
     try {
-        doc = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(idAlvo), {}, 55000);
+        doc = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(idAlvo), fetchOpts, 55000);
     } catch (err) {
+        if (_terceirosErroDescargaCancelada(err)) throw err;
         console.error(err);
         doc = null;
     }
-    if (seq !== window._terceirosDetalheCargaSeq) return;
+    if (seq !== window._terceirosDetalheCargaSeq || terceirosDescargaFoiCancelado()) return;
 
     if (!doc || doc.erro) {
         var msgErro = (doc && doc.erro) ? String(doc.erro) : 'Erro ao carregar.';
@@ -4571,12 +5156,17 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             showMessage('Selecione uma nota (Ver detalhe ou Começar descarga) antes de marcar o recebimento como concluído.', 'warning');
             return;
         }
+        if (campo === 'enviar_para_mg' && _terceirosDocAtual && isTerceirosAreaCarreta(_terceirosDocAtual)) {
+            showMessage('NF de carreta não utiliza envio para MG. Conclua na 5ª aba — Notas lançadas.', 'warning');
+            _terceirosSincronizarCampoEnviarMgDetalhe();
+            return;
+        }
         if (campo === 'enviar_para_mg' && _terceirosTabAtual !== 'pendencias-mg') {
             showMessage('O campo Enviado para MG só pode ser alterado na aba 6 — Pendências envio MG.', 'warning');
             _terceirosSincronizarCampoEnviarMgDetalhe();
             return;
         }
-        if (campo === 'carga_recebida_mg' && _terceirosTabAtual !== 'recebimentos-mg') {
+        if (campo === 'carga_recebida_mg' && _terceirosTabAtual !== 'recebimentos-mg' && !(opcoes && opcoes.forcar_fluxo_carreta)) {
             showMessage('O campo Recebida MG só pode ser alterado na aba 8 — Recebimentos de MG.', 'warning');
             _terceirosSincronizarCampoRecebidaMgDetalhe();
             return;
@@ -4623,7 +5213,8 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             var payload = {
                 campo: campo,
                 valor: valor,
-                forcar_lancamento_sem_recebimento: !!opcoes.forcar_lancamento_sem_recebimento
+                forcar_lancamento_sem_recebimento: !!opcoes.forcar_lancamento_sem_recebimento,
+                forcar_fluxo_carreta: !!opcoes.forcar_fluxo_carreta
             };
             var rowLanc = {
                 recebimento_concluido: _terceirosDocAtual.recebimento_concluido,
@@ -4657,7 +5248,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 _terceirosLogFluxoRecebimento('PASSO 4 DEPOIS await POST /status');
             }
             if (!_terceirosRespostaApiOk(resp)) {
-                if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !payload.forcar_lancamento_sem_recebimento && !_terceirosPodeLancarNotaSemConfirmacaoRecebimento(rowLanc)) {
+                if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !payload.forcar_lancamento_sem_recebimento) {
                     var confirmou = await abrirModalLancamentoSemRecebimento();
                     if (confirmou) {
                         await atualizarStatusTerceiros(area, campo, valor, { forcar_lancamento_sem_recebimento: true });
@@ -4721,6 +5312,10 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             }
             if (campo === 'enviar_para_mg' && isTerceirosFlagSim(valor)) {
                 await _terceirosAposConfirmarEnviarMgSim(documentoId, resp && resp.documento);
+                return;
+            }
+            if (campo === 'carga_recebida_mg' && isTerceirosFlagSim(valor) && opcoes.forcar_fluxo_carreta) {
+                await _terceirosAposConcluirCarretaNoHistorico(documentoId, resp && resp.documento);
                 return;
             }
             showMessage('Status atualizado.', 'success');
@@ -4854,6 +5449,14 @@ function initForms() {
     if (btnTerRecConcFechar) btnTerRecConcFechar.addEventListener('click', fecharModalRecebimentoConcluidoTerceiros);
     if (btnTerRecConcClose) btnTerRecConcClose.addEventListener('click', fecharModalRecebimentoConcluidoTerceiros);
     if (btnTerRecProxLanc) btnTerRecProxLanc.addEventListener('click', terceirosIrParaProximaEtapaLancamento);
+
+    const modalTerUploadConc = document.getElementById('modal-terceiros-upload-xml-concluido');
+    const btnTerUploadFechar = document.getElementById('btn-ter-upload-fechar');
+    const btnTerUploadClose = document.getElementById('modal-terceiros-upload-xml-concluido-close');
+    const btnTerUploadPendencia = document.getElementById('btn-ter-upload-ir-pendencia');
+    if (btnTerUploadFechar) btnTerUploadFechar.addEventListener('click', fecharModalUploadXmlTerceirosConcluido);
+    if (btnTerUploadClose) btnTerUploadClose.addEventListener('click', fecharModalUploadXmlTerceirosConcluido);
+    if (btnTerUploadPendencia) btnTerUploadPendencia.addEventListener('click', terceirosIrParaPendenciaAposUpload);
     
     // Fechar modal ao clicar fora
     window.addEventListener('click', (e) => {
@@ -4861,13 +5464,13 @@ function initForms() {
         if (e.target === modal) {
             closeModal();
         }
-        if (modalTerIrRecebMg && e.target === modalTerIrRecebMg) {
+        if (modalTerIrRecebMg && e.target === modalTerIrRecebMg && !_terceirosDeveIgnorarCliqueBackdropModal()) {
             fecharModalIrParaRecebimentosMg(false);
         }
-        if (modalTerIrNotasLanc && e.target === modalTerIrNotasLanc) {
+        if (modalTerIrNotasLanc && e.target === modalTerIrNotasLanc && !_terceirosDeveIgnorarCliqueBackdropModal()) {
             fecharModalIrParaNotasLancadas(false);
         }
-        if (modalTerSemReceb && e.target === modalTerSemReceb) {
+        if (modalTerSemReceb && e.target === modalTerSemReceb && !_terceirosDeveIgnorarCliqueBackdropModal()) {
             fecharModalLancamentoSemRecebimento(false);
         }
         if (modalTerExcluir && e.target === modalTerExcluir) {
@@ -4875,6 +5478,9 @@ function initForms() {
         }
         if (modalTerRecConc && e.target === modalTerRecConc) {
             fecharModalRecebimentoConcluidoTerceiros();
+        }
+        if (modalTerUploadConc && e.target === modalTerUploadConc) {
+            fecharModalUploadXmlTerceirosConcluido();
         }
     });
     
@@ -5799,6 +6405,20 @@ function mensagemErroRespostaNaoJson(status, corpoTexto) {
 async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
     timeoutMs = timeoutMs == null || timeoutMs < 5000 ? 35000 : timeoutMs;
     var ac = new AbortController();
+    var externalSignal = options && options.signal;
+    if (externalSignal) {
+        if (externalSignal.aborted) {
+            try {
+                ac.abort();
+            } catch (e) {}
+        } else if (typeof externalSignal.addEventListener === 'function') {
+            externalSignal.addEventListener('abort', function() {
+                try {
+                    ac.abort();
+                } catch (e) {}
+            }, { once: true });
+        }
+    }
     var tid = window.setTimeout(function() {
         try {
             ac.abort();
@@ -8388,6 +9008,68 @@ window.exportarDivergenciasDevolucaoExcel = function(tipo) {
     a.click();
     document.body.removeChild(a);
     showMessage('Download do Excel de devoluções iniciado.', 'success');
+};
+
+function getParamsDataCriacaoTerceiros() {
+    const de = (document.getElementById('ter-relatorio-data-inicio') && document.getElementById('ter-relatorio-data-inicio').value || '').trim();
+    const ate = (document.getElementById('ter-relatorio-data-fim') && document.getElementById('ter-relatorio-data-fim').value || '').trim();
+    if (!de && !ate) return '';
+    const p = new URLSearchParams();
+    if (de) p.set('data_criacao_inicio', de);
+    if (ate) p.set('data_criacao_fim', ate);
+    return p.toString();
+}
+
+function appendParamsDataCriacaoTerceiros(url) {
+    const qs = getParamsDataCriacaoTerceiros();
+    if (!qs) return url;
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + qs;
+}
+
+window.gerarRelatorioTerceirosResumoNf = function() {
+    downloadRelatorio(appendParamsDataCriacaoTerceiros(API_BASE + '/terceiros/relatorios/excel/resumo_nf'), 'relatorio_terceiros_resumo_nf.xlsx');
+};
+
+window.gerarRelatorioTerceirosItensBipados = function() {
+    downloadRelatorio(appendParamsDataCriacaoTerceiros(API_BASE + '/terceiros/relatorios/excel/itens_bipados'), 'relatorio_terceiros_itens_bipados.xlsx');
+};
+
+window.gerarRelatorioTerceirosItensMaisBipados = function() {
+    downloadRelatorio(appendParamsDataCriacaoTerceiros(API_BASE + '/terceiros/relatorios/excel/itens_mais_bipados'), 'relatorio_terceiros_itens_mais_bipados.xlsx');
+};
+
+window.gerarRelatorioTerceirosDivergencias = function() {
+    downloadRelatorio(appendParamsDataCriacaoTerceiros(API_BASE + '/terceiros/relatorios/excel/divergencias'), 'relatorio_terceiros_divergencias.xlsx');
+};
+
+window.gerarRelatorioTerceirosCarreta = function() {
+    downloadRelatorio(appendParamsDataCriacaoTerceiros(API_BASE + '/terceiros/relatorios/excel/carreta'), 'relatorio_terceiros_carreta.xlsx');
+};
+
+window.exportarRelatorioTerceirosNf = function() {
+    const docId = (document.getElementById('ter-relatorio-nf-id') && document.getElementById('ter-relatorio-nf-id').value || '').trim();
+    if (!docId) {
+        showMessage('Digite o ID da NF para exportar.', 'error');
+        return;
+    }
+    const url = API_BASE + '/terceiros/relatorios/excel/nf?documento_id=' + encodeURIComponent(docId);
+    fetch(url, { credentials: 'same-origin' }).then(function(r) {
+        if (!r.ok) {
+            return r.json().then(function(d) { showMessage((d && d.erro) || 'Erro ao exportar NF', 'error'); }).catch(function() { showMessage('Erro ao exportar NF', 'error'); });
+        }
+        return r.blob();
+    }).then(function(blob) {
+        if (!blob) return;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'relatorio_terceiros_nf_' + docId + '.xlsx';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+        showMessage('Download do relatório da NF iniciado.', 'success');
+    });
 };
 
 window.buscarExtratoDevolucaoPorViagem = function() {
