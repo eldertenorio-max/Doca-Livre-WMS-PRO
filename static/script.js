@@ -2485,14 +2485,14 @@ function _terceirosConsideraPendenciaRecebimento(row) {
     return true;
 }
 
-/** 3ª aba — recebimento concluído e lançamento fiscal já marcado como Sim (antes das etapas MG / histórico). */
+/** 3ª aba — recebimento concluído, lançamento fiscal ainda pendente (sem bipagem em andamento). */
 function _terceirosConsideraFornecedorRecebido(row) {
     row = _terceirosRowEstadoMesclado(row);
     if (!row || row.id == null) return false;
     if (!isTerceirosFlagSim(row.recebimento_concluido)) return false;
-    if (!isTerceirosFlagSim(row.nota_lancada)) return false;
-    if (_terceirosConsideraNotasLancadas(row)) return false;
+    if (isTerceirosFlagSim(row.nota_lancada)) return false;
     if (_terceirosConsideraHistorico(row)) return false;
+    if (_terceirosConsideraNotasLancadas(row)) return false;
     return true;
 }
 
@@ -2511,12 +2511,12 @@ function _terceirosOpPodeLancarNotaSemConfirmacao(opcoes) {
     return false;
 }
 
-/** 4ª aba — recebimento concluído (ou bipagem) com lançamento fiscal ainda sem «Sim». */
+/** 4ª aba — bipagem em andamento sem recebimento concluído (lançamento ainda pendente). */
 function _terceirosConsideraPendenteLancamento(row) {
     row = _terceirosRowEstadoMesclado(row);
     if (!row || row.id == null) return false;
     if (isTerceirosFlagSim(row.nota_lancada)) return false;
-    if (isTerceirosFlagSim(row.recebimento_concluido)) return true;
+    if (isTerceirosFlagSim(row.recebimento_concluido)) return false;
     return _terceirosTemBipagemIniciada(row);
 }
 
@@ -3508,7 +3508,7 @@ async function loadTerceirosFornecedoresRecebidos(dataPreloaded) {
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF nesta etapa. Após marcar <strong>Nota lançada = Sim</strong> na aba NFs pendentes de lançamento, as notas aparecem aqui até seguirem para MG ou histórico.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF nesta etapa. Aparecem aqui após <strong>recebimento concluído</strong>, antes do lançamento fiscal (aba 4). Com <strong>bipagem em andamento</strong> sem concluir recebimento, use a aba <strong>NFs pendentes de lançamento</strong>.</td></tr>';
         _terceirosDestacarDocIdAposCarga = null;
         return;
     }
@@ -3540,6 +3540,7 @@ function removerDocumentoDaPendenciaRecebimentoLocal(documentoId) {
 
 function inserirDocumentoFornecedoresRecebidosLocal(row) {
     if (!row || row.id == null) return;
+    if (!_terceirosConsideraFornecedorRecebido(row)) return;
     _terceirosGuardarFornecedorRecebidoLocal(row);
     var tbody = document.getElementById('ter-tbody-fornecedores-recebidos');
     if (!tbody) return;
