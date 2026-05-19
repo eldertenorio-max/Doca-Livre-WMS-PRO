@@ -857,6 +857,10 @@ function initTerceirosTabs() {
     if (btnTerDescargaCancel) {
         btnTerDescargaCancel.addEventListener('click', cancelarCarregandoDescargaTerceiros);
     }
+    var btnTerAcaoCancel = document.getElementById('btn-ter-acao-loading-cancel');
+    if (btnTerAcaoCancel) {
+        btnTerAcaoCancel.addEventListener('click', cancelarTerAcaoLoading);
+    }
     var tabInicial = 'painel';
     var sub = _lerTerceirosSubabaNaSessao();
     if (sub && sub.tab) {
@@ -2885,9 +2889,16 @@ async function abrirDanfeNotaFiscalTerceiros(documentoId) {
         return;
     }
     var url = API_BASE + '/terceiros/documentos/' + encodeURIComponent(documentoId) + '/danfe';
-    showMessage('Gerando DANFE a partir do XML (Meu Danfe)...', 'info');
+    mostrarTerAcaoLoading(
+        'Gerando PDF da NF (Meu Danfe)…',
+        'Convertendo o XML da nota. Isso pode levar alguns segundos.'
+    );
     try {
-        var resp = await fetch(url, { credentials: 'same-origin' });
+        var fetchOpts = { credentials: 'same-origin' };
+        var sig = terAcaoLoadingSignal();
+        if (sig) fetchOpts.signal = sig;
+        var resp = await fetch(url, fetchOpts);
+        if (window._terAcaoLoadCancelado) return;
         var contentType = (resp.headers.get('content-type') || '').toLowerCase();
         if (!resp.ok) {
             var errMsg = await resp.text();
@@ -2896,6 +2907,7 @@ async function abrirDanfeNotaFiscalTerceiros(documentoId) {
         }
         if (contentType.indexOf('application/pdf') >= 0) {
             var blob = await resp.blob();
+            if (window._terAcaoLoadCancelado) return;
             var blobUrl = URL.createObjectURL(blob);
             var janela = window.open(blobUrl, '_blank', 'noopener,noreferrer');
             if (!janela) {
@@ -2908,6 +2920,7 @@ async function abrirDanfeNotaFiscalTerceiros(documentoId) {
             return;
         }
         var html = await resp.text();
+        if (window._terAcaoLoadCancelado) return;
         var janelaHtml = window.open('', '_blank', 'noopener,noreferrer');
         if (!janelaHtml) {
             showMessage('Permita pop-ups para visualizar o DANFE.', 'warning');
@@ -2917,7 +2930,10 @@ async function abrirDanfeNotaFiscalTerceiros(documentoId) {
         janelaHtml.document.write(html);
         janelaHtml.document.close();
     } catch (e) {
+        if (_terAcaoFoiCancelado(e)) return;
         showMessage('Erro ao gerar DANFE: ' + (e && e.message ? e.message : String(e)), 'error');
+    } finally {
+        fecharTerAcaoLoading();
     }
 }
 
@@ -3233,6 +3249,57 @@ function terceirosDescargaFoiCancelado() {
 
 function terceirosDescargaAbortSignal() {
     return _terceirosDescargaLoadAbort && _terceirosDescargaLoadAbort.signal;
+}
+
+var _terAcaoLoadAbort = null;
+
+function _terAcaoFoiCancelado(err) {
+    if (window._terAcaoLoadCancelado) return true;
+    if (err && (err.name === 'AbortError' || String(err.message || '').toLowerCase().indexOf('abort') >= 0)) {
+        return true;
+    }
+    return false;
+}
+
+function mostrarTerAcaoLoading(titulo, subtitulo) {
+    window._terAcaoLoadCancelado = false;
+    _terAcaoLoadAbort = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var el = document.getElementById('ter-acao-loading-overlay');
+    var text = document.getElementById('ter-acao-loading-text');
+    var sub = document.getElementById('ter-acao-loading-sub');
+    if (text) text.textContent = titulo || 'Carregando…';
+    if (sub) sub.textContent = subtitulo || 'Aguarde.';
+    if (el) {
+        el.style.display = 'flex';
+        el.setAttribute('aria-busy', 'true');
+    }
+}
+
+function fecharTerAcaoLoading() {
+    var el = document.getElementById('ter-acao-loading-overlay');
+    if (el) {
+        el.style.display = 'none';
+        el.setAttribute('aria-busy', 'false');
+    }
+    _terAcaoLoadAbort = null;
+}
+
+function cancelarTerAcaoLoading() {
+    if (!document.getElementById('ter-acao-loading-overlay') || document.getElementById('ter-acao-loading-overlay').style.display === 'none') {
+        return;
+    }
+    window._terAcaoLoadCancelado = true;
+    if (_terAcaoLoadAbort) {
+        try {
+            _terAcaoLoadAbort.abort();
+        } catch (e) { /* ignore */ }
+    }
+    fecharTerAcaoLoading();
+    showMessage('Operação cancelada.', 'warning');
+}
+
+function terAcaoLoadingSignal() {
+    return _terAcaoLoadAbort && _terAcaoLoadAbort.signal;
 }
 
 function _terceirosErroDescargaCancelada(err) {
@@ -4727,26 +4794,29 @@ function imprimirComprovanteDescargaTerceirosDoc(doc) {
 }
 
 async function gerarComprovanteTerceirosDocumento(documentoId, area, btn) {
-    var label = btn ? (btn.textContent || 'Gerar comprovante') : '';
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Gerando...';
-    }
+    if (btn) btn.disabled = true;
+    mostrarTerAcaoLoading(
+        'Gerando comprovante…',
+        'Carregando itens e dados da nota fiscal.'
+    );
     try {
-        var doc = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(documentoId), {}, 55000);
+        var opts = {};
+        var sig = terAcaoLoadingSignal();
+        if (sig) opts.signal = sig;
+        var doc = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(documentoId), opts, 55000);
+        if (window._terAcaoLoadCancelado) return;
         if (!doc || doc.erro) {
             showMessage((doc && doc.erro) || 'Erro ao carregar NF para comprovante.', 'error');
             return;
         }
         imprimirComprovanteDescargaTerceirosDoc(doc);
     } catch (e) {
+        if (_terAcaoFoiCancelado(e)) return;
         console.error(e);
         showMessage('Erro ao gerar comprovante.', 'error');
     } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = label || 'Gerar comprovante';
-        }
+        fecharTerAcaoLoading();
+        if (btn) btn.disabled = false;
     }
 }
 
