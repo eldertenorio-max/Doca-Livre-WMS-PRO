@@ -978,6 +978,21 @@ function destroyPainelTerceirosCharts() {
     if (terChartConferencia) { terChartConferencia.destroy(); terChartConferencia = null; }
 }
 
+function resizePainelTerceirosCharts() {
+    [terChartEtapas, terChartBipagemXml, terChartRemetentes, terChartPlacas, terChartUf, terChartConferencia].forEach(function(chart) {
+        if (chart && typeof chart.resize === 'function') chart.resize();
+    });
+}
+
+if (!window._terceirosChartsResizeBound) {
+    window._terceirosChartsResizeBound = true;
+    var _terceirosChartsResizeTimer;
+    window.addEventListener('resize', function() {
+        clearTimeout(_terceirosChartsResizeTimer);
+        _terceirosChartsResizeTimer = setTimeout(resizePainelTerceirosCharts, 150);
+    });
+}
+
 function renderPainelTerceirosCharts(data) {
     destroyPainelTerceirosCharts();
     if (typeof Chart === 'undefined') return;
@@ -1110,6 +1125,7 @@ function renderPainelTerceirosCharts(data) {
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
         });
     }
+    requestAnimationFrame(function() { resizePainelTerceirosCharts(); });
 }
 
 async function loadPainelTerceiros() {
