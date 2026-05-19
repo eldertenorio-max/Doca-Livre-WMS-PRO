@@ -3601,7 +3601,7 @@ function _terceirosAlertaEtapa(row) {
         return { tab: 'notas-enviadas-mg', etapa: 'Notas enviadas para MG', usuario: row.enviar_para_mg_por || '', data: row.enviar_para_mg_em || '' };
     }
     if (etapa === 'historico') {
-        return { tab: 'historico', etapa: 'Histórico', usuario: row.atualizado_por || '', data: row.atualizado_em || '' };
+        return null;
     }
     return null;
 }
