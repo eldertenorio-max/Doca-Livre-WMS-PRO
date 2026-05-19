@@ -1966,6 +1966,21 @@ async function _terceirosAposConcluirCarretaNoHistorico(documentoId, documentoRe
     showMessage('NF de carreta registrada no histórico.', 'success');
 }
 
+/** Após confirmar recebimento em MG (fluxo normal) — vai ao Histórico. */
+async function _terceirosAposConfirmarRecebidaMgSim(documentoId, documentoResp) {
+    if (documentoId == null) return;
+    if (documentoResp && isTerceirosAreaCarreta(documentoResp)) {
+        await _terceirosAposConcluirCarretaNoHistorico(documentoId, documentoResp);
+        return;
+    }
+    if (documentoResp && _terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
+        Object.assign(_terceirosDocAtual, documentoResp);
+    }
+    invalidateTerceirosListaCache();
+    await terceirosNavegarParaHistoricoAposEnviarMg(documentoId);
+    showMessage('Recebimento em MG confirmado. A NF está no Histórico e permanece listada em Notas lançadas.', 'success');
+}
+
 /** Após marcar que não é necessário envio para MG — vai ao Histórico. */
 async function _terceirosAposConfirmarEnviarMgNao(documentoId, documentoResp) {
     if (documentoResp && isTerceirosAreaCarreta(documentoResp)) {
@@ -2275,18 +2290,25 @@ function _terceirosConsideraNotasLancadas(row) {
     return !isTerceirosFlagSim(row.enviar_para_mg);
 }
 
-/** Histórico: carreta concluída; MG dispensado (Não) ou fluxo MG finalizado. */
+/** Fluxo MG encerrado: lançada + enviada + recebida em MG. */
+function _terceirosFluxoMgConcluido(row) {
+    row = _terceirosRowEstadoMesclado(row);
+    if (!_terceirosUsaFluxoMg(row)) return false;
+    return isTerceirosFlagSim(row.nota_lancada)
+        && isTerceirosFlagSim(row.enviar_para_mg)
+        && isTerceirosFlagSim(row.carga_recebida_mg);
+}
+
+/** Histórico: carreta concluída; MG dispensado (Não); ou lançada + enviada + recebida MG. */
 function _terceirosConsideraHistorico(row) {
     row = _terceirosRowEstadoMesclado(row);
     if (!row || row.id == null) return false;
-    if (!isTerceirosFlagSim(row.recebimento_concluido)) return false;
-    if (!isTerceirosFlagSim(row.nota_lancada)) return false;
     if (isTerceirosAreaCarreta(row)) {
         return isTerceirosFlagSim(row.carga_recebida_mg);
     }
+    if (!isTerceirosFlagSim(row.nota_lancada)) return false;
     if (isTerceirosFlagNao(row.enviar_para_mg)) return true;
-    if (isTerceirosFlagSim(row.carga_recebida_mg)) return true;
-    return isTerceirosFlagSim(row.enviar_para_mg);
+    return _terceirosFluxoMgConcluido(row);
 }
 
 function textoResumoEnviarMgHistorico(row) {
@@ -2507,7 +2529,9 @@ function _terceirosEtapaExclusivaDoRow(row) {
     if (_terceirosConsideraFornecedorRecebido(row)) return 'fornecedores-recebidos';
     if (_terceirosConsideraHistorico(row)) return 'historico';
     if (_terceirosConsideraNotasLancadas(row)) return 'notas-lancadas';
-    if (_terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.carga_recebida_mg)) return 'notas-enviadas-mg';
+    if (_terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.carga_recebida_mg) && !isTerceirosFlagSim(row.nota_lancada)) {
+        return 'notas-enviadas-mg';
+    }
     if (_terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.enviar_para_mg)) return 'recebimentos-mg';
     if (_terceirosUsaFluxoMg(row) && !isTerceirosFlagSim(row.enviar_para_mg) && !isTerceirosFlagNao(row.enviar_para_mg)) {
         return 'pendencias-mg';
@@ -3775,7 +3799,7 @@ async function loadTerceirosNotasEnviadasMg(dataPreloaded) {
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'notas-enviadas-mg');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF concluída em MG.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF nesta etapa. Com <strong>Lançada</strong>, <strong>Enviar MG</strong> e <strong>Recebida MG</strong> = Sim, a nota vai para o <strong>Histórico</strong> (e continua em Notas lançadas).</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
@@ -4108,6 +4132,10 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
     }
     if (campo === 'carga_recebida_mg' && isTerceirosFlagSim(valor) && opcoes.forcar_fluxo_carreta) {
         await _terceirosAposConcluirCarretaNoHistorico(documentoId, resp && resp.documento);
+        return;
+    }
+    if (campo === 'carga_recebida_mg' && isTerceirosFlagSim(valor)) {
+        await _terceirosAposConfirmarRecebidaMgSim(documentoId, resp && resp.documento);
         return;
     }
     var navegouFluxo = await moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor);
@@ -5759,8 +5787,16 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 await _terceirosAposConfirmarEnviarMgSim(documentoId, resp && resp.documento);
                 return;
             }
+            if (campo === 'enviar_para_mg' && isTerceirosFlagNao(valor)) {
+                await _terceirosAposConfirmarEnviarMgNao(documentoId, resp && resp.documento);
+                return;
+            }
             if (campo === 'carga_recebida_mg' && isTerceirosFlagSim(valor) && opcoes.forcar_fluxo_carreta) {
                 await _terceirosAposConcluirCarretaNoHistorico(documentoId, resp && resp.documento);
+                return;
+            }
+            if (campo === 'carga_recebida_mg' && isTerceirosFlagSim(valor)) {
+                await _terceirosAposConfirmarRecebidaMgSim(documentoId, resp && resp.documento);
                 return;
             }
             showMessage('Status atualizado.', 'success');
