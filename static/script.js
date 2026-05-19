@@ -88,6 +88,7 @@ document.addEventListener('DOMContentLoaded', function() {
     void _terceirosGarantirPrefetchLista();
     initTerceirosAlertasHeader();
     initTerceirosPendenciaRecebimentoDelegacao();
+    initTerceirosBotoesPdfXmlDelegacao();
     initTerceirosConferenciaAcoesDelegacao();
     initForms();
     initFiltrosBase();
@@ -318,48 +319,38 @@ function terceirosAbaAnteriorNoFluxo(aba) {
     return TERCEIROS_FLUXO_ABAS[idx - 1];
 }
 
-/** A partir da 3ª etapa numerada (Fornecedores recebidos). */
-function terceirosDeveExibirVoltarAba(aba) {
-    return _terceirosIndiceAbaFluxo(aba) >= 3;
-}
-
-function terceirosVoltarParaAbaAnterior(abaAtual) {
-    var anterior = terceirosAbaAnteriorNoFluxo(abaAtual || _terceirosTabAtual);
-    if (!anterior) return;
-    if (window.terceirosMostrarAba) window.terceirosMostrarAba(anterior);
-}
-window.terceirosVoltarParaAbaAnterior = terceirosVoltarParaAbaAnterior;
-
-function initTerceirosBotaoVoltarAbas() {
-    if (window._terceirosBotaoVoltarAbasOk) return;
-    window._terceirosBotaoVoltarAbasOk = true;
-    TERCEIROS_FLUXO_ABAS.forEach(function(aba) {
-        if (!terceirosDeveExibirVoltarAba(aba)) return;
-        var panel = document.getElementById('terceiros-panel-' + aba);
-        if (!panel) return;
-        if (panel.querySelector('.ter-btn-voltar-aba[data-ter-voltar-de="' + aba + '"]')) return;
-        var anterior = terceirosAbaAnteriorNoFluxo(aba);
-        if (!anterior) return;
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'btn btn-secondary ter-btn-voltar-aba';
-        btn.setAttribute('data-ter-voltar-de', aba);
-        var lbl = TERCEIROS_LABEL_ABA[anterior] || anterior;
-        btn.textContent = '← Voltar: ' + lbl;
-        btn.title = 'Voltar para ' + lbl;
-        btn.addEventListener('click', function() {
-            terceirosVoltarParaAbaAnterior(aba);
-        });
-        var cabecalho = panel.querySelector('.painel-titulo');
-        if (cabecalho) {
-            cabecalho.insertBefore(btn, cabecalho.firstChild);
-        } else {
-            var tituloPrincipal = panel.querySelector('h2.devolucoes-titulo-principal');
-            if (tituloPrincipal) panel.insertBefore(btn, tituloPrincipal);
-            else panel.insertBefore(btn, panel.firstChild);
-        }
+/** Remove botões antigos «Voltar: aba anterior» (substituídos por voltar à lista da NF). */
+function removerTerceirosBotoesVoltarAba() {
+    document.querySelectorAll('.ter-btn-voltar-aba').forEach(function(el) {
+        el.remove();
     });
 }
+
+var TERCEIROS_TBODY_POR_ABA = {
+    'pendencia-recebimento': 'ter-tbody-recebimento-documentos',
+    'fornecedores-recebidos': 'ter-tbody-fornecedores-recebidos',
+    'pendentes-lancamento': 'ter-tbody-pendentes-lancamento',
+    'notas-lancadas': 'ter-tbody-notas-lancadas',
+    'pendencias-mg': 'ter-tbody-pendencias-mg',
+    'notas-enviadas-mg': 'ter-tbody-notas-enviadas-mg',
+    'recebimentos-mg': 'ter-tbody-recebimentos-mg',
+    'historico': 'ter-tbody-historico'
+};
+
+/** Fecha o detalhe da NF e volta à tabela da aba de onde a nota foi aberta. */
+function terceirosVoltarDaNotaParaLista() {
+    var tabOrigem = window._terceirosDetalheOrigemTab || _terceirosTabAtual || 'pendencia-recebimento';
+    window._terceirosDetalheOrigemTab = null;
+    resetTerceirosDetalhe();
+    if (window.terceirosMostrarAba) window.terceirosMostrarAba(tabOrigem);
+    window.requestAnimationFrame(function() {
+        var tbodyId = TERCEIROS_TBODY_POR_ABA[tabOrigem] || 'ter-tbody-recebimento-documentos';
+        var tbody = document.getElementById(tbodyId);
+        var alvo = (tbody && tbody.closest('.conferencia-bloco')) || tbody;
+        if (alvo) alvo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+}
+window.terceirosVoltarDaNotaParaLista = terceirosVoltarDaNotaParaLista;
 
 /** Atualiza botões e painéis da sub-aba (sem fetch). */
 function terceirosAplicarPainelAbaSomenteUi(aba) {
@@ -768,7 +759,11 @@ function initTerceirosTabs() {
         var sessTab = _lerTerceirosDocumentoNaSessao();
         if (sessTab && sessTab.tab) tabInicial = sessTab.tab;
     }
-    initTerceirosBotaoVoltarAbas();
+    removerTerceirosBotoesVoltarAba();
+    var btnTerVoltarLista = document.getElementById('btn-ter-voltar-lista-nf');
+    if (btnTerVoltarLista) {
+        btnTerVoltarLista.addEventListener('click', terceirosVoltarDaNotaParaLista);
+    }
     mostrarTerTab(tabInicial);
     void _terceirosGarantirPrefetchLista();
 }
@@ -1649,6 +1644,68 @@ function abrirModalIrParaNotasLancadas() {
     });
 }
 
+function fecharModalConfirmarRecebimentoFornecedores(escolha) {
+    var modal = document.getElementById('modal-terceiros-confirmar-recebimento-fornecedores');
+    _terceirosOcultarModalOverlay(modal);
+    if (_terceirosConfirmacaoRecebimentoFornecedoresResolver) {
+        _terceirosConfirmacaoRecebimentoFornecedoresResolver(escolha || false);
+        _terceirosConfirmacaoRecebimentoFornecedoresResolver = null;
+    }
+}
+
+/** Antes de concluir recebimento: «ir» | «ficar» | false (cancelar). */
+function abrirModalConfirmarRecebimentoFornecedores() {
+    var modal = document.getElementById('modal-terceiros-confirmar-recebimento-fornecedores');
+    if (!modal) {
+        if (window.confirm('Marcar recebimento como concluído e ir para a 3ª aba — Fornecedores recebidos?')) {
+            return Promise.resolve('ir');
+        }
+        if (window.confirm('Deseja concluir o recebimento e permanecer nesta aba?')) {
+            return Promise.resolve('ficar');
+        }
+        return Promise.resolve(false);
+    }
+    return new Promise(function(resolve) {
+        _terceirosConfirmacaoRecebimentoFornecedoresResolver = resolve;
+        _terceirosPrepararModalConfirmacaoBackdrop();
+        window.setTimeout(function() {
+            _terceirosExibirModalOverlay(modal);
+        }, 0);
+    });
+}
+
+async function _terceirosAplicarUiAposRecebimentoConcluido(documentoId, documentoAtualizado, irParaFornecedores) {
+    var prefixoConcl = getTerceirosPrefixo();
+    definirDestaqueLinhaTerceirosDoc(documentoId);
+    aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado);
+    try {
+        void loadTerceirosDocumentos();
+    } catch (e) {
+        console.error(e);
+    }
+    try {
+        void loadTerceirosFornecedoresRecebidos();
+    } catch (e2) {
+        console.error(e2);
+    }
+    void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
+    if (irParaFornecedores) {
+        await abrirAbaTerceirosSeDiferenteAsync('fornecedores-recebidos', false, true);
+        resetTerceirosDetalhe();
+        animarConclusaoTerceiros(prefixoConcl);
+        window.setTimeout(function() {
+            abrirModalRecebimentoConcluidoTerceiros();
+        }, 0);
+        showMessage('Recebimento concluído.', 'success');
+        return;
+    }
+    atualizarBotaoConclusaoTerceiros(prefixoConcl, true);
+    if (_terceirosDocAtual && documentoAtualizado) {
+        _terceirosDocAtual = Object.assign({}, _terceirosDocAtual, documentoAtualizado);
+    }
+    showMessage('Recebimento concluído. Você permanece nesta aba.', 'success');
+}
+
 /** Após salvar «Sim» em Nota lançada: pergunta se vai à 5ª aba. */
 async function _terceirosAposConfirmarNotaLancadaSim(documentoId, documentoResp) {
     if (documentoId == null) return;
@@ -2405,6 +2462,25 @@ function parsePrevisaoChegadaTerceiros(texto) {
     return null;
 }
 
+/** Previsão com data anterior a hoje (só dia, hora local). */
+function _terceirosPrevisaoAtrasada(texto) {
+    var pd = parsePrevisaoChegadaTerceiros(texto);
+    if (!pd) return false;
+    var hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    return pd.getTime() < hoje.getTime();
+}
+
+function renderTerceirosPrevisaoCelulaHtml(texto) {
+    var exibicao = texto || '-';
+    var atrasada = _terceirosPrevisaoAtrasada(texto);
+    var cls = atrasada ? ' class="ter-previsao-atrasada"' : '';
+    var conteudo = atrasada
+        ? '<strong>' + escapeHtml(exibicao) + '</strong>'
+        : escapeHtml(exibicao);
+    return '<td' + cls + '>' + conteudo + '</td>';
+}
+
 function segundaFeiraSemanaContendo(hoje) {
     var x = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
     var dow = x.getDay();
@@ -2430,6 +2506,11 @@ function filtrarRowsPendenciaPorPrevisao(rows, tipo, dataLivreIso) {
     rows = Array.isArray(rows) ? rows : [];
     tipo = (tipo || 'todos').toLowerCase();
     if (tipo === 'todos') return rows;
+    if (tipo === 'atrasado') {
+        return rows.filter(function(row) {
+            return _terceirosPrevisaoAtrasada(row.previsao_chegada);
+        });
+    }
     if (tipo === 'semana') {
         var iv = intervaloSemanaQueVemTerceiros();
         return rows.filter(function(row) {
@@ -2479,7 +2560,7 @@ function renderTerceirosPendenciaDocumentosTbodyHtml(rows) {
             + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
             + '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>'
             + '<td><strong>' + escapeHtml(plc) + '</strong></td>'
-            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
+            + renderTerceirosPrevisaoCelulaHtml(row.previsao_chegada)
             + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
             + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
             + renderTerceirosListaAcoesCelula(renderTerceirosPendenciaRecebimentoAcoes(row))
@@ -2520,10 +2601,17 @@ function reaplicarFiltroPrevisaoPendenciaRecebimento() {
         return;
     }
     if (!filtradas.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com <strong>previsão</strong> neste filtro. Use <strong>Todos</strong> ou escolha outra data.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">' + _terceirosMsgListaVaziaFiltroPrevisao() + '</td></tr>';
         return;
     }
     tbody.innerHTML = renderTerceirosPendenciaDocumentosTbodyHtml(filtradas);
+}
+
+function _terceirosMsgListaVaziaFiltroPrevisao() {
+    if ((window._terceirosPendenciaFiltroTipo || '') === 'atrasado') {
+        return 'Nenhuma NF com previsão <strong>atrasada</strong> (data anterior a hoje).';
+    }
+    return 'Nenhuma NF com <strong>previsão</strong> neste filtro. Use <strong>Todos</strong> ou escolha outra data.';
 }
 
 function initTerceirosFiltroPrevisaoPendencia() {
@@ -2602,13 +2690,62 @@ function abrirDanfeNotaFiscalTerceiros(documentoId) {
     }
 }
 
+function baixarXmlNotaFiscalTerceiros(documentoId) {
+    documentoId = parseInt(documentoId, 10);
+    if (!Number.isFinite(documentoId) || documentoId <= 0) {
+        showMessage('Não foi possível identificar a nota.', 'warning');
+        return;
+    }
+    var url = API_BASE + '/terceiros/documentos/' + encodeURIComponent(documentoId) + '/xml';
+    var link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', '');
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function renderTerceirosBotoesPdfXmlNf(row) {
+    var id = escapeHtml(String(row.id));
+    return '<button type="button" class="btn btn-secondary btn-sm" data-ter-ver-pdf-doc="' + id + '" title="Abrir DANFE para imprimir ou salvar como PDF">Ver PDF da NF</button>'
+        + '<button type="button" class="btn btn-secondary btn-sm" data-ter-baixar-xml-doc="' + id + '" title="Baixar o arquivo XML original da NF">Baixar XML</button>';
+}
+
+/** Delegação: Ver PDF / Baixar XML em todas as listas do módulo (2ª aba em diante). */
+function initTerceirosBotoesPdfXmlDelegacao() {
+    if (window._terceirosBotoesPdfXmlDelegacaoOk) return;
+    var root = document.getElementById('modulo-terceiros');
+    if (!root) return;
+    window._terceirosBotoesPdfXmlDelegacaoOk = true;
+    root.addEventListener('click', function(ev) {
+        var el = ev.target;
+        if (!el || typeof el.closest !== 'function') return;
+        var pdfBtn = el.closest('[data-ter-ver-pdf-doc], [data-ter-ver-pdf-pend]');
+        if (pdfBtn) {
+            ev.preventDefault();
+            var idPdf = terceirosIdDocumentoDeAtributo(
+                pdfBtn.getAttribute('data-ter-ver-pdf-doc') || pdfBtn.getAttribute('data-ter-ver-pdf-pend')
+            );
+            abrirDanfeNotaFiscalTerceiros(idPdf);
+            return;
+        }
+        var xmlBtn = el.closest('[data-ter-baixar-xml-doc]');
+        if (xmlBtn) {
+            ev.preventDefault();
+            var idXml = terceirosIdDocumentoDeAtributo(xmlBtn.getAttribute('data-ter-baixar-xml-doc'));
+            baixarXmlNotaFiscalTerceiros(idXml);
+        }
+    });
+}
+
 function renderTerceirosPendenciaRecebimentoAcoes(row) {
     var area = escapeHtml(row.area || 'recebimento');
     var id = escapeHtml(String(row.id));
     return '<span class="ter-lista-acoes ter-pendencia-acoes">'
         + '<button type="button" class="btn btn-primary btn-sm" data-ter-descarregar-pend="' + id + '" data-ter-area="' + area + '">Começar descarga</button>'
         + '<button type="button" class="btn btn-secondary btn-sm" data-ter-ver-detalhe-pend="' + id + '" data-ter-area="' + area + '">Ver detalhe</button>'
-        + '<button type="button" class="btn btn-secondary btn-sm" data-ter-ver-pdf-pend="' + id + '" title="Abrir DANFE para imprimir ou salvar como PDF">Ver PDF da NF</button>'
+        + renderTerceirosBotoesPdfXmlNf(row)
         + renderTerceirosExcluirButton(row, 'data-ter-excluir-doc')
         + '</span>';
 }
@@ -2643,7 +2780,7 @@ function renderTerceirosCelulasNfAtePrevisao(row) {
         + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
         + '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>'
         + '<td><strong>' + escapeHtml(plc) + '</strong></td>'
-        + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>';
+        + renderTerceirosPrevisaoCelulaHtml(row.previsao_chegada);
 }
 
 function renderTerceirosRecebimentoComUsuario(row) {
@@ -2679,6 +2816,7 @@ function renderTerceirosFornecedorRecebidoRowHtml(row) {
         + '<td>' + renderTerceirosStatusComUsuario(textoResumoNotaLancadaTerceiros(row), row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
         + renderTerceirosListaAcoesCelula(
             renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'fornecedores-recebidos')
+            + renderTerceirosBotoesPdfXmlNf(row)
             + renderTerceirosComprovanteButton(row)
             + renderTerceirosExcluirButton(row, 'data-ter-excluir-fornecedor-doc')
         )
@@ -2773,6 +2911,9 @@ function _terceirosErroDescargaCancelada(err) {
 
 async function abrirPendenciaTerceirosComScroll(area, documentoId, secao, opcoes) {
     opcoes = opcoes || {};
+    if (!window._terceirosDetalheOrigemTab) {
+        window._terceirosDetalheOrigemTab = 'pendencia-recebimento';
+    }
     var comModal = opcoes.modalLoading !== false;
     if (comModal) abrirModalCarregandoDescargaTerceiros(opcoes.mensagemLoading || 'Abrindo nota fiscal e preparando descarga…');
     try {
@@ -2840,6 +2981,7 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
                 showMessage('Não foi possível identificar a nota. Recarregue a lista.', 'warning');
                 return;
             }
+            window._terceirosDetalheOrigemTab = 'pendencia-recebimento';
             var btnDesc = desc;
             btnDesc.disabled = true;
             void abrirPendenciaTerceirosComScroll(areaD, idD, 'bipagem', { modalLoading: true }).then(function() {
@@ -2863,17 +3005,12 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
                 showMessage('Não foi possível identificar a nota. Recarregue a lista.', 'warning');
                 return;
             }
+            window._terceirosDetalheOrigemTab = 'pendencia-recebimento';
             void abrirPendenciaTerceirosComScroll(areaV, idV, 'resumo').catch(function(err) {
                 console.error(err);
                 showMessage('Erro ao abrir a nota.', 'error');
             });
             return;
-        }
-        var pdfBtn = el.closest('[data-ter-ver-pdf-pend]');
-        if (pdfBtn && tbody.contains(pdfBtn)) {
-            ev.preventDefault();
-            var idPdf = terceirosIdDocumentoDeAtributo(pdfBtn.getAttribute('data-ter-ver-pdf-pend'));
-            abrirDanfeNotaFiscalTerceiros(idPdf);
         }
     });
 }
@@ -2930,8 +3067,16 @@ function bindTerceirosAbrirButtons(seletor) {
             );
             var area = btn.getAttribute('data-ter-area') || 'recebimento';
             var tabDestino = btn.getAttribute('data-ter-open-tab') || 'pendencia-recebimento';
-            abrirAbaTerceirosSeDiferente(tabDestino);
-            if (id) void loadTerceirosDocumentoDetalhe(area, id);
+            window._terceirosDetalheOrigemTab = tabDestino;
+            if (!id) return;
+            if (tabDestino === 'pendencia-recebimento') {
+                abrirAbaTerceirosSeDiferente('pendencia-recebimento');
+                void loadTerceirosDocumentoDetalhe(area, id).then(function() {
+                    scrollTerceirosRecebimentoDetalheSecao('resumo');
+                });
+            } else {
+                void abrirPendenciaTerceirosComScroll(area, id, 'resumo', { modalLoading: false });
+            }
         });
     });
 }
@@ -3009,7 +3154,7 @@ async function loadTerceirosDocumentos(dataPreloaded) {
             return;
         }
         if (!filtradas.length) {
-            tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com <strong>previsão</strong> neste filtro. Use <strong>Todos</strong> ou escolha outra data.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" class="loading">' + _terceirosMsgListaVaziaFiltroPrevisao() + '</td></tr>';
             _terceirosFecharDescargaSeDocumentoNaoNaListaPendencia(filtradas);
             return;
         }
@@ -3215,6 +3360,7 @@ async function loadTerceirosPendentesLancamento(dataPreloaded) {
             + '</select>' + renderTerceirosUsuarioMeta(row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-pend-lanc-doc', 'Abrir detalhe', 'pendentes-lancamento')
+                + renderTerceirosBotoesPdfXmlNf(row)
                 + renderTerceirosComprovanteButton(row)
                 + renderTerceirosExcluirButton(row, 'data-ter-excluir-pend-lanc-doc')
             )
@@ -3277,6 +3423,7 @@ async function loadTerceirosNotasLancadas(dataPreloaded) {
             + renderTerceirosConclusaoCarretaTab5(row)
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + renderTerceirosBotoesPdfXmlNf(row)
                 + renderTerceirosComprovanteButton(row)
                 + renderTerceirosExcluirButton(row, 'data-ter-excluir-lancada-doc')
             )
@@ -3329,6 +3476,7 @@ async function loadTerceirosNotasEnviadasMg(dataPreloaded) {
             + '<td>' + renderTerceirosStatusComUsuario(row.carga_recebida_mg || '-', row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-enviada-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + renderTerceirosBotoesPdfXmlNf(row)
                 + renderTerceirosComprovanteButton(row)
                 + renderTerceirosExcluirButton(row, 'data-ter-excluir-enviada-doc')
             )
@@ -3372,6 +3520,7 @@ async function loadTerceirosRecebimentosMg(dataPreloaded) {
             + '</select>' + renderTerceirosUsuarioMeta(row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-receb-mg-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + renderTerceirosBotoesPdfXmlNf(row)
                 + renderTerceirosComprovanteButton(row)
                 + renderTerceirosExcluirButton(row, 'data-ter-excluir-receb-mg-doc')
             )
@@ -3433,6 +3582,7 @@ async function loadTerceirosPendenciasMg(dataPreloaded) {
             + '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>'
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-pendencia-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + renderTerceirosBotoesPdfXmlNf(row)
                 + renderTerceirosComprovanteButton(row)
                 + renderTerceirosExcluirButton(row, 'data-ter-excluir-pendencia-doc')
             )
@@ -3513,6 +3663,7 @@ async function loadTerceirosHistorico(dataPreloaded) {
             + '<td>' + renderTerceirosStatusComUsuario(textoResumoRecebidaMgHistorico(row), row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-historico-doc', 'Abrir detalhe', 'historico')
+                + renderTerceirosBotoesPdfXmlNf(row)
                 + renderTerceirosComprovanteButton(row)
                 + renderTerceirosExcluirButton(row, 'data-ter-excluir-historico-doc')
             )
@@ -3740,6 +3891,8 @@ function resetTerceirosDetalhe() {
     var prefixo = getTerceirosPrefixo();
     var vazio = document.getElementById('ter-recebimento-detalhe-vazio');
     var detalhe = document.getElementById('ter-recebimento-detalhe');
+    var btnVoltarLista = document.getElementById('btn-ter-voltar-lista-nf');
+    if (btnVoltarLista) btnVoltarLista.style.display = 'none';
     if (vazio) vazio.style.display = 'block';
     if (detalhe) detalhe.style.display = 'none';
     _terceirosDocAtual.id = null;
@@ -4558,6 +4711,8 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
         // Painel visível + loading antes do flush (muitas chamadas à API) para o clique não parecer morto.
         if (vazio) vazio.style.display = 'none';
         if (detalhe) detalhe.style.display = 'block';
+        var btnVoltarListaLoad = document.getElementById('btn-ter-voltar-lista-nf');
+        if (btnVoltarListaLoad) btnVoltarListaLoad.style.display = 'inline-block';
         var idAntNum = docAnterior != null && docAnterior !== '' ? Number(docAnterior) : NaN;
         var vaiFlush = Number.isFinite(idAntNum) && idAntNum > 0;
         if (tbody) {
@@ -4616,6 +4771,8 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
     if (hidId) hidId.value = doc.id != null ? String(doc.id) : '';
     if (vazio) vazio.style.display = 'none';
     if (detalhe) detalhe.style.display = 'block';
+    var btnVoltarLista = document.getElementById('btn-ter-voltar-lista-nf');
+    if (btnVoltarLista) btnVoltarLista.style.display = 'inline-block';
     var statNf = document.getElementById(prefixo + '-stat-nf');
     var pedido = document.getElementById(prefixo + '-pedido');
     if (statNf) statNf.textContent = (doc.numero_nf || '-') + (doc.serie_nf ? ('/' + doc.serie_nf) : '');
@@ -5088,7 +5245,8 @@ async function _postRecebimentoConcluidoTerceirosDireto(documentoId, timeoutMs) 
     }
 }
 
-async function concluirRecebimentoTerceirosPelaDescarga(fin) {
+async function concluirRecebimentoTerceirosPelaDescarga(fin, opcoes) {
+    opcoes = opcoes || {};
     var documentoId = _resolverIdDocumentoTerceirosParaStatus();
     if (documentoId == null) {
         showMessage('Selecione uma nota.', 'warning');
@@ -5098,6 +5256,13 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin) {
         atualizarBotaoConclusaoTerceiros(getTerceirosPrefixo(), true);
         return;
     }
+    if (!opcoes._confirmacaoRecebimento) {
+        var escolhaPre = await abrirModalConfirmarRecebimentoFornecedores();
+        if (!escolhaPre) return;
+        opcoes._confirmacaoRecebimento = true;
+        opcoes.irFornecedores = escolhaPre === 'ir';
+    }
+    var irParaFornecedores = opcoes.irFornecedores !== false;
     _terceirosRecebimentoConcluindo = true;
     try {
         _terceirosLogFluxoRecebimento('DESCARGA 1 ANTES POST /status (gravar antes de fechar / F5)');
@@ -5109,14 +5274,7 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin) {
         }
         var documentoAtualizado = _terceirosMontarDocumentoRecebidoLocal(documentoId, resp.documento);
         _terceirosDocAtual = Object.assign({}, _terceirosDocAtual || {}, documentoAtualizado);
-        definirDestaqueLinhaTerceirosDoc(documentoId);
-        aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado);
-        terceirosAplicarPainelAbaSomenteUi('fornecedores-recebidos');
-        resetTerceirosDetalhe();
-        showMessage('Recebimento concluído.', 'success');
-        try { void loadTerceirosDocumentos(); } catch (e) { console.error(e); }
-        try { void loadTerceirosFornecedoresRecebidos(); } catch (e2) { console.error(e2); }
-        void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
+        await _terceirosAplicarUiAposRecebimentoConcluido(documentoId, documentoAtualizado, irParaFornecedores);
     } finally {
         _terceirosLogFluxoRecebimento('DESCARGA FINALLY executou');
         _terceirosRecebimentoConcluindo = false;
@@ -5144,6 +5302,7 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
     var prefixo = getTerceirosPrefixo();
     var btnConcluir = document.getElementById('btn-' + prefixo + '-concluir');
     var pedidoConclusaoRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
+    var irParaFornecedoresAposConcluir = true;
     var watchdogConcluir = null;
     if (pedidoConclusaoRecebimento) {
         if (_terceirosRecebimentoConcluindo) {
@@ -5153,6 +5312,9 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         if (isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido)) {
             return;
         }
+        var escolhaReceb = await abrirModalConfirmarRecebimentoFornecedores();
+        if (!escolhaReceb) return;
+        irParaFornecedoresAposConcluir = escolhaReceb === 'ir';
     }
     var restaurarBotaoConcluir = null;
     if (pedidoConclusaoRecebimento && btnConcluir && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido)) {
@@ -5290,14 +5452,9 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             if (concluiuRecebimento) {
                 restaurarBotaoConcluir = null;
                 _terceirosDocAtual.recebimento_concluido = 'Sim';
-                var prefixoConcl = getTerceirosPrefixo();
                 try {
-                    _terceirosLogFluxoRecebimento('PASSO 5 movimento local e abrir 3ª aba');
+                    _terceirosLogFluxoRecebimento('PASSO 5 movimento local após conclusão');
                     var documentoAtualizado = resp && resp.documento ? resp.documento : null;
-                    definirDestaqueLinhaTerceirosDoc(documentoId);
-                    aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado);
-                    await abrirAbaTerceirosSeDiferenteAsync('fornecedores-recebidos', false, true);
-                    _terceirosLogFluxoRecebimento('PASSO 6 3ª aba aberta; recargas em background');
                     try {
                         void _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 3000).catch(function(eBg) {
                             console.error(eBg);
@@ -5305,26 +5462,11 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                     } catch (eBg1) {
                         console.error(eBg1);
                     }
-                    try {
-                        void loadTerceirosDocumentos();
-                    } catch (e) {
-                        console.error(e);
-                    }
-                    try {
-                        void loadTerceirosFornecedoresRecebidos();
-                    } catch (e) {
-                        console.error(e);
-                    }
-                    resetTerceirosDetalhe();
-                    _terceirosLogFluxoRecebimento('PASSO 7 fluxo conclusão finalizado sem await de listas');
-                    void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
+                    await _terceirosAplicarUiAposRecebimentoConcluido(documentoId, documentoAtualizado, irParaFornecedoresAposConcluir);
+                    _terceirosLogFluxoRecebimento('PASSO 7 fluxo conclusão finalizado');
                 } finally {
                     _terceirosLogFluxoRecebimento('FINALLY INTERNO conclusão executou');
                 }
-                animarConclusaoTerceiros(prefixoConcl);
-                window.setTimeout(function() {
-                    abrirModalRecebimentoConcluidoTerceiros();
-                }, 0);
                 return;
             }
             if (campo === 'nota_lancada' && isTerceirosFlagSim(valor)) {
@@ -5447,6 +5589,14 @@ function initForms() {
     if (btnTerFicarPendLanc) btnTerFicarPendLanc.addEventListener('click', function() { fecharModalIrParaNotasLancadas(false); });
     if (btnTerIrNotasLancClose) btnTerIrNotasLancClose.addEventListener('click', function() { fecharModalIrParaNotasLancadas(false); });
 
+    const modalTerConfForn = document.getElementById('modal-terceiros-confirmar-recebimento-fornecedores');
+    const btnTerIrForn = document.getElementById('btn-ter-ir-fornecedores-recebidos');
+    const btnTerFicarPendRec = document.getElementById('btn-ter-ficar-pendencia-recebimento');
+    const btnTerConfFornClose = document.getElementById('modal-terceiros-confirmar-recebimento-fornecedores-close');
+    if (btnTerIrForn) btnTerIrForn.addEventListener('click', function() { fecharModalConfirmarRecebimentoFornecedores('ir'); });
+    if (btnTerFicarPendRec) btnTerFicarPendRec.addEventListener('click', function() { fecharModalConfirmarRecebimentoFornecedores('ficar'); });
+    if (btnTerConfFornClose) btnTerConfFornClose.addEventListener('click', function() { fecharModalConfirmarRecebimentoFornecedores(false); });
+
     const modalTerSemReceb = document.getElementById('modal-terceiros-lancar-sem-recebimento');
     const btnTerSemRecebConfirmar = document.getElementById('btn-ter-confirmar-lancar-sem-recebimento');
     const btnTerSemRecebCancelar = document.getElementById('btn-ter-cancelar-lancar-sem-recebimento');
@@ -5490,6 +5640,9 @@ function initForms() {
         }
         if (modalTerIrNotasLanc && e.target === modalTerIrNotasLanc && !_terceirosDeveIgnorarCliqueBackdropModal()) {
             fecharModalIrParaNotasLancadas(false);
+        }
+        if (modalTerConfForn && e.target === modalTerConfForn && !_terceirosDeveIgnorarCliqueBackdropModal()) {
+            fecharModalConfirmarRecebimentoFornecedores(false);
         }
         if (modalTerSemReceb && e.target === modalTerSemReceb && !_terceirosDeveIgnorarCliqueBackdropModal()) {
             fecharModalLancamentoSemRecebimento(false);

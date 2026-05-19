@@ -1519,6 +1519,7 @@
                                         <span class="ter-filtro-previsao-label">Previsão</span>
                                         <button type="button" class="btn btn-secondary btn-sm ter-filtro-previsao-btn ter-filtro-previsao-btn--ativo" data-ter-filtro-previsao="todos">Todos</button>
                                         <button type="button" class="btn btn-secondary btn-sm ter-filtro-previsao-btn" data-ter-filtro-previsao="hoje">Hoje</button>
+                                        <button type="button" class="btn btn-secondary btn-sm ter-filtro-previsao-btn" data-ter-filtro-previsao="atrasado">Atrasado</button>
                                         <button type="button" class="btn btn-secondary btn-sm ter-filtro-previsao-btn" data-ter-filtro-previsao="amanha">Amanhã</button>
                                         <button type="button" class="btn btn-secondary btn-sm ter-filtro-previsao-btn" data-ter-filtro-previsao="depois">Depois de amanhã</button>
                                         <button type="button" class="btn btn-secondary btn-sm ter-filtro-previsao-btn" data-ter-filtro-previsao="semana">Semana que vem</button>
@@ -1556,6 +1557,9 @@
                             <div id="ter-recebimento-detalhe" style="display: none;">
                                 <input type="hidden" id="ter-rec-documento-id" value="">
                                 <div id="ter-descarga-conferencia-modelo" class="ter-descarga-conferencia-modelo">
+                                    <div class="ter-detalhe-topo-acoes" style="margin-bottom: 12px;">
+                                        <button type="button" class="btn btn-secondary btn-sm" id="btn-ter-voltar-lista-nf" style="display: none;" title="Fechar detalhe e voltar à tabela de notas">← Voltar para a lista</button>
+                                    </div>
                                     <h2 class="ter-descarga-titulo-principal">DESCARGA — CONTROLE DE BIPAGEM POR NF</h2>
                                     <div class="conferencia-blocos-grid ter-descarga-blocos-grid">
                                         <div class="conferencia-bloco form-container" style="background: #e3f2fd; border-left: 4px solid #2196F3;">
@@ -2193,6 +2197,23 @@
             <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
                 <button type="button" class="btn btn-secondary" id="btn-ter-ficar-pendencias-mg">Não, ficar nesta aba</button>
                 <button type="button" class="btn btn-primary" id="btn-ter-ir-recebimentos-mg">Sim, ir para o Histórico</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-terceiros-confirmar-recebimento-fornecedores" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 480px; border-top: 4px solid #366092;">
+            <span class="close" id="modal-terceiros-confirmar-recebimento-fornecedores-close">&times;</span>
+            <h3 style="margin-top: 0; color: #366092;">Recebimento concluído</h3>
+            <p style="margin: 12px 0; color: #455a64;">
+                A NF será marcada como recebida e sairá da lista de <strong>Pendência de recebimento</strong>.
+            </p>
+            <p style="margin: 0 0 20px 0; color: #607d8b;">
+                Deseja ir para a <strong>3ª aba — Fornecedores recebidos</strong>?
+            </p>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary" id="btn-ter-ficar-pendencia-recebimento">Não, ficar nesta aba</button>
+                <button type="button" class="btn btn-primary" id="btn-ter-ir-fornecedores-recebidos">Sim, ir para Fornecedores recebidos</button>
             </div>
         </div>
     </div>

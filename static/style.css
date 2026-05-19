@@ -1114,6 +1114,12 @@ body {
     max-width: 100%;
 }
 
+#modulo-terceiros td.ter-previsao-atrasada,
+#modulo-terceiros td.ter-previsao-atrasada strong {
+    color: #c62828;
+    font-weight: 700;
+}
+
 #modulo-terceiros .terceiros-lista-bloco .ter-tabela-lista td .btn {
     margin-top: 0;
     margin-bottom: 0;

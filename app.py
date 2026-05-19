@@ -996,7 +996,7 @@ def _ensure_terceiros_schema(conn):
     except Exception:
         pass
     try:
-        _terceiros_backfill_numero_pedido_pendentes(conn, limite=150)
+        _terceiros_backfill_campos_xml_pendentes(conn, limite=300)
     except Exception:
         pass
     try:
@@ -6841,6 +6841,50 @@ def _texto_xml(elem):
     return (elem.text or '').strip() if elem is not None and elem.text is not None else ''
 
 
+def _tag_local(tag):
+    if not tag:
+        return ''
+    return tag.split('}', 1)[-1] if '}' in tag else tag
+
+
+def _find_child_text_by_local(parent, local_name):
+    """Primeiro elemento com tag local (ignora namespace) e texto não vazio."""
+    if parent is None:
+        return ''
+    alvo = (local_name or '').strip()
+    if not alvo:
+        return ''
+    for el in parent.iter():
+        if _tag_local(el.tag) == alvo:
+            txt = _texto_xml(el)
+            if txt:
+                return txt
+    return ''
+
+
+_PEDIDO_INVALIDOS = frozenset({
+    '', '-', '—', 'na', 'n/a', 'n.a', 'nao', 'não', 'none', 'null',
+    's/n', 'sn', 'sem', 'sem pedido', '0',
+})
+
+
+def _numero_pedido_valido(valor):
+    p = (valor or '').strip()
+    if not p:
+        return False
+    pl = p.lower().replace('.', '').replace('/', '')
+    if pl in _PEDIDO_INVALIDOS:
+        return False
+    if len(p) <= 2 and not any(ch.isdigit() for ch in p):
+        return False
+    return True
+
+
+def _normalizar_numero_pedido_terceiros(valor):
+    p = (valor or '').strip().strip('|').strip()
+    return p if _numero_pedido_valido(p) else ''
+
+
 def _find_first(parent, paths, ns):
     if parent is None:
         return ''
@@ -6905,6 +6949,81 @@ def _base_terceiros_para_bipagem(item_d, codigo_ean_solicitado):
     }
 
 
+def _extrair_uf_destinatario_nfe(dest, infnfe, ns):
+    if dest is not None:
+        for bloco in ('enderDest', 'entrega', 'enderEntrega'):
+            if ns:
+                sub = dest.find('nfe:' + bloco, ns)
+            else:
+                sub = dest.find(bloco)
+            uf = _find_first(sub, ['nfe:UF', 'UF'], ns) if sub is not None else ''
+            if not uf:
+                uf = _find_child_text_by_local(sub, 'UF') if sub is not None else ''
+            if uf:
+                return uf.strip().upper()[:2]
+        uf = _find_first(dest, ['nfe:UF', 'UF'], ns)
+        if not uf:
+            uf = _find_child_text_by_local(dest, 'UF')
+        if uf:
+            return uf.strip().upper()[:2]
+    if infnfe is not None:
+        for el in infnfe.iter():
+            if _tag_local(el.tag) != 'enderDest':
+                continue
+            uf = _find_child_text_by_local(el, 'UF')
+            if uf:
+                return uf.strip().upper()[:2]
+    return ''
+
+
+def _extrair_pedido_obs_cont(infnfe, ns):
+    info_adic = infnfe.find('nfe:infAdic', ns) if ns else infnfe.find('infAdic')
+    if info_adic is None:
+        return ''
+    obs_list = info_adic.findall('nfe:obsCont', ns) if ns else info_adic.findall('obsCont')
+    for obs in obs_list or []:
+        campo = (_find_first(obs, ['nfe:xCampo', 'xCampo'], ns) or '').strip().lower()
+        texto = _normalizar_numero_pedido_terceiros(_find_first(obs, ['nfe:xTexto', 'xTexto'], ns))
+        if not texto:
+            continue
+        if 'ped' in campo or campo in ('xped', 'oc', 'ordem', 'pedido', 'n_ped', 'nped'):
+            return texto
+    return ''
+
+
+def _extrair_numero_pedido_nfe(infnfe, ide, ns):
+    candidatos = []
+    dets = infnfe.findall('nfe:det', ns) if ns else infnfe.findall('det')
+    for det in dets or []:
+        prod = det.find('nfe:prod', ns) if ns else det.find('prod')
+        if prod is None:
+            continue
+        for tag in ('xPed', 'nItemPed'):
+            xp = _normalizar_numero_pedido_terceiros(_find_first(prod, ['nfe:' + tag, tag], ns))
+            if xp:
+                candidatos.append(xp)
+    if ide is not None:
+        compra = ide.find('nfe:compra', ns) if ns else ide.find('compra')
+        if compra is not None:
+            for tag in ('xPed', 'nPed'):
+                xp = _normalizar_numero_pedido_terceiros(_find_first(compra, ['nfe:' + tag, tag], ns))
+                if xp:
+                    candidatos.append(xp)
+    if candidatos:
+        candidatos.sort(key=lambda x: (len(x), x), reverse=True)
+        return candidatos[0]
+    obs = _extrair_pedido_obs_cont(infnfe, ns)
+    if obs:
+        return obs
+    info_adic = infnfe.find('nfe:infAdic', ns) if ns else infnfe.find('infAdic')
+    for tag in ('infCpl', 'infAdFisco'):
+        info_txt = _find_first(info_adic, ['nfe:' + tag, tag], ns)
+        ped = _extrair_numero_pedido_inf_cpl(info_txt)
+        if ped:
+            return ped
+    return ''
+
+
 def _parse_nfe_xml(xml_texto):
     try:
         root = ET.fromstring(xml_texto)
@@ -6921,17 +7040,13 @@ def _parse_nfe_xml(xml_texto):
     dest = infnfe.find('nfe:dest', ns) if ns else infnfe.find('dest')
     ide = infnfe.find('nfe:ide', ns) if ns else infnfe.find('ide')
     total = infnfe.find('nfe:total', ns) if ns else infnfe.find('total')
-    ender_dest = dest.find('nfe:enderDest', ns) if dest is not None and ns else (dest.find('enderDest') if dest is not None else None)
 
     itens = []
-    numero_pedido = ''
     dets = infnfe.findall('nfe:det', ns) if ns else infnfe.findall('det')
     for idx, det in enumerate(dets, 1):
         prod = det.find('nfe:prod', ns) if ns else det.find('prod')
         if prod is None:
             continue
-        if not numero_pedido:
-            numero_pedido = _find_first(prod, ['nfe:xPed', 'xPed'], ns)
         codigo_ean = _find_first(prod, ['nfe:cEAN', 'cEAN', 'nfe:cEANTrib', 'cEANTrib'], ns)
         codigo_produto_xml = _find_first(prod, ['nfe:cProd', 'cProd'], ns)
         descricao_xml = _find_first(prod, ['nfe:xProd', 'xProd'], ns)
@@ -6950,15 +7065,8 @@ def _parse_nfe_xml(xml_texto):
             'descricao_base': (base or {}).get('descricao_base', ''),
         })
 
-    if not numero_pedido and ide is not None:
-        compra = ide.find('nfe:compra', ns) if ns else ide.find('compra')
-        if compra is not None:
-            numero_pedido = _find_first(compra, ['nfe:xPed', 'xPed'], ns)
-
-    if not numero_pedido:
-        info_adic = infnfe.find('nfe:infAdic', ns) if ns else infnfe.find('infAdic')
-        info_complementar = _find_first(info_adic, ['nfe:infCpl', 'infCpl'], ns)
-        numero_pedido = _extrair_numero_pedido_inf_cpl(info_complementar)
+    numero_pedido = _extrair_numero_pedido_nfe(infnfe, ide, ns)
+    destinatario_uf = _extrair_uf_destinatario_nfe(dest, infnfe, ns)
 
     return {
         'chave_nfe': (infnfe.attrib.get('Id') or '').replace('NFe', '').strip(),
@@ -6969,7 +7077,7 @@ def _parse_nfe_xml(xml_texto):
         'remetente_cnpj': _find_first(emit, ['nfe:CNPJ', 'CNPJ', 'nfe:CPF', 'CPF'], ns),
         'destinatario_nome': _find_first(dest, ['nfe:xNome', 'xNome'], ns),
         'destinatario_cnpj': _find_first(dest, ['nfe:CNPJ', 'CNPJ', 'nfe:CPF', 'CPF'], ns),
-        'destinatario_uf': _find_first(ender_dest, ['nfe:UF', 'UF'], ns),
+        'destinatario_uf': destinatario_uf,
         'numero_pedido': numero_pedido,
         'valor_total_xml': _find_first(total, ['nfe:ICMSTot/nfe:vNF', 'ICMSTot/vNF'], ns),
         'itens': itens,
@@ -6980,58 +7088,159 @@ def _extrair_numero_pedido_inf_cpl(texto):
     if not texto:
         return ''
     patterns = (
-        r'Numero do Pedido do Cliente:\s*([^\|\n\r]+)',
-        r'N[uú]mero\s+do\s+Pedido[^:]*:\s*([^\|\n\r]+)',
-        r'Pedido\s*(?:n[º°\.]|N[º°]|No\.?|#)?\s*:?\s*([0-9A-Za-z][0-9A-Za-z\-\/]*)',
-        r'\bPED\.?\s*:?\s*([0-9A-Za-z][0-9A-Za-z\-\/]*)',
-        r'\bOC\s*:?\s*([0-9A-Za-z][0-9A-Za-z\-\/]*)',
+        r'Numero do Pedido do Cliente:\s*([^\|\n\r;]+)',
+        r'N[uú]mero\s+do\s+Pedido[^:]*:\s*([^\|\n\r;]+)',
+        r'(?:ORDEM\s+DE\s+COMPRA|O\.?C\.?)\s*(?:n[º°\.]|N[º°]|No\.?|#)?\s*:?\s*([0-9][0-9A-Za-z\-\/]*)',
+        r'(?:xPed|XPED)\s*[=:]\s*([0-9][0-9A-Za-z\-\/]*)',
+        r'\bPED\.?\s*(?:CLIENTE|COMPRA)?\s*[=:#]?\s*([0-9][0-9A-Za-z\-\/]*)',
+        r'Pedido\s*(?:do\s+Cliente\s*)?(?:n[º°\.]|N[º°]|No\.?|#)?\s*:+\s*([0-9][0-9A-Za-z\-\/]*)',
+        r'\bOC\s*[=:#]?\s*([0-9][0-9A-Za-z\-\/]*)',
     )
     for pat in patterns:
         match = re.search(pat, texto, re.IGNORECASE)
         if match:
-            valor = (match.group(1) or '').strip().strip('|').strip()
+            valor = _normalizar_numero_pedido_terceiros(match.group(1))
             if valor:
                 return valor
     return ''
 
 
-def _terceiros_backfill_numero_pedido_pendentes(conn, limite=150):
-    """Preenche numero_pedido a partir do XML para NFs antigas (listagem não carrega xml_conteudo)."""
-    limite = max(1, min(int(limite or 150), 500))
+def _terceiros_precisa_backfill_pedido(valor):
+    p = (valor or '').strip()
+    return not _numero_pedido_valido(p)
+
+
+def _terceiros_precisa_backfill_uf(valor):
+    uf = (valor or '').strip().upper()
+    return len(uf) != 2
+
+
+def _terceiros_backfill_campos_xml_pendentes(conn, limite=300):
+    """Atualiza numero_pedido e destinatario_uf no banco a partir do XML (listagem não lê xml_conteudo)."""
+    limite = max(1, min(int(limite or 300), 500))
     tbl = _tbl_terceiros_documentos(conn)
     rows = conn.execute(
-        'SELECT id, xml_conteudo FROM ' + tbl
-        + ' WHERE COALESCE(numero_pedido, \'\') = \'\' AND xml_conteudo IS NOT NULL AND TRIM(xml_conteudo) != \'\''
+        'SELECT id, numero_pedido, destinatario_uf, xml_conteudo FROM ' + tbl
+        + ' WHERE xml_conteudo IS NOT NULL AND TRIM(xml_conteudo) != \'\''
         + ' ORDER BY id DESC LIMIT ?',
         (limite,)
     ).fetchall()
     atualizados = 0
     for r in rows or []:
-        row = dict(r) if hasattr(r, 'keys') else {'id': r[0], 'xml_conteudo': r[1]}
+        row = dict(r) if hasattr(r, 'keys') else {
+            'id': r[0], 'numero_pedido': r[1], 'destinatario_uf': r[2], 'xml_conteudo': r[3],
+        }
         doc_id = row.get('id')
         xml_texto = row.get('xml_conteudo') or ''
         if not doc_id or not xml_texto:
             continue
-        try:
-            ped = (_parse_nfe_xml(xml_texto).get('numero_pedido') or '').strip()
-        except Exception:
-            ped = ''
-        if not ped:
+        precisa_ped = _terceiros_precisa_backfill_pedido(row.get('numero_pedido'))
+        precisa_uf = _terceiros_precisa_backfill_uf(row.get('destinatario_uf'))
+        if not precisa_ped and not precisa_uf:
             continue
-        conn.execute(
-            'UPDATE ' + tbl + ' SET numero_pedido = ? WHERE id = ? AND COALESCE(numero_pedido, \'\') = \'\'',
-            (ped, doc_id)
-        )
-        atualizados += 1
+        try:
+            parsed = _parse_nfe_xml(xml_texto)
+        except Exception:
+            continue
+        novo_ped = (parsed.get('numero_pedido') or '').strip() if precisa_ped else ''
+        nova_uf = (parsed.get('destinatario_uf') or '').strip().upper() if precisa_uf else ''
+        if precisa_ped and novo_ped:
+            conn.execute(
+                'UPDATE ' + tbl + ' SET numero_pedido = ? WHERE id = ?',
+                (novo_ped, doc_id),
+            )
+            atualizados += 1
+        if precisa_uf and nova_uf:
+            conn.execute(
+                'UPDATE ' + tbl + ' SET destinatario_uf = ? WHERE id = ?',
+                (nova_uf, doc_id),
+            )
+            atualizados += 1
     if atualizados:
         conn.commit()
     return atualizados
 
 
+def _terceiros_backfill_numero_pedido_pendentes(conn, limite=150):
+    return _terceiros_backfill_campos_xml_pendentes(conn, limite=limite)
+
+
+def _terceiros_enriquecer_campos_xml_listagem(conn, rows, limite=60):
+    """Reparse XML só para linhas com pedido/UF inválidos na listagem (sem carregar xml de todas as NFs)."""
+    if not rows:
+        return
+    limite = max(1, min(int(limite or 60), 120))
+    tbl = _tbl_terceiros_documentos(conn)
+    ids = []
+    for r in rows:
+        row = dict(r) if hasattr(r, 'keys') else {}
+        if not row.get('id'):
+            continue
+        if _terceiros_precisa_backfill_pedido(row.get('numero_pedido')) or _terceiros_precisa_backfill_uf(row.get('destinatario_uf')):
+            ids.append(int(row['id']))
+    if not ids:
+        return
+    ids = ids[:limite]
+    ph = ','.join(['?'] * len(ids))
+    extra = conn.execute(
+        'SELECT id, numero_pedido, destinatario_uf, xml_conteudo FROM ' + tbl
+        + ' WHERE id IN (' + ph + ') AND xml_conteudo IS NOT NULL AND TRIM(xml_conteudo) != \'\'',
+        tuple(ids),
+    ).fetchall()
+    alterou = False
+    by_id = {int(dict(r)['id']): dict(r) for r in (extra or []) if dict(r).get('id')}
+    for r in rows:
+        row = dict(r) if hasattr(r, 'keys') else {}
+        doc_id = row.get('id')
+        if doc_id not in by_id:
+            continue
+        src = by_id[doc_id]
+        xml_texto = src.get('xml_conteudo') or ''
+        if not xml_texto:
+            continue
+        precisa_ped = _terceiros_precisa_backfill_pedido(row.get('numero_pedido'))
+        precisa_uf = _terceiros_precisa_backfill_uf(row.get('destinatario_uf'))
+        if not precisa_ped and not precisa_uf:
+            continue
+        try:
+            parsed = _parse_nfe_xml(xml_texto)
+        except Exception:
+            continue
+        if precisa_ped:
+            novo_ped = (parsed.get('numero_pedido') or '').strip()
+            if novo_ped:
+                row['numero_pedido'] = novo_ped
+                conn.execute('UPDATE ' + tbl + ' SET numero_pedido = ? WHERE id = ?', (novo_ped, doc_id))
+                alterou = True
+        if precisa_uf:
+            nova_uf = (parsed.get('destinatario_uf') or '').strip().upper()
+            if len(nova_uf) == 2:
+                row['destinatario_uf'] = nova_uf
+                conn.execute('UPDATE ' + tbl + ' SET destinatario_uf = ? WHERE id = ?', (nova_uf, doc_id))
+                alterou = True
+    if alterou:
+        conn.commit()
+
+
+def _terceiros_atualizar_campo_xml_doc(conn, documento_id, campo, valor):
+    if not conn or not documento_id or not valor:
+        return
+    if campo not in ('numero_pedido', 'destinatario_uf'):
+        return
+    try:
+        conn.execute(
+            'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET ' + campo + ' = ? WHERE id = ?',
+            (valor, documento_id),
+        )
+        conn.commit()
+    except Exception:
+        pass
+
+
 def _numero_pedido_terceiros(doc, conn=None, documento_id=None):
     if not doc:
         return ''
-    col = (doc.get('numero_pedido') or '').strip()
+    col = _normalizar_numero_pedido_terceiros(doc.get('numero_pedido'))
     if col:
         return col
     xml_texto = doc.get('xml_conteudo') or ''
@@ -7043,31 +7252,28 @@ def _numero_pedido_terceiros(doc, conn=None, documento_id=None):
         ped = ''
     doc_id = documento_id or doc.get('id')
     if ped and conn is not None and doc_id:
-        try:
-            conn.execute(
-                'UPDATE ' + _tbl_terceiros_documentos(conn)
-                + ' SET numero_pedido = ? WHERE id = ? AND COALESCE(numero_pedido, \'\') = \'\'',
-                (ped, doc_id)
-            )
-            conn.commit()
-        except Exception:
-            pass
+        _terceiros_atualizar_campo_xml_doc(conn, doc_id, 'numero_pedido', ped)
     return ped
 
 
-def _uf_destinatario_terceiros(doc):
+def _uf_destinatario_terceiros(doc, conn=None, documento_id=None):
     if not doc:
         return ''
-    if doc.get('destinatario_uf'):
-        return (doc.get('destinatario_uf') or '').strip()
+    uf = (doc.get('destinatario_uf') or '').strip().upper()
+    if len(uf) == 2:
+        return uf
     xml_texto = doc.get('xml_conteudo') or ''
     if not xml_texto:
-        return ''
+        return uf
     try:
         parsed = _parse_nfe_xml(xml_texto)
-        return (parsed.get('destinatario_uf') or '').strip()
+        uf = (parsed.get('destinatario_uf') or '').strip().upper()
     except Exception:
-        return ''
+        uf = ''
+    doc_id = documento_id or doc.get('id')
+    if len(uf) == 2 and conn is not None and doc_id:
+        _terceiros_atualizar_campo_xml_doc(conn, doc_id, 'destinatario_uf', uf)
+    return uf
 
 
 def _valor_bool_texto(valor):
@@ -7179,7 +7385,7 @@ def _carregar_documento_terceiros(conn, documento_id):
         return None
     doc = dict(row) if hasattr(row, 'keys') else {}
     doc['numero_pedido'] = _numero_pedido_terceiros(doc, conn, documento_id)
-    doc['destinatario_uf'] = _uf_destinatario_terceiros(doc)
+    doc['destinatario_uf'] = _uf_destinatario_terceiros(doc, conn, documento_id)
     itens_rows = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE documento_id = ? ORDER BY n_item, id', (documento_id,)).fetchall()
     eventos_rows = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_eventos(conn) + ' WHERE documento_id = ? ORDER BY criado_em DESC, id DESC', (documento_id,)).fetchall()
     itens = []
@@ -7991,9 +8197,13 @@ def api_terceiros_documentos():
                ORDER BY d.criado_em DESC, d.id DESC''',
             params_area
         ).fetchall()
+        rows_list = [dict(r) if hasattr(r, 'keys') else {} for r in (rows or [])]
+        try:
+            _terceiros_enriquecer_campos_xml_listagem(conn, rows_list)
+        except Exception:
+            pass
         out = []
-        for r in rows or []:
-            row = dict(r) if hasattr(r, 'keys') else {}
+        for row in rows_list:
             rc = row.get('recebimento_concluido')
             if isinstance(rc, str) and rc.strip().lower() in ('sim', 's', 'true', '1'):
                 rc_flag = True
@@ -8006,12 +8216,12 @@ def api_terceiros_documentos():
                 'area': row.get('area') or '',
                 'numero_nf': row.get('numero_nf') or '',
                 'serie_nf': row.get('serie_nf') or '',
-                'numero_pedido': (row.get('numero_pedido') or '').strip() or _numero_pedido_terceiros(row),
+                'numero_pedido': _normalizar_numero_pedido_terceiros(row.get('numero_pedido')),
                 'chave_nfe': row.get('chave_nfe') or '',
                 'data_emissao': _fmt_data_br(row.get('data_emissao') or ''),
                 'remetente_nome': row.get('remetente_nome') or '',
                 'destinatario_nome': row.get('destinatario_nome') or '',
-                'destinatario_uf': _uf_destinatario_terceiros(row),
+                'destinatario_uf': (row.get('destinatario_uf') or '').strip().upper(),
                 'previsao_chegada': _fmt_datahora_br(row.get('previsao_chegada') or ''),
                 'recebimento_concluido': rc_flag,
                 'nota_lancada': row.get('nota_lancada') or '',
@@ -8083,6 +8293,62 @@ def api_terceiros_documento_danfe(documento_id):
         return Response(html, mimetype='text/html; charset=utf-8')
     except Exception as e:
         return Response('Erro ao gerar visualização da NF: %s' % str(e), status=500, mimetype='text/plain; charset=utf-8')
+    finally:
+        conn.close()
+
+
+def _nome_arquivo_xml_terceiros(doc):
+    nome = (doc.get('arquivo_nome') or '').strip()
+    if nome and not nome.lower().endswith('.xml'):
+        nome = nome + '.xml'
+    if nome:
+        return secure_filename(nome) or 'nota_fiscal.xml'
+    chave = (doc.get('chave_nfe') or '').strip()
+    if chave:
+        return secure_filename(chave[:60] + '.xml') or 'nota_fiscal.xml'
+    nf = (doc.get('numero_nf') or 'nf').strip()
+    serie = (doc.get('serie_nf') or '').strip()
+    base = 'NFe_%s' % nf
+    if serie:
+        base += '_S%s' % serie
+    return secure_filename(base + '.xml') or 'nota_fiscal.xml'
+
+
+@app.route('/api/terceiros/documentos/<int:documento_id>/xml', methods=['GET'])
+def api_terceiros_documento_xml(documento_id):
+    """Download do XML original da NF armazenado no cadastro."""
+    conn = get_db()
+    try:
+        _ensure_terceiros_schema(conn)
+        row = conn.execute(
+            'SELECT xml_conteudo, arquivo_nome, chave_nfe, numero_nf, serie_nf FROM '
+            + _tbl_terceiros_documentos(conn) + ' WHERE id = ?',
+            (documento_id,),
+        ).fetchone()
+        if not row:
+            return Response('Documento não encontrado.', status=404, mimetype='text/plain; charset=utf-8')
+        doc = dict(row) if hasattr(row, 'keys') else {
+            'xml_conteudo': row[0],
+            'arquivo_nome': row[1],
+            'chave_nfe': row[2],
+            'numero_nf': row[3],
+            'serie_nf': row[4],
+        }
+        xml_texto = (doc.get('xml_conteudo') or '').strip()
+        if not xml_texto:
+            return Response(
+                'XML da nota fiscal não disponível para esta NF.',
+                status=404,
+                mimetype='text/plain; charset=utf-8',
+            )
+        nome_arquivo = _nome_arquivo_xml_terceiros(doc)
+        return Response(
+            xml_texto.encode('utf-8'),
+            mimetype='application/xml; charset=utf-8',
+            headers={'Content-Disposition': 'attachment; filename="%s"' % nome_arquivo},
+        )
+    except Exception as e:
+        return Response('Erro ao baixar XML: %s' % str(e), status=500, mimetype='text/plain; charset=utf-8')
     finally:
         conn.close()
 
