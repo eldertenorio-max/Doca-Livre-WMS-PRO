@@ -390,6 +390,8 @@ function terceirosAplicarPainelAbaSomenteUi(aba) {
     } else if (_terceirosDocAtual && _terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '') {
         _persistirTerceirosDocumentoNaSessao(_terceirosDocAtual.id, _terceirosDocAtual.area);
     }
+    var moduloTer = document.getElementById('modulo-terceiros');
+    if (moduloTer) moduloTer.setAttribute('data-ter-aba-ativa', aba || 'painel');
     if (aba === 'painel') {
         _agendarChartsPainelTerceiros();
     }
@@ -534,7 +536,7 @@ function _terceirosRemoverLinhaPendenciasMg(documentoId) {
     var tr = tbody.querySelector('tr[data-ter-doc-id="' + String(documentoId) + '"]');
     if (tr) tr.remove();
     if (!tbody.querySelector('tr[data-ter-doc-id]')) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF aguardando <strong>Enviado para MG</strong>. As notas entram aqui após o lançamento fiscal na 5ª aba.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF aguardando <strong>Enviar MG</strong>. As notas entram aqui após o lançamento fiscal na aba Notas Fiscais Lançadas.</td></tr>';
     }
 }
 
@@ -2514,14 +2516,14 @@ function _terceirosPrevisaoAtrasada(texto) {
     return pd.getTime() < hoje.getTime();
 }
 
-function renderTerceirosPrevisaoCelulaHtml(texto) {
+function renderTerceirosPrevisaoCelulaHtml(texto, extraHtml) {
     var exibicao = texto || '-';
     var atrasada = _terceirosPrevisaoAtrasada(texto);
     var cls = atrasada ? ' class="ter-previsao-atrasada"' : '';
     var conteudo = atrasada
         ? '<strong>' + escapeHtml(exibicao) + '</strong>'
         : escapeHtml(exibicao);
-    return '<td' + cls + '>' + conteudo + '</td>';
+    return '<td' + cls + '>' + conteudo + (extraHtml || '') + '</td>';
 }
 
 function segundaFeiraSemanaContendo(hoje) {
@@ -2592,20 +2594,9 @@ function filtrarRowsPendenciaPorPrevisao(rows, tipo, dataLivreIso) {
 
 function renderTerceirosPendenciaDocumentosTbodyHtml(rows) {
     return rows.map(function(row) {
-        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-        var badgeCarreta = (row.area === 'carreta') ? ' <span class="ter-origem-badge ter-origem-badge--carreta">Carreta</span>' : '';
-        var plc = ((row.placa_carreta || '').trim() || '—');
         return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
-            + '<td><strong>' + escapeHtml(nf) + '</strong>' + badgeCarreta + '</td>'
-            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>'
-            + '<td><strong>' + escapeHtml(plc) + '</strong></td>'
-            + renderTerceirosPrevisaoCelulaHtml(row.previsao_chegada)
-            + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
-            + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
+            + renderTerceirosCelulasNfAtePrevisao(row)
+            + renderTerceirosCelulasStatusFluxo(row, 'pendencia')
             + renderTerceirosListaAcoesCelula(renderTerceirosPendenciaRecebimentoAcoes(row))
             + '</tr>';
     }).join('');
@@ -2632,7 +2623,7 @@ function reaplicarFiltroPrevisaoPendenciaRecebimento() {
     var filtradas = filtrarRowsPendenciaPorPrevisao(cache, tipo, dataLivre);
     atualizarUiBotoesFiltroPrevisaoPendencia();
     if (!cache.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
         var hidLista = document.getElementById('ter-rec-documento-id');
         var temNotaAbertaNaTela = (_terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '')
             || (hidLista && String(hidLista.value || '').trim() !== '');
@@ -2644,7 +2635,7 @@ function reaplicarFiltroPrevisaoPendenciaRecebimento() {
         return;
     }
     if (!filtradas.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">' + _terceirosMsgListaVaziaFiltroPrevisao() + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + _terceirosMsgListaVaziaFiltroPrevisao() + '</td></tr>';
         return;
     }
     tbody.innerHTML = renderTerceirosPendenciaDocumentosTbodyHtml(filtradas);
@@ -2811,19 +2802,109 @@ function _terceirosJaSaiuPendenciaRecebimento(row) {
     return !_terceirosConsideraPendenciaRecebimento(row);
 }
 
-/** Colunas NF → previsão (igual 3ª e 4ª aba). */
-function renderTerceirosCelulasNfAtePrevisao(row) {
+/** Colunas NF → UF (identificação da NF na lista). */
+function renderTerceirosCelulasNfPedidoRemDestUf(row) {
     var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
     var badgeCarreta = (row.area === 'carreta') ? ' <span class="ter-origem-badge ter-origem-badge--carreta">Carreta</span>' : '';
-    var plc = ((row.placa_carreta || '').trim() || '—');
     return '<td><strong>' + escapeHtml(nf) + '</strong>' + badgeCarreta + '</td>'
         + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
         + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
         + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
-        + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
-        + '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>'
-        + '<td><strong>' + escapeHtml(plc) + '</strong></td>'
-        + renderTerceirosPrevisaoCelulaHtml(row.previsao_chegada);
+        + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>';
+}
+
+/** Colunas NF → previsão (ordem padrão do fluxo). */
+function renderTerceirosCelulasNfAtePrevisao(row, opcoes) {
+    opcoes = opcoes || {};
+    var previsaoExtra = '';
+    if (opcoes.avisoMotoristaNaPrevisao && isTerceirosMotoristaObrigatorio(row)) {
+        previsaoExtra = '<div class="ter-status-meta ter-status-meta--alerta">Motorista obrigatório</div>';
+    }
+    var motoristaPlaca;
+    if (opcoes.motoristaPlacaPrefix) {
+        motoristaPlaca = renderTerceirosCelulasMotoristaPlacaLista(row, opcoes.motoristaPlacaPrefix);
+    } else {
+        motoristaPlaca = terceirosCelulaMotoristaListaLeitura(row) + terceirosCelulaPlacaLista(row);
+    }
+    return renderTerceirosCelulasNfPedidoRemDestUf(row)
+        + motoristaPlaca
+        + renderTerceirosPrevisaoCelulaHtml(row.previsao_chegada, previsaoExtra);
+}
+
+function renderTerceirosCelulaIndisponivelFluxo() {
+    return '<td><span class="ter-status-meta">—</span></td>';
+}
+
+function renderTerceirosCelulaConfFluxo(row, etapa) {
+    if (etapa === 'pendencia') {
+        if (_terceirosTemBipagemIniciada(row)) {
+            return '<td>' + renderTerceirosConferenciaResumoHtml(row) + '</td>';
+        }
+        return '<td><div class="ter-status-meta">Itens: ' + escapeHtml(String(row.total_itens || 0))
+            + '</div><strong>Bipado: ' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>';
+    }
+    return '<td>' + renderTerceirosConferenciaResumoHtml(row) + '</td>';
+}
+
+function renderTerceirosCelulaLancadaFluxo(row, etapa) {
+    if (etapa === 'pendencia') return renderTerceirosCelulaIndisponivelFluxo();
+    if (etapa === 'pendentes-lancamento') {
+        return '<td><select class="ter-select-inline" data-ter-nota-lancada-pend="' + escapeHtml(String(row.id)) + '" data-ter-recebimento-concluido="' + escapeHtml(isTerceirosFlagSim(row.recebimento_concluido) ? 'sim' : 'nao') + '" data-ter-fornecedor-recebido="' + escapeHtml(_terceirosConsideraFornecedorRecebido(row) ? 'sim' : 'nao') + '">'
+            + '<option value="">Selecione</option>'
+            + '<option value="sim"' + (isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Sim</option>'
+            + '<option value="nao"' + (isTerceirosFlagNao(row.nota_lancada) && !isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Não</option>'
+        + '</select>' + renderTerceirosUsuarioMeta(row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>';
+    }
+    return '<td>' + renderTerceirosStatusComUsuario(textoResumoNotaLancadaTerceiros(row), row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>';
+}
+
+function renderTerceirosCelulaEnviarMgFluxo(row, etapa) {
+    if (etapa === 'pendencia') return renderTerceirosCelulaIndisponivelFluxo();
+    if (etapa === 'pendencias-mg') {
+        if (isTerceirosFlagSim(row.enviar_para_mg)) {
+            return '<td>' + renderTerceirosStatusComUsuario(textoResumoEnviarMgTerceiros(row), row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>';
+        }
+        return '<td><select class="ter-select-inline" data-ter-enviar-mg-pend-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
+            + '<option value="">Selecione</option>'
+            + '<option value="sim">Sim</option>'
+            + '<option value="nao"' + (isTerceirosFlagNao(row.enviar_para_mg) ? ' selected' : '') + '>Não</option>'
+        + '</select>' + renderTerceirosUsuarioMeta(row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>';
+    }
+    if (etapa === 'recebimentos-mg' || etapa === 'notas-enviadas-mg' || etapa === 'historico') {
+        var textoMg = etapa === 'historico' ? textoResumoEnviarMgHistorico(row) : textoResumoEnviarMgTerceiros(row);
+        return '<td>' + renderTerceirosStatusComUsuario(textoMg, row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>';
+    }
+    return '<td>' + renderTerceirosEnviarMgSomenteLeitura(row) + '</td>';
+}
+
+function renderTerceirosCelulaRecebidaMgFluxo(row, etapa) {
+    if (etapa === 'pendencia' || etapa === 'fornecedores' || etapa === 'pendentes-lancamento') {
+        return renderTerceirosCelulaIndisponivelFluxo();
+    }
+    if (etapa === 'notas-lancadas') {
+        return renderTerceirosConclusaoCarretaTab5(row);
+    }
+    if (etapa === 'pendencias-mg') {
+        return '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>';
+    }
+    if (etapa === 'recebimentos-mg') {
+        return '<td><select class="ter-select-inline" data-ter-recebida-mg-receb-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
+            + '<option value="">Selecione</option>'
+            + '<option value="sim"' + (isTerceirosFlagSim(row.carga_recebida_mg) ? ' selected' : '') + '>Sim</option>'
+            + '<option value="nao"' + (isTerceirosFlagNao(row.carga_recebida_mg) && !isTerceirosFlagSim(row.carga_recebida_mg) ? ' selected' : '') + '>Não</option>'
+        + '</select>' + renderTerceirosUsuarioMeta(row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>';
+    }
+    var textoRec = etapa === 'historico' ? textoResumoRecebidaMgHistorico(row) : textoResumoRecebidaMgTerceiros(row);
+    return '<td>' + renderTerceirosStatusComUsuario(textoRec, row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>';
+}
+
+/** Colunas Receb. → Recebida MG (etapas 9–13). */
+function renderTerceirosCelulasStatusFluxo(row, etapa) {
+    return '<td>' + renderTerceirosRecebimentoComUsuario(row) + '</td>'
+        + renderTerceirosCelulaConfFluxo(row, etapa)
+        + renderTerceirosCelulaLancadaFluxo(row, etapa)
+        + renderTerceirosCelulaEnviarMgFluxo(row, etapa)
+        + renderTerceirosCelulaRecebidaMgFluxo(row, etapa);
 }
 
 function renderTerceirosRecebimentoComUsuario(row) {
@@ -2848,15 +2929,13 @@ function renderTerceirosRecebimentoComUsuario(row) {
     );
 }
 
-var TERCEIROS_COLS_LISTA_POS_RECEBIMENTO = 12;
+var TERCEIROS_COLS_LISTA_FLUXO = 14;
+var TERCEIROS_COLS_LISTA_POS_RECEBIMENTO = TERCEIROS_COLS_LISTA_FLUXO;
 
 function renderTerceirosFornecedorRecebidoRowHtml(row) {
-    var conferenciaHtml = renderTerceirosConferenciaResumoHtml(row);
     return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
         + renderTerceirosCelulasNfAtePrevisao(row)
-        + '<td>' + renderTerceirosRecebimentoComUsuario(row) + '</td>'
-        + '<td>' + conferenciaHtml + '</td>'
-        + '<td>' + renderTerceirosStatusComUsuario(textoResumoNotaLancadaTerceiros(row), row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
+        + renderTerceirosCelulasStatusFluxo(row, 'fornecedores')
         + renderTerceirosListaAcoesCelula(
             renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'fornecedores-recebidos')
             + renderTerceirosBotoesPdfXmlNf(row)
@@ -3170,9 +3249,9 @@ async function loadTerceirosDocumentos(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-recebimento-documentos');
     if (!tbody) return;
     try {
-        const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 11);
+        const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
         if (data.erro) {
-            tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
             return;
         }
         const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencia-recebimento');
@@ -3183,7 +3262,7 @@ async function loadTerceirosDocumentos(dataPreloaded) {
         const filtradas = filtrarRowsPendenciaPorPrevisao(rows, tipoFiltro, dataLivreFiltro);
         atualizarUiBotoesFiltroPrevisaoPendencia();
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
             var hidLista = document.getElementById('ter-rec-documento-id');
             var temNotaAbertaNaTela = (_terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '')
                 || (hidLista && String(hidLista.value || '').trim() !== '');
@@ -3197,7 +3276,7 @@ async function loadTerceirosDocumentos(dataPreloaded) {
             return;
         }
         if (!filtradas.length) {
-            tbody.innerHTML = '<tr><td colspan="11" class="loading">' + _terceirosMsgListaVaziaFiltroPrevisao() + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + _terceirosMsgListaVaziaFiltroPrevisao() + '</td></tr>';
             _terceirosFecharDescargaSeDocumentoNaoNaListaPendencia(filtradas);
             return;
         }
@@ -3205,23 +3284,23 @@ async function loadTerceirosDocumentos(dataPreloaded) {
         _terceirosFecharDescargaSeDocumentoNaoNaListaPendencia(filtradas);
     } catch (e) {
         console.error('loadTerceirosDocumentos:', e);
-        tbody.innerHTML = '<tr><td colspan="11" class="loading" style="color:#c62828;">Erro ao carregar a lista. Atualize a página ou tente novamente.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">Erro ao carregar a lista. Atualize a página ou tente novamente.</td></tr>';
     }
 }
 
 async function loadTerceirosFornecedoresRecebidos(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-fornecedores-recebidos');
     if (!tbody) return;
-    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 12);
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
     void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows || []));
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="12" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         _terceirosDestacarDocIdAposCarga = null;
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhuma NF nesta etapa. Após marcar <strong>Nota lançada = Sim</strong> na 4ª aba, as notas aparecem aqui até seguirem para MG ou histórico.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF nesta etapa. Após marcar <strong>Nota lançada = Sim</strong> na aba NFs pendentes de lançamento, as notas aparecem aqui até seguirem para MG ou histórico.</td></tr>';
         _terceirosDestacarDocIdAposCarga = null;
         return;
     }
@@ -3241,7 +3320,7 @@ function removerDocumentoDaPendenciaRecebimentoLocal(documentoId) {
         var tr = tbody.querySelector('tr[data-ter-doc-id="' + id + '"]');
         if (tr) tr.remove();
         if (!tbody.querySelector('tr[data-ter-doc-id]')) {
-            tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
         }
     }
     if (Array.isArray(window._terceirosPendenciaRowsCache)) {
@@ -3402,13 +3481,7 @@ async function loadTerceirosPendentesLancamento(dataPreloaded) {
     tbody.innerHTML = rows.map(function(row) {
         return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
             + renderTerceirosCelulasNfAtePrevisao(row)
-            + '<td>' + renderTerceirosRecebimentoComUsuario(row) + '</td>'
-            + '<td>' + renderTerceirosConferenciaResumoHtml(row) + '</td>'
-            + '<td><select class="ter-select-inline" data-ter-nota-lancada-pend="' + escapeHtml(String(row.id)) + '" data-ter-recebimento-concluido="' + escapeHtml(isTerceirosFlagSim(row.recebimento_concluido) ? 'sim' : 'nao') + '" data-ter-fornecedor-recebido="' + escapeHtml(_terceirosConsideraFornecedorRecebido(row) ? 'sim' : 'nao') + '">'
-                + '<option value="">Selecione</option>'
-                + '<option value="sim"' + (isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Sim</option>'
-                + '<option value="nao"' + (isTerceirosFlagNao(row.nota_lancada) && !isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Não</option>'
-            + '</select>' + renderTerceirosUsuarioMeta(row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
+            + renderTerceirosCelulasStatusFluxo(row, 'pendentes-lancamento')
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-pend-lanc-doc', 'Abrir detalhe', 'pendentes-lancamento')
                 + renderTerceirosBotoesPdfXmlNf(row)
@@ -3446,32 +3519,20 @@ async function loadTerceirosPendentesLancamento(dataPreloaded) {
 async function loadTerceirosNotasLancadas(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-notas-lancadas');
     if (!tbody) return;
-    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 12);
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="12" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'notas-lancadas');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhuma NF lançada ainda.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF lançada ainda.</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
-        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-        var avisoMotorista = isTerceirosMotoristaObrigatorio(row)
-            ? '<div class="ter-status-meta ter-status-meta--alerta">Motorista obrigatório</div>'
-            : '';
         return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
-            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
-            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
-            + '<td>' + escapeHtml(row.previsao_chegada || '-') + avisoMotorista + '</td>'
-            + '<td>' + renderTerceirosStatusComUsuario(row.nota_lancada || '-', row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
-            + '<td>' + renderTerceirosEnviarMgSomenteLeitura(row) + '</td>'
-            + renderTerceirosCelulasMotoristaPlacaLista(row, 'lanc')
-            + renderTerceirosConclusaoCarretaTab5(row)
+            + renderTerceirosCelulasNfAtePrevisao(row, { motoristaPlacaPrefix: 'lanc', avisoMotoristaNaPrevisao: true })
+            + renderTerceirosCelulasStatusFluxo(row, 'notas-lancadas')
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento')
                 + renderTerceirosBotoesPdfXmlNf(row)
@@ -3503,28 +3564,20 @@ async function loadTerceirosNotasLancadas(dataPreloaded) {
 async function loadTerceirosNotasEnviadasMg(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-notas-enviadas-mg');
     if (!tbody) return;
-    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 10);
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'notas-enviadas-mg');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="10" class="loading">Nenhuma NF concluída em MG.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF concluída em MG.</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
-        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
         return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
-            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
-            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
-            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>'
-            + terceirosCelulaPlacaLista(row)
-            + '<td>' + renderTerceirosStatusComUsuario(row.carga_recebida_mg || '-', row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
+            + renderTerceirosCelulasNfAtePrevisao(row)
+            + renderTerceirosCelulasStatusFluxo(row, 'notas-enviadas-mg')
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-enviada-doc', 'Abrir detalhe', 'pendencia-recebimento')
                 + renderTerceirosBotoesPdfXmlNf(row)
@@ -3542,33 +3595,20 @@ async function loadTerceirosNotasEnviadasMg(dataPreloaded) {
 async function loadTerceirosRecebimentosMg(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-recebimentos-mg');
     if (!tbody) return;
-    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 11);
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'recebimentos-mg');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF aguardando confirmação de recebimento em MG. As notas entram aqui após marcar <strong>Enviado para MG</strong> como Sim na 6ª aba.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF aguardando confirmação de recebimento em MG. As notas entram aqui após marcar <strong>Enviar MG</strong> como Sim na aba Pendência Envio MG.</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(function(row) {
-        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
         return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
-            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
-            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
-            + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>'
-            + terceirosCelulaPlacaLista(row)
-            + '<td>' + renderTerceirosStatusComUsuario(row.enviar_para_mg || '-', row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>'
-            + '<td><select class="ter-select-inline" data-ter-recebida-mg-receb-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
-                + '<option value="">Selecione</option>'
-                + '<option value="sim"' + (isTerceirosFlagSim(row.carga_recebida_mg) ? ' selected' : '') + '>Sim</option>'
-                + '<option value="nao"' + (isTerceirosFlagNao(row.carga_recebida_mg) && !isTerceirosFlagSim(row.carga_recebida_mg) ? ' selected' : '') + '>Não</option>'
-            + '</select>' + renderTerceirosUsuarioMeta(row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
+            + renderTerceirosCelulasNfAtePrevisao(row)
+            + renderTerceirosCelulasStatusFluxo(row, 'recebimentos-mg')
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-receb-mg-doc', 'Abrir detalhe', 'pendencia-recebimento')
                 + renderTerceirosBotoesPdfXmlNf(row)
@@ -3597,40 +3637,22 @@ async function loadTerceirosRecebimentosMg(dataPreloaded) {
 async function loadTerceirosPendenciasMg(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-pendencias-mg');
     if (!tbody) return;
-    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, 11);
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencias-mg');
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhuma NF aguardando <strong>Enviado para MG</strong>. As notas entram aqui após o lançamento fiscal na 5ª aba.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF aguardando <strong>Enviar MG</strong>. As notas entram aqui após o lançamento fiscal na aba Notas Fiscais Lançadas.</td></tr>';
         return;
     }
 
     tbody.innerHTML = rows.map(function(row) {
-        var nf = [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / ');
-        var avisoMotorista = isTerceirosMotoristaObrigatorio(row)
-            ? '<div class="ter-status-meta ter-status-meta--alerta">Motorista obrigatório</div>'
-            : '';
         return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
-            + '<td><strong>' + escapeHtml(nf) + '</strong></td>'
-            + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
-            + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
-            + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>'
-            + '<td>' + escapeHtml(row.previsao_chegada || '-') + avisoMotorista + '</td>'
-            + renderTerceirosCelulasMotoristaPlacaLista(row, 'pend-mg')
-            + '<td>' + (isTerceirosFlagSim(row.enviar_para_mg)
-                ? renderTerceirosStatusComUsuario(textoResumoEnviarMgTerceiros(row), row.enviar_para_mg_por || '', row.enviar_para_mg_em || '')
-                : ('<select class="ter-select-inline" data-ter-enviar-mg-pend-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
-                    + '<option value="">Selecione</option>'
-                    + '<option value="sim">Sim</option>'
-                    + '<option value="nao"' + (isTerceirosFlagNao(row.enviar_para_mg) ? ' selected' : '') + '>Não</option>'
-                + '</select>' + renderTerceirosUsuarioMeta(row.enviar_para_mg_por || '', row.enviar_para_mg_em || '')))
-            + '</td>'
-            + '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>'
+            + renderTerceirosCelulasNfAtePrevisao(row, { motoristaPlacaPrefix: 'pend-mg', avisoMotoristaNaPrevisao: true })
+            + renderTerceirosCelulasStatusFluxo(row, 'pendencias-mg')
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-pendencia-doc', 'Abrir detalhe', 'pendencia-recebimento')
                 + renderTerceirosBotoesPdfXmlNf(row)
@@ -3688,10 +3710,9 @@ async function loadTerceirosPendenciasMg(dataPreloaded) {
 async function loadTerceirosHistorico(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-historico');
     if (!tbody) return;
-    var colsHist = 14;
-    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, colsHist);
+    const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="' + colsHist + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
         return;
     }
     var rowsMerged = _terceirosMesclarRecebidosLocaisNasRows(data.rows || []);
@@ -3700,18 +3721,14 @@ async function loadTerceirosHistorico(dataPreloaded) {
     });
 
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="' + colsHist + '" class="loading">Nenhuma NF no histórico. <strong>Carreta:</strong> após concluir na 5ª aba. <strong>Demais rotas:</strong> após <strong>Enviado para MG</strong> = Sim.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF no histórico. <strong>Carreta:</strong> após concluir na aba Notas Fiscais Lançadas. <strong>Demais rotas:</strong> após <strong>Enviar MG</strong> = Sim.</td></tr>';
         return;
     }
 
     tbody.innerHTML = rows.map(function(row) {
         return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
             + renderTerceirosCelulasNfAtePrevisao(row)
-            + '<td>' + renderTerceirosRecebimentoComUsuario(row) + '</td>'
-            + '<td>' + renderTerceirosConferenciaResumoHtml(row) + '</td>'
-            + '<td>' + renderTerceirosStatusComUsuario(textoResumoNotaLancadaTerceiros(row), row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
-            + '<td>' + renderTerceirosStatusComUsuario(textoResumoEnviarMgHistorico(row), row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>'
-            + '<td>' + renderTerceirosStatusComUsuario(textoResumoRecebidaMgHistorico(row), row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
+            + renderTerceirosCelulasStatusFluxo(row, 'historico')
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-historico-doc', 'Abrir detalhe', 'historico')
                 + renderTerceirosBotoesPdfXmlNf(row)

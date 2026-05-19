@@ -329,6 +329,134 @@ body {
 
 .terceiros-subtab {
     text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    border-bottom: 3px solid transparent;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+/* Cores por aba — botões (inativo = tom suave; ativo = destaque) */
+#modulo-terceiros .terceiros-subtab[data-ter-tab="painel"] {
+    --ter-aba-cor: #455a64;
+    --ter-aba-bg: #eceff1;
+}
+#modulo-terceiros .terceiros-subtab[data-ter-tab="enviar-xml"] {
+    --ter-aba-cor: #1565c0;
+    --ter-aba-bg: #e3f2fd;
+}
+#modulo-terceiros .terceiros-subtab[data-ter-tab="pendencia-recebimento"] {
+    --ter-aba-cor: #e65100;
+    --ter-aba-bg: #fff3e0;
+}
+#modulo-terceiros .terceiros-subtab[data-ter-tab="fornecedores-recebidos"] {
+    --ter-aba-cor: #2e7d32;
+    --ter-aba-bg: #e8f5e9;
+}
+#modulo-terceiros .terceiros-subtab[data-ter-tab="pendentes-lancamento"] {
+    --ter-aba-cor: #f9a825;
+    --ter-aba-bg: #fff8e1;
+}
+#modulo-terceiros .terceiros-subtab[data-ter-tab="notas-lancadas"] {
+    --ter-aba-cor: #00695c;
+    --ter-aba-bg: #e0f2f1;
+}
+#modulo-terceiros .terceiros-subtab[data-ter-tab="pendencias-mg"] {
+    --ter-aba-cor: #7b1fa2;
+    --ter-aba-bg: #f3e5f5;
+}
+#modulo-terceiros .terceiros-subtab[data-ter-tab="notas-enviadas-mg"] {
+    --ter-aba-cor: #283593;
+    --ter-aba-bg: #e8eaf6;
+}
+#modulo-terceiros .terceiros-subtab[data-ter-tab="recebimentos-mg"] {
+    --ter-aba-cor: #0277bd;
+    --ter-aba-bg: #e1f5fe;
+}
+#modulo-terceiros .terceiros-subtab[data-ter-tab="relatorios"] {
+    --ter-aba-cor: #5d4037;
+    --ter-aba-bg: #efebe9;
+}
+#modulo-terceiros .terceiros-subtab[data-ter-tab="historico"] {
+    --ter-aba-cor: #37474f;
+    --ter-aba-bg: #cfd8dc;
+}
+
+#modulo-terceiros .devolucoes-subtabs {
+    flex-wrap: wrap;
+    gap: 2px;
+    background: #f5f5f5;
+    border-radius: 8px 8px 0 0;
+    padding: 4px 4px 0;
+}
+
+#modulo-terceiros .terceiros-subtab:not(.active) {
+    background: var(--ter-aba-bg, #eee);
+    color: var(--ter-aba-cor, #366092);
+}
+
+#modulo-terceiros .terceiros-subtab:not(.active):hover {
+    filter: brightness(0.97);
+    color: var(--ter-aba-cor, #366092);
+}
+
+#modulo-terceiros .terceiros-subtab.active {
+    background: #fff;
+    color: var(--ter-aba-cor, #366092);
+    border-bottom-color: var(--ter-aba-cor, #366092);
+    font-weight: 700;
+    box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.06);
+}
+
+/* Painel ativo — faixa colorida no título e cabeçalho da tabela */
+#modulo-terceiros[data-ter-aba-ativa="painel"] { --ter-painel-cor: #455a64; --ter-painel-bg: #eceff1; }
+#modulo-terceiros[data-ter-aba-ativa="enviar-xml"] { --ter-painel-cor: #1565c0; --ter-painel-bg: #e3f2fd; }
+#modulo-terceiros[data-ter-aba-ativa="pendencia-recebimento"] { --ter-painel-cor: #e65100; --ter-painel-bg: #fff3e0; }
+#modulo-terceiros[data-ter-aba-ativa="fornecedores-recebidos"] { --ter-painel-cor: #2e7d32; --ter-painel-bg: #e8f5e9; }
+#modulo-terceiros[data-ter-aba-ativa="pendentes-lancamento"] { --ter-painel-cor: #f9a825; --ter-painel-bg: #fff8e1; }
+#modulo-terceiros[data-ter-aba-ativa="notas-lancadas"] { --ter-painel-cor: #00695c; --ter-painel-bg: #e0f2f1; }
+#modulo-terceiros[data-ter-aba-ativa="pendencias-mg"] { --ter-painel-cor: #7b1fa2; --ter-painel-bg: #f3e5f5; }
+#modulo-terceiros[data-ter-aba-ativa="notas-enviadas-mg"] { --ter-painel-cor: #283593; --ter-painel-bg: #e8eaf6; }
+#modulo-terceiros[data-ter-aba-ativa="recebimentos-mg"] { --ter-painel-cor: #0277bd; --ter-painel-bg: #e1f5fe; }
+#modulo-terceiros[data-ter-aba-ativa="relatorios"] { --ter-painel-cor: #5d4037; --ter-painel-bg: #efebe9; }
+#modulo-terceiros[data-ter-aba-ativa="historico"] { --ter-painel-cor: #37474f; --ter-painel-bg: #cfd8dc; }
+
+#modulo-terceiros .devolucoes-panel-active > .painel-titulo,
+#modulo-terceiros .devolucoes-panel-active.ter-painel-wrapper > .painel-titulo {
+    background: linear-gradient(90deg, var(--ter-painel-bg, #f5f5f5) 0%, #fff 72%);
+    border-left: 5px solid var(--ter-painel-cor, #366092);
+    border-radius: 8px;
+    padding: 14px 16px 12px;
+    margin-bottom: 4px;
+}
+
+#modulo-terceiros .devolucoes-panel-active > .painel-titulo .painel-titulo-texto,
+#modulo-terceiros .devolucoes-panel-active.ter-painel-wrapper > .painel-titulo .painel-titulo-texto {
+    color: var(--ter-painel-cor, #366092);
+}
+
+#modulo-terceiros .devolucoes-panel-active .terceiros-lista-bloco {
+    border-left: 4px solid var(--ter-painel-cor, #366092);
+    background: linear-gradient(180deg, var(--ter-painel-bg, #fafafa) 0%, #fff 120px);
+}
+
+#modulo-terceiros .devolucoes-panel-active .terceiros-lista-bloco > h3 {
+    color: var(--ter-painel-cor, #366092);
+}
+
+#modulo-terceiros .devolucoes-panel-active .terceiros-lista-bloco .ter-tabela-lista thead th {
+    background: var(--ter-painel-cor, #366092);
+    color: #fff;
+    border-color: var(--ter-painel-cor, #366092);
+}
+
+#modulo-terceiros .devolucoes-panel-active .ter-painel-secao-titulo {
+    color: var(--ter-painel-cor, #366092);
+    border-bottom: 2px solid var(--ter-painel-bg, #ddd);
+    padding-bottom: 6px;
+}
+
+#modulo-terceiros .devolucoes-panel-active .relatorios-secao {
+    border-left: 4px solid var(--ter-painel-cor, #366092);
 }
 
 #modulo-terceiros .stats-grid {
