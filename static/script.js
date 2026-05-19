@@ -85,6 +85,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initTabs();
     initDevolucoesTabs();
     initTerceirosTabs();
+    void _terceirosGarantirPrefetchLista();
     initTerceirosAlertasHeader();
     initTerceirosPendenciaRecebimentoDelegacao();
     initTerceirosConferenciaAcoesDelegacao();
@@ -228,16 +229,30 @@ function aplicarDestaqueLinhaTerceirosDoc(tbody) {
  * Recarrega só a tabela da aba indicada (ex.: já estamos na aba e forçamos atualização).
  * @param {string} tab mesmo valor de data-ter-tab / _terceirosTabAtual
  */
+function _terceirosDadosListaParaRender() {
+    var hit = _terceirosObterCacheLista();
+    if (hit) return hit;
+    return undefined;
+}
+
 async function recarregarListaTerceirosTab(tab) {
+    var pre = _terceirosDadosListaParaRender();
+    if (!pre && _terceirosPrefetchPromise) {
+        try {
+            pre = await _terceirosPrefetchPromise;
+        } catch (e) {
+            console.error('recarregarListaTerceirosTab prefetch:', e);
+        }
+    }
     if (tab === 'painel') return loadPainelTerceiros();
-    if (tab === 'pendencia-recebimento' || tab === 'enviar-xml') return loadTerceirosDocumentos();
-    if (tab === 'fornecedores-recebidos') return loadTerceirosFornecedoresRecebidos();
-    if (tab === 'pendentes-lancamento') return loadTerceirosPendentesLancamento();
-    if (tab === 'notas-lancadas') return loadTerceirosNotasLancadas();
-    if (tab === 'pendencias-mg') return loadTerceirosPendenciasMg();
-    if (tab === 'notas-enviadas-mg') return loadTerceirosNotasEnviadasMg();
-    if (tab === 'recebimentos-mg') return loadTerceirosRecebimentosMg();
-    if (tab === 'historico') return loadTerceirosHistorico();
+    if (tab === 'pendencia-recebimento' || tab === 'enviar-xml') return loadTerceirosDocumentos(pre);
+    if (tab === 'fornecedores-recebidos') return loadTerceirosFornecedoresRecebidos(pre);
+    if (tab === 'pendentes-lancamento') return loadTerceirosPendentesLancamento(pre);
+    if (tab === 'notas-lancadas') return loadTerceirosNotasLancadas(pre);
+    if (tab === 'pendencias-mg') return loadTerceirosPendenciasMg(pre);
+    if (tab === 'notas-enviadas-mg') return loadTerceirosNotasEnviadasMg(pre);
+    if (tab === 'recebimentos-mg') return loadTerceirosRecebimentosMg(pre);
+    if (tab === 'historico') return loadTerceirosHistorico(pre);
     return undefined;
 }
 
@@ -527,6 +542,7 @@ function initModulos() {
                 loadPainelDevolucoes();
             }
         } else if (id === 'terceiros') {
+            void _terceirosGarantirPrefetchLista();
             var painelTer = document.getElementById('terceiros-panel-painel');
             if (painelTer && painelTer.classList.contains('devolucoes-panel-active')) {
                 if (window._terceirosPainelUltimoData && !window._terceirosPainelUltimoData.erro) {
@@ -535,7 +551,7 @@ function initModulos() {
                     void loadPainelTerceiros();
                 }
             } else {
-                refreshTerceirosViews();
+                void refreshTerceirosViews({ usarCache: true });
             }
         }
     }
@@ -628,9 +644,7 @@ function initTerceirosTabs() {
         if (sessTab && sessTab.tab) tabInicial = sessTab.tab;
     }
     mostrarTerTab(tabInicial);
-    setTimeout(function() {
-        void fetchTerceirosDocumentosTodos();
-    }, 400);
+    void _terceirosGarantirPrefetchLista();
 }
 
 /** Após init: reabre módulo + NF se havia sessão (F5). */
@@ -1454,7 +1468,7 @@ async function uploadXmlTerceirosComPrefixo(prefixo, areaChave, opcoes) {
         filesEl.value = '';
         if (opcoes.exigeMotoristaPlaca && motEl) motEl.value = '';
         if (opcoes.exigeMotoristaPlaca && plaEl) plaEl.value = '';
-        refreshTerceirosViews();
+        void recarregarTodasListasTerceiros();
         if (data.total_criados > 0) {
             showMessage('XMLs processados com sucesso.', 'success');
         } else if (data.erros && data.erros.length) {
@@ -1475,6 +1489,51 @@ async function uploadXmlTerceirosCarreta() {
 
 var _terceirosListaCache = { rows: null, erro: null, ts: 0, promise: null };
 var TERCEIROS_LISTA_CACHE_MS = 90000;
+var _terceirosPrefetchPromise = null;
+
+/**
+ * Uma única requisição ao abrir a página: preenche todas as tabelas Terceiros em paralelo.
+ */
+function _terceirosGarantirPrefetchLista() {
+    if (_terceirosPrefetchPromise) return _terceirosPrefetchPromise;
+    _terceirosPrefetchPromise = fetchTerceirosDocumentosTodos().then(function(data) {
+        return warmTerceirosTodasListas(data).then(function() { return data; });
+    }).catch(function(e) {
+        console.error('_terceirosGarantirPrefetchLista:', e);
+        _terceirosPrefetchPromise = null;
+        throw e;
+    });
+    return _terceirosPrefetchPromise;
+}
+
+/** Preenche todas as listas do módulo a partir dos mesmos dados (troca de aba instantânea). */
+async function warmTerceirosTodasListas(dataPreloaded) {
+    var data = dataPreloaded;
+    if (!data || (!data.rows && !data.erro)) {
+        data = await fetchTerceirosDocumentosTodos();
+    }
+    if (!data) return;
+    var abaAtiva = _terceirosTabAtual || 'painel';
+    var tarefas = [
+        loadTerceirosDocumentos(data),
+        loadTerceirosFornecedoresRecebidos(data),
+        loadTerceirosPendentesLancamento(data),
+        loadTerceirosNotasLancadas(data),
+        loadTerceirosPendenciasMg(data),
+        loadTerceirosNotasEnviadasMg(data),
+        loadTerceirosRecebimentosMg(data),
+        loadTerceirosHistorico(data)
+    ];
+    if (abaAtiva === 'painel') {
+        tarefas.push(loadPainelTerceiros());
+    }
+    await Promise.all(tarefas.map(function(p) {
+        return Promise.resolve(p).catch(function(err) {
+            console.error('warmTerceirosTodasListas:', err);
+        });
+    }));
+    void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows || []));
+}
 
 function invalidateTerceirosListaCache() {
     _terceirosListaCache.rows = null;
@@ -1523,8 +1582,17 @@ async function _terceirosResolverDadosLista(dataPreloaded, tbody, colspan) {
     if (dataPreloaded && (dataPreloaded.rows || dataPreloaded.erro)) return dataPreloaded;
     var hit = _terceirosObterCacheLista();
     if (hit) return hit;
+    if (_terceirosListaCache.promise) {
+        return _terceirosListaCache.promise;
+    }
+    if (_terceirosPrefetchPromise) {
+        return _terceirosPrefetchPromise;
+    }
     if (tbody) {
-        tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="loading">Carregando...</td></tr>';
+        var jaTemLinhas = tbody.querySelector('tr[data-ter-doc-id]');
+        if (!jaTemLinhas) {
+            tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="loading">Carregando...</td></tr>';
+        }
     }
     return fetchTerceirosDocumentosTodos();
 }
@@ -1950,7 +2018,7 @@ function renderTerceirosPendenciaDocumentosTbodyHtml(rows) {
             + '<td>' + escapeHtml(row.previsao_chegada || '-') + '</td>'
             + '<td>' + escapeHtml(String(row.total_itens || 0)) + '</td>'
             + '<td><strong>' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>'
-            + '<td>' + renderTerceirosPendenciaRecebimentoAcoes(row) + '</td>'
+            + renderTerceirosListaAcoesCelula(renderTerceirosPendenciaRecebimentoAcoes(row))
             + '</tr>';
     }).join('');
 }
@@ -2031,6 +2099,10 @@ function terceirosListaCellTextoLongo(valor) {
     return '<span class="ter-cell-ellipsis" title="' + escapeHtml(text) + '">' + escapeHtml(text) + '</span>';
 }
 
+function renderTerceirosListaAcoesCelula(conteudoHtml) {
+    return '<td class="ter-lista-acoes-celula"><span class="ter-lista-acoes">' + (conteudoHtml || '') + '</span></td>';
+}
+
 function renderTerceirosAbrirButton(row, atributo, rotulo, tabDestino) {
     return '<button type="button" class="btn btn-primary btn-sm" '
         + atributo + '="' + escapeHtml(String(row.id)) + '" '
@@ -2052,7 +2124,7 @@ function renderTerceirosExcluirButton(row, atributo) {
 function renderTerceirosPendenciaRecebimentoAcoes(row) {
     var area = escapeHtml(row.area || 'recebimento');
     var id = escapeHtml(String(row.id));
-    return '<span class="ter-pendencia-acoes">'
+    return '<span class="ter-lista-acoes ter-pendencia-acoes">'
         + '<button type="button" class="btn btn-primary btn-sm" data-ter-descarregar-pend="' + id + '" data-ter-area="' + area + '">Começar descarga</button>'
         + '<button type="button" class="btn btn-secondary btn-sm" data-ter-ver-detalhe-pend="' + id + '" data-ter-area="' + area + '">Ver detalhe</button>'
         + renderTerceirosExcluirButton(row, 'data-ter-excluir-doc')
@@ -2128,9 +2200,11 @@ function renderTerceirosFornecedorRecebidoRowHtml(row) {
         + '<td>' + renderTerceirosRecebimentoComUsuario(row) + '</td>'
         + '<td>' + conferenciaHtml + '</td>'
         + '<td>' + renderTerceirosStatusComUsuario(textoResumoNotaLancadaTerceiros(row), row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
-        + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'fornecedores-recebidos')
-            + ' <button type="button" class="btn btn-secondary btn-sm" data-ter-comprovante-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Gerar comprovante</button> '
-            + renderTerceirosExcluirButton(row, 'data-ter-excluir-fornecedor-doc') + '</td>'
+        + renderTerceirosListaAcoesCelula(
+            renderTerceirosAbrirButton(row, 'data-ter-fornecedor-doc', 'Abrir detalhe', 'fornecedores-recebidos')
+            + '<button type="button" class="btn btn-secondary btn-sm" data-ter-comprovante-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Gerar comprovante</button>'
+            + renderTerceirosExcluirButton(row, 'data-ter-excluir-fornecedor-doc')
+        )
         + '</tr>';
 }
 
@@ -2595,7 +2669,10 @@ async function loadTerceirosPendentesLancamento(dataPreloaded) {
                 + '<option value="sim"' + (isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Sim</option>'
                 + '<option value="nao"' + (isTerceirosFlagNao(row.nota_lancada) && !isTerceirosFlagSim(row.nota_lancada) ? ' selected' : '') + '>Não</option>'
             + '</select>' + renderTerceirosUsuarioMeta(row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-pend-lanc-doc', 'Abrir detalhe', 'pendentes-lancamento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-pend-lanc-doc') + '</td>'
+            + renderTerceirosListaAcoesCelula(
+                renderTerceirosAbrirButton(row, 'data-ter-pend-lanc-doc', 'Abrir detalhe', 'pendentes-lancamento')
+                + renderTerceirosExcluirButton(row, 'data-ter-excluir-pend-lanc-doc')
+            )
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-pend-lanc-doc]');
@@ -2645,7 +2722,10 @@ async function loadTerceirosNotasLancadas(dataPreloaded) {
             + '<td>' + renderTerceirosEnviarMgSomenteLeitura(row) + '</td>'
             + renderTerceirosCelulasMotoristaPlacaLista(row, 'lanc')
             + '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-lancada-doc') + '</td>'
+            + renderTerceirosListaAcoesCelula(
+                renderTerceirosAbrirButton(row, 'data-ter-lancada-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + renderTerceirosExcluirButton(row, 'data-ter-excluir-lancada-doc')
+            )
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-lancada-doc]');
@@ -2679,7 +2759,10 @@ async function loadTerceirosNotasEnviadasMg(dataPreloaded) {
             + '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>'
             + terceirosCelulaPlacaLista(row)
             + '<td>' + renderTerceirosStatusComUsuario(row.carga_recebida_mg || '-', row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-enviada-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-enviada-doc') + '</td>'
+            + renderTerceirosListaAcoesCelula(
+                renderTerceirosAbrirButton(row, 'data-ter-enviada-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + renderTerceirosExcluirButton(row, 'data-ter-excluir-enviada-doc')
+            )
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-enviada-doc]');
@@ -2717,7 +2800,10 @@ async function loadTerceirosRecebimentosMg(dataPreloaded) {
                 + '<option value="sim"' + (isTerceirosFlagSim(row.carga_recebida_mg) ? ' selected' : '') + '>Sim</option>'
                 + '<option value="nao"' + (isTerceirosFlagNao(row.carga_recebida_mg) && !isTerceirosFlagSim(row.carga_recebida_mg) ? ' selected' : '') + '>Não</option>'
             + '</select>' + renderTerceirosUsuarioMeta(row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-receb-mg-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-receb-mg-doc') + '</td>'
+            + renderTerceirosListaAcoesCelula(
+                renderTerceirosAbrirButton(row, 'data-ter-receb-mg-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + renderTerceirosExcluirButton(row, 'data-ter-excluir-receb-mg-doc')
+            )
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-receb-mg-doc]');
@@ -2773,7 +2859,10 @@ async function loadTerceirosPendenciasMg(dataPreloaded) {
                 + '</select>' + renderTerceirosUsuarioMeta(row.enviar_para_mg_por || '', row.enviar_para_mg_em || '')))
             + '</td>'
             + '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-pendencia-doc', 'Abrir detalhe', 'pendencia-recebimento') + ' ' + renderTerceirosExcluirButton(row, 'data-ter-excluir-pendencia-doc') + '</td>'
+            + renderTerceirosListaAcoesCelula(
+                renderTerceirosAbrirButton(row, 'data-ter-pendencia-doc', 'Abrir detalhe', 'pendencia-recebimento')
+                + renderTerceirosExcluirButton(row, 'data-ter-excluir-pendencia-doc')
+            )
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-pendencia-doc]');
@@ -2836,9 +2925,11 @@ async function loadTerceirosHistorico(dataPreloaded) {
             + '<td>' + renderTerceirosStatusComUsuario(textoResumoNotaLancadaTerceiros(row), row.nota_lancada_por || '', row.nota_lancada_em || '') + '</td>'
             + '<td>' + renderTerceirosStatusComUsuario(row.enviar_para_mg || '-', row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>'
             + '<td>' + renderTerceirosStatusComUsuario(row.carga_recebida_mg || '-', row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>'
-            + '<td>' + renderTerceirosAbrirButton(row, 'data-ter-historico-doc', 'Abrir detalhe', 'historico')
-                + ' <button type="button" class="btn btn-secondary btn-sm" data-ter-comprovante-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Gerar comprovante</button> '
-                + renderTerceirosExcluirButton(row, 'data-ter-excluir-historico-doc') + '</td>'
+            + renderTerceirosListaAcoesCelula(
+                renderTerceirosAbrirButton(row, 'data-ter-historico-doc', 'Abrir detalhe', 'historico')
+                + '<button type="button" class="btn btn-secondary btn-sm" data-ter-comprovante-doc="' + escapeHtml(String(row.id)) + '" data-ter-area="' + escapeHtml(row.area || 'recebimento') + '">Gerar comprovante</button>'
+                + renderTerceirosExcluirButton(row, 'data-ter-excluir-historico-doc')
+            )
             + '</tr>';
     }).join('');
     bindTerceirosAbrirButtons('[data-ter-historico-doc]');
@@ -2852,65 +2943,30 @@ async function loadTerceirosHistorico(dataPreloaded) {
  * Mantém a sub-aba ativa só na UI; os dados de todas as listas ficam alinhados ao servidor.
  */
 async function recarregarTodasListasTerceiros() {
+    invalidateTerceirosListaCache();
+    _terceirosPrefetchPromise = null;
     var data = await fetchTerceirosDocumentosTodos({ force: true });
-    await Promise.all([
-        loadPainelTerceiros().catch(function(err) { console.error('recarregarTodasListasTerceiros painel:', err); }),
-        loadTerceirosDocumentos(data),
-        loadTerceirosFornecedoresRecebidos(data),
-        loadTerceirosPendentesLancamento(data),
-        loadTerceirosNotasLancadas(data),
-        loadTerceirosPendenciasMg(data),
-        loadTerceirosNotasEnviadasMg(data),
-        loadTerceirosRecebimentosMg(data),
-        loadTerceirosHistorico(data)
-    ].map(function(p) {
-        return Promise.resolve(p).catch(function(err) {
-            console.error('recarregarTodasListasTerceiros:', err);
-        });
-    }));
-    void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows || []));
+    await warmTerceirosTodasListas(data);
+    await loadPainelTerceiros().catch(function(err) { console.error('recarregarTodasListasTerceiros painel:', err); });
 }
 
-async function refreshTerceirosViews() {
+async function refreshTerceirosViews(opcoes) {
+    opcoes = opcoes || {};
+    if (opcoes.usarCache) {
+        var hitCache = _terceirosObterCacheLista();
+        if (hitCache) {
+            await recarregarListaTerceirosTab(_terceirosTabAtual);
+            return;
+        }
+    }
     invalidateTerceirosListaCache();
+    _terceirosPrefetchPromise = null;
     try {
+        var data = await fetchTerceirosDocumentosTodos({ force: true });
+        await warmTerceirosTodasListas(data);
         if (_terceirosTabAtual === 'painel') {
             await loadPainelTerceiros();
-            return;
         }
-        if (_terceirosTabAtual === 'enviar-xml') {
-            await loadTerceirosDocumentos();
-            return;
-        }
-        if (_terceirosTabAtual === 'fornecedores-recebidos') {
-            await loadTerceirosFornecedoresRecebidos();
-            return;
-        }
-        if (_terceirosTabAtual === 'pendentes-lancamento') {
-            await loadTerceirosPendentesLancamento();
-            return;
-        }
-        if (_terceirosTabAtual === 'notas-lancadas') {
-            await loadTerceirosNotasLancadas();
-            return;
-        }
-        if (_terceirosTabAtual === 'notas-enviadas-mg') {
-            await loadTerceirosNotasEnviadasMg();
-            return;
-        }
-        if (_terceirosTabAtual === 'recebimentos-mg') {
-            await loadTerceirosRecebimentosMg();
-            return;
-        }
-        if (_terceirosTabAtual === 'pendencias-mg') {
-            await loadTerceirosPendenciasMg();
-            return;
-        }
-        if (_terceirosTabAtual === 'historico') {
-            await loadTerceirosHistorico();
-            return;
-        }
-        await loadTerceirosDocumentos();
     } catch (error) {
         console.error('Erro ao atualizar módulo de terceiros:', error);
         if (_terceirosTabAtual === 'enviar-xml') {

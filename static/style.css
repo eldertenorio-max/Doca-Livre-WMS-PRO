@@ -434,20 +434,16 @@ body {
     font-size: 13px;
 }
 
-#modulo-terceiros .ter-pendencia-acoes {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: 4px;
-    justify-content: flex-start;
-    min-width: 0;
-}
-
-#modulo-terceiros .ter-pendencia-acoes .btn {
+#modulo-terceiros .ter-pendencia-acoes .btn,
+#modulo-terceiros .ter-lista-acoes .btn {
     flex-shrink: 0;
     white-space: nowrap;
-    padding-left: 8px;
-    padding-right: 8px;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding: 4px 8px;
+    font-size: 11px;
+    line-height: 1.2;
+    border-radius: 4px;
 }
 
 #modulo-terceiros .ter-bipagem-bloco .form-group label {
@@ -799,18 +795,31 @@ body {
 
 #modulo-terceiros .terceiros-lista-bloco .ter-tabela-lista th,
 #modulo-terceiros .terceiros-lista-bloco .ter-tabela-lista td {
-    padding: 7px 8px;
-    vertical-align: top;
+    padding: 5px 7px;
+    vertical-align: middle;
     overflow: hidden;
     word-wrap: break-word;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 #modulo-terceiros .terceiros-lista-bloco .ter-tabela-lista th {
     font-size: 11px;
     line-height: 1.25;
     font-weight: 700;
-    white-space: normal;
+    white-space: nowrap;
     text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .ter-tabela-lista th.ter-th-wrap {
+    white-space: normal;
+    line-height: 1.2;
+    hyphens: auto;
 }
 
 #modulo-terceiros .terceiros-lista-bloco .ter-tabela-lista td {
@@ -858,25 +867,25 @@ body {
 #modulo-terceiros .ter-cols-12 th:nth-child(2),
 #modulo-terceiros .ter-cols-12 td:nth-child(2) { width: 5%; }
 #modulo-terceiros .ter-cols-12 th:nth-child(3),
-#modulo-terceiros .ter-cols-12 td:nth-child(3) { width: 12%; }
+#modulo-terceiros .ter-cols-12 td:nth-child(3) { width: 11%; }
 #modulo-terceiros .ter-cols-12 th:nth-child(4),
-#modulo-terceiros .ter-cols-12 td:nth-child(4) { width: 12%; }
+#modulo-terceiros .ter-cols-12 td:nth-child(4) { width: 11%; }
 #modulo-terceiros .ter-cols-12 th:nth-child(5),
-#modulo-terceiros .ter-cols-12 td:nth-child(5) { width: 3%; }
+#modulo-terceiros .ter-cols-12 td:nth-child(5) { width: 3%; min-width: 36px; }
 #modulo-terceiros .ter-cols-12 th:nth-child(6),
-#modulo-terceiros .ter-cols-12 td:nth-child(6) { width: 9%; }
+#modulo-terceiros .ter-cols-12 td:nth-child(6) { width: 8%; min-width: 72px; }
 #modulo-terceiros .ter-cols-12 th:nth-child(7),
-#modulo-terceiros .ter-cols-12 td:nth-child(7) { width: 6%; }
+#modulo-terceiros .ter-cols-12 td:nth-child(7) { width: 6%; min-width: 64px; }
 #modulo-terceiros .ter-cols-12 th:nth-child(8),
-#modulo-terceiros .ter-cols-12 td:nth-child(8) { width: 7%; }
+#modulo-terceiros .ter-cols-12 td:nth-child(8) { width: 7%; min-width: 72px; }
 #modulo-terceiros .ter-cols-12 th:nth-child(9),
-#modulo-terceiros .ter-cols-12 td:nth-child(9) { width: 11%; }
+#modulo-terceiros .ter-cols-12 td:nth-child(9) { width: 11%; min-width: 100px; }
 #modulo-terceiros .ter-cols-12 th:nth-child(10),
-#modulo-terceiros .ter-cols-12 td:nth-child(10) { width: 10%; }
+#modulo-terceiros .ter-cols-12 td:nth-child(10) { width: 11%; min-width: 108px; }
 #modulo-terceiros .ter-cols-12 th:nth-child(11),
-#modulo-terceiros .ter-cols-12 td:nth-child(11) { width: 9%; }
+#modulo-terceiros .ter-cols-12 td:nth-child(11) { width: 10%; min-width: 96px; }
 #modulo-terceiros .ter-cols-12 th:nth-child(12),
-#modulo-terceiros .ter-cols-12 td:nth-child(12) { width: 9%; min-width: 180px; }
+#modulo-terceiros .ter-cols-12 td:nth-child(12) { width: 11%; min-width: 168px; }
 
 /* 12 colunas — notas lançadas */
 #modulo-terceiros .ter-cols-12-lanc { min-width: 1340px; }
@@ -897,13 +906,13 @@ body {
 #modulo-terceiros .ter-cols-12-lanc th:nth-child(8),
 #modulo-terceiros .ter-cols-12-lanc td:nth-child(8) { width: 8%; }
 #modulo-terceiros .ter-cols-12-lanc th:nth-child(9),
-#modulo-terceiros .ter-cols-12-lanc td:nth-child(9) { width: 11%; }
+#modulo-terceiros .ter-cols-12-lanc td:nth-child(9) { width: 9%; min-width: 88px; }
 #modulo-terceiros .ter-cols-12-lanc th:nth-child(10),
-#modulo-terceiros .ter-cols-12-lanc td:nth-child(10) { width: 6%; }
+#modulo-terceiros .ter-cols-12-lanc td:nth-child(10) { width: 7%; min-width: 76px; }
 #modulo-terceiros .ter-cols-12-lanc th:nth-child(11),
-#modulo-terceiros .ter-cols-12-lanc td:nth-child(11) { width: 9%; }
+#modulo-terceiros .ter-cols-12-lanc td:nth-child(11) { width: 8%; min-width: 72px; }
 #modulo-terceiros .ter-cols-12-lanc th:nth-child(12),
-#modulo-terceiros .ter-cols-12-lanc td:nth-child(12) { width: 10%; min-width: 200px; }
+#modulo-terceiros .ter-cols-12-lanc td:nth-child(12) { width: 11%; min-width: 168px; }
 
 /* 11 colunas — MG pendências / recebimentos */
 #modulo-terceiros .ter-cols-11-mg { min-width: 1180px; }
@@ -924,11 +933,11 @@ body {
 #modulo-terceiros .ter-cols-11-mg th:nth-child(8),
 #modulo-terceiros .ter-cols-11-mg td:nth-child(8) { width: 6%; }
 #modulo-terceiros .ter-cols-11-mg th:nth-child(9),
-#modulo-terceiros .ter-cols-11-mg td:nth-child(9) { width: 9%; }
+#modulo-terceiros .ter-cols-11-mg td:nth-child(9) { width: 9%; min-width: 88px; }
 #modulo-terceiros .ter-cols-11-mg th:nth-child(10),
-#modulo-terceiros .ter-cols-11-mg td:nth-child(10) { width: 9%; }
+#modulo-terceiros .ter-cols-11-mg td:nth-child(10) { width: 9%; min-width: 88px; }
 #modulo-terceiros .ter-cols-11-mg th:nth-child(11),
-#modulo-terceiros .ter-cols-11-mg td:nth-child(11) { width: 11%; min-width: 160px; }
+#modulo-terceiros .ter-cols-11-mg td:nth-child(11) { width: 12%; min-width: 152px; }
 
 /* 10 colunas — finalizadas MG */
 #modulo-terceiros .ter-cols-10-env { min-width: 1060px; }
@@ -976,17 +985,17 @@ body {
 #modulo-terceiros .ter-cols-14 th:nth-child(8),
 #modulo-terceiros .ter-cols-14 td:nth-child(8) { width: 7%; }
 #modulo-terceiros .ter-cols-14 th:nth-child(9),
-#modulo-terceiros .ter-cols-14 td:nth-child(9) { width: 9%; }
+#modulo-terceiros .ter-cols-14 td:nth-child(9) { width: 9%; min-width: 92px; }
 #modulo-terceiros .ter-cols-14 th:nth-child(10),
-#modulo-terceiros .ter-cols-14 td:nth-child(10) { width: 8%; }
+#modulo-terceiros .ter-cols-14 td:nth-child(10) { width: 8%; min-width: 96px; }
 #modulo-terceiros .ter-cols-14 th:nth-child(11),
-#modulo-terceiros .ter-cols-14 td:nth-child(11) { width: 7%; }
+#modulo-terceiros .ter-cols-14 td:nth-child(11) { width: 7%; min-width: 80px; }
 #modulo-terceiros .ter-cols-14 th:nth-child(12),
-#modulo-terceiros .ter-cols-14 td:nth-child(12) { width: 7%; }
+#modulo-terceiros .ter-cols-14 td:nth-child(12) { width: 7%; min-width: 76px; }
 #modulo-terceiros .ter-cols-14 th:nth-child(13),
-#modulo-terceiros .ter-cols-14 td:nth-child(13) { width: 7%; }
+#modulo-terceiros .ter-cols-14 td:nth-child(13) { width: 7%; min-width: 76px; }
 #modulo-terceiros .ter-cols-14 th:nth-child(14),
-#modulo-terceiros .ter-cols-14 td:nth-child(14) { width: 8%; min-width: 200px; }
+#modulo-terceiros .ter-cols-14 td:nth-child(14) { width: 9%; min-width: 168px; }
 
 #modulo-terceiros .ter-select-inline,
 #modulo-terceiros .ter-input-inline {
@@ -998,14 +1007,47 @@ body {
 }
 
 #modulo-terceiros .ter-inline-stack {
-    display: grid;
-    gap: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
     min-width: 0;
 }
 
 #modulo-terceiros .terceiros-lista-bloco .ter-tabela-lista .status-badge {
-    font-size: 11px;
+    font-size: 10px;
     white-space: nowrap;
+    padding: 2px 6px;
+    display: inline-block;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .ter-tabela-lista .ter-status-meta {
+    font-size: 10px;
+    line-height: 1.2;
+    margin-top: 2px;
+}
+
+#modulo-terceiros .ter-lista-acoes,
+#modulo-terceiros .ter-pendencia-acoes {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .ter-tabela-lista td .btn {
+    margin-top: 0;
+    margin-bottom: 0;
+    padding: 4px 8px;
+    font-size: 11px;
+    line-height: 1.2;
+    border-radius: 4px;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+#modulo-terceiros .terceiros-lista-bloco .ter-tabela-lista td .btn:hover {
+    transform: none;
 }
 
 #modulo-terceiros .ter-status-meta {
