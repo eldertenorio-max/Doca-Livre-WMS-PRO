@@ -2589,12 +2589,26 @@ function renderTerceirosExcluirButton(row, atributo) {
         + '</button>';
 }
 
+function abrirDanfeNotaFiscalTerceiros(documentoId) {
+    documentoId = parseInt(documentoId, 10);
+    if (!Number.isFinite(documentoId) || documentoId <= 0) {
+        showMessage('Não foi possível identificar a nota.', 'warning');
+        return;
+    }
+    var url = API_BASE + '/terceiros/documentos/' + encodeURIComponent(documentoId) + '/danfe';
+    var janela = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!janela) {
+        showMessage('Permita pop-ups para visualizar o PDF da nota fiscal.', 'warning');
+    }
+}
+
 function renderTerceirosPendenciaRecebimentoAcoes(row) {
     var area = escapeHtml(row.area || 'recebimento');
     var id = escapeHtml(String(row.id));
     return '<span class="ter-lista-acoes ter-pendencia-acoes">'
         + '<button type="button" class="btn btn-primary btn-sm" data-ter-descarregar-pend="' + id + '" data-ter-area="' + area + '">Começar descarga</button>'
         + '<button type="button" class="btn btn-secondary btn-sm" data-ter-ver-detalhe-pend="' + id + '" data-ter-area="' + area + '">Ver detalhe</button>'
+        + '<button type="button" class="btn btn-secondary btn-sm" data-ter-ver-pdf-pend="' + id + '" title="Abrir DANFE para imprimir ou salvar como PDF">Ver PDF da NF</button>'
         + renderTerceirosExcluirButton(row, 'data-ter-excluir-doc')
         + '</span>';
 }
@@ -2853,6 +2867,13 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
                 console.error(err);
                 showMessage('Erro ao abrir a nota.', 'error');
             });
+            return;
+        }
+        var pdfBtn = el.closest('[data-ter-ver-pdf-pend]');
+        if (pdfBtn && tbody.contains(pdfBtn)) {
+            ev.preventDefault();
+            var idPdf = terceirosIdDocumentoDeAtributo(pdfBtn.getAttribute('data-ter-ver-pdf-pend'));
+            abrirDanfeNotaFiscalTerceiros(idPdf);
         }
     });
 }

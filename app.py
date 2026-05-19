@@ -6701,6 +6701,142 @@ def _somente_digitos(valor):
     return re.sub(r'\D+', '', str(valor or ''))
 
 
+def _fmt_cnpj_cpf_terceiros(valor):
+    d = _somente_digitos(valor)
+    if len(d) == 14:
+        return '%s.%s.%s/%s-%s' % (d[0:2], d[2:5], d[5:8], d[8:12], d[12:14])
+    if len(d) == 11:
+        return '%s.%s.%s-%s' % (d[0:3], d[3:6], d[6:9], d[9:11])
+    return d or '-'
+
+
+def _fmt_chave_nfe_terceiros(chave):
+    d = _somente_digitos(chave)
+    if len(d) != 44:
+        return chave or '-'
+    return ' '.join(d[i:i + 4] for i in range(0, 44, 4))
+
+
+def _fmt_moeda_br_terceiros(valor):
+    try:
+        v = float(str(valor or '').replace(',', '.'))
+    except (TypeError, ValueError):
+        return str(valor or '-')
+    return ('{:,.2f}').format(v).replace(',', 'X').replace('.', ',').replace('X', '.')
+
+
+def _render_danfe_html_terceiros(doc):
+    from html import escape
+    xml_texto = (doc.get('xml_conteudo') or '').strip()
+    parsed = {}
+    if xml_texto:
+        try:
+            parsed = _parse_nfe_xml(xml_texto)
+        except Exception:
+            parsed = {}
+    chave = (doc.get('chave_nfe') or parsed.get('chave_nfe') or '').strip()
+    numero_nf = (doc.get('numero_nf') or parsed.get('numero_nf') or '-').strip()
+    serie_nf = (doc.get('serie_nf') or parsed.get('serie_nf') or '-').strip()
+    data_emissao = _fmt_data_br(doc.get('data_emissao') or parsed.get('data_emissao') or '')
+    remetente = (doc.get('remetente_nome') or parsed.get('remetente_nome') or '-').strip()
+    rem_cnpj = _fmt_cnpj_cpf_terceiros(parsed.get('remetente_cnpj') or '')
+    destinatario = (doc.get('destinatario_nome') or parsed.get('destinatario_nome') or '-').strip()
+    dest_cnpj = _fmt_cnpj_cpf_terceiros(parsed.get('destinatario_cnpj') or '')
+    dest_uf = (doc.get('destinatario_uf') or parsed.get('destinatario_uf') or '-').strip()
+    pedido = (doc.get('numero_pedido') or parsed.get('numero_pedido') or '-').strip()
+    valor_nf = parsed.get('valor_total_xml') or ''
+    if valor_nf not in ('', None):
+        valor_nf = _fmt_moeda_br_terceiros(valor_nf)
+    else:
+        valor_nf = '-'
+    itens = doc.get('itens') or parsed.get('itens') or []
+    linhas_itens = []
+    for item in itens:
+        if not isinstance(item, dict):
+            continue
+        linhas_itens.append(
+            '<tr>'
+            + '<td>' + escape(str(item.get('n_item') or '')) + '</td>'
+            + '<td>' + escape(str(item.get('codigo_produto_xml') or item.get('codigo_ean') or '')) + '</td>'
+            + '<td>' + escape(str(item.get('descricao_xml') or item.get('descricao_base') or '')) + '</td>'
+            + '<td class="num">' + escape(str(item.get('unidade_xml') or '')) + '</td>'
+            + '<td class="num">' + escape(str(item.get('quantidade_xml') or '')) + '</td>'
+            + '</tr>'
+        )
+    if not linhas_itens:
+        linhas_itens.append('<tr><td colspan="5" style="text-align:center;color:#666;">Sem itens no XML</td></tr>')
+    url_sefaz = ''
+    if len(_somente_digitos(chave)) == 44:
+        url_sefaz = 'https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=resumo&tipoConteudo=7PhJ+gAVw2g=&nfe=' + escape(_somente_digitos(chave))
+    bloco_sefaz = (
+        '<p class="aviso"><a href="' + url_sefaz + '" target="_blank" rel="noopener">Consultar NF-e na Receita Federal</a></p>'
+        if url_sefaz else ''
+    )
+    titulo_nf = escape('NF ' + numero_nf + ' / Série ' + serie_nf)
+    return '''<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>''' + titulo_nf + ''' — DANFE</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; margin: 24px; color: #212121; font-size: 13px; }
+  h1 { font-size: 18px; margin: 0 0 4px 0; color: #366092; }
+  .sub { color: #607d8b; margin: 0 0 20px 0; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .box { border: 1px solid #cfd8dc; border-radius: 6px; padding: 12px; }
+  .box h2 { margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #546e7a; }
+  .box p { margin: 4px 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { border: 1px solid #b0bec5; padding: 6px 8px; text-align: left; }
+  th { background: #eceff1; font-size: 11px; text-transform: uppercase; }
+  td.num { text-align: right; white-space: nowrap; }
+  .chave { font-family: Consolas, monospace; font-size: 11px; word-break: break-all; }
+  .toolbar { margin-bottom: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn { background: #366092; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+  .btn:hover { background: #2a4d73; }
+  .aviso { font-size: 12px; color: #455a64; margin-top: 16px; }
+  @media print { .toolbar { display: none; } body { margin: 12px; } }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <button type="button" class="btn" onclick="window.print()">Imprimir / Salvar como PDF</button>
+  <span class="aviso">Use a impressora «Salvar como PDF» se quiser arquivo PDF.</span>
+</div>
+<h1>DANFE — Documento auxiliar da NF-e</h1>
+<p class="sub">''' + titulo_nf + ''' · Pedido: ''' + escape(pedido) + '''</p>
+<div class="grid">
+  <div class="box">
+    <h2>Emitente</h2>
+    <p><strong>''' + escape(remetente) + '''</strong></p>
+    <p>CNPJ/CPF: ''' + escape(rem_cnpj) + '''</p>
+  </div>
+  <div class="box">
+    <h2>Destinatário</h2>
+    <p><strong>''' + escape(destinatario) + '''</strong></p>
+    <p>CNPJ/CPF: ''' + escape(dest_cnpj) + ''' · UF: ''' + escape(dest_uf) + '''</p>
+  </div>
+</div>
+<div class="box" style="margin-bottom: 20px;">
+  <h2>Dados da nota</h2>
+  <p><strong>Emissão:</strong> ''' + escape(data_emissao) + ''' &nbsp;·&nbsp; <strong>Valor NF:</strong> R$ ''' + escape(str(valor_nf)) + '''</p>
+  <p class="chave"><strong>Chave de acesso:</strong> ''' + escape(_fmt_chave_nfe_terceiros(chave)) + '''</p>
+</div>
+<h2 style="font-size: 14px; margin: 0 0 8px 0;">Itens da nota</h2>
+<table>
+  <thead>
+    <tr><th>#</th><th>Código</th><th>Descrição</th><th>Un.</th><th>Qtd</th></tr>
+  </thead>
+  <tbody>
+    ''' + ''.join(linhas_itens) + '''
+  </tbody>
+</table>
+''' + bloco_sefaz + '''
+</body>
+</html>'''
+
+
 def _texto_xml(elem):
     return (elem.text or '').strip() if elem is not None and elem.text is not None else ''
 
@@ -7924,6 +8060,29 @@ def api_terceiros_documento_detalhe(documento_id):
         for ev in doc.get('eventos') or []:
             ev['criado_em'] = _fmt_datahora_br(ev.get('criado_em') or '')
         return jsonify(doc)
+    finally:
+        conn.close()
+
+
+@app.route('/api/terceiros/documentos/<int:documento_id>/danfe', methods=['GET'])
+def api_terceiros_documento_danfe(documento_id):
+    """Visualização imprimível da NF (DANFE) a partir do XML armazenado — salvar como PDF pelo navegador."""
+    conn = get_db()
+    try:
+        _ensure_terceiros_schema(conn)
+        doc = _carregar_documento_terceiros(conn, documento_id)
+        if not doc:
+            return Response('Documento não encontrado.', status=404, mimetype='text/plain; charset=utf-8')
+        if not (doc.get('xml_conteudo') or '').strip():
+            return Response(
+                'XML da nota fiscal não disponível para esta NF.',
+                status=404,
+                mimetype='text/plain; charset=utf-8'
+            )
+        html = _render_danfe_html_terceiros(doc)
+        return Response(html, mimetype='text/html; charset=utf-8')
+    except Exception as e:
+        return Response('Erro ao gerar visualização da NF: %s' % str(e), status=500, mimetype='text/plain; charset=utf-8')
     finally:
         conn.close()
 
