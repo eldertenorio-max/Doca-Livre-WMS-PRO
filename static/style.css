@@ -301,13 +301,10 @@ body {
 
 #modulo-terceiros .ter-painel-wrapper .ter-painel-stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(clamp(120px, 14vw, 168px), 1fr));
-    gap: clamp(8px, 1.5vw, 12px);
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    gap: 12px;
     margin-bottom: 20px;
     width: 100%;
-    max-height: none;
-    overflow: visible;
-    padding-bottom: 0;
 }
 
 #modulo-terceiros .ter-painel-wrapper .ter-painel-stats-grid .stat-card {
@@ -321,11 +318,8 @@ body {
     margin-bottom: 6px;
 }
 
-#modulo-terceiros .ter-painel-wrapper .painel-charts,
-#modulo-terceiros .ter-painel-wrapper .ter-painel-charts {
+#modulo-terceiros .ter-painel-wrapper .painel-charts {
     margin-bottom: 24px;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-    gap: clamp(12px, 2vw, 24px);
 }
 
 #modulo-terceiros .ter-painel-wrapper .chart-box {
@@ -2337,119 +2331,6 @@ h2 {
 }
 
 /* Impressão: Extrato ou Divergências conforme classe no body */
-/* Módulo Terceiros — layout fluido (telas pequenas a ultrawide) */
-#modulo-terceiros {
-    min-width: 0;
-    width: 100%;
-}
-
-#modulo-terceiros .devolucoes-conteudo {
-    padding: clamp(12px, 2vw, 24px) clamp(10px, 2.5vw, 24px) clamp(20px, 3vw, 32px);
-    min-width: 0;
-    box-sizing: border-box;
-}
-
-#modulo-terceiros .devolucoes-subtabs.tabs {
-    flex-wrap: wrap;
-    overflow-x: visible;
-    gap: 4px;
-    padding: 6px 6px 2px;
-    align-items: stretch;
-}
-
-#modulo-terceiros .devolucoes-subtabs .tab-button.terceiros-subtab {
-    flex: 1 1 auto;
-    min-width: min(100%, 128px);
-    max-width: 100%;
-    padding: clamp(8px, 1.2vw, 12px) clamp(8px, 1.5vw, 14px);
-    font-size: clamp(10px, 1.05vw, 13px);
-    white-space: normal;
-    text-align: center;
-    line-height: 1.25;
-    hyphens: auto;
-}
-
-#modulo-terceiros .ter-painel-wrapper .ter-painel-stats-grid .stat-number {
-    font-size: clamp(1.25rem, 3.2vw, 2rem);
-}
-
-#modulo-terceiros .ter-painel-wrapper .chart-box {
-    min-height: clamp(200px, 28vh, 280px);
-}
-
-#modulo-terceiros .ter-painel-tabela-wrap,
-#modulo-terceiros .terceiros-lista-bloco .table-container,
-#modulo-terceiros .terceiros-detalhe-bloco .table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    max-width: 100%;
-}
-
-#modulo-terceiros .painel-titulo {
-    padding: clamp(14px, 2.5vw, 20px) clamp(14px, 3vw, 24px);
-}
-
-#modulo-terceiros .painel-titulo-texto {
-    font-size: clamp(1.05rem, 2.6vw, 1.6rem);
-    display: block;
-    word-break: break-word;
-}
-
-#modulo-terceiros .painel-titulo-sub {
-    margin-left: 0;
-    margin-top: 8px;
-    font-size: clamp(12px, 1.8vw, 14px);
-    line-height: 1.45;
-}
-
-#modulo-terceiros .ter-pendencia-toolbar,
-#modulo-terceiros .ter-pendencia-filtro-previsao {
-    flex-wrap: wrap;
-}
-
-@media (max-width: 1100px) {
-    #modulo-terceiros .devolucoes-subtabs .tab-button.terceiros-subtab {
-        flex: 1 1 calc(33.333% - 6px);
-        min-width: calc(33.333% - 6px);
-    }
-}
-
-@media (max-width: 768px) {
-    #modulo-terceiros .devolucoes-subtabs.tabs {
-        flex-direction: row;
-    }
-
-    #modulo-terceiros .devolucoes-subtabs .tab-button.terceiros-subtab {
-        flex: 1 1 calc(50% - 4px);
-        min-width: calc(50% - 4px);
-        border-bottom: 1px solid #e0e0e0;
-    }
-
-    #modulo-terceiros .ter-painel-wrapper .ter-painel-stats-grid {
-        grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr));
-    }
-
-    #modulo-terceiros .ter-painel-wrapper .romaneio-charts-grid {
-        grid-template-columns: 1fr;
-    }
-
-    #modulo-terceiros .terceiros-panel-unico .painel-titulo-icon {
-        display: block;
-        margin-bottom: 6px;
-    }
-}
-
-@media (max-width: 480px) {
-    #modulo-terceiros .devolucoes-subtabs .tab-button.terceiros-subtab {
-        flex: 1 1 100%;
-        min-width: 100%;
-    }
-
-    #modulo-terceiros .ter-painel-wrapper .ter-painel-stats-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
 @media print {
     @page {
         margin: 1cm;
