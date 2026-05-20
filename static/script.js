@@ -2385,21 +2385,25 @@ async function fetchTerceirosDocumentosTodos(opcoes) {
         return (resp && resp.erro) ? resp.erro : null;
     }
     function _terceirosMesclarResumoItensNasRows(baseRows, fullRows) {
-        if (!Array.isArray(baseRows) || !Array.isArray(fullRows)) return baseRows;
+        if (!Array.isArray(fullRows) || !fullRows.length) return baseRows;
         var porId = {};
         fullRows.forEach(function(r) {
             if (r && r.id != null) porId[String(r.id)] = r;
         });
-        return baseRows.map(function(r) {
+        var base = Array.isArray(baseRows) ? baseRows : [];
+        var idsVistos = {};
+        var merged = base.map(function(r) {
+            if (!r || r.id == null) return r;
+            idsVistos[String(r.id)] = true;
             var f = porId[String(r.id)];
             if (!f) return r;
-            return Object.assign({}, r, {
-                total_itens: f.total_itens,
-                quantidade_total_xml: f.quantidade_total_xml,
-                quantidade_total_bipada: f.quantidade_total_bipada,
-                itens_divergentes: f.itens_divergentes
-            });
+            return Object.assign({}, r, f);
         });
+        fullRows.forEach(function(r) {
+            if (!r || r.id == null || idsVistos[String(r.id)]) return;
+            merged.push(r);
+        });
+        return merged;
     }
     function _terceirosAtualizarCacheLista(ordenadas, erro) {
         if (ordenadas.length || !erro) {
@@ -2500,6 +2504,15 @@ function isTerceirosFlagSim(valor) {
     if (valor === false || valor === 0 || valor == null) return false;
     var s = String(valor).toLowerCase();
     return s === 'sim' || s === 's' || s === 'true' || s === '1';
+}
+
+/** Recebimento concluído (flag, data no banco ou cache local após POST). */
+function _terceirosRecebimentoEstaConcluido(row) {
+    row = _terceirosRowEstadoMesclado(row || {});
+    if (!row || row.id == null) return false;
+    if (isTerceirosFlagSim(row.recebimento_concluido)) return true;
+    if (String(row.recebimento_concluido_em || '').trim()) return true;
+    return false;
 }
 
 function isTerceirosFlagNao(valor) {
@@ -2733,7 +2746,7 @@ function _terceirosRowsEstadoMesclado(rows) {
 function _terceirosConsideraPendenciaRecebimento(row) {
     row = _terceirosRowEstadoMesclado(row);
     if (!row || row.id == null) return false;
-    if (isTerceirosFlagSim(row.recebimento_concluido)) return false;
+    if (_terceirosRecebimentoEstaConcluido(row)) return false;
     if (_terceirosTemBipagemIniciada(row)) return false;
     return true;
 }
@@ -2742,7 +2755,7 @@ function _terceirosConsideraPendenciaRecebimento(row) {
 function _terceirosConsideraFornecedorRecebido(row) {
     row = _terceirosRowEstadoMesclado(row);
     if (!row || row.id == null) return false;
-    if (!isTerceirosFlagSim(row.recebimento_concluido)) return false;
+    if (!_terceirosRecebimentoEstaConcluido(row)) return false;
     if (_terceirosConsideraHistorico(row)) return false;
     return true;
 }
@@ -2768,7 +2781,7 @@ function _terceirosConsideraPendenteLancamento(row) {
     if (!row || row.id == null) return false;
     if (isTerceirosFlagSim(row.nota_lancada)) return false;
     if (_terceirosConsideraHistorico(row)) return false;
-    if (isTerceirosFlagSim(row.recebimento_concluido)) return true;
+    if (_terceirosRecebimentoEstaConcluido(row)) return true;
     return _terceirosTemBipagemIniciada(row);
 }
 
@@ -2790,13 +2803,13 @@ function _terceirosEtapaExclusivaDoRow(row) {
     if (_terceirosConsideraPendenciaRecebimento(row)) return 'pendencia-recebimento';
     if (_terceirosConsideraHistorico(row)) return 'historico';
     if (_terceirosConsideraNotasLancadas(row)) return 'notas-lancadas';
-    if (!isTerceirosFlagSim(row.recebimento_concluido) && _terceirosTemBipagemIniciada(row) && !isTerceirosFlagSim(row.nota_lancada)) {
+    if (!_terceirosRecebimentoEstaConcluido(row) && _terceirosTemBipagemIniciada(row) && !isTerceirosFlagSim(row.nota_lancada)) {
         return 'pendentes-lancamento';
     }
-    if (isTerceirosFlagSim(row.recebimento_concluido) && !isTerceirosFlagSim(row.nota_lancada)) {
+    if (_terceirosRecebimentoEstaConcluido(row) && !isTerceirosFlagSim(row.nota_lancada)) {
         return 'fornecedores-recebidos';
     }
-    if (isTerceirosFlagSim(row.recebimento_concluido)) return 'fornecedores-recebidos';
+    if (_terceirosRecebimentoEstaConcluido(row)) return 'fornecedores-recebidos';
     if (_terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.carga_recebida_mg) && !isTerceirosFlagSim(row.nota_lancada)) {
         return 'notas-enviadas-mg';
     }
@@ -2901,6 +2914,32 @@ async function atualizarAlertasTerceirosHeaderAposMudancaRecebimento() {
     } catch (e) {
         console.error(e);
     }
+}
+
+/** Linhas atuais da 2ª aba (sempre recalcula a partir do cache global). */
+function _terceirosObterRowsPendenciaLista() {
+    var base = Array.isArray(_terceirosListaCache.rows) ? _terceirosListaCache.rows : [];
+    return getTerceirosRowsPorEtapa(_terceirosMesclarRecebidosLocaisNasRows(base), 'pendencia-recebimento');
+}
+
+function _terceirosInvalidarCachePendenciaLista() {
+    window._terceirosPendenciaRowsCache = null;
+}
+
+function _terceirosAtualizarRecebimentoConcluidoNoCacheLista(documentoId, patch) {
+    if (documentoId == null || documentoId === '') return;
+    var id = String(documentoId);
+    patch = patch || {};
+    if (Array.isArray(_terceirosListaCache.rows)) {
+        _terceirosListaCache.rows = _terceirosListaCache.rows.map(function(row) {
+            if (!row || String(row.id) !== id) return row;
+            return Object.assign({}, row, patch, {
+                recebimento_concluido: patch.recebimento_concluido != null ? patch.recebimento_concluido : true
+            });
+        });
+        _terceirosListaCache.ts = Date.now();
+    }
+    _terceirosInvalidarCachePendenciaLista();
 }
 
 /** Remove NF do cache compartilhado das listas (sem novo fetch). */
@@ -3146,16 +3185,17 @@ function atualizarUiBotoesFiltroPrevisaoPendencia() {
 function reaplicarFiltroPrevisaoPendenciaRecebimento() {
     var tbody = document.getElementById('ter-tbody-recebimento-documentos');
     if (!tbody) return;
-    var cache = window._terceirosPendenciaRowsCache;
-    if (!Array.isArray(cache)) {
+    var rows = _terceirosObterRowsPendenciaLista();
+    if (!Array.isArray(_terceirosListaCache.rows) || !_terceirosListaCache.rows.length) {
         void loadTerceirosDocumentos();
         return;
     }
+    window._terceirosPendenciaRowsCache = rows;
     var tipo = window._terceirosPendenciaFiltroTipo || 'todos';
     var dataLivre = window._terceirosPendenciaFiltroDataLivre || '';
-    var filtradas = filtrarRowsPendenciaPorPrevisao(cache, tipo, dataLivre);
+    var filtradas = filtrarRowsPendenciaPorPrevisao(rows, tipo, dataLivre);
     atualizarUiBotoesFiltroPrevisaoPendencia();
-    if (!cache.length) {
+    if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF com recebimento em aberto. Todas as notas subidas por XML aparecem aqui até o recebimento ser marcado como concluído.</td></tr>';
         var hidLista = document.getElementById('ter-rec-documento-id');
         var temNotaAbertaNaTela = (_terceirosDocAtual.id != null && String(_terceirosDocAtual.id).trim() !== '')
@@ -3665,7 +3705,7 @@ function renderTerceirosCelulasStatusFluxo(row, etapa) {
 }
 
 function renderTerceirosRecebimentoComUsuario(row) {
-    var concluido = isTerceirosFlagSim(row.recebimento_concluido);
+    var concluido = _terceirosRecebimentoEstaConcluido(row);
     var statusTxt = 'pendente';
     var usuario = '';
     var datahora = '';
@@ -4240,9 +4280,15 @@ function inserirDocumentoFornecedoresRecebidosLocal(row) {
 }
 
 function aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado) {
+    var patch = {
+        recebimento_concluido: true,
+        recebimento_concluido_em: (documentoAtualizado && documentoAtualizado.recebimento_concluido_em) || '',
+        recebimento_concluido_por: (documentoAtualizado && documentoAtualizado.recebimento_concluido_por) || ''
+    };
+    _terceirosAtualizarRecebimentoConcluidoNoCacheLista(documentoId, patch);
     removerDocumentoDaPendenciaRecebimentoLocal(documentoId);
     if (documentoAtualizado) {
-        documentoAtualizado.recebimento_concluido = 'Sim';
+        documentoAtualizado.recebimento_concluido = true;
         inserirDocumentoFornecedoresRecebidosLocal(documentoAtualizado);
     } else if (documentoId != null) {
         _terceirosGuardarFornecedorRecebidoLocal({ id: documentoId, recebimento_concluido: 'Sim' });
