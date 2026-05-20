@@ -406,6 +406,13 @@ def init_db():
                     conn.rollback()
                 except Exception:
                     pass
+            try:
+                _ensure_terceiros_schema(conn)
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             # Postgres: sem commit o DDL era revertido ao fechar a conexão (coluna fluxo sumia).
             try:
                 conn.commit()
@@ -783,6 +790,11 @@ class CompatConn:
             sql = sql.replace('?', '%s')
         return self._conn.execute(sql, params or ())
 
+    def executemany(self, sql, params_seq):
+        if self._kind == 'pg' and sql and '?' in sql:
+            sql = sql.replace('?', '%s')
+        return self._conn.executemany(sql, params_seq or [])
+
     def commit(self):
         return self._conn.commit()
 
@@ -880,7 +892,13 @@ def _sql_cols_terceiros_documentos_listagem(alias):
     ) % ((a,) * 33)
 
 
-def _ensure_terceiros_schema(conn):
+_TERCEIROS_SCHEMA_PRONTO = False
+
+
+def _ensure_terceiros_schema(conn, rodar_backfill=True):
+    global _TERCEIROS_SCHEMA_PRONTO
+    if _TERCEIROS_SCHEMA_PRONTO:
+        return
     if getattr(conn, 'kind', None) == 'pg':
         conn.execute(
             '''CREATE TABLE IF NOT EXISTS public.terceiros_documentos (
@@ -1059,10 +1077,11 @@ def _ensure_terceiros_schema(conn):
                 conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN numero_pedido TEXT')
     except Exception:
         pass
-    try:
-        _terceiros_backfill_campos_xml_pendentes(conn, limite=300)
-    except Exception:
-        pass
+    if rodar_backfill:
+        try:
+            _terceiros_backfill_campos_xml_pendentes(conn, limite=300)
+        except Exception:
+            pass
     try:
         tbl_it = _tbl_terceiros_documento_itens(conn)
         if getattr(conn, 'kind', None) == 'pg':
@@ -1075,6 +1094,7 @@ def _ensure_terceiros_schema(conn):
     except Exception:
         pass
     conn.commit()
+    _TERCEIROS_SCHEMA_PRONTO = True
 
 
 def _usa_banco_para_dados():
@@ -6995,6 +7015,57 @@ def _resolver_item_base_por_ean(codigo_ean):
     }
 
 
+def _terceiros_criar_resolver_base(conn):
+    """Resolver por EAN com cache na mesma conexão (evita abrir DB por item no upload)."""
+    cache = {}
+
+    def _from_row(r, codigo_busca):
+        row = dict(r) if hasattr(r, 'keys') else r
+        return {
+            'codigo_produto_base': (row.get('codigo_interno') or '').strip(),
+            'codigo_barras_base': codigo_busca,
+            'descricao_base': (row.get('descricao') or '').strip(),
+        }
+
+    if _usa_banco_para_dados() and conn:
+        ds = _get_latest_dataset_id(conn)
+        if ds:
+
+            def resolver_db(codigo_ean):
+                codigo_busca = str(codigo_ean or '').strip()
+                if not codigo_busca:
+                    return None
+                if codigo_busca in cache:
+                    return cache[codigo_busca]
+                base = None
+                try:
+                    row = conn.execute(
+                        """SELECT codigo_interno, ean, dun, descricao FROM base_codigo_barras
+                           WHERE dataset_id = ? AND (ean = ? OR dun = ?) LIMIT 1""",
+                        (str(ds), codigo_busca, codigo_busca),
+                    ).fetchone()
+                    if row:
+                        base = _from_row(row, codigo_busca)
+                except Exception:
+                    pass
+                cache[codigo_busca] = base
+                return base
+
+            return resolver_db
+
+    def resolver_legado(codigo_ean):
+        codigo_busca = str(codigo_ean or '').strip()
+        if not codigo_busca:
+            return None
+        if codigo_busca in cache:
+            return cache[codigo_busca]
+        base = _resolver_item_base_por_ean(codigo_busca)
+        cache[codigo_busca] = base
+        return base
+
+    return resolver_legado
+
+
 def _base_terceiros_para_bipagem(item_d, codigo_ean_solicitado):
     """Dados para gravar na linha do item na bipagem.
 
@@ -7088,7 +7159,7 @@ def _extrair_numero_pedido_nfe(infnfe, ide, ns):
     return ''
 
 
-def _parse_nfe_xml(xml_texto):
+def _parse_nfe_xml(xml_texto, resolver_base=None):
     try:
         root = ET.fromstring(xml_texto)
     except Exception as e:
@@ -7116,7 +7187,10 @@ def _parse_nfe_xml(xml_texto):
         descricao_xml = _find_first(prod, ['nfe:xProd', 'xProd'], ns)
         unidade_xml = _find_first(prod, ['nfe:uCom', 'uCom', 'nfe:uTrib', 'uTrib'], ns)
         quantidade_xml = _parse_decimal(_find_first(prod, ['nfe:qCom', 'qCom', 'nfe:qTrib', 'qTrib'], ns))
-        base = _resolver_item_base_por_ean(codigo_ean)
+        if resolver_base:
+            base = resolver_base(codigo_ean)
+        else:
+            base = _resolver_item_base_por_ean(codigo_ean)
         itens.append({
             'n_item': idx,
             'codigo_ean': codigo_ean,
@@ -7425,20 +7499,30 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
             )
         )
         documento_id = int(conn.execute('SELECT last_insert_rowid() as id').fetchone()['id'])
-    for item in xml_data.get('itens') or []:
-        conn.execute(
-            '''INSERT INTO ''' + _tbl_terceiros_documento_itens(conn) + ''' (
+    itens_nf = xml_data.get('itens') or []
+    if itens_nf:
+        agora_it = _agora_iso()
+        tbl_it = _tbl_terceiros_documento_itens(conn)
+        sql_it = (
+            '''INSERT INTO ''' + tbl_it + ''' (
                    documento_id, n_item, codigo_ean, codigo_produto_xml, descricao_xml, unidade_xml,
                    quantidade_xml, codigo_produto_base, codigo_barras_base, descricao_base,
                    quantidade_bipada, status_bipagem, atualizado_em, atualizado_por
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+        )
+        params_it = [
             (
                 documento_id, item.get('n_item') or 0, item.get('codigo_ean') or '', item.get('codigo_produto_xml') or '',
                 item.get('descricao_xml') or '', item.get('unidade_xml') or '', item.get('quantidade_xml') or 0,
                 item.get('codigo_produto_base') or '', item.get('codigo_barras_base') or '', item.get('descricao_base') or '',
-                0, 'PENDENTE', _agora_iso(), usuario or ''
+                0, 'PENDENTE', agora_it, usuario or ''
             )
-        )
+            for item in itens_nf
+        ]
+        if len(params_it) == 1:
+            conn.execute(sql_it, params_it[0])
+        else:
+            conn.executemany(sql_it, params_it)
     _registrar_evento_terceiros(conn, documento_id, 'upload_xml', '', area, usuario, arquivo_nome or '')
     return documento_id
 
@@ -7967,10 +8051,13 @@ def api_terceiros_upload_xml():
         return jsonify({'ok': False, 'erro': 'Nenhum XML enviado.'}), 400
     conn = get_db()
     usuario = session.get('usuario', '')
-    criados, erros = [], []
+    criados, erros, criados_rows = [], [], []
     vistos_lote = set()
     try:
-        _ensure_terceiros_schema(conn)
+        _ensure_terceiros_schema(conn, rodar_backfill=False)
+        _pg_auditoria_sync_desligar(conn)
+        resolver_base = _terceiros_criar_resolver_base(conn)
+        chaves_db_cache = set()
         for arquivo in arquivos:
             nome = secure_filename(arquivo.filename or '')
             if not nome:
@@ -7984,25 +8071,37 @@ def api_terceiros_upload_xml():
                 erros.append('%s: XML vazio.' % nome)
                 continue
             try:
-                xml_data = _parse_nfe_xml(xml_texto)
+                xml_data = _parse_nfe_xml(xml_texto, resolver_base=resolver_base)
                 identificador = _identificador_duplicidade_terceiros(xml_data)
                 if identificador[1] and identificador in vistos_lote:
                     erros.append('%s: XML desta NF já foi incluído neste envio.' % nome)
                     continue
-                if _documento_terceiros_ja_existe(conn, xml_data):
+                chave_dup = (xml_data.get('chave_nfe') or '').strip()
+                if chave_dup:
+                    if _terceiros_chave_nfe_ja_existe(conn, chave_dup, chaves_db_cache):
+                        erros.append('%s: XML desta NF já foi enviado anteriormente.' % nome)
+                        continue
+                elif _documento_terceiros_ja_existe(conn, xml_data):
                     erros.append('%s: XML desta NF já foi enviado anteriormente.' % nome)
                     continue
                 if identificador[1]:
                     vistos_lote.add(identificador)
-                criados.append(_criar_documento_terceiros(
+                doc_id = _criar_documento_terceiros(
                     conn, area, previsao, nome, xml_texto, xml_data, usuario,
+                    motorista_carreta_form if area == 'carreta' else None,
+                    placa_carreta_form if area == 'carreta' else None,
+                )
+                criados.append(doc_id)
+                if chave_dup:
+                    chaves_db_cache.add(chave_dup)
+                criados_rows.append(_terceiros_row_listagem_apos_criar(
+                    doc_id, area, previsao, xml_data, usuario,
                     motorista_carreta_form if area == 'carreta' else None,
                     placa_carreta_form if area == 'carreta' else None,
                 ))
             except Exception as e:
                 erros.append('%s: %s' % (nome, str(e)))
         conn.commit()
-        criados_rows = _terceiros_listagem_rows_por_ids(conn, criados)
         return jsonify({
             'ok': True,
             'criados': criados,
@@ -8257,6 +8356,43 @@ def api_terceiros_painel():
     conn.close()
 
 
+def _terceiros_row_listagem_apos_criar(documento_id, area, previsao_chegada, xml_data, usuario, motorista_carreta=None, placa_carreta=None):
+    """Monta criados_rows sem SELECT pesado (upload)."""
+    itens = xml_data.get('itens') or []
+    q_xml = round(sum(float(i.get('quantidade_xml') or 0) for i in itens), 3)
+    agora = _agora_iso()
+    row = {
+        'id': documento_id,
+        'area': area,
+        'chave_nfe': xml_data.get('chave_nfe') or '',
+        'numero_nf': xml_data.get('numero_nf') or '',
+        'serie_nf': xml_data.get('serie_nf') or '',
+        'data_emissao': xml_data.get('data_emissao') or '',
+        'remetente_nome': xml_data.get('remetente_nome') or '',
+        'remetente_cnpj': _somente_digitos(xml_data.get('remetente_cnpj') or ''),
+        'destinatario_nome': xml_data.get('destinatario_nome') or '',
+        'destinatario_cnpj': _somente_digitos(xml_data.get('destinatario_cnpj') or ''),
+        'destinatario_uf': (xml_data.get('destinatario_uf') or '').strip().upper(),
+        'numero_pedido': (xml_data.get('numero_pedido') or '').strip(),
+        'previsao_chegada': previsao_chegada or '',
+        'recebimento_concluido': False,
+        'nota_lancada': '',
+        'enviar_para_mg': '',
+        'motorista_carreta': (motorista_carreta or '').strip(),
+        'placa_carreta': (placa_carreta or '').strip().upper(),
+        'carga_recebida_mg': '',
+        'criado_por': usuario or '',
+        'atualizado_por': usuario or '',
+        'total_itens': len(itens),
+        'quantidade_total_xml': q_xml,
+        'quantidade_total_bipada': 0.0,
+        'itens_divergentes': len(itens),
+        'criado_em': agora,
+        'atualizado_em': agora,
+    }
+    return _terceiros_serializar_row_listagem(row)
+
+
 def _terceiros_serializar_row_listagem(row):
     """Formata uma linha da listagem de NFs (mesmo formato do GET /documentos)."""
     rc = row.get('recebimento_concluido')
@@ -8305,7 +8441,24 @@ def _terceiros_serializar_row_listagem(row):
     }
 
 
-def _terceiros_listagem_rows_por_ids(conn, documento_ids):
+def _terceiros_chave_nfe_ja_existe(conn, chave, cache_db):
+    """Verifica chave no banco com cache por requisição (upload)."""
+    chave = (chave or '').strip()
+    if not chave:
+        return False
+    if chave in cache_db:
+        return True
+    row = conn.execute(
+        'SELECT id FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE chave_nfe = ? LIMIT 1',
+        (chave,),
+    ).fetchone()
+    if row:
+        cache_db.add(chave)
+        return True
+    return False
+
+
+def _terceiros_listagem_rows_por_ids(conn, documento_ids, enriquecer=True):
     """Carrega só as NFs recém-criadas (evita GET de todas as notas após upload)."""
     ids = []
     for x in documento_ids or []:
@@ -8342,10 +8495,11 @@ def _terceiros_listagem_rows_por_ids(conn, documento_ids):
         tuple(ids),
     ).fetchall()
     rows_list = [dict(r) if hasattr(r, 'keys') else {} for r in (rows or [])]
-    try:
-        _terceiros_enriquecer_campos_xml_listagem(conn, rows_list)
-    except Exception:
-        pass
+    if enriquecer:
+        try:
+            _terceiros_enriquecer_campos_xml_listagem(conn, rows_list)
+        except Exception:
+            pass
     return [_terceiros_serializar_row_listagem(row) for row in rows_list]
 
 

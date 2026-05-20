@@ -2218,6 +2218,7 @@ async function uploadXmlTerceirosComPrefixo(prefixo, areaChave, opcoes) {
             resultadoEl.textContent = (data && data.erro) ? data.erro : 'Erro ao enviar XMLs.';
             return;
         }
+        fecharTerAcaoLoading();
         resultadoEl.textContent = '';
         filesEl.value = '';
         if (opcoes.exigeMotoristaPlaca && motEl) motEl.value = '';
@@ -2227,9 +2228,7 @@ async function uploadXmlTerceirosComPrefixo(prefixo, areaChave, opcoes) {
             definirDestaqueLinhaTerceirosDoc(idsCriados[idsCriados.length - 1]);
         }
         if ((data.total_criados || 0) > 0) {
-            var subLoad = document.getElementById('ter-acao-loading-sub');
-            if (subLoad) subLoad.textContent = 'Registrando na lista de pendências…';
-            await _terceirosAplicarUploadNoCache(data);
+            void _terceirosAplicarUploadNoCache(data);
         }
         abrirModalUploadXmlTerceirosConcluido({
             totalCriados: data.total_criados || 0,
@@ -2244,8 +2243,8 @@ async function uploadXmlTerceirosComPrefixo(prefixo, areaChave, opcoes) {
         }
         resultadoEl.textContent = 'Erro ao enviar XMLs.';
     } finally {
-        fecharTerAcaoLoading();
         if (btnUpload) btnUpload.disabled = false;
+        fecharTerAcaoLoading();
     }
 }
 
@@ -2459,10 +2458,15 @@ function getTerceirosRowsNotasLancadasComHistorico(rows) {
         });
 }
 
+function _terceirosEnviarMgEhNao(row) {
+    return isTerceirosFlagNao(row && row.enviar_para_mg);
+}
+
 function textoResumoRecebidaMgHistorico(row) {
     if (isTerceirosAreaCarreta(row)) {
         return isTerceirosFlagSim(row.carga_recebida_mg) ? 'Concluído' : '-';
     }
+    if (_terceirosEnviarMgEhNao(row)) return 'Não vai para MG';
     return row.carga_recebida_mg || '-';
 }
 
@@ -2480,6 +2484,7 @@ function textoResumoEnviarMgTerceiros(row) {
 }
 
 function textoResumoRecebidaMgTerceiros(row) {
+    if (_terceirosEnviarMgEhNao(row)) return 'Não vai para MG';
     if (isTerceirosFlagSim(row && row.carga_recebida_mg)) return 'Sim';
     if (isTerceirosFlagNao(row && row.carga_recebida_mg)) return 'Não';
     return 'Pendente';
@@ -2545,6 +2550,10 @@ function renderTerceirosEnviarMgSomenteLeitura(row) {
 function renderTerceirosRecebidaMgSomenteLeitura(row) {
     if (isTerceirosAreaCarreta(row)) {
         return '<span class="ter-status-meta">Use o botão «Registrar no histórico» nesta linha</span>';
+    }
+    if (_terceirosEnviarMgEhNao(row)) {
+        return renderTerceirosStatusComUsuario('Não vai para MG', '', '')
+            + '<div class="ter-status-meta">NF sem envio para Minas Gerais</div>';
     }
     return renderTerceirosStatusComUsuario(
         textoResumoRecebidaMgTerceiros(row),
@@ -4526,35 +4535,24 @@ function _terceirosMesclarRowsUploadNoCache(novosRows) {
     _terceirosListaCache.ts = Date.now();
 }
 
-/** Sincronização completa em segundo plano (painel + demais abas). */
+/** Atualiza só o painel em background (lista já veio em criados_rows). */
 function _terceirosSincronizarListasAposUploadBackground() {
-    void (async function() {
-        try {
-            invalidateTerceirosListaCache();
-            _terceirosPrefetchPromise = null;
-            var data = await fetchTerceirosDocumentosTodos({ force: true });
-            await warmTerceirosTodasListas(data);
-            await loadPainelTerceiros().catch(function(e) {
-                console.error('_terceirosSincronizarListasAposUploadBackground painel:', e);
-            });
-            void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows || []));
-        } catch (e) {
-            console.error('_terceirosSincronizarListasAposUploadBackground:', e);
-        }
-    })();
+    void loadPainelTerceiros().catch(function(e) {
+        console.error('_terceirosSincronizarListasAposUploadBackground painel:', e);
+    });
 }
 
 /**
  * Atualiza Pendência na hora com criados_rows da API; lista completa sincroniza em background.
  */
-async function _terceirosAplicarUploadNoCache(uploadResp) {
+function _terceirosAplicarUploadNoCache(uploadResp) {
     var rowsNovos = uploadResp && Array.isArray(uploadResp.criados_rows) ? uploadResp.criados_rows : [];
     if (rowsNovos.length) {
         _terceirosMesclarRowsUploadNoCache(rowsNovos);
-        await loadTerceirosDocumentos({ rows: _terceirosListaCache.rows, erro: null });
+        void loadTerceirosDocumentos({ rows: _terceirosListaCache.rows, erro: null });
         void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(_terceirosListaCache.rows));
         _terceirosSincronizarListasAposUploadBackground();
-        return { rows: _terceirosListaCache.rows, erro: null };
+        return Promise.resolve({ rows: _terceirosListaCache.rows, erro: null });
     }
     return _terceirosRecarregarAposUpload();
 }
