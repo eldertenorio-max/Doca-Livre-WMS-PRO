@@ -527,6 +527,20 @@ var TERCEIROS_PEND_LANC_TBODY_IDS = [
     'ter-tbody-pendentes-lancamento-outras'
 ];
 
+/** Tabelas de NF nas abas 2–8 (e painel) que usam data-ter-doc-id. */
+var TERCEIROS_TBODIES_LISTA_DOC = [
+    'ter-tbody-recebimento-documentos',
+    'ter-tbody-fornecedores-recebidos',
+    'ter-tbody-pendentes-lancamento-mg',
+    'ter-tbody-pendentes-lancamento-sp',
+    'ter-tbody-pendentes-lancamento-outras',
+    'ter-tbody-notas-lancadas',
+    'ter-tbody-pendencias-mg',
+    'ter-tbody-notas-enviadas-mg',
+    'ter-tbody-recebimentos-mg',
+    'ter-tbody-historico'
+];
+
 function _terceirosUfDestinoPendenteLanc(row) {
     var uf = String((row && row.destinatario_uf) || '').trim().toUpperCase().replace(/[^A-Z]/g, '');
     if (uf === 'MG' || uf === 'SP') return uf;
@@ -844,6 +858,13 @@ function initTerceirosTabs() {
     function mostrarTerTab(tab) {
         var aba = _terceirosNormalizarAbaTab(tab);
         terceirosAplicarPainelAbaSomenteUi(aba);
+        if (aba === 'pendencia-recebimento') {
+            var hitPend = _terceirosObterCacheLista();
+            if (hitPend && Array.isArray(hitPend.rows)) {
+                void loadTerceirosDocumentos(hitPend);
+                return;
+            }
+        }
         void recarregarListaTerceirosTab(aba);
     }
 
@@ -1617,8 +1638,11 @@ function abrirModalUploadXmlTerceirosConcluido(opcoes) {
     var detalhesEl = document.getElementById('ter-upload-sucesso-detalhes');
     var errosEl = document.getElementById('ter-upload-sucesso-erros');
     var btnPendencia = document.getElementById('btn-ter-upload-ir-pendencia');
+    var iconeEl = modal.querySelector('.ter-upload-sucesso-icone');
     var sucesso = total > 0;
-    modal.classList.toggle('modal-ter-upload-sucesso--aviso', !sucesso);
+    modal.classList.toggle('modal-ter-upload-sucesso--erro', !sucesso);
+    modal.classList.remove('modal-ter-upload-sucesso--aviso');
+    if (iconeEl) iconeEl.textContent = sucesso ? '✓' : '✕';
     if (tituloEl) tituloEl.textContent = sucesso ? 'Upload concluído!' : 'Nenhum XML aceito';
     if (resumoEl) {
         if (sucesso) {
@@ -1666,12 +1690,19 @@ function fecharModalUploadXmlTerceirosConcluido() {
         modal.style.display = 'none';
         modal.style.alignItems = '';
         modal.style.justifyContent = '';
+        modal.classList.remove('modal-ter-upload-sucesso--erro');
         modal.classList.remove('modal-ter-upload-sucesso--aviso');
     }
 }
 
 function terceirosIrParaPendenciaAposUpload() {
     fecharModalUploadXmlTerceirosConcluido();
+    terceirosAplicarPainelAbaSomenteUi('pendencia-recebimento');
+    var hit = _terceirosObterCacheLista();
+    if (hit && Array.isArray(hit.rows)) {
+        void loadTerceirosDocumentos(hit);
+        return;
+    }
     if (window.terceirosMostrarAba) window.terceirosMostrarAba('pendencia-recebimento');
 }
 
@@ -2195,7 +2226,15 @@ async function uploadXmlTerceirosComPrefixo(prefixo, areaChave, opcoes) {
         filesEl.value = '';
         if (opcoes.exigeMotoristaPlaca && motEl) motEl.value = '';
         if (opcoes.exigeMotoristaPlaca && plaEl) plaEl.value = '';
-        void recarregarTodasListasTerceiros();
+        var subLoad = document.getElementById('ter-acao-loading-sub');
+        if (subLoad) {
+            subLoad.textContent = 'Atualizando a lista de Pendência de recebimento…';
+        }
+        var idsCriados = Array.isArray(data.criados) ? data.criados : [];
+        if (idsCriados.length) {
+            definirDestaqueLinhaTerceirosDoc(idsCriados[idsCriados.length - 1]);
+        }
+        await _terceirosRecarregarAposUpload();
         abrirModalUploadXmlTerceirosConcluido({
             totalCriados: data.total_criados || 0,
             erros: data.erros || [],
@@ -2729,10 +2768,77 @@ async function atualizarAlertasTerceirosHeaderAposMudancaRecebimento() {
     }
 }
 
+/** Remove NF do cache compartilhado das listas (sem novo fetch). */
+function _terceirosRemoverDocumentoDoCacheLista(documentoId) {
+    if (documentoId == null || documentoId === '') return;
+    var id = String(documentoId);
+    if (Array.isArray(_terceirosListaCache.rows)) {
+        _terceirosListaCache.rows = _terceirosListaCache.rows.filter(function(row) {
+            return !row || String(row.id) !== id;
+        });
+        _terceirosListaCache.ts = Date.now();
+    }
+}
+
+function _terceirosAtualizarContadoresPendLancamentoUfFromDom() {
+    var counts = { MG: 0, SP: 0, OUTRAS: 0 };
+    TERCEIROS_PEND_LANC_TBODY_IDS.forEach(function(tbodyId) {
+        var tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        var n = tbody.querySelectorAll('tr[data-ter-doc-id]').length;
+        if (tbodyId.indexOf('-mg') !== -1) counts.MG = n;
+        else if (tbodyId.indexOf('-sp') !== -1) counts.SP = n;
+        else counts.OUTRAS = n;
+    });
+    var countMg = document.getElementById('ter-pend-lanc-count-mg');
+    var countSp = document.getElementById('ter-pend-lanc-count-sp');
+    var countOutras = document.getElementById('ter-pend-lanc-count-outras');
+    var blocoOutras = document.getElementById('ter-pend-lanc-bloco-outras');
+    if (countMg) countMg.textContent = String(counts.MG);
+    if (countSp) countSp.textContent = String(counts.SP);
+    if (countOutras) countOutras.textContent = String(counts.OUTRAS);
+    if (blocoOutras) blocoOutras.hidden = counts.OUTRAS === 0;
+}
+
+/** Remove a linha da NF de todas as tabelas visíveis do módulo. */
+function _terceirosRemoverLinhaDeTodasListas(documentoId) {
+    if (documentoId == null || documentoId === '') return;
+    var id = String(documentoId);
+    TERCEIROS_TBODIES_LISTA_DOC.forEach(function(tbodyId) {
+        var tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        var tr = tbody.querySelector('tr[data-ter-doc-id="' + id + '"]');
+        if (tr) tr.remove();
+    });
+    _terceirosAtualizarContadoresPendLancamentoUfFromDom();
+}
+
+/** Re-renderiza todas as abas a partir do cache (rápido, sem GET /documentos). */
+function _terceirosReaplicarTodasListasDoCacheLocal() {
+    var hit = _terceirosObterCacheLista();
+    if (!hit || !Array.isArray(hit.rows)) return;
+    var data = { rows: hit.rows, erro: hit.erro };
+    void Promise.all([
+        loadTerceirosDocumentos(data),
+        loadTerceirosFornecedoresRecebidos(data),
+        loadTerceirosPendentesLancamento(data),
+        loadTerceirosNotasLancadas(data),
+        loadTerceirosPendenciasMg(data),
+        loadTerceirosNotasEnviadasMg(data),
+        loadTerceirosRecebimentosMg(data),
+        loadTerceirosHistorico(data)
+    ]).then(function() {
+        void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(hit.rows));
+    }).catch(function(e) {
+        console.error(e);
+    });
+}
+
 /** Após excluir NF: remove caches locais para não reaparecer linha fantasma nas abas. */
 function _terceirosRemoverDocumentoDosCachesLocais(documentoId) {
     if (documentoId == null || documentoId === '') return;
     var id = String(documentoId);
+    _terceirosRemoverDocumentoDoCacheLista(documentoId);
     try {
         var loc = window._terceirosFornecedoresRecebidosLocais;
         if (loc && Object.prototype.hasOwnProperty.call(loc, id)) delete loc[id];
@@ -3891,6 +3997,7 @@ async function loadTerceirosDocumentos(dataPreloaded) {
         }
         tbody.innerHTML = renderTerceirosPendenciaDocumentosTbodyHtml(filtradas);
         _terceirosFecharDescargaSeDocumentoNaoNaListaPendencia(filtradas);
+        aplicarDestaqueLinhaTerceirosDoc(tbody);
     } catch (e) {
         console.error('loadTerceirosDocumentos:', e);
         tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">Erro ao carregar a lista. Atualize a página ou tente novamente.</td></tr>';
@@ -4374,6 +4481,24 @@ async function loadTerceirosHistorico(dataPreloaded) {
 }
 
 /**
+ * Após upload de XML: busca lista nova e atualiza Pendência na hora (demais abas em background).
+ */
+async function _terceirosRecarregarAposUpload() {
+    invalidateTerceirosListaCache();
+    _terceirosPrefetchPromise = null;
+    var data = await fetchTerceirosDocumentosTodos({ force: true });
+    await loadTerceirosDocumentos(data);
+    void warmTerceirosTodasListas(data).catch(function(err) {
+        console.error('_terceirosRecarregarAposUpload warm:', err);
+    });
+    void loadPainelTerceiros().catch(function(err) {
+        console.error('_terceirosRecarregarAposUpload painel:', err);
+    });
+    void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows || []));
+    return data;
+}
+
+/**
  * Recarrega todas as tabelas do módulo Terceiros (ex.: após excluir NF em qualquer aba).
  * Mantém a sub-aba ativa só na UI; os dados de todas as listas ficam alinhados ao servidor.
  */
@@ -4436,25 +4561,70 @@ async function refreshTerceirosViews(opcoes) {
 }
 
 async function excluirDocumentoTerceiros(documentoId) {
-    var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId), {
-        method: 'DELETE'
-    });
-    _terceirosExcluirDocumentoAtual = null;
-    if (!resp || !resp.ok) {
-        showMessage((resp && resp.erro) || 'Erro ao excluir NF.', 'error');
+    var idNum = Number(documentoId);
+    if (!Number.isFinite(idNum) || idNum <= 0) {
+        showMessage('Não foi possível identificar a nota para excluir.', 'warning');
         return;
     }
-    _terceirosRemoverDocumentoDosCachesLocais(documentoId);
-    var idNum = Number(documentoId);
-    if (Number.isFinite(idNum) && Number(_terceirosDestacarDocIdAposCarga) === idNum) {
-        _terceirosDestacarDocIdAposCarga = null;
+    if (window._terceirosExclusaoEmAndamento) {
+        showMessage('Outra exclusão está em andamento. Aguarde.', 'warning');
+        return;
     }
-    var atualNum = Number(_terceirosDocAtual.id);
-    if (Number.isFinite(idNum) && Number.isFinite(atualNum) && idNum === atualNum) {
-        resetTerceirosDetalhe();
+    window._terceirosExclusaoEmAndamento = true;
+    window._terAcaoLoadCancelado = false;
+    mostrarTerAcaoLoading(
+        'Excluindo NF…',
+        'Removendo do servidor e de todas as abas do fluxo.',
+        { mensagemCancelado: 'Exclusão cancelada.' }
+    );
+    try {
+        _terceirosRemoverDocumentoDosCachesLocais(idNum);
+        _terceirosRemoverLinhaDeTodasListas(idNum);
+        if (Number(_terceirosDestacarDocIdAposCarga) === idNum) {
+            _terceirosDestacarDocIdAposCarga = null;
+        }
+        var atualNum = Number(_terceirosDocAtual.id);
+        if (Number.isFinite(atualNum) && atualNum === idNum) {
+            resetTerceirosDetalhe();
+        }
+        _terceirosReaplicarTodasListasDoCacheLocal();
+
+        var fetchOpts = { method: 'DELETE' };
+        var sigExcluir = terAcaoLoadingSignal();
+        if (sigExcluir) fetchOpts.signal = sigExcluir;
+        var resp = await fetchAPIComTimeout(
+            '/terceiros/documentos/' + encodeURIComponent(idNum),
+            fetchOpts,
+            30000
+        );
+        if (window._terAcaoLoadCancelado || _terAcaoFoiCancelado()) return;
+
+        _terceirosExcluirDocumentoAtual = null;
+        if (!resp || !resp.ok) {
+            invalidateTerceirosListaCache();
+            await recarregarTodasListasTerceiros();
+            showMessage((resp && resp.erro) || 'Erro ao excluir NF.', 'error');
+            return;
+        }
+        void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
+        void loadPainelTerceiros().catch(function(e) {
+            console.error('excluirDocumentoTerceiros painel:', e);
+        });
+        showMessage((resp && resp.mensagem) || 'NF excluída de todas as abas.', 'success');
+    } catch (e) {
+        if (_terAcaoFoiCancelado(e)) return;
+        console.error(e);
+        try {
+            invalidateTerceirosListaCache();
+            await recarregarTodasListasTerceiros();
+        } catch (e2) {
+            console.error(e2);
+        }
+        showMessage('Erro ao excluir NF. A lista foi atualizada.', 'error');
+    } finally {
+        window._terceirosExclusaoEmAndamento = false;
+        fecharTerAcaoLoading();
     }
-    await recarregarTodasListasTerceiros();
-    showMessage((resp && resp.mensagem) || 'NF excluída com sucesso.', 'success');
 }
 
 async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes) {

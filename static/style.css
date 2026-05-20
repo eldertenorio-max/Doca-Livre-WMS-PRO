@@ -2566,18 +2566,34 @@ h2 {
     max-height: 140px;
     overflow-y: auto;
 }
-.modal-ter-upload-sucesso--aviso .ter-upload-sucesso-icone-wrap {
-    background: linear-gradient(145deg, #fff8e1 0%, #ffe082 100%);
-    box-shadow: 0 4px 14px rgba(245, 124, 0, 0.25);
+/* Upload sem XML aceito — aviso de erro (vermelho) */
+.modal-ter-upload-sucesso--erro .ter-upload-sucesso-icone-wrap {
+    background: linear-gradient(145deg, #ffebee 0%, #ffcdd2 100%);
+    box-shadow: 0 4px 14px rgba(198, 40, 40, 0.28);
 }
-.modal-ter-upload-sucesso--aviso .ter-upload-sucesso-icone {
-    color: #e65100;
+.modal-ter-upload-sucesso--erro .ter-upload-sucesso-icone {
+    color: #c62828;
+    font-size: 40px;
+    font-weight: 800;
 }
-.modal-ter-upload-sucesso--aviso .modal-ter-upload-sucesso-box {
-    border-top-color: #ef6c00;
+.modal-ter-upload-sucesso--erro .modal-ter-upload-sucesso-box {
+    border-top-color: #c62828;
 }
-.modal-ter-upload-sucesso--aviso .ter-upload-sucesso-titulo {
-    color: #e65100;
+.modal-ter-upload-sucesso--erro .ter-upload-sucesso-titulo {
+    color: #b71c1c;
+}
+.modal-ter-upload-sucesso--erro .ter-upload-sucesso-resumo {
+    color: #5d1f1f;
+}
+.modal-ter-upload-sucesso--erro .ter-upload-sucesso-detalhes {
+    background: #fff5f5;
+    border: 1px solid #ef9a9a;
+    color: #5d1f1f;
+}
+.modal-ter-upload-sucesso--erro .ter-upload-sucesso-erros-lista {
+    background: #ffebee;
+    border-left-color: #c62828;
+    color: #b71c1c;
 }
 .ter-upload-sucesso-acoes {
     display: flex;
