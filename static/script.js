@@ -1833,30 +1833,91 @@ function _terceirosPrepararBotaoRecebimentoSalvando(btn) {
     btn.textContent = 'A guardar…';
 }
 
+function _terceirosAtualizarProgressoRecebimento(titulo, subtitulo) {
+    var text = document.getElementById('ter-acao-loading-text');
+    var sub = document.getElementById('ter-acao-loading-sub');
+    if (text && titulo) text.textContent = titulo;
+    if (sub && subtitulo) sub.textContent = subtitulo;
+}
+
+function _terceirosRestaurarBotaoRecebimentoConcluido(btnOpt) {
+    var btn = btnOpt || document.getElementById('btn-ter-rec-concluir');
+    if (!btn) return;
+    var concluido = isTerceirosFlagSim(_terceirosDocAtual && _terceirosDocAtual.recebimento_concluido);
+    atualizarBotaoConclusaoTerceiros(getTerceirosPrefixo(), concluido);
+}
+
+function _terceirosPausarTimersBipagemPendente() {
+    try {
+        var pFlushBg = window._terceirosBipagemPending;
+        if (!pFlushBg) return;
+        Object.keys(pFlushBg.addTimers || {}).forEach(function(k) {
+            clearTimeout(pFlushBg.addTimers[k]);
+        });
+        Object.keys(pFlushBg.removeTimers || {}).forEach(function(k) {
+            clearTimeout(pFlushBg.removeTimers[k]);
+        });
+        pFlushBg.addTimers = {};
+        pFlushBg.removeTimers = {};
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function _terceirosAguardarComTimeout(promise, ms, codigoErro) {
+    return Promise.race([
+        promise,
+        new Promise(function(_, reject) {
+            window.setTimeout(function() {
+                reject(new Error(codigoErro || 'TERCEIROS_TIMEOUT'));
+            }, ms);
+        })
+    ]);
+}
+
 async function _terceirosAplicarUiAposRecebimentoConcluido(documentoId, documentoAtualizado, irParaFornecedores) {
     var prefixoConcl = getTerceirosPrefixo();
     definirDestaqueLinhaTerceirosDoc(documentoId);
     aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado);
-    try {
-        void loadTerceirosDocumentos();
-    } catch (e) {
-        console.error(e);
-    }
-    try {
-        void loadTerceirosFornecedoresRecebidos();
-    } catch (e2) {
-        console.error(e2);
-    }
     void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
     if (irParaFornecedores) {
-        await abrirAbaTerceirosSeDiferenteAsync('fornecedores-recebidos', false, true);
+        _terceirosAtualizarProgressoRecebimento(
+            'Abrindo Fornecedores recebidos…',
+            'A NF já foi salva; preparando a 3ª aba do fluxo.'
+        );
+        terceirosAplicarPainelAbaSomenteUi('fornecedores-recebidos');
         resetTerceirosDetalhe();
+        _terceirosRestaurarBotaoRecebimentoConcluido();
+        try {
+            invalidateTerceirosListaCache();
+            await _terceirosAguardarComTimeout(
+                loadTerceirosFornecedoresRecebidos(),
+                35000,
+                'TERCEIROS_LISTA_FORN_TIMEOUT'
+            );
+        } catch (e) {
+            console.error(e);
+            showMessage(
+                'Recebimento concluído e aba aberta. Se a lista não aparecer, atualize a página ou troque de aba e volte.',
+                'warning'
+            );
+        }
+        try {
+            void loadTerceirosDocumentos();
+        } catch (e2) {
+            console.error(e2);
+        }
         animarConclusaoTerceiros(prefixoConcl);
         window.setTimeout(function() {
             abrirModalRecebimentoConcluidoTerceiros();
         }, 0);
         showMessage('Recebimento concluído.', 'success');
         return;
+    }
+    try {
+        void loadTerceirosDocumentos();
+    } catch (e) {
+        console.error(e);
     }
     atualizarBotaoConclusaoTerceiros(prefixoConcl, true);
     if (_terceirosDocAtual && documentoAtualizado) {
@@ -3401,11 +3462,17 @@ function renderTerceirosConferenciaResumoHtml(row) {
 
 function scrollTerceirosRecebimentoDetalheSecao(secao) {
     window.requestAnimationFrame(function() {
+        var blocoDetalhe = document.querySelector('#terceiros-panel-recebimento .terceiros-detalhe-bloco');
+        if (blocoDetalhe) {
+            blocoDetalhe.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
         var id = 'ter-descarga-conferencia-modelo';
         if (secao === 'bipagem') id = 'ter-bipagem-bloco';
         else if (secao === 'resumo') id = 'ter-resumo-descarga-bloco';
-        var el = document.getElementById(id);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        window.setTimeout(function() {
+            var el = document.getElementById(id);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 280);
     });
 }
 
@@ -3529,33 +3596,56 @@ async function abrirPendenciaTerceirosComScroll(area, documentoId, secao, opcoes
     if (!window._terceirosDetalheOrigemTab) {
         window._terceirosDetalheOrigemTab = 'pendencia-recebimento';
     }
-    var comModal = opcoes.modalLoading === true;
+    window._terceirosDescargaLoadCancelado = false;
+    window._terAcaoLoadCancelado = false;
+    var comModalDescarga = opcoes.modalLoading === true;
+    var comLoadingAcao = opcoes.loadingAcao === true;
     window._terceirosSuprimirFecharDescargaDocId = documentoId;
-    if (comModal) {
+    if (comModalDescarga) {
         abrirModalCarregandoDescargaTerceiros(
             opcoes.mensagemLoading || 'Abrindo descarga e conferência…'
         );
+    } else if (comLoadingAcao) {
+        mostrarTerAcaoLoading(
+            opcoes.mensagemLoading || 'Carregando detalhe da NF…',
+            'Buscando dados e itens da nota no servidor.',
+            { mensagemCancelado: 'Carregamento do detalhe cancelado.' }
+        );
     }
     try {
-        if (terceirosDescargaFoiCancelado()) throw new Error('cancelado');
+        if (terceirosDescargaFoiCancelado() || window._terAcaoLoadCancelado) throw new Error('cancelado');
+        if (window.controleMostrarModulo) window.controleMostrarModulo('terceiros');
         if (_terceirosTabAtual !== 'pendencia-recebimento') {
             terceirosAplicarPainelAbaSomenteUi('pendencia-recebimento');
         }
-        if (terceirosDescargaFoiCancelado()) throw new Error('cancelado');
+        if (terceirosDescargaFoiCancelado() || window._terAcaoLoadCancelado) throw new Error('cancelado');
         var vazio = document.getElementById('ter-recebimento-detalhe-vazio');
         var detalhe = document.getElementById('ter-recebimento-detalhe');
         if (vazio) vazio.style.display = 'none';
         if (detalhe) detalhe.style.display = 'block';
-        if (terceirosDescargaFoiCancelado()) throw new Error('cancelado');
-        await loadTerceirosDocumentoDetalhe(area, documentoId, { descargaLoad: comModal });
-        if (terceirosDescargaFoiCancelado()) throw new Error('cancelado');
+        scrollTerceirosRecebimentoDetalheSecao(secao);
+        if (terceirosDescargaFoiCancelado() || window._terAcaoLoadCancelado) throw new Error('cancelado');
+        await loadTerceirosDocumentoDetalhe(area, documentoId, {
+            descargaLoad: comModalDescarga,
+            acaoLoad: comLoadingAcao
+        });
+        if (terceirosDescargaFoiCancelado() || window._terAcaoLoadCancelado) throw new Error('cancelado');
         scrollTerceirosRecebimentoDetalheSecao(secao);
     } catch (err) {
-        if (_terceirosErroDescargaCancelada(err) || terceirosDescargaFoiCancelado()) return;
+        if (_terceirosErroDescargaCancelada(err) || terceirosDescargaFoiCancelado() || _terAcaoFoiCancelado(err)) {
+            return;
+        }
         throw err;
     } finally {
-        window._terceirosSuprimirFecharDescargaDocId = null;
-        if (comModal) fecharModalCarregandoDescargaTerceiros();
+        var docSuprimir = documentoId;
+        window.setTimeout(function() {
+            if (window._terceirosSuprimirFecharDescargaDocId != null
+                && String(window._terceirosSuprimirFecharDescargaDocId) === String(docSuprimir)) {
+                window._terceirosSuprimirFecharDescargaDocId = null;
+            }
+        }, 400);
+        if (comModalDescarga) fecharModalCarregandoDescargaTerceiros();
+        else if (comLoadingAcao) fecharTerAcaoLoading();
     }
 }
 
@@ -3639,7 +3729,11 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
             window._terceirosDetalheOrigemTab = 'pendencia-recebimento';
             var btnDet = det;
             btnDet.disabled = true;
-            void abrirPendenciaTerceirosComScroll(areaV, idV, 'resumo', { modalLoading: false }).then(function() {
+            void abrirPendenciaTerceirosComScroll(areaV, idV, 'resumo', {
+                modalLoading: false,
+                loadingAcao: true,
+                mensagemLoading: 'Carregando detalhe da NF…'
+            }).then(function() {
                 btnDet.disabled = false;
             }).catch(function(err) {
                 if (_terceirosErroDescargaCancelada(err) || terceirosDescargaFoiCancelado()) {
@@ -3709,7 +3803,11 @@ function bindTerceirosAbrirButtons(seletor) {
             var tabDestino = btn.getAttribute('data-ter-open-tab') || 'pendencia-recebimento';
             window._terceirosDetalheOrigemTab = tabDestino;
             if (!id) return;
-            void abrirPendenciaTerceirosComScroll(area, id, 'resumo', { modalLoading: false });
+            void abrirPendenciaTerceirosComScroll(area, id, 'resumo', {
+                modalLoading: false,
+                loadingAcao: true,
+                mensagemLoading: 'Carregando detalhe da NF…'
+            });
         });
     });
 }
@@ -5303,7 +5401,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
     if (area !== 'expedicao' && area !== 'carreta') area = 'recebimento';
     var idAlvo = parseInt(documentoId, 10);
     if (isNaN(idAlvo)) return;
-    if (terceirosDescargaFoiCancelado()) return;
+    if (terceirosDescargaFoiCancelado() || window._terAcaoLoadCancelado) return;
 
     var seq = (window._terceirosDetalheCargaSeq = (window._terceirosDetalheCargaSeq || 0) + 1);
     var docAnterior = _terceirosDocAtual.id;
@@ -5340,22 +5438,26 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
             }
         }
         _limparPendenciasBipagemTerceiros();
+    } else if (tbody && (opcoes.acaoLoad || opcoes.descargaLoad)) {
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando detalhe…</td></tr>';
     }
 
-    if (terceirosDescargaFoiCancelado()) return;
+    if (terceirosDescargaFoiCancelado() || window._terAcaoLoadCancelado) return;
 
     var doc;
     var fetchOpts = {};
     var sigDescarga = opcoes.descargaLoad ? terceirosDescargaAbortSignal() : null;
+    var sigAcao = opcoes.acaoLoad ? terAcaoLoadingSignal() : null;
     if (sigDescarga) fetchOpts.signal = sigDescarga;
+    else if (sigAcao) fetchOpts.signal = sigAcao;
     try {
         doc = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(idAlvo), fetchOpts, 55000);
     } catch (err) {
-        if (_terceirosErroDescargaCancelada(err)) throw err;
+        if (_terceirosErroDescargaCancelada(err) || _terAcaoFoiCancelado(err)) throw err;
         console.error(err);
         doc = null;
     }
-    if (seq !== window._terceirosDetalheCargaSeq || terceirosDescargaFoiCancelado()) return;
+    if (seq !== window._terceirosDetalheCargaSeq || terceirosDescargaFoiCancelado() || window._terAcaoLoadCancelado) return;
 
     if (!doc || doc.erro) {
         var msgErro = (doc && doc.erro) ? String(doc.erro) : 'Erro ao carregar.';
@@ -5869,16 +5971,27 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin, opcoes) {
         opcoes._confirmacaoRecebimento = true;
         opcoes.irFornecedores = escolhaPre === 'ir';
     }
-    var irParaFornecedores = opcoes.irFornecedores !== false;
-    _terceirosPrepararBotaoRecebimentoSalvando(fin);
+    var irParaFornecedores = opcoes.irFornecedores === true;
     if (_terceirosRecebimentoConcluindo) {
         showMessage('Conclusão de recebimento em curso. Aguarde.', 'warning');
         return;
     }
     _terceirosRecebimentoConcluindo = true;
+    window._terAcaoLoadCancelado = false;
+    mostrarTerAcaoLoading(
+        'Concluindo recebimento…',
+        irParaFornecedores
+            ? 'Gravando e abrindo a aba Fornecedores recebidos.'
+            : 'Gravando o recebimento nesta nota.',
+        { mensagemCancelado: 'Conclusão do recebimento cancelada.' }
+    );
+    _terceirosPrepararBotaoRecebimentoSalvando(fin);
     try {
+        _terceirosPausarTimersBipagemPendente();
+        _terceirosAtualizarProgressoRecebimento('Gravando no servidor…', 'Registrando recebimento como concluído.');
         _terceirosLogFluxoRecebimento('DESCARGA 1 ANTES POST /status (gravar antes de fechar / F5)');
-        var resp = await _postRecebimentoConcluidoTerceirosDireto(documentoId, 25000);
+        var resp = await _postRecebimentoConcluidoTerceirosDireto(documentoId, 30000);
+        if (window._terAcaoLoadCancelado) return;
         _terceirosLogFluxoRecebimento('DESCARGA 2 DEPOIS POST /status');
         if (!_terceirosRespostaApiOk(resp)) {
             showMessage((resp && resp.erro) || 'Não foi possível gravar o recebimento no servidor. Tente de novo.', 'error');
@@ -5890,6 +6003,8 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin, opcoes) {
     } finally {
         _terceirosLogFluxoRecebimento('DESCARGA FINALLY executou');
         _terceirosRecebimentoConcluindo = false;
+        fecharTerAcaoLoading();
+        _terceirosRestaurarBotaoRecebimentoConcluido(fin);
     }
 }
 
@@ -5903,11 +6018,6 @@ async function acionarRecebimentoConcluidoTerceirosDireto(btn) {
     } catch (e) {
         console.error(e);
         showMessage('Não foi possível concluir o recebimento.', 'error');
-    } finally {
-        if (btn && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido) && btn.textContent === 'A guardar…') {
-            btn.disabled = false;
-            btn.textContent = btn.dataset.terFinDescLabel || 'Recebimento concluído';
-        }
     }
 }
 
@@ -5929,22 +6039,24 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         if (!escolhaReceb) return;
         irParaFornecedoresAposConcluir = escolhaReceb === 'ir';
     }
-    var restaurarBotaoConcluir = null;
-    if (pedidoConclusaoRecebimento && btnConcluir && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido)) {
-        var txtAntesConcluir = btnConcluir.textContent;
-        var disAntesConcluir = btnConcluir.disabled;
-        btnConcluir.disabled = true;
-        btnConcluir.textContent = 'A guardar…';
+    var overlayConclusaoAtivo = false;
+    if (pedidoConclusaoRecebimento && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido)) {
+        window._terAcaoLoadCancelado = false;
+        mostrarTerAcaoLoading(
+            'Concluindo recebimento…',
+            irParaFornecedoresAposConcluir
+                ? 'Gravando e abrindo a aba Fornecedores recebidos.'
+                : 'Gravando o recebimento nesta nota.',
+            { mensagemCancelado: 'Conclusão do recebimento cancelada.' }
+        );
+        overlayConclusaoAtivo = true;
+        _terceirosPrepararBotaoRecebimentoSalvando(btnConcluir);
         watchdogConcluir = window.setTimeout(function() {
-            console.error('[terceiros recebimento concluído] WATCHDOG: fluxo ainda pendente após 15s. Verifique o último PASSO no console e a requisição Pending no Network.');
-            if (btnConcluir && btnConcluir.textContent === 'A guardar…') {
-                atualizarBotaoConclusaoTerceiros(prefixo, isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido));
-            }
-        }, 15000);
-        restaurarBotaoConcluir = function() {
-            btnConcluir.disabled = disAntesConcluir;
-            btnConcluir.textContent = txtAntesConcluir;
-        };
+            console.error('[terceiros recebimento concluído] WATCHDOG: fluxo ainda pendente após 20s.');
+            fecharTerAcaoLoading();
+            _terceirosRestaurarBotaoRecebimentoConcluido(btnConcluir);
+            _terceirosRecebimentoConcluindo = false;
+        }, 20000);
     }
     try {
         var documentoId = _resolverIdDocumentoTerceirosParaStatus();
@@ -5974,21 +6086,8 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             try {
                 if (pedidoConclusaoRecebimento) {
                     _terceirosLogFluxoRecebimento('PASSO 1 pausar flush; NÃO bloquear POST /status');
-                    try {
-                        var pFlushBg = window._terceirosBipagemPending;
-                        if (pFlushBg) {
-                            Object.keys(pFlushBg.addTimers || {}).forEach(function(k) {
-                                clearTimeout(pFlushBg.addTimers[k]);
-                            });
-                            Object.keys(pFlushBg.removeTimers || {}).forEach(function(k) {
-                                clearTimeout(pFlushBg.removeTimers[k]);
-                            });
-                            pFlushBg.addTimers = {};
-                            pFlushBg.removeTimers = {};
-                        }
-                    } catch (eBg0) {
-                        console.error(eBg0);
-                    }
+                    _terceirosPausarTimersBipagemPendente();
+                    _terceirosAtualizarProgressoRecebimento('Gravando no servidor…', 'Registrando recebimento como concluído.');
                     _terceirosLogFluxoRecebimento('PASSO 2 seguindo direto para POST /status');
                 } else {
                     await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 8000);
@@ -6063,7 +6162,6 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             }
             var concluiuRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
             if (concluiuRecebimento) {
-                restaurarBotaoConcluir = null;
                 _terceirosDocAtual.recebimento_concluido = 'Sim';
                 try {
                     _terceirosLogFluxoRecebimento('PASSO 5 movimento local após conclusão');
@@ -6126,9 +6224,9 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         if (watchdogConcluir) {
             window.clearTimeout(watchdogConcluir);
         }
-        if (restaurarBotaoConcluir) restaurarBotaoConcluir();
-        if (pedidoConclusaoRecebimento && btnConcluir && btnConcluir.textContent === 'A guardar…') {
-            atualizarBotaoConclusaoTerceiros(prefixo, isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido));
+        if (overlayConclusaoAtivo) {
+            fecharTerAcaoLoading();
+            _terceirosRestaurarBotaoRecebimentoConcluido(btnConcluir);
         }
     }
 }
