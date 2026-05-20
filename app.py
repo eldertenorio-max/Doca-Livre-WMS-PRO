@@ -407,7 +407,7 @@ def init_db():
                 except Exception:
                     pass
             try:
-                _ensure_terceiros_schema(conn)
+                _ensure_terceiros_schema(conn, rodar_backfill=True)
             except Exception:
                 try:
                     conn.rollback()
@@ -895,7 +895,7 @@ def _sql_cols_terceiros_documentos_listagem(alias):
 _TERCEIROS_SCHEMA_PRONTO = False
 
 
-def _ensure_terceiros_schema(conn, rodar_backfill=True):
+def _ensure_terceiros_schema(conn, rodar_backfill=False):
     global _TERCEIROS_SCHEMA_PRONTO
     if _TERCEIROS_SCHEMA_PRONTO:
         return
@@ -8162,7 +8162,7 @@ def api_terceiros_painel():
   """Resumo e agregações para o painel de recebimento de terceiros."""
   conn = get_db()
   try:
-    _ensure_terceiros_schema(conn)
+    _ensure_terceiros_schema(conn, rodar_backfill=False)
     tbl_d = _tbl_terceiros_documentos(conn)
     tbl_i = _tbl_terceiros_documento_itens(conn)
     cols = _sql_cols_terceiros_documentos_listagem('d')
@@ -8517,7 +8517,7 @@ def api_terceiros_documentos():
         return jsonify({'erro': 'Área inválida.', 'rows': []}), 400
     conn = get_db()
     try:
-        _ensure_terceiros_schema(conn)
+        _ensure_terceiros_schema(conn, rodar_backfill=False)
         cols = _sql_cols_terceiros_documentos_listagem('d')
         tbl_d = _tbl_terceiros_documentos(conn)
         tbl_i = _tbl_terceiros_documento_itens(conn)
@@ -8543,10 +8543,6 @@ def api_terceiros_documentos():
             params_area
         ).fetchall()
         rows_list = [dict(r) if hasattr(r, 'keys') else {} for r in (rows or [])]
-        try:
-            _terceiros_enriquecer_campos_xml_listagem(conn, rows_list)
-        except Exception:
-            pass
         out = [_terceiros_serializar_row_listagem(row) for row in rows_list]
         return jsonify({'rows': out})
     except Exception as e:

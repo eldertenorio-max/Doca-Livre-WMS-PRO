@@ -2258,6 +2258,8 @@ async function uploadXmlTerceirosCarreta() {
 
 var _terceirosListaCache = { rows: null, erro: null, ts: 0, promise: null };
 var TERCEIROS_LISTA_CACHE_MS = 90000;
+/** Lista antiga ainda exibida enquanto o servidor responde (evita tela vazia por timeout). */
+var TERCEIROS_LISTA_CACHE_STALE_MS = 600000;
 var _terceirosPrefetchPromise = null;
 
 /**
@@ -2311,34 +2313,84 @@ function invalidateTerceirosListaCache() {
     window._terceirosPainelUltimoData = null;
 }
 
-function _terceirosObterCacheLista() {
+function _terceirosObterCacheLista(opcoes) {
+    opcoes = opcoes || {};
     var now = Date.now();
-    if (_terceirosListaCache.rows && (now - _terceirosListaCache.ts) < TERCEIROS_LISTA_CACHE_MS) {
+    if (!_terceirosListaCache.rows || !_terceirosListaCache.rows.length) return null;
+    var idade = now - (_terceirosListaCache.ts || 0);
+    if (idade < TERCEIROS_LISTA_CACHE_MS) {
         return { rows: _terceirosListaCache.rows, erro: _terceirosListaCache.erro };
     }
+    if (opcoes.staleOk && idade < TERCEIROS_LISTA_CACHE_STALE_MS) {
+        return { rows: _terceirosListaCache.rows, erro: _terceirosListaCache.erro, _stale: true };
+    }
     return null;
+}
+
+function _terceirosRecarregarAbasAposListaAtualizada(data) {
+    if (!data || !data.rows) return;
+    var tab = _terceirosTabAtual || 'painel';
+    if (tab === 'pendencia-recebimento' || tab === 'enviar-xml') void loadTerceirosDocumentos(data);
+    else if (tab === 'fornecedores-recebidos') void loadTerceirosFornecedoresRecebidos(data);
+    else if (tab === 'pendentes-lancamento') void loadTerceirosPendentesLancamento(data);
+    else if (tab === 'notas-lancadas') void loadTerceirosNotasLancadas(data);
+    else if (tab === 'pendencias-mg') void loadTerceirosPendenciasMg(data);
+    else if (tab === 'notas-enviadas-mg') void loadTerceirosNotasEnviadasMg(data);
+    else if (tab === 'recebimentos-mg') void loadTerceirosRecebimentosMg(data);
+    else if (tab === 'historico') void loadTerceirosHistorico(data);
+    else if (tab === 'painel') void loadPainelTerceiros();
 }
 
 /** Uma requisição compartilhada; abas leem do cache ou reutilizam fetch em andamento. */
 async function fetchTerceirosDocumentosTodos(opcoes) {
     opcoes = opcoes || {};
     var force = !!opcoes.force;
-    var now = Date.now();
     if (!force) {
         var hit = _terceirosObterCacheLista();
         if (hit) return hit;
+        var stale = _terceirosObterCacheLista({ staleOk: true });
+        if (stale && stale._stale) {
+            if (!_terceirosListaCache.promise) {
+                _terceirosListaCache.promise = fetchTerceirosDocumentosTodos({ force: true })
+                    .then(function(data) {
+                        _terceirosRecarregarAbasAposListaAtualizada(data);
+                        return data;
+                    })
+                    .catch(function(e) {
+                        console.error('fetchTerceirosDocumentosTodos revalidação:', e);
+                        return stale;
+                    })
+                    .finally(function() {
+                        _terceirosListaCache.promise = null;
+                    });
+            }
+            return stale;
+        }
         if (_terceirosListaCache.promise) return _terceirosListaCache.promise;
     }
     var executar = async function() {
-        const resp = await fetchAPIComTimeout('/terceiros/documentos?area=' + encodeURIComponent('todas'), {}, 45000);
-        var erro = (!resp || resp.erro) ? ((resp && resp.erro) || 'Erro ao carregar documentos.') : null;
+        const resp = await fetchAPIComTimeout(
+            '/terceiros/documentos?area=' + encodeURIComponent('todas'),
+            {},
+            90000
+        );
+        var erro = null;
+        if (!resp || resp.erro) {
+            erro = (resp && resp.erro) || 'Erro ao carregar documentos.';
+        } else if (resp._timeout) {
+            erro = 'Tempo esgotado ao contactar o servidor.';
+        }
         const rows = Array.isArray(resp && resp.rows) ? resp.rows : [];
         var ordenadas = rows.slice().sort(function(a, b) {
             return Number(b.id || 0) - Number(a.id || 0);
         });
-        _terceirosListaCache.rows = ordenadas;
-        _terceirosListaCache.erro = erro;
-        _terceirosListaCache.ts = Date.now();
+        if (ordenadas.length || !erro) {
+            _terceirosListaCache.rows = ordenadas;
+            _terceirosListaCache.erro = erro;
+            _terceirosListaCache.ts = Date.now();
+        } else if (_terceirosListaCache.rows && _terceirosListaCache.rows.length) {
+            return { erro: erro, rows: _terceirosListaCache.rows, _stale: true };
+        }
         return { erro: erro, rows: ordenadas };
     };
     _terceirosListaCache.promise = executar().finally(function() {
@@ -2351,6 +2403,11 @@ async function _terceirosResolverDadosLista(dataPreloaded, tbody, colspan) {
     if (dataPreloaded && (dataPreloaded.rows || dataPreloaded.erro)) return dataPreloaded;
     var hit = _terceirosObterCacheLista();
     if (hit) return hit;
+    var staleHit = _terceirosObterCacheLista({ staleOk: true });
+    if (staleHit && staleHit._stale) {
+        void fetchTerceirosDocumentosTodos();
+        return staleHit;
+    }
     if (_terceirosListaCache.promise) {
         return _terceirosListaCache.promise;
     }
