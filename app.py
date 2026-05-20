@@ -399,6 +399,13 @@ def init_db():
                 conn.execute('CREATE INDEX IF NOT EXISTS idx_romaneio_por_item_row_index ON public.romaneio_por_item (dataset_id, row_index)')
             except Exception:
                 conn.rollback()
+            try:
+                _ensure_pg_tabela_geral_dados(conn)
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             # Postgres: sem commit o DDL era revertido ao fechar a conexão (coluna fluxo sumia).
             try:
                 conn.commit()
@@ -657,6 +664,15 @@ USUARIOS = [
         lista = [{'usuario': 'admin', 'senha': 'admin'}]
     conn = get_db()
     try:
+        if getattr(conn, 'kind', None) == 'pg':
+            try:
+                _ensure_pg_tabela_geral_dados(conn)
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
         usuarios_do_arquivo = set()
         for item in lista:
             if not isinstance(item, dict):
@@ -776,6 +792,48 @@ class CompatConn:
 
     def close(self):
         return self._conn.close()
+
+
+def _ensure_pg_tabela_geral_dados(conn):
+    """
+    Triggers fn_sync_tabela_geral_dados no Supabase inserem nesta tabela em cada DML.
+    Sem ela, sync_usuarios e outras gravações falham no boot do Render.
+    """
+    if getattr(conn, 'kind', None) != 'pg':
+        return
+    conn.execute(
+        '''CREATE TABLE IF NOT EXISTS public.tabela_geral_dados (
+            id BIGSERIAL PRIMARY KEY,
+            fonte_tabela TEXT NOT NULL,
+            row_id TEXT,
+            acao TEXT NOT NULL,
+            dados JSONB,
+            criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )'''
+    )
+    conn.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tabela_geral_dados_fonte '
+        'ON public.tabela_geral_dados (fonte_tabela, criado_em DESC)'
+    )
+    conn.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tabela_geral_dados_row '
+        'ON public.tabela_geral_dados (fonte_tabela, row_id)'
+    )
+    conn.execute(
+        '''CREATE TABLE IF NOT EXISTS public.tabela_geral_snapshot (
+            fonte_tabela TEXT NOT NULL,
+            row_id TEXT NOT NULL,
+            dados JSONB,
+            atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (fonte_tabela, row_id)
+        )'''
+    )
+
+
+def _pg_auditoria_sync_desligar(conn):
+    """Evita triggers fn_sync_tabela_geral_* bloquearem UPDATE/INSERT (ex.: concluir recebimento)."""
+    if getattr(conn, 'kind', None) == 'pg':
+        conn.execute("SET LOCAL session_replication_role = replica")
 
 
 def _ensure_pg_produtos_bipados_fluxo(conn):
@@ -8536,18 +8594,28 @@ def api_terceiros_excluir_documento(documento_id):
     conn = get_db()
     usuario = session.get('usuario', '')
     try:
-        _ensure_terceiros_schema(conn)
-        row = conn.execute(
-            'SELECT numero_nf, serie_nf FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?',
-            (documento_id,)
-        ).fetchone()
-        if not row:
-            return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
-        numero_nf = (row['numero_nf'] if hasattr(row, 'keys') else row[0]) or ''
-        serie_nf = (row['serie_nf'] if hasattr(row, 'keys') else row[1]) or ''
-        conn.execute('DELETE FROM ' + _tbl_terceiros_documento_eventos(conn) + ' WHERE documento_id = ?', (documento_id,))
-        conn.execute('DELETE FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE documento_id = ?', (documento_id,))
-        conn.execute('DELETE FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,))
+        tbl_d = _tbl_terceiros_documentos(conn)
+        numero_nf = ''
+        serie_nf = ''
+        if getattr(conn, 'kind', None) == 'pg':
+            row = conn.execute(
+                'DELETE FROM ' + tbl_d + ' WHERE id = ? RETURNING numero_nf, serie_nf',
+                (documento_id,),
+            ).fetchone()
+            if not row:
+                return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
+            numero_nf = (row['numero_nf'] if hasattr(row, 'keys') else row[0]) or ''
+            serie_nf = (row['serie_nf'] if hasattr(row, 'keys') else row[1]) or ''
+        else:
+            row = conn.execute(
+                'SELECT numero_nf, serie_nf FROM ' + tbl_d + ' WHERE id = ?',
+                (documento_id,),
+            ).fetchone()
+            if not row:
+                return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
+            numero_nf = (row['numero_nf'] if hasattr(row, 'keys') else row[0]) or ''
+            serie_nf = (row['serie_nf'] if hasattr(row, 'keys') else row[1]) or ''
+            conn.execute('DELETE FROM ' + tbl_d + ' WHERE id = ?', (documento_id,))
         conn.commit()
         return jsonify({
             'ok': True,
@@ -8753,7 +8821,10 @@ def api_terceiros_status(documento_id):
         return jsonify({'ok': False, 'erro': 'Campo inválido.'}), 400
     conn = get_db()
     try:
-        _ensure_terceiros_schema(conn)
+        if getattr(conn, 'kind', None) == 'pg':
+            _ensure_pg_tabela_geral_dados(conn)
+        else:
+            _ensure_terceiros_schema(conn)
         tbl_d = _tbl_terceiros_documentos(conn)
         cols_d = _sql_cols_terceiros_documentos_listagem('d')
         row = conn.execute(
@@ -8771,6 +8842,7 @@ def api_terceiros_status(documento_id):
         agora = _agora_iso()
         if campo == 'recebimento_concluido':
             novo_bool = 1 if str(valor).strip().lower() in ('1', 'true', 'sim', 's', 'yes') else 0
+            _pg_auditoria_sync_desligar(conn)
             conn.execute(
                 'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET recebimento_concluido = ?, recebimento_concluido_em = ?, recebimento_concluido_por = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
                 (novo_bool, agora, usuario, agora, usuario, documento_id)

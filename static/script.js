@@ -2809,6 +2809,23 @@ function _terceirosRemoverLinhaDeTodasListas(documentoId) {
     _terceirosAtualizarContadoresPendLancamentoUfFromDom();
 }
 
+/** Re-renderiza só a aba visível a partir do cache (após exclusão otimista). */
+function _terceirosRecarregarAbaAtualDoCacheRapido() {
+    var hit = _terceirosObterCacheLista();
+    if (!hit || !Array.isArray(hit.rows)) return Promise.resolve();
+    var data = { rows: hit.rows, erro: hit.erro };
+    var tab = _terceirosTabAtual || 'pendencia-recebimento';
+    if (tab === 'pendencia-recebimento') return loadTerceirosDocumentos(data);
+    if (tab === 'fornecedores-recebidos') return loadTerceirosFornecedoresRecebidos(data);
+    if (tab === 'pendentes-lancamento') return loadTerceirosPendentesLancamento(data);
+    if (tab === 'notas-lancadas') return loadTerceirosNotasLancadas(data);
+    if (tab === 'pendencias-mg') return loadTerceirosPendenciasMg(data);
+    if (tab === 'notas-enviadas-mg') return loadTerceirosNotasEnviadasMg(data);
+    if (tab === 'recebimentos-mg') return loadTerceirosRecebimentosMg(data);
+    if (tab === 'historico') return loadTerceirosHistorico(data);
+    return Promise.resolve();
+}
+
 /** Re-renderiza todas as abas a partir do cache (rápido, sem GET /documentos). */
 function _terceirosReaplicarTodasListasDoCacheLocal() {
     var hit = _terceirosObterCacheLista();
@@ -4633,12 +4650,6 @@ async function excluirDocumentoTerceiros(documentoId) {
         return;
     }
     window._terceirosExclusaoEmAndamento = true;
-    window._terAcaoLoadCancelado = false;
-    mostrarTerAcaoLoading(
-        'Excluindo NF…',
-        'Removendo do servidor e de todas as abas do fluxo.',
-        { mensagemCancelado: 'Exclusão cancelada.' }
-    );
     try {
         _terceirosRemoverDocumentoDosCachesLocais(idNum);
         _terceirosRemoverLinhaDeTodasListas(idNum);
@@ -4649,22 +4660,18 @@ async function excluirDocumentoTerceiros(documentoId) {
         if (Number.isFinite(atualNum) && atualNum === idNum) {
             resetTerceirosDetalhe();
         }
-        _terceirosReaplicarTodasListasDoCacheLocal();
+        void _terceirosRecarregarAbaAtualDoCacheRapido();
 
-        var fetchOpts = { method: 'DELETE' };
-        var sigExcluir = terAcaoLoadingSignal();
-        if (sigExcluir) fetchOpts.signal = sigExcluir;
         var resp = await fetchAPIComTimeout(
             '/terceiros/documentos/' + encodeURIComponent(idNum),
-            fetchOpts,
-            30000
+            { method: 'DELETE' },
+            12000
         );
-        if (window._terAcaoLoadCancelado || _terAcaoFoiCancelado()) return;
 
         _terceirosExcluirDocumentoAtual = null;
         if (!resp || !resp.ok) {
             invalidateTerceirosListaCache();
-            await recarregarTodasListasTerceiros();
+            await recarregarListaTerceirosTab(_terceirosTabAtual);
             showMessage((resp && resp.erro) || 'Erro ao excluir NF.', 'error');
             return;
         }
@@ -4672,13 +4679,12 @@ async function excluirDocumentoTerceiros(documentoId) {
         void loadPainelTerceiros().catch(function(e) {
             console.error('excluirDocumentoTerceiros painel:', e);
         });
-        showMessage((resp && resp.mensagem) || 'NF excluída de todas as abas.', 'success');
+        showMessage((resp && resp.mensagem) || 'NF excluída.', 'success');
     } catch (e) {
-        if (_terAcaoFoiCancelado(e)) return;
         console.error(e);
         try {
             invalidateTerceirosListaCache();
-            await recarregarTodasListasTerceiros();
+            await recarregarListaTerceirosTab(_terceirosTabAtual);
         } catch (e2) {
             console.error(e2);
         }
@@ -6229,6 +6235,62 @@ function _terceirosMontarDocumentoRecebidoLocal(documentoId, documentoApi) {
     return doc;
 }
 
+/**
+ * Conclui recebimento: abre Fornecedores recebidos na hora (otimista) e grava no servidor em seguida.
+ */
+async function _terceirosExecutarConcluirRecebimento(documentoId, btnEl, opcoes) {
+    opcoes = opcoes || {};
+    var irParaFornecedores = opcoes.irFornecedores !== false;
+    _terceirosPrepararBotaoRecebimentoSalvando(btnEl);
+    _terceirosPausarTimersBipagemPendente();
+
+    var docLocal = _terceirosMontarDocumentoRecebidoLocal(documentoId, null);
+    _terceirosDocAtual = Object.assign({}, _terceirosDocAtual || {}, docLocal);
+
+    if (irParaFornecedores) {
+        await _terceirosAplicarUiAposRecebimentoConcluido(documentoId, docLocal, true);
+    } else {
+        aplicarMovimentoRecebimentoConcluidoLocal(documentoId, docLocal);
+        definirDestaqueLinhaTerceirosDoc(documentoId);
+        void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
+        atualizarBotaoConclusaoTerceiros(getTerceirosPrefixo(), true);
+        fecharTerAcaoLoading();
+        showMessage('Recebimento concluído.', 'success');
+    }
+
+    var resp = await _postRecebimentoConcluidoTerceirosDireto(documentoId, 25000);
+    if (window._terAcaoLoadCancelado) return;
+
+    if (!_terceirosRespostaApiOk(resp)) {
+        invalidateTerceirosListaCache();
+        try {
+            await recarregarTodasListasTerceiros();
+        } catch (eRec) {
+            console.error(eRec);
+        }
+        if (irParaFornecedores) {
+            terceirosAplicarPainelAbaSomenteUi('pendencia-recebimento');
+            resetTerceirosDetalhe();
+        }
+        showMessage(
+            (resp && resp.erro) || 'Não foi possível gravar no servidor. A NF voltou para pendência — tente de novo.',
+            'error'
+        );
+        return;
+    }
+
+    if (resp && resp.documento) {
+        _terceirosDocAtual = Object.assign({}, _terceirosDocAtual || {}, resp.documento, {
+            recebimento_concluido: isTerceirosFlagSim(resp.documento.recebimento_concluido)
+        });
+    }
+    void _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 3000).catch(function(eBg) {
+        console.error(eBg);
+    });
+    if (!irParaFornecedores) return;
+    void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
+}
+
 async function _postRecebimentoConcluidoTerceirosDireto(documentoId, timeoutMs) {
     timeoutMs = timeoutMs || 10000;
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -6305,36 +6367,11 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin, opcoes) {
     }
     _terceirosRecebimentoConcluindo = true;
     window._terAcaoLoadCancelado = false;
-    window._terceirosUiRecebimentoConcluidoAplicada = false;
-    mostrarTerAcaoLoading(
-        'Concluindo recebimento…',
-        irParaFornecedores
-            ? 'Gravando e abrindo a aba Fornecedores recebidos.'
-            : 'Gravando o recebimento nesta nota.',
-        { mensagemCancelado: 'Conclusão do recebimento cancelada.' }
-    );
-    _terceirosPrepararBotaoRecebimentoSalvando(fin);
     try {
-        _terceirosPausarTimersBipagemPendente();
-        _terceirosAtualizarProgressoRecebimento('Gravando no servidor…', 'Registrando recebimento como concluído.');
-        _terceirosLogFluxoRecebimento('DESCARGA 1 ANTES POST /status (gravar antes de fechar / F5)');
-        var resp = await _postRecebimentoConcluidoTerceirosDireto(documentoId, 30000);
-        if (window._terAcaoLoadCancelado) return;
-        _terceirosLogFluxoRecebimento('DESCARGA 2 DEPOIS POST /status');
-        if (!_terceirosRespostaApiOk(resp)) {
-            showMessage((resp && resp.erro) || 'Não foi possível gravar o recebimento no servidor. Tente de novo.', 'error');
-            return;
-        }
-        var documentoAtualizado = _terceirosMontarDocumentoRecebidoLocal(documentoId, resp.documento);
-        _terceirosDocAtual = Object.assign({}, _terceirosDocAtual || {}, documentoAtualizado);
-        await _terceirosAplicarUiAposRecebimentoConcluido(documentoId, documentoAtualizado, irParaFornecedores);
+        await _terceirosExecutarConcluirRecebimento(documentoId, fin, { irFornecedores: irParaFornecedores });
     } finally {
-        _terceirosLogFluxoRecebimento('DESCARGA FINALLY executou');
         _terceirosRecebimentoConcluindo = false;
-        if (!window._terceirosUiRecebimentoConcluidoAplicada) {
-            fecharTerAcaoLoading();
-        }
-        window._terceirosUiRecebimentoConcluidoAplicada = false;
+        fecharTerAcaoLoading();
         _terceirosRestaurarBotaoRecebimentoConcluido(fin);
     }
 }
@@ -6358,7 +6395,6 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
     var btnConcluir = document.getElementById('btn-' + prefixo + '-concluir');
     var pedidoConclusaoRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
     var irParaFornecedoresAposConcluir = true;
-    var watchdogConcluir = null;
     if (pedidoConclusaoRecebimento) {
         if (_terceirosRecebimentoConcluindo) {
             showMessage('Conclusão de recebimento em curso. Aguarde.', 'warning');
@@ -6374,26 +6410,6 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         } else {
             irParaFornecedoresAposConcluir = opcoes && opcoes.irFornecedores === false ? false : true;
         }
-    }
-    var overlayConclusaoAtivo = false;
-    if (pedidoConclusaoRecebimento && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido)) {
-        window._terAcaoLoadCancelado = false;
-        window._terceirosUiRecebimentoConcluidoAplicada = false;
-        mostrarTerAcaoLoading(
-            'Concluindo recebimento…',
-            irParaFornecedoresAposConcluir
-                ? 'Gravando e abrindo a aba Fornecedores recebidos.'
-                : 'Gravando o recebimento nesta nota.',
-            { mensagemCancelado: 'Conclusão do recebimento cancelada.' }
-        );
-        overlayConclusaoAtivo = true;
-        _terceirosPrepararBotaoRecebimentoSalvando(btnConcluir);
-        watchdogConcluir = window.setTimeout(function() {
-            console.error('[terceiros recebimento concluído] WATCHDOG: fluxo ainda pendente após 20s.');
-            fecharTerAcaoLoading();
-            _terceirosRestaurarBotaoRecebimentoConcluido(btnConcluir);
-            _terceirosRecebimentoConcluindo = false;
-        }, 20000);
     }
     try {
         var documentoId = _resolverIdDocumentoTerceirosParaStatus();
@@ -6416,30 +6432,31 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             _terceirosSincronizarCampoRecebidaMgDetalhe();
             return;
         }
-        if (pedidoConclusaoRecebimento) {
+        if (pedidoConclusaoRecebimento && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido)) {
             _terceirosRecebimentoConcluindo = true;
+            try {
+                await _terceirosExecutarConcluirRecebimento(documentoId, btnConcluir, {
+                    irFornecedores: irParaFornecedoresAposConcluir
+                });
+            } finally {
+                _terceirosRecebimentoConcluindo = false;
+                fecharTerAcaoLoading();
+                _terceirosRestaurarBotaoRecebimentoConcluido(btnConcluir);
+            }
+            return;
         }
         try {
             try {
-                if (pedidoConclusaoRecebimento) {
-                    _terceirosLogFluxoRecebimento('PASSO 1 pausar flush; NÃO bloquear POST /status');
-                    _terceirosPausarTimersBipagemPendente();
-                    _terceirosAtualizarProgressoRecebimento('Gravando no servidor…', 'Registrando recebimento como concluído.');
-                    _terceirosLogFluxoRecebimento('PASSO 2 seguindo direto para POST /status');
-                } else {
-                    await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 8000);
-                }
+                await _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 8000);
             } catch (e) {
                 console.error(e);
-                if (pedidoConclusaoRecebimento) {
-                    showMessage(
-                        e && e.message === 'TERCEIROS_FLUSH_TOTAL_TIMEOUT'
-                            ? 'Demorou demais a guardar bipagens (limite 2 min). Atualize a página e tente «Recebimento concluído» de novo.'
-                            : 'Não foi possível sincronizar a bipagem antes de concluir. Verifique a ligação e tente de novo.',
-                        'error'
-                    );
-                    return;
-                }
+                showMessage(
+                    e && e.message === 'TERCEIROS_FLUSH_TOTAL_TIMEOUT'
+                        ? 'Demorou demais a guardar bipagens (limite 2 min). Atualize a página e tente de novo.'
+                        : 'Não foi possível sincronizar a bipagem antes de concluir. Verifique a ligação e tente de novo.',
+                    'error'
+                );
+                return;
             }
             opcoes = opcoes || {};
             var payload = {
@@ -6468,17 +6485,11 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 }
                 payload.forcar_lancamento_sem_recebimento = true;
             }
-            if (pedidoConclusaoRecebimento) {
-                _terceirosLogFluxoRecebimento('PASSO 3 ANTES await POST /status');
-            }
             var resp = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
                 method: 'POST',
                 body: JSON.stringify(payload),
                 keepalive: false
-            }, pedidoConclusaoRecebimento ? 12000 : 35000);
-            if (pedidoConclusaoRecebimento) {
-                _terceirosLogFluxoRecebimento('PASSO 4 DEPOIS await POST /status');
-            }
+            }, 35000);
             if (!_terceirosRespostaApiOk(resp)) {
                 if (resp && resp.confirmacao_necessaria && campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !payload.forcar_lancamento_sem_recebimento) {
                     var confirmou = await abrirModalLancamentoSemRecebimento();
@@ -6499,22 +6510,6 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             }
             var concluiuRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
             if (concluiuRecebimento) {
-                _terceirosDocAtual.recebimento_concluido = 'Sim';
-                try {
-                    _terceirosLogFluxoRecebimento('PASSO 5 movimento local após conclusão');
-                    var documentoAtualizado = resp && resp.documento ? resp.documento : null;
-                    try {
-                        void _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 3000).catch(function(eBg) {
-                            console.error(eBg);
-                        });
-                    } catch (eBg1) {
-                        console.error(eBg1);
-                    }
-                    await _terceirosAplicarUiAposRecebimentoConcluido(documentoId, documentoAtualizado, irParaFornecedoresAposConcluir);
-                    _terceirosLogFluxoRecebimento('PASSO 7 fluxo conclusão finalizado');
-                } finally {
-                    _terceirosLogFluxoRecebimento('FINALLY INTERNO conclusão executou');
-                }
                 return;
             }
             if (campo === 'nota_lancada' && isTerceirosFlagSim(valor)) {
@@ -6554,20 +6549,9 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 _terceirosRecebimentoConcluindo = false;
             }
         }
-    } finally {
-        if (pedidoConclusaoRecebimento) {
-            _terceirosLogFluxoRecebimento('FINALLY EXTERNO atualizarStatusTerceiros executou');
-        }
-        if (watchdogConcluir) {
-            window.clearTimeout(watchdogConcluir);
-        }
-        if (overlayConclusaoAtivo) {
-            if (!window._terceirosUiRecebimentoConcluidoAplicada) {
-                fecharTerAcaoLoading();
-            }
-            window._terceirosUiRecebimentoConcluidoAplicada = false;
-            _terceirosRestaurarBotaoRecebimentoConcluido(btnConcluir);
-        }
+    } catch (eOuter) {
+        console.error(eOuter);
+        throw eOuter;
     }
 }
 
