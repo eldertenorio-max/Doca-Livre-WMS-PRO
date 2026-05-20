@@ -131,6 +131,7 @@ let _terceirosTabAtual = 'pendencia-recebimento';
 /** Evita reentrada em «Recebimento concluído» / finalizar descarga (duplo clique, Promises sobrepostas). */
 let _terceirosRecebimentoConcluindo = false;
 let _terceirosConfirmacaoLancamentoResolver = null;
+let _terceirosConfirmacaoConcluirSemBipagemResolver = null;
 let _terceirosConfirmacaoIrNotasLancadasResolver = null;
 let _terceirosConfirmacaoIrRecebimentosMgResolver = null;
 let _terceirosConfirmacaoRecebimentoFornecedoresResolver = null;
@@ -1765,6 +1766,29 @@ function abrirModalLancamentoSemRecebimento() {
     });
 }
 
+function fecharModalConcluirRecebimentoSemBipagemCompleta(confirmado) {
+    var modal = document.getElementById('modal-terceiros-concluir-sem-bipagem-completa');
+    _terceirosOcultarModalOverlay(modal);
+    if (_terceirosConfirmacaoConcluirSemBipagemResolver) {
+        _terceirosConfirmacaoConcluirSemBipagemResolver(!!confirmado);
+        _terceirosConfirmacaoConcluirSemBipagemResolver = null;
+    }
+}
+
+function abrirModalConcluirRecebimentoSemBipagemCompleta() {
+    var modal = document.getElementById('modal-terceiros-concluir-sem-bipagem-completa');
+    if (!modal) {
+        return Promise.resolve(window.confirm('A bipagem ainda não está completa. Deseja concluir o recebimento mesmo assim?'));
+    }
+    return new Promise(function(resolve) {
+        _terceirosConfirmacaoConcluirSemBipagemResolver = resolve;
+        _terceirosPrepararModalConfirmacaoBackdrop();
+        window.setTimeout(function() {
+            _terceirosExibirModalOverlay(modal);
+        }, 0);
+    });
+}
+
 function fecharModalIrParaNotasLancadas(confirmado) {
     var modal = document.getElementById('modal-terceiros-ir-notas-lancadas');
     _terceirosOcultarModalOverlay(modal);
@@ -2539,6 +2563,7 @@ function _terceirosUsaFluxoMg(row) {
 function _terceirosConsideraNotasLancadas(row) {
     row = _terceirosRowEstadoMesclado(row);
     if (!isTerceirosFlagSim(row && row.nota_lancada)) return false;
+    if (!_terceirosRecebimentoEstaConcluido(row)) return false;
     if (isTerceirosAreaCarreta(row)) {
         return !isTerceirosFlagSim(row.carga_recebida_mg);
     }
@@ -2740,6 +2765,22 @@ function _terceirosRowEstadoMesclado(row) {
 
 function _terceirosRowsEstadoMesclado(rows) {
     return (Array.isArray(rows) ? rows : []).map(_terceirosRowEstadoMesclado);
+}
+
+function _terceirosRowPorId(documentoId) {
+    if (documentoId == null) return null;
+    var id = String(documentoId);
+    if (_terceirosDocAtual && String(_terceirosDocAtual.id) === id) {
+        return _terceirosRowEstadoMesclado(_terceirosDocAtual);
+    }
+    var rows = _terceirosListaCache.rows;
+    if (Array.isArray(rows)) {
+        for (var i = 0; i < rows.length; i++) {
+            if (String(rows[i].id) === id) return _terceirosRowEstadoMesclado(rows[i]);
+        }
+    }
+    var loc = (window._terceirosFornecedoresRecebidosLocais || {})[id];
+    return loc ? _terceirosRowEstadoMesclado(loc) : null;
 }
 
 /** 2ª aba — recebimento em aberto, sem bipagem iniciada. */
@@ -3744,11 +3785,73 @@ function renderTerceirosFornecedorRecebidoRowHtml(row) {
         + '</tr>';
 }
 
+function _terceirosCalcularTotaisConferencia(row, itens) {
+    var totalXml = 0;
+    var totalBip = 0;
+    var divergentes = 0;
+    if (Array.isArray(itens) && itens.length) {
+        itens.forEach(function(item) {
+            var xml = parseFloat(item.quantidade_xml) || 0;
+            var bip = parseFloat(item.quantidade_bipada) || 0;
+            totalXml += xml;
+            totalBip += bip;
+            if (Math.abs(xml - bip) > 1e-6) divergentes += 1;
+        });
+    } else if (row) {
+        var resumo = row.resumo || {};
+        totalXml = parseFloat(row.quantidade_total_xml != null ? row.quantidade_total_xml : resumo.quantidade_total_xml) || 0;
+        totalBip = parseFloat(row.quantidade_total_bipada != null ? row.quantidade_total_bipada : resumo.quantidade_total_bipada) || 0;
+        divergentes = parseInt(row.itens_divergentes != null ? row.itens_divergentes : resumo.itens_com_pendencia, 10) || 0;
+    }
+    return { totalXml: totalXml, totalBip: totalBip, divergentes: divergentes };
+}
+
+function _terceirosConferenciaEstaCompleta(row, itens) {
+    var t = _terceirosCalcularTotaisConferencia(row, itens);
+    if (t.totalXml <= 1e-9) return true;
+    if (t.divergentes > 0) return false;
+    return Math.abs(t.totalXml - t.totalBip) <= 1e-6;
+}
+
+async function _terceirosValidarBipagemAntesConcluirRecebimento() {
+    var documentoId = _resolverIdDocumentoTerceirosParaStatus();
+    if (documentoId == null) {
+        showMessage('Selecione uma nota.', 'warning');
+        return false;
+    }
+    await _flushTerceirosAntesConcluirRecebimento(documentoId);
+    var itens = window._terceirosBipagemItens;
+    var row = Object.assign({}, _terceirosDocAtual || {});
+    if (Array.isArray(itens) && itens.length) {
+        var totItens = _terceirosCalcularTotaisConferencia(null, itens);
+        row.quantidade_total_xml = totItens.totalXml;
+        row.quantidade_total_bipada = totItens.totalBip;
+        row.itens_divergentes = totItens.divergentes;
+    } else {
+        row.quantidade_total_bipada = Math.max(
+            parseFloat(row.quantidade_total_bipada) || 0,
+            _terceirosTotalBipadoItensLocais()
+        );
+    }
+    if (_terceirosConferenciaEstaCompleta(row, itens)) return true;
+    var tot = _terceirosCalcularTotaisConferencia(row, itens);
+    var msgEl = document.getElementById('ter-concluir-sem-bipagem-texto');
+    if (msgEl) {
+        msgEl.innerHTML = 'A bipagem ainda não está completa.<br><strong>XML:</strong> '
+            + escapeHtml(_formatTerQtdDisplay(tot.totalXml))
+            + ' · <strong>Bipado:</strong> '
+            + escapeHtml(_formatTerQtdDisplay(tot.totalBip))
+            + (tot.divergentes ? (' · <strong>Itens divergentes:</strong> ' + escapeHtml(String(tot.divergentes))) : '')
+            + '<br><br>Deseja marcar o recebimento como concluído mesmo assim?';
+    }
+    return abrirModalConcluirRecebimentoSemBipagemCompleta();
+}
+
 function renderTerceirosConferenciaResumoHtml(row) {
-    var resumo = row.resumo || {};
-    var totalXml = parseFloat(row.quantidade_total_xml != null ? row.quantidade_total_xml : resumo.quantidade_total_xml) || 0;
-    var totalBip = parseFloat(row.quantidade_total_bipada != null ? row.quantidade_total_bipada : resumo.quantidade_total_bipada) || 0;
-    var divergentes = parseInt(row.itens_divergentes != null ? row.itens_divergentes : resumo.itens_com_pendencia, 10) || 0;
+    var tot = _terceirosCalcularTotaisConferencia(row, null);
+    var totalXml = tot.totalXml;
+    var totalBip = tot.totalBip;
+    var divergentes = tot.divergentes;
     var completo = divergentes === 0 && Math.abs(totalXml - totalBip) <= 1e-6;
     var conferenciaHtml = completo
         ? '<span class="status-badge status-OK">✅ Completo</span>'
@@ -4894,6 +4997,14 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
         showMessage('Para esta rota, informe o motorista da carreta antes de continuar.', 'warning');
         await refreshTerceirosViews();
         return;
+    }
+    if ((campo === 'enviar_para_mg' || campo === 'carga_recebida_mg') && String(valor).toLowerCase() === 'sim') {
+        var rowAvanco = opcoes.row || _terceirosRowPorId(documentoId);
+        if (rowAvanco && !_terceirosRecebimentoEstaConcluido(rowAvanco)) {
+            showMessage('Conclua o recebimento na 2ª aba — Pendência de recebimento antes de avançar.', 'warning');
+            await refreshTerceirosViews();
+            return;
+        }
     }
     if (campo === 'nota_lancada' && String(valor).toLowerCase() === 'sim' && !_terceirosOpPodeLancarNotaSemConfirmacao(opcoes)) {
         var confirmouLocal = await abrirModalLancamentoSemRecebimento();
@@ -6292,7 +6403,6 @@ async function finalizarDescargaTerceiros() {
         showMessage('Conclusão de recebimento em curso. Aguarde.', 'warning');
         return;
     }
-    if (!confirm('Finalizar descarga? O recebimento será marcado como concluído. Itens ainda pendentes de bipagem permanecem com status pendente.')) return;
     var fin = document.getElementById('btn-ter-finalizar-descarga');
     if (fin) {
         fin.disabled = true;
@@ -6527,6 +6637,11 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin, opcoes) {
         atualizarBotaoConclusaoTerceiros(getTerceirosPrefixo(), true);
         return;
     }
+    if (!opcoes._bipagemValidada) {
+        opcoes._bipagemValidada = true;
+        var okBip = await _terceirosValidarBipagemAntesConcluirRecebimento();
+        if (!okBip) return;
+    }
     if (!opcoes._confirmacaoRecebimento) {
         opcoes._confirmacaoRecebimento = true;
         if (opcoes.perguntarDestino === true) {
@@ -6610,6 +6725,11 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             return;
         }
         if (pedidoConclusaoRecebimento && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido)) {
+            if (!opcoes._bipagemValidada) {
+                opcoes._bipagemValidada = true;
+                var okBipReceb = await _terceirosValidarBipagemAntesConcluirRecebimento();
+                if (!okBipReceb) return;
+            }
             _terceirosRecebimentoConcluindo = true;
             try {
                 await _terceirosExecutarConcluirRecebimento(documentoId, btnConcluir, {
@@ -6837,6 +6957,14 @@ function initForms() {
     if (btnTerSemRecebCancelar) btnTerSemRecebCancelar.addEventListener('click', function() { fecharModalLancamentoSemRecebimento(false); });
     if (btnTerSemRecebClose) btnTerSemRecebClose.addEventListener('click', function() { fecharModalLancamentoSemRecebimento(false); });
 
+    const modalTerSemBip = document.getElementById('modal-terceiros-concluir-sem-bipagem-completa');
+    const btnTerSemBipConfirmar = document.getElementById('btn-ter-confirmar-concluir-sem-bipagem');
+    const btnTerSemBipCancelar = document.getElementById('btn-ter-cancelar-concluir-sem-bipagem');
+    const btnTerSemBipClose = document.getElementById('modal-terceiros-concluir-sem-bipagem-completa-close');
+    if (btnTerSemBipConfirmar) btnTerSemBipConfirmar.addEventListener('click', function() { fecharModalConcluirRecebimentoSemBipagemCompleta(true); });
+    if (btnTerSemBipCancelar) btnTerSemBipCancelar.addEventListener('click', function() { fecharModalConcluirRecebimentoSemBipagemCompleta(false); });
+    if (btnTerSemBipClose) btnTerSemBipClose.addEventListener('click', function() { fecharModalConcluirRecebimentoSemBipagemCompleta(false); });
+
     const modalTerExcluir = document.getElementById('modal-terceiros-excluir-documento');
     const btnTerExcluirConfirmar = document.getElementById('btn-ter-confirmar-excluir-documento');
     const btnTerExcluirCancelar = document.getElementById('btn-ter-cancelar-excluir-documento');
@@ -6878,6 +7006,9 @@ function initForms() {
         }
         if (modalTerSemReceb && e.target === modalTerSemReceb && !_terceirosDeveIgnorarCliqueBackdropModal()) {
             fecharModalLancamentoSemRecebimento(false);
+        }
+        if (modalTerSemBip && e.target === modalTerSemBip && !_terceirosDeveIgnorarCliqueBackdropModal()) {
+            fecharModalConcluirRecebimentoSemBipagemCompleta(false);
         }
         if (modalTerExcluir && e.target === modalTerExcluir) {
             fecharModalExcluirDocumento(false);
