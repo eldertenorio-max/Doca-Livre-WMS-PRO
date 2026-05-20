@@ -7385,15 +7385,40 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
     return documento_id
 
 
-def _carregar_documento_terceiros(conn, documento_id):
-    row = conn.execute('SELECT * FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,)).fetchone()
+def _sql_cols_terceiros_documento_itens():
+    """Colunas dos itens para detalhe/bipagem — sem blobs desnecessários."""
+    return (
+        'id, documento_id, n_item, codigo_ean, codigo_produto_xml, descricao_xml, unidade_xml, '
+        'quantidade_xml, codigo_produto_base, codigo_barras_base, descricao_base, quantidade_bipada, '
+        'status_bipagem, motivo, ultimo_ean_bipado, atualizado_em, atualizado_por'
+    )
+
+
+def _carregar_documento_terceiros(conn, documento_id, incluir_eventos=False):
+    tbl_d = _tbl_terceiros_documentos(conn)
+    cols_d = _sql_cols_terceiros_documentos_listagem('d')
+    row = conn.execute(
+        'SELECT ' + cols_d + ' FROM ' + tbl_d + ' d WHERE d.id = ?',
+        (documento_id,),
+    ).fetchone()
     if not row:
         return None
     doc = dict(row) if hasattr(row, 'keys') else {}
-    doc['numero_pedido'] = _numero_pedido_terceiros(doc, conn, documento_id)
-    doc['destinatario_uf'] = _uf_destinatario_terceiros(doc, conn, documento_id)
-    itens_rows = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE documento_id = ? ORDER BY n_item, id', (documento_id,)).fetchall()
-    eventos_rows = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_eventos(conn) + ' WHERE documento_id = ? ORDER BY criado_em DESC, id DESC', (documento_id,)).fetchall()
+    doc['numero_pedido'] = _normalizar_numero_pedido_terceiros(doc.get('numero_pedido'))
+    doc['destinatario_uf'] = (doc.get('destinatario_uf') or '').strip().upper()
+    tbl_i = _tbl_terceiros_documento_itens(conn)
+    itens_rows = conn.execute(
+        'SELECT ' + _sql_cols_terceiros_documento_itens() + ' FROM ' + tbl_i
+        + ' WHERE documento_id = ? ORDER BY n_item, id',
+        (documento_id,),
+    ).fetchall()
+    eventos_rows = []
+    if incluir_eventos:
+        eventos_rows = conn.execute(
+            'SELECT * FROM ' + _tbl_terceiros_documento_eventos(conn)
+            + ' WHERE documento_id = ? ORDER BY criado_em DESC, id DESC',
+            (documento_id,),
+        ).fetchall()
     itens = []
     for r in itens_rows or []:
         item = dict(r) if hasattr(r, 'keys') else {}
@@ -7411,6 +7436,7 @@ def _carregar_documento_terceiros(conn, documento_id):
         'quantidade_total_bipada': round(sum(float(i.get('quantidade_bipada') or 0) for i in itens), 3),
         'itens_com_pendencia': sum(1 for i in itens if i.get('status_bipagem') != 'COMPLETO'),
     }
+    doc.pop('xml_conteudo', None)
     return doc
 
 
@@ -8322,7 +8348,8 @@ def api_terceiros_documento_detalhe(documento_id):
     conn = get_db()
     try:
         _ensure_terceiros_schema(conn)
-        doc = _carregar_documento_terceiros(conn, documento_id)
+        incluir_eventos = (request.args.get('eventos') or '').strip().lower() in ('1', 'sim', 'true', 'yes')
+        doc = _carregar_documento_terceiros(conn, documento_id, incluir_eventos=incluir_eventos)
         if not doc:
             return jsonify({'erro': 'Documento não encontrado.'}), 404
         doc['motorista_obrigatorio'] = _motorista_obrigatorio_terceiros(doc)
@@ -8414,7 +8441,14 @@ def api_terceiros_documento_danfe(documento_id):
         doc = _carregar_documento_terceiros(conn, documento_id)
         if not doc:
             return Response('Documento não encontrado.', status=404, mimetype='text/plain; charset=utf-8')
-        xml_texto = (doc.get('xml_conteudo') or '').strip()
+        row_xml = conn.execute(
+            'SELECT xml_conteudo FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?',
+            (documento_id,),
+        ).fetchone()
+        xml_texto = ''
+        if row_xml:
+            xml_texto = (row_xml['xml_conteudo'] if hasattr(row_xml, 'keys') else row_xml[0]) or ''
+        xml_texto = str(xml_texto).strip()
         if not xml_texto:
             return Response(
                 'XML da nota fiscal não disponível para esta NF.',
@@ -8720,7 +8754,12 @@ def api_terceiros_status(documento_id):
     conn = get_db()
     try:
         _ensure_terceiros_schema(conn)
-        row = conn.execute('SELECT * FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,)).fetchone()
+        tbl_d = _tbl_terceiros_documentos(conn)
+        cols_d = _sql_cols_terceiros_documentos_listagem('d')
+        row = conn.execute(
+            'SELECT ' + cols_d + ' FROM ' + tbl_d + ' d WHERE d.id = ?',
+            (documento_id,),
+        ).fetchone()
         if not row:
             return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
         doc = dict(row) if hasattr(row, 'keys') else {}

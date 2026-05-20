@@ -382,7 +382,7 @@ function terceirosAplicarPainelAbaSomenteUi(aba) {
     var pendenciasMg = document.getElementById('terceiros-panel-pendencias-mg');
     var historico = document.getElementById('terceiros-panel-historico');
     var relatorios = document.getElementById('terceiros-panel-relatorios');
-    if (!botoes.length || !painel || !enviarXml || !recebimento || !fornecedoresRecebidos || !pendentesLancamento || !notasLancadas || !notasEnviadasMg || !recebimentosMg || !pendenciasMg || !historico || !relatorios) return;
+    if (!botoes.length || !painel || !enviarXml || !recebimento || !fornecedoresRecebidos) return;
     botoes.forEach(function(btn) {
         btn.classList.toggle('active', btn.getAttribute('data-ter-tab') === aba);
     });
@@ -390,13 +390,13 @@ function terceirosAplicarPainelAbaSomenteUi(aba) {
     enviarXml.classList.toggle('devolucoes-panel-active', aba === 'enviar-xml');
     recebimento.classList.toggle('devolucoes-panel-active', aba === 'pendencia-recebimento');
     fornecedoresRecebidos.classList.toggle('devolucoes-panel-active', aba === 'fornecedores-recebidos');
-    pendentesLancamento.classList.toggle('devolucoes-panel-active', aba === 'pendentes-lancamento');
-    notasLancadas.classList.toggle('devolucoes-panel-active', aba === 'notas-lancadas');
-    notasEnviadasMg.classList.toggle('devolucoes-panel-active', aba === 'notas-enviadas-mg');
-    recebimentosMg.classList.toggle('devolucoes-panel-active', aba === 'recebimentos-mg');
-    pendenciasMg.classList.toggle('devolucoes-panel-active', aba === 'pendencias-mg');
-    historico.classList.toggle('devolucoes-panel-active', aba === 'historico');
-    relatorios.classList.toggle('devolucoes-panel-active', aba === 'relatorios');
+    if (pendentesLancamento) pendentesLancamento.classList.toggle('devolucoes-panel-active', aba === 'pendentes-lancamento');
+    if (notasLancadas) notasLancadas.classList.toggle('devolucoes-panel-active', aba === 'notas-lancadas');
+    if (notasEnviadasMg) notasEnviadasMg.classList.toggle('devolucoes-panel-active', aba === 'notas-enviadas-mg');
+    if (recebimentosMg) recebimentosMg.classList.toggle('devolucoes-panel-active', aba === 'recebimentos-mg');
+    if (pendenciasMg) pendenciasMg.classList.toggle('devolucoes-panel-active', aba === 'pendencias-mg');
+    if (historico) historico.classList.toggle('devolucoes-panel-active', aba === 'historico');
+    if (relatorios) relatorios.classList.toggle('devolucoes-panel-active', aba === 'relatorios');
     _persistirTerceirosSubabaNaSessao(aba);
     if (aba !== 'pendencia-recebimento') {
         _limparTerceirosDocumentoNaSessao();
@@ -1912,37 +1912,33 @@ async function _terceirosAplicarUiAposRecebimentoConcluido(documentoId, document
     aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado);
     void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
     if (irParaFornecedores) {
-        _terceirosAtualizarProgressoRecebimento(
-            'Abrindo Fornecedores recebidos…',
-            'A NF já foi salva; preparando a 3ª aba do fluxo.'
-        );
-        terceirosAplicarPainelAbaSomenteUi('fornecedores-recebidos');
         resetTerceirosDetalhe();
+        terceirosAplicarPainelAbaSomenteUi('fornecedores-recebidos');
         _terceirosRestaurarBotaoRecebimentoConcluido();
-        try {
-            invalidateTerceirosListaCache();
-            await _terceirosAguardarComTimeout(
-                loadTerceirosFornecedoresRecebidos(),
-                35000,
-                'TERCEIROS_LISTA_FORN_TIMEOUT'
-            );
-        } catch (e) {
+        fecharTerAcaoLoading();
+        window._terceirosUiRecebimentoConcluidoAplicada = true;
+        var painelForn = document.getElementById('terceiros-panel-fornecedores-recebidos');
+        if (painelForn) {
+            window.requestAnimationFrame(function() {
+                painelForn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        }
+        invalidateTerceirosListaCache();
+        void loadTerceirosFornecedoresRecebidos().catch(function(e) {
             console.error(e);
             showMessage(
-                'Recebimento concluído e aba aberta. Se a lista não aparecer, atualize a página ou troque de aba e volte.',
+                'Recebimento concluído. Se a lista da 3ª aba não atualizar, troque de aba e volte ou atualize a página.',
                 'warning'
             );
-        }
-        try {
-            void loadTerceirosDocumentos();
-        } catch (e2) {
+        });
+        void loadTerceirosDocumentos().catch(function(e2) {
             console.error(e2);
-        }
+        });
         animarConclusaoTerceiros(prefixoConcl);
         window.setTimeout(function() {
             abrirModalRecebimentoConcluidoTerceiros();
         }, 0);
-        showMessage('Recebimento concluído.', 'success');
+        showMessage('Recebimento concluído. A NF está na aba Fornecedores recebidos.', 'success');
         return;
     }
     try {
@@ -3707,6 +3703,7 @@ async function abrirPendenciaTerceirosComScroll(area, documentoId, secao, opcoes
     var comModalDescarga = opcoes.modalLoading === true;
     var comLoadingAcao = opcoes.loadingAcao === true;
     window._terceirosSuprimirFecharDescargaDocId = documentoId;
+    _terceirosIniciarPrefetchDetalhe(documentoId);
     if (comModalDescarga) {
         abrirModalCarregandoDescargaTerceiros(
             opcoes.mensagemLoading || 'Abrindo descarga e conferência…'
@@ -3773,6 +3770,19 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
     var tbody = document.getElementById('ter-tbody-recebimento-documentos');
     if (!tbody) return;
     window._terceirosPendenciaRecebimentoDelegacaoOk = true;
+    tbody.addEventListener('mousedown', function(ev) {
+        var el = ev.target;
+        if (!el || typeof el.closest !== 'function') return;
+        var desc = el.closest('[data-ter-descarregar-pend]');
+        var det = el.closest('[data-ter-ver-detalhe-pend]');
+        var alvo = desc || det;
+        if (!alvo || !tbody.contains(alvo)) return;
+        var idP = terceirosIdDocumentoDeAtributo(
+            (desc && desc.getAttribute('data-ter-descarregar-pend'))
+            || (det && det.getAttribute('data-ter-ver-detalhe-pend'))
+        );
+        if (Number.isFinite(idP)) _terceirosIniciarPrefetchDetalhe(idP);
+    });
     tbody.addEventListener('click', function(ev) {
         var el = ev.target;
         if (!el || typeof el.closest !== 'function') return;
@@ -5618,6 +5628,121 @@ window.zerarBipagemTerceirosDocumento = async function() {
     }
 };
 
+var _terceirosDetalhePrefetchPromises = {};
+
+function _terceirosUrlDocumentoDetalhe(documentoId) {
+    return '/terceiros/documentos/' + encodeURIComponent(documentoId) + '?sem_eventos=1';
+}
+
+function _terceirosBuscarRowNoCache(documentoId) {
+    var idStr = String(documentoId);
+    var pend = window._terceirosPendenciaRowsCache;
+    if (Array.isArray(pend)) {
+        for (var i = 0; i < pend.length; i++) {
+            if (pend[i] && String(pend[i].id) === idStr) return pend[i];
+        }
+    }
+    var hit = _terceirosObterCacheLista();
+    if (hit && Array.isArray(hit.rows)) {
+        for (var j = 0; j < hit.rows.length; j++) {
+            if (hit.rows[j] && String(hit.rows[j].id) === idStr) return hit.rows[j];
+        }
+    }
+    return null;
+}
+
+function _terceirosTemBipagemPendenteLocal() {
+    var p = window._terceirosBipagemPending;
+    if (!p) return false;
+    if (Object.keys(p.adds || {}).length || Object.keys(p.removes || {}).length) return true;
+    if (Object.keys(p.addTimers || {}).length || Object.keys(p.removeTimers || {}).length) return true;
+    return false;
+}
+
+function _terceirosIniciarPrefetchDetalhe(documentoId) {
+    var id = parseInt(documentoId, 10);
+    if (!Number.isFinite(id) || id <= 0) return;
+    if (_terceirosDetalhePrefetchPromises[id]) return;
+    _terceirosDetalhePrefetchPromises[id] = fetchAPIComTimeout(_terceirosUrlDocumentoDetalhe(id), {}, 55000)
+        .catch(function() {
+            delete _terceirosDetalhePrefetchPromises[id];
+            return null;
+        });
+}
+
+async function _terceirosFetchDocumentoDetalhe(documentoId, fetchOpts) {
+    var id = parseInt(documentoId, 10);
+    var pref = _terceirosDetalhePrefetchPromises[id];
+    if (pref) {
+        delete _terceirosDetalhePrefetchPromises[id];
+        return pref;
+    }
+    return fetchAPIComTimeout(_terceirosUrlDocumentoDetalhe(id), fetchOpts || {}, 55000);
+}
+
+function _terceirosAplicarResumoRapidoDetalhe(row) {
+    if (!row) return;
+    var prefixo = getTerceirosPrefixo();
+    var qXml = parseFloat(row.quantidade_total_xml) || 0;
+    var qBip = parseFloat(row.quantidade_total_bipada) || 0;
+    var pend = parseInt(row.itens_divergentes, 10);
+    if (!Number.isFinite(pend)) pend = 0;
+    var elXml = document.getElementById(prefixo + '-stat-qtd-xml');
+    var elBip = document.getElementById(prefixo + '-stat-qtd-bipada');
+    var elPend = document.getElementById(prefixo + '-stat-pendencias');
+    if (elXml) elXml.textContent = _formatTerQtdDisplay(qXml);
+    if (elBip) elBip.textContent = _formatTerQtdDisplay(qBip);
+    if (elPend) elPend.textContent = String(pend);
+}
+
+function _terceirosAplicarCabecalhoDetalheUi(doc, area) {
+    if (!doc) return;
+    var prefixo = getTerceirosPrefixo();
+    var vazio = document.getElementById('ter-recebimento-detalhe-vazio');
+    var detalhe = document.getElementById('ter-recebimento-detalhe');
+    if (vazio) vazio.style.display = 'none';
+    if (detalhe) detalhe.style.display = 'block';
+    var btnVoltarLista = document.getElementById('btn-ter-voltar-lista-nf');
+    if (btnVoltarLista) btnVoltarLista.style.display = 'inline-block';
+    var hidId = document.getElementById('ter-rec-documento-id');
+    if (hidId && doc.id != null) hidId.value = String(doc.id);
+    var statNf = document.getElementById(prefixo + '-stat-nf');
+    var pedido = document.getElementById(prefixo + '-pedido');
+    if (statNf) statNf.textContent = (doc.numero_nf || '-') + (doc.serie_nf ? ('/' + doc.serie_nf) : '');
+    if (pedido) pedido.textContent = doc.numero_pedido || '-';
+    var remetente = document.getElementById(prefixo + '-remetente');
+    var destinatario = document.getElementById(prefixo + '-destinatario');
+    var destinatarioUf = document.getElementById(prefixo + '-destinatario-uf');
+    var previsao = document.getElementById(prefixo + '-previsao');
+    if (remetente) remetente.textContent = doc.remetente_nome || '-';
+    if (destinatario) destinatario.textContent = doc.destinatario_nome || '-';
+    if (destinatarioUf) destinatarioUf.textContent = doc.destinatario_uf || '-';
+    if (previsao) previsao.textContent = doc.previsao_chegada || '-';
+    var motCarreta = document.getElementById(prefixo + '-motorista-carreta');
+    var plaCarreta = document.getElementById(prefixo + '-placa-carreta');
+    if (motCarreta) motCarreta.textContent = doc.motorista_carreta || '-';
+    if (plaCarreta) plaCarreta.textContent = doc.placa_carreta || '-';
+    var elDocId = document.getElementById('ter-rec-doc-id-display');
+    if (elDocId) elDocId.textContent = doc.id != null ? String(doc.id) : '—';
+    var elOrigem = document.getElementById('ter-rec-origem-badge');
+    var areaDoc = doc.area || area || 'recebimento';
+    if (elOrigem) {
+        if (areaDoc === 'carreta') {
+            elOrigem.style.display = 'inline-block';
+            elOrigem.textContent = 'Carreta';
+            elOrigem.className = 'ter-origem-badge ter-origem-badge--carreta';
+        } else {
+            elOrigem.style.display = 'none';
+            elOrigem.textContent = '';
+            elOrigem.className = 'ter-origem-badge';
+        }
+    }
+    var rc = isTerceirosFlagSim(doc.recebimento_concluido);
+    preencherMetaTerceiros(prefixo, 'concluido-meta', rc ? 'Concluído' : '', doc.recebimento_concluido_por || '', doc.recebimento_concluido_em || '');
+    atualizarBotaoConclusaoTerceiros(prefixo, rc);
+    _terceirosAplicarResumoRapidoDetalhe(doc);
+}
+
 async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
     opcoes = opcoes || {};
     if (area !== 'expedicao' && area !== 'carreta') area = 'recebimento';
@@ -5629,39 +5754,31 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
     var docAnterior = _terceirosDocAtual.id;
     var mudouDocumento = docAnterior == null || Number(docAnterior) !== idAlvo;
 
-    const prefixo = getTerceirosPrefixo();
     const vazio = document.getElementById('ter-recebimento-detalhe-vazio');
     const detalhe = document.getElementById('ter-recebimento-detalhe');
     const tbody = document.getElementById('ter-tbody-recebimento-itens');
+    var rowCache = _terceirosBuscarRowNoCache(idAlvo);
 
     if (mudouDocumento) {
-        // Painel visível + loading antes do flush (muitas chamadas à API) para o clique não parecer morto.
         if (vazio) vazio.style.display = 'none';
         if (detalhe) detalhe.style.display = 'block';
         var btnVoltarListaLoad = document.getElementById('btn-ter-voltar-lista-nf');
         if (btnVoltarListaLoad) btnVoltarListaLoad.style.display = 'inline-block';
+        if (rowCache) {
+            _terceirosAplicarCabecalhoDetalheUi(rowCache, area);
+            if (opcoes.descargaLoad) fecharModalCarregandoDescargaTerceiros();
+        }
         var idAntNum = docAnterior != null && docAnterior !== '' ? Number(docAnterior) : NaN;
-        var vaiFlush = Number.isFinite(idAntNum) && idAntNum > 0;
+        var vaiFlush = Number.isFinite(idAntNum) && idAntNum > 0 && _terceirosTemBipagemPendenteLocal();
         if (tbody) {
             tbody.innerHTML = '<tr><td colspan="12" class="loading">' + (vaiFlush
                 ? 'Salvando bipagens pendentes…'
-                : 'Carregando detalhe…') + '</td></tr>';
+                : 'Carregando itens da NF…') + '</td></tr>';
         }
-        if (vaiFlush) {
-            try {
-                await _flushTerceirosPendingDocumento(idAntNum);
-            } catch (e) {
-                if (_terceirosErroDescargaCancelada(e)) throw e;
-                console.error(e);
-            }
-            if (terceirosDescargaFoiCancelado()) return;
-            if (tbody && seq === window._terceirosDetalheCargaSeq) {
-                tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando detalhe…</td></tr>';
-            }
-        }
-        _limparPendenciasBipagemTerceiros();
     } else if (tbody && (opcoes.acaoLoad || opcoes.descargaLoad)) {
-        tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando detalhe…</td></tr>';
+        if (rowCache) _terceirosAplicarCabecalhoDetalheUi(rowCache, area);
+        if (opcoes.descargaLoad) fecharModalCarregandoDescargaTerceiros();
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando itens da NF…</td></tr>';
     }
 
     if (terceirosDescargaFoiCancelado() || window._terAcaoLoadCancelado) return;
@@ -5672,8 +5789,28 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
     var sigAcao = opcoes.acaoLoad ? terAcaoLoadingSignal() : null;
     if (sigDescarga) fetchOpts.signal = sigDescarga;
     else if (sigAcao) fetchOpts.signal = sigAcao;
+
+    var idAntFlush = docAnterior != null && docAnterior !== '' ? Number(docAnterior) : NaN;
+    var precisaFlush = mudouDocumento && Number.isFinite(idAntFlush) && idAntFlush > 0 && _terceirosTemBipagemPendenteLocal();
+    var flushP = null;
+    if (precisaFlush) {
+        flushP = _flushTerceirosPendingDocumento(idAntFlush).then(function() {
+            _limparPendenciasBipagemTerceiros();
+        }).catch(function(e) {
+            if (_terceirosErroDescargaCancelada(e)) throw e;
+            console.error(e);
+        });
+    } else if (mudouDocumento) {
+        _limparPendenciasBipagemTerceiros();
+    }
+    var fetchP = _terceirosFetchDocumentoDetalhe(idAlvo, fetchOpts);
     try {
-        doc = await fetchAPIComTimeout('/terceiros/documentos/' + encodeURIComponent(idAlvo), fetchOpts, 55000);
+        if (flushP) {
+            var par = await Promise.all([flushP, fetchP]);
+            doc = par[1];
+        } else {
+            doc = await fetchP;
+        }
     } catch (err) {
         if (_terceirosErroDescargaCancelada(err) || _terAcaoFoiCancelado(err)) throw err;
         console.error(err);
@@ -5698,44 +5835,8 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
         area: doc.area || area,
         recebimento_concluido: isTerceirosFlagSim(doc.recebimento_concluido)
     });
-    var hidId = document.getElementById('ter-rec-documento-id');
-    if (hidId) hidId.value = doc.id != null ? String(doc.id) : '';
-    if (vazio) vazio.style.display = 'none';
-    if (detalhe) detalhe.style.display = 'block';
-    var btnVoltarLista = document.getElementById('btn-ter-voltar-lista-nf');
-    if (btnVoltarLista) btnVoltarLista.style.display = 'inline-block';
-    var statNf = document.getElementById(prefixo + '-stat-nf');
-    var pedido = document.getElementById(prefixo + '-pedido');
-    if (statNf) statNf.textContent = (doc.numero_nf || '-') + (doc.serie_nf ? ('/' + doc.serie_nf) : '');
-    if (pedido) pedido.textContent = doc.numero_pedido || '-';
-    var remetente = document.getElementById(prefixo + '-remetente');
-    var destinatario = document.getElementById(prefixo + '-destinatario');
-    var destinatarioUf = document.getElementById(prefixo + '-destinatario-uf');
-    var previsao = document.getElementById(prefixo + '-previsao');
-    if (remetente) remetente.textContent = doc.remetente_nome || '-';
-    if (destinatario) destinatario.textContent = doc.destinatario_nome || '-';
-    if (destinatarioUf) destinatarioUf.textContent = doc.destinatario_uf || '-';
-    if (previsao) previsao.textContent = doc.previsao_chegada || '-';
-    var motCarreta = document.getElementById(prefixo + '-motorista-carreta');
-    var plaCarreta = document.getElementById(prefixo + '-placa-carreta');
-    if (motCarreta) motCarreta.textContent = doc.motorista_carreta || '-';
-    if (plaCarreta) plaCarreta.textContent = doc.placa_carreta || '-';
-    var elDocId = document.getElementById('ter-rec-doc-id-display');
-    if (elDocId) elDocId.textContent = doc.id != null ? String(doc.id) : '—';
-    var elOrigem = document.getElementById('ter-rec-origem-badge');
-    if (elOrigem) {
-        if ((doc.area || '') === 'carreta') {
-            elOrigem.style.display = 'inline-block';
-            elOrigem.textContent = 'Carreta';
-            elOrigem.className = 'ter-origem-badge ter-origem-badge--carreta';
-        } else {
-            elOrigem.style.display = 'none';
-            elOrigem.textContent = '';
-            elOrigem.className = 'ter-origem-badge';
-        }
-    }
-    preencherMetaTerceiros(prefixo, 'concluido-meta', doc.recebimento_concluido ? 'Concluído' : '', doc.recebimento_concluido_por || '', doc.recebimento_concluido_em || '');
-    atualizarBotaoConclusaoTerceiros(prefixo, doc.recebimento_concluido);
+    _terceirosAplicarCabecalhoDetalheUi(doc, area);
+    if (opcoes.descargaLoad) fecharModalCarregandoDescargaTerceiros();
 
     if (!tbody) return;
     if (seq !== window._terceirosDetalheCargaSeq) return;
@@ -6016,7 +6117,7 @@ async function finalizarDescargaTerceiros() {
         fin.textContent = 'A guardar…';
     }
     try {
-        await concluirRecebimentoTerceirosPelaDescarga(fin);
+        await concluirRecebimentoTerceirosPelaDescarga(fin, { irFornecedores: true });
     } finally {
         if (fin) {
             fin.disabled = false;
@@ -6188,18 +6289,23 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin, opcoes) {
         return;
     }
     if (!opcoes._confirmacaoRecebimento) {
-        var escolhaPre = await abrirModalConfirmarRecebimentoFornecedores();
-        if (!escolhaPre) return;
         opcoes._confirmacaoRecebimento = true;
-        opcoes.irFornecedores = escolhaPre === 'ir';
+        if (opcoes.perguntarDestino === true) {
+            var escolhaPre = await abrirModalConfirmarRecebimentoFornecedores();
+            if (!escolhaPre) return;
+            opcoes.irFornecedores = escolhaPre === 'ir';
+        } else {
+            opcoes.irFornecedores = opcoes.irFornecedores !== false;
+        }
     }
-    var irParaFornecedores = opcoes.irFornecedores === true;
+    var irParaFornecedores = opcoes.irFornecedores !== false;
     if (_terceirosRecebimentoConcluindo) {
         showMessage('Conclusão de recebimento em curso. Aguarde.', 'warning');
         return;
     }
     _terceirosRecebimentoConcluindo = true;
     window._terAcaoLoadCancelado = false;
+    window._terceirosUiRecebimentoConcluidoAplicada = false;
     mostrarTerAcaoLoading(
         'Concluindo recebimento…',
         irParaFornecedores
@@ -6225,7 +6331,10 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin, opcoes) {
     } finally {
         _terceirosLogFluxoRecebimento('DESCARGA FINALLY executou');
         _terceirosRecebimentoConcluindo = false;
-        fecharTerAcaoLoading();
+        if (!window._terceirosUiRecebimentoConcluidoAplicada) {
+            fecharTerAcaoLoading();
+        }
+        window._terceirosUiRecebimentoConcluidoAplicada = false;
         _terceirosRestaurarBotaoRecebimentoConcluido(fin);
     }
 }
@@ -6244,6 +6353,7 @@ async function acionarRecebimentoConcluidoTerceirosDireto(btn) {
 }
 
 async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
+    opcoes = opcoes || {};
     var prefixo = getTerceirosPrefixo();
     var btnConcluir = document.getElementById('btn-' + prefixo + '-concluir');
     var pedidoConclusaoRecebimento = campo === 'recebimento_concluido' && String(valor).toLowerCase() === 'sim';
@@ -6257,13 +6367,18 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
         if (isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido)) {
             return;
         }
-        var escolhaReceb = await abrirModalConfirmarRecebimentoFornecedores();
-        if (!escolhaReceb) return;
-        irParaFornecedoresAposConcluir = escolhaReceb === 'ir';
+        if (opcoes && opcoes.perguntarDestino === true) {
+            var escolhaReceb = await abrirModalConfirmarRecebimentoFornecedores();
+            if (!escolhaReceb) return;
+            irParaFornecedoresAposConcluir = escolhaReceb === 'ir';
+        } else {
+            irParaFornecedoresAposConcluir = opcoes && opcoes.irFornecedores === false ? false : true;
+        }
     }
     var overlayConclusaoAtivo = false;
     if (pedidoConclusaoRecebimento && !isTerceirosFlagSim(_terceirosDocAtual.recebimento_concluido)) {
         window._terAcaoLoadCancelado = false;
+        window._terceirosUiRecebimentoConcluidoAplicada = false;
         mostrarTerAcaoLoading(
             'Concluindo recebimento…',
             irParaFornecedoresAposConcluir
@@ -6447,7 +6562,10 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
             window.clearTimeout(watchdogConcluir);
         }
         if (overlayConclusaoAtivo) {
-            fecharTerAcaoLoading();
+            if (!window._terceirosUiRecebimentoConcluidoAplicada) {
+                fecharTerAcaoLoading();
+            }
+            window._terceirosUiRecebimentoConcluidoAplicada = false;
             _terceirosRestaurarBotaoRecebimentoConcluido(btnConcluir);
         }
     }
