@@ -88,6 +88,7 @@ document.addEventListener('DOMContentLoaded', function() {
     void _terceirosGarantirPrefetchLista();
     initTerceirosAlertasHeader();
     initTerceirosPendenciaRecebimentoDelegacao();
+    initTerceirosExcluirDelegacaoGlobal();
     initTerceirosBotoesPdfXmlDelegacao();
     initTerceirosModalPopupBloqueado();
     initTerceirosModalConfirmarRecebimentoFornecedores();
@@ -2153,7 +2154,7 @@ async function _terceirosAposConfirmarEnviarMgSim(documentoId, documentoResp) {
 
 function fecharModalExcluirDocumento(confirmado) {
     var modal = document.getElementById('modal-terceiros-excluir-documento');
-    if (modal) modal.style.display = 'none';
+    _terceirosOcultarModalOverlay(modal);
     if (_terceirosExcluirDocumentoResolver) {
         _terceirosExcluirDocumentoResolver(!!confirmado);
         _terceirosExcluirDocumentoResolver = null;
@@ -2173,9 +2174,94 @@ function abrirModalExcluirDocumento(infoDocumento) {
     if (!modal) {
         return Promise.resolve(window.confirm('Deseja excluir esta NF do módulo de terceiros?'));
     }
-    modal.style.display = 'block';
     return new Promise(function(resolve) {
         _terceirosExcluirDocumentoResolver = resolve;
+        _terceirosPrepararModalConfirmacaoBackdrop();
+        window.setTimeout(function() {
+            _terceirosExibirModalOverlay(modal);
+        }, 0);
+    });
+}
+
+var TERCEIROS_EXCLUIR_BTN_SELETOR = [
+    '[data-ter-excluir-doc]',
+    '[data-ter-excluir-fornecedor-doc]',
+    '[data-ter-excluir-pend-lanc-doc]',
+    '[data-ter-excluir-lancada-doc]',
+    '[data-ter-excluir-enviada-doc]',
+    '[data-ter-excluir-receb-mg-doc]',
+    '[data-ter-excluir-pendencia-doc]',
+    '[data-ter-excluir-historico-doc]'
+].join(', ');
+
+var TERCEIROS_EXCLUIR_BTN_ATTRS = [
+    'data-ter-excluir-doc',
+    'data-ter-excluir-fornecedor-doc',
+    'data-ter-excluir-pend-lanc-doc',
+    'data-ter-excluir-lancada-doc',
+    'data-ter-excluir-enviada-doc',
+    'data-ter-excluir-receb-mg-doc',
+    'data-ter-excluir-pendencia-doc',
+    'data-ter-excluir-historico-doc'
+];
+
+function _terceirosObterIdDoBotaoExcluir(btn) {
+    if (!btn) return NaN;
+    for (var i = 0; i < TERCEIROS_EXCLUIR_BTN_ATTRS.length; i++) {
+        var raw = btn.getAttribute(TERCEIROS_EXCLUIR_BTN_ATTRS[i]);
+        if (raw == null || raw === '') continue;
+        var id = terceirosIdDocumentoDeAtributo(raw);
+        if (Number.isFinite(id)) return id;
+    }
+    return NaN;
+}
+
+async function _terceirosFluxoExcluirDocumento(documentoId, nf, btnEl) {
+    var id = Number(documentoId);
+    if (!Number.isFinite(id) || id <= 0) {
+        showMessage('Não foi possível identificar a nota. Recarregue a lista.', 'warning');
+        return;
+    }
+    if (window._terceirosExclusaoIdsEmAndamento[String(id)]) {
+        showMessage('Esta NF já está sendo excluída. Aguarde.', 'warning');
+        return;
+    }
+    var confirmou = await abrirModalExcluirDocumento({ id: id, nf: nf || 'NF não identificada' });
+    if (!confirmou) {
+        showMessage('Exclusão cancelada.', 'warning');
+        return;
+    }
+    if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.dataset.terExcluindo = '1';
+    }
+    try {
+        await excluirDocumentoTerceiros(id);
+    } finally {
+        if (btnEl && btnEl.isConnected) {
+            btnEl.disabled = false;
+            delete btnEl.dataset.terExcluindo;
+        }
+    }
+}
+
+/** Um listener no módulo Terceiros: Excluir funciona em todas as abas após re-render da tabela. */
+function initTerceirosExcluirDelegacaoGlobal() {
+    if (window._terceirosExcluirDelegacaoOk) return;
+    var modulo = document.getElementById('modulo-terceiros');
+    if (!modulo) return;
+    window._terceirosExcluirDelegacaoOk = true;
+    modulo.addEventListener('click', function(ev) {
+        var el = ev.target;
+        if (!el || typeof el.closest !== 'function') return;
+        var btn = el.closest(TERCEIROS_EXCLUIR_BTN_SELETOR);
+        if (!btn || !modulo.contains(btn)) return;
+        if (btn.disabled || btn.dataset.terExcluindo === '1') return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        var id = _terceirosObterIdDoBotaoExcluir(btn);
+        var nf = btn.getAttribute('data-ter-excluir-nf') || 'NF não identificada';
+        void _terceirosFluxoExcluirDocumento(id, nf, btn);
     });
 }
 
@@ -4114,25 +4200,6 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
     tbody.addEventListener('click', function(ev) {
         var el = ev.target;
         if (!el || typeof el.closest !== 'function') return;
-        var excluir = el.closest('[data-ter-excluir-doc]');
-        if (excluir && tbody.contains(excluir)) {
-            ev.preventDefault();
-            void (async function() {
-                var id = terceirosIdDocumentoDeAtributo(excluir.getAttribute('data-ter-excluir-doc'));
-                var nf = excluir.getAttribute('data-ter-excluir-nf') || 'NF não identificada';
-                if (!Number.isFinite(id)) {
-                    showMessage('Não foi possível identificar a nota. Recarregue a lista.', 'warning');
-                    return;
-                }
-                var confirmou = await abrirModalExcluirDocumento({ id: id, nf: nf });
-                if (!confirmou) {
-                    showMessage('Exclusão cancelada.', 'warning');
-                    return;
-                }
-                await excluirDocumentoTerceiros(id);
-            })();
-            return;
-        }
         var desc = el.closest('[data-ter-descarregar-pend]');
         if (desc && tbody.contains(desc)) {
             ev.preventDefault();
@@ -4256,33 +4323,9 @@ function bindTerceirosAbrirButtons(seletor) {
     });
 }
 
+/** Legado: exclusão unificada em initTerceirosExcluirDelegacaoGlobal (#modulo-terceiros). */
 function bindTerceirosExcluirButtons(seletor) {
-    document.querySelectorAll(seletor).forEach(function(btn) {
-        if (btn.dataset.terExcluirBound === '1') return;
-        btn.dataset.terExcluirBound = '1';
-        btn.addEventListener('click', async function() {
-            var id = parseInt(
-                btn.getAttribute('data-ter-excluir-doc')
-                || btn.getAttribute('data-ter-excluir-fornecedor-doc')
-                || btn.getAttribute('data-ter-excluir-pend-lanc-doc')
-                || btn.getAttribute('data-ter-excluir-lancada-doc')
-                || btn.getAttribute('data-ter-excluir-enviada-doc')
-                || btn.getAttribute('data-ter-excluir-receb-mg-doc')
-                || btn.getAttribute('data-ter-excluir-pendencia-doc')
-                || btn.getAttribute('data-ter-excluir-historico-doc')
-                || '0',
-                10
-            );
-            var nf = btn.getAttribute('data-ter-excluir-nf') || 'NF não identificada';
-            if (!id) return;
-            var confirmou = await abrirModalExcluirDocumento({ id: id, nf: nf });
-            if (!confirmou) {
-                showMessage('Exclusão cancelada.', 'warning');
-                return;
-            }
-            await excluirDocumentoTerceiros(id);
-        });
-    });
+    void seletor;
 }
 
 function bindTerceirosComprovanteButtons(seletor) {
@@ -4954,7 +4997,6 @@ async function excluirDocumentoTerceiros(documentoId) {
     }
     var idKey = String(idNum);
     if (window._terceirosExclusaoIdsEmAndamento[idKey]) {
-        showMessage('Esta NF já está sendo excluída. Aguarde.', 'warning');
         return;
     }
     window._terceirosExclusaoIdsEmAndamento[idKey] = true;
@@ -4972,42 +5014,37 @@ async function excluirDocumentoTerceiros(documentoId) {
         var resp = await fetchAPIComTimeout(
             '/terceiros/documentos/' + encodeURIComponent(idNum),
             { method: 'DELETE', keepalive: false },
-            20000
+            30000
         );
 
         _terceirosExcluirDocumentoAtual = null;
-        if (!resp || !resp.ok) {
+        if (!_terceirosRespostaApiOk(resp)) {
             _terceirosDesmarcarDocumentoExcluidoOculto(idNum);
-            invalidateTerceirosListaCache();
             try {
-                await fetchTerceirosDocumentosTodos({ force: true });
-            } catch (eFetch) {
-                console.error(eFetch);
+                await recarregarTodasListasTerceiros();
+            } catch (eRec) {
+                console.error(eRec);
             }
-            await recarregarListaTerceirosTab(_terceirosTabAtual);
             showMessage((resp && resp.erro) || 'Erro ao excluir NF.', 'error');
             return;
         }
-        invalidateTerceirosListaCache();
+        _terceirosDesmarcarDocumentoExcluidoOculto(idNum);
         try {
-            await fetchTerceirosDocumentosTodos({ force: true });
+            await recarregarTodasListasTerceiros();
         } catch (eLista) {
             console.error(eLista);
+            try {
+                await recarregarListaTerceirosTab(_terceirosTabAtual);
+            } catch (eTab) {
+                console.error(eTab);
+            }
         }
-        _terceirosDesmarcarDocumentoExcluidoOculto(idNum);
-        await recarregarListaTerceirosTab(_terceirosTabAtual);
-        void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
-        void loadPainelTerceiros().catch(function(e) {
-            console.error('excluirDocumentoTerceiros painel:', e);
-        });
         showMessage((resp && resp.mensagem) || 'NF excluída.', 'success');
     } catch (e) {
         console.error(e);
         _terceirosDesmarcarDocumentoExcluidoOculto(idNum);
         try {
-            invalidateTerceirosListaCache();
-            await fetchTerceirosDocumentosTodos({ force: true });
-            await recarregarListaTerceirosTab(_terceirosTabAtual);
+            await recarregarTodasListasTerceiros();
         } catch (e2) {
             console.error(e2);
         }
@@ -7053,7 +7090,7 @@ function initForms() {
         if (modalTerSemBip && e.target === modalTerSemBip && !_terceirosDeveIgnorarCliqueBackdropModal()) {
             fecharModalConcluirRecebimentoSemBipagemCompleta(false);
         }
-        if (modalTerExcluir && e.target === modalTerExcluir) {
+        if (modalTerExcluir && e.target === modalTerExcluir && !_terceirosDeveIgnorarCliqueBackdropModal()) {
             fecharModalExcluirDocumento(false);
         }
         if (modalTerRecConc && e.target === modalTerRecConc) {

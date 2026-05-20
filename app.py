@@ -8763,6 +8763,16 @@ def api_terceiros_excluir_documento(documento_id):
         numero_nf = (row['numero_nf'] if hasattr(row, 'keys') else row[0]) or ''
         serie_nf = (row['serie_nf'] if hasattr(row, 'keys') else row[1]) or ''
         _pg_auditoria_sync_desligar(conn)
+        if getattr(conn, 'kind', None) == 'pg':
+            rid = str(documento_id)
+            for fonte in (tbl_d, 'public.terceiros_documentos'):
+                try:
+                    conn.execute(
+                        'DELETE FROM public.tabela_geral_snapshot WHERE fonte_tabela = ? AND row_id = ?',
+                        (fonte, rid),
+                    )
+                except Exception:
+                    pass
         conn.execute('DELETE FROM ' + tbl_i + ' WHERE documento_id = ?', (documento_id,))
         conn.execute('DELETE FROM ' + tbl_e + ' WHERE documento_id = ?', (documento_id,))
         if getattr(conn, 'kind', None) == 'pg':
