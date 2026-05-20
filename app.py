@@ -8748,27 +8748,32 @@ def api_terceiros_excluir_documento(documento_id):
     conn = get_db()
     usuario = session.get('usuario', '')
     try:
+        _ensure_terceiros_schema(conn)
         tbl_d = _tbl_terceiros_documentos(conn)
+        tbl_i = _tbl_terceiros_documento_itens(conn)
+        tbl_e = _tbl_terceiros_documento_eventos(conn)
         numero_nf = ''
         serie_nf = ''
+        row = conn.execute(
+            'SELECT numero_nf, serie_nf FROM ' + tbl_d + ' WHERE id = ?',
+            (documento_id,),
+        ).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
+        numero_nf = (row['numero_nf'] if hasattr(row, 'keys') else row[0]) or ''
+        serie_nf = (row['serie_nf'] if hasattr(row, 'keys') else row[1]) or ''
+        _pg_auditoria_sync_desligar(conn)
+        conn.execute('DELETE FROM ' + tbl_i + ' WHERE documento_id = ?', (documento_id,))
+        conn.execute('DELETE FROM ' + tbl_e + ' WHERE documento_id = ?', (documento_id,))
         if getattr(conn, 'kind', None) == 'pg':
-            row = conn.execute(
-                'DELETE FROM ' + tbl_d + ' WHERE id = ? RETURNING numero_nf, serie_nf',
+            deleted = conn.execute(
+                'DELETE FROM ' + tbl_d + ' WHERE id = ? RETURNING id',
                 (documento_id,),
             ).fetchone()
-            if not row:
+            if not deleted:
+                conn.rollback()
                 return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
-            numero_nf = (row['numero_nf'] if hasattr(row, 'keys') else row[0]) or ''
-            serie_nf = (row['serie_nf'] if hasattr(row, 'keys') else row[1]) or ''
         else:
-            row = conn.execute(
-                'SELECT numero_nf, serie_nf FROM ' + tbl_d + ' WHERE id = ?',
-                (documento_id,),
-            ).fetchone()
-            if not row:
-                return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
-            numero_nf = (row['numero_nf'] if hasattr(row, 'keys') else row[0]) or ''
-            serie_nf = (row['serie_nf'] if hasattr(row, 'keys') else row[1]) or ''
             conn.execute('DELETE FROM ' + tbl_d + ' WHERE id = ?', (documento_id,))
         conn.commit()
         return jsonify({

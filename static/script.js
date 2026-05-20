@@ -139,6 +139,9 @@ let _terceirosConfirmacaoRecebimentoFornecedoresResolver = null;
 let _terceirosIgnorarCliqueBackdropModalAte = 0;
 let _terceirosExcluirDocumentoResolver = null;
 let _terceirosExcluirDocumentoAtual = null;
+/** IDs removidos da UI até o servidor confirmar (evita reaparecer por merge de cache em background). */
+if (!window._terceirosIdsOcultosExclusao) window._terceirosIdsOcultosExclusao = new Set();
+if (!window._terceirosExclusaoIdsEmAndamento) window._terceirosExclusaoIdsEmAndamento = {};
 /** Após mudar de etapa: destaca a linha desta NF na tabela da aba de destino (data-ter-doc-id). */
 let _terceirosDestacarDocIdAposCarga = null;
 
@@ -2340,16 +2343,36 @@ function invalidateTerceirosListaCache() {
     window._terceirosPainelUltimoData = null;
 }
 
+function _terceirosMarcarDocumentoExcluidoOculto(documentoId) {
+    if (documentoId == null || documentoId === '') return;
+    window._terceirosIdsOcultosExclusao.add(String(documentoId));
+}
+
+function _terceirosDesmarcarDocumentoExcluidoOculto(documentoId) {
+    if (documentoId == null || documentoId === '') return;
+    window._terceirosIdsOcultosExclusao.delete(String(documentoId));
+}
+
+function _terceirosFiltrarRowsNaoExcluidas(rows) {
+    if (!Array.isArray(rows)) return rows;
+    var ocultos = window._terceirosIdsOcultosExclusao;
+    if (!ocultos || !ocultos.size) return rows;
+    return rows.filter(function(row) {
+        return !row || row.id == null || !ocultos.has(String(row.id));
+    });
+}
+
 function _terceirosObterCacheLista(opcoes) {
     opcoes = opcoes || {};
     var now = Date.now();
     if (!_terceirosListaCache.rows || !_terceirosListaCache.rows.length) return null;
     var idade = now - (_terceirosListaCache.ts || 0);
+    var rowsFiltradas = _terceirosFiltrarRowsNaoExcluidas(_terceirosListaCache.rows);
     if (idade < TERCEIROS_LISTA_CACHE_MS) {
-        return { rows: _terceirosListaCache.rows, erro: _terceirosListaCache.erro };
+        return { rows: rowsFiltradas, erro: _terceirosListaCache.erro };
     }
     if (opcoes.staleOk && idade < TERCEIROS_LISTA_CACHE_STALE_MS) {
-        return { rows: _terceirosListaCache.rows, erro: _terceirosListaCache.erro, _stale: true };
+        return { rows: rowsFiltradas, erro: _terceirosListaCache.erro, _stale: true };
     }
     return null;
 }
@@ -2410,11 +2433,12 @@ async function fetchTerceirosDocumentosTodos(opcoes) {
     }
     function _terceirosMesclarResumoItensNasRows(baseRows, fullRows) {
         if (!Array.isArray(fullRows) || !fullRows.length) return baseRows;
+        fullRows = _terceirosFiltrarRowsNaoExcluidas(fullRows);
         var porId = {};
         fullRows.forEach(function(r) {
             if (r && r.id != null) porId[String(r.id)] = r;
         });
-        var base = Array.isArray(baseRows) ? baseRows : [];
+        var base = _terceirosFiltrarRowsNaoExcluidas(Array.isArray(baseRows) ? baseRows : []);
         var idsVistos = {};
         var merged = base.map(function(r) {
             if (!r || r.id == null) return r;
@@ -2425,11 +2449,13 @@ async function fetchTerceirosDocumentosTodos(opcoes) {
         });
         fullRows.forEach(function(r) {
             if (!r || r.id == null || idsVistos[String(r.id)]) return;
+            if (window._terceirosIdsOcultosExclusao && window._terceirosIdsOcultosExclusao.has(String(r.id))) return;
             merged.push(r);
         });
         return merged;
     }
     function _terceirosAtualizarCacheLista(ordenadas, erro) {
+        ordenadas = _terceirosFiltrarRowsNaoExcluidas(ordenadas);
         if (ordenadas.length || !erro) {
             _terceirosListaCache.rows = ordenadas;
             _terceirosListaCache.erro = erro;
@@ -3070,6 +3096,7 @@ function _terceirosReaplicarTodasListasDoCacheLocal() {
 function _terceirosRemoverDocumentoDosCachesLocais(documentoId) {
     if (documentoId == null || documentoId === '') return;
     var id = String(documentoId);
+    _terceirosMarcarDocumentoExcluidoOculto(documentoId);
     _terceirosRemoverDocumentoDoCacheLista(documentoId);
     try {
         var loc = window._terceirosFornecedoresRecebidosLocais;
@@ -4925,36 +4952,50 @@ async function excluirDocumentoTerceiros(documentoId) {
         showMessage('Não foi possível identificar a nota para excluir.', 'warning');
         return;
     }
-    if (window._terceirosExclusaoEmAndamento) {
-        showMessage('Outra exclusão está em andamento. Aguarde.', 'warning');
+    var idKey = String(idNum);
+    if (window._terceirosExclusaoIdsEmAndamento[idKey]) {
+        showMessage('Esta NF já está sendo excluída. Aguarde.', 'warning');
         return;
     }
-    window._terceirosExclusaoEmAndamento = true;
+    window._terceirosExclusaoIdsEmAndamento[idKey] = true;
     try {
         _terceirosRemoverDocumentoDosCachesLocais(idNum);
         _terceirosRemoverLinhaDeTodasListas(idNum);
         if (Number(_terceirosDestacarDocIdAposCarga) === idNum) {
             _terceirosDestacarDocIdAposCarga = null;
         }
-        var atualNum = Number(_terceirosDocAtual.id);
+        var atualNum = Number(_terceirosDocAtual && _terceirosDocAtual.id);
         if (Number.isFinite(atualNum) && atualNum === idNum) {
             resetTerceirosDetalhe();
         }
-        void _terceirosRecarregarAbaAtualDoCacheRapido();
 
         var resp = await fetchAPIComTimeout(
             '/terceiros/documentos/' + encodeURIComponent(idNum),
-            { method: 'DELETE' },
-            12000
+            { method: 'DELETE', keepalive: false },
+            20000
         );
 
         _terceirosExcluirDocumentoAtual = null;
         if (!resp || !resp.ok) {
+            _terceirosDesmarcarDocumentoExcluidoOculto(idNum);
             invalidateTerceirosListaCache();
+            try {
+                await fetchTerceirosDocumentosTodos({ force: true });
+            } catch (eFetch) {
+                console.error(eFetch);
+            }
             await recarregarListaTerceirosTab(_terceirosTabAtual);
             showMessage((resp && resp.erro) || 'Erro ao excluir NF.', 'error');
             return;
         }
+        invalidateTerceirosListaCache();
+        try {
+            await fetchTerceirosDocumentosTodos({ force: true });
+        } catch (eLista) {
+            console.error(eLista);
+        }
+        _terceirosDesmarcarDocumentoExcluidoOculto(idNum);
+        await recarregarListaTerceirosTab(_terceirosTabAtual);
         void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
         void loadPainelTerceiros().catch(function(e) {
             console.error('excluirDocumentoTerceiros painel:', e);
@@ -4962,15 +5003,17 @@ async function excluirDocumentoTerceiros(documentoId) {
         showMessage((resp && resp.mensagem) || 'NF excluída.', 'success');
     } catch (e) {
         console.error(e);
+        _terceirosDesmarcarDocumentoExcluidoOculto(idNum);
         try {
             invalidateTerceirosListaCache();
+            await fetchTerceirosDocumentosTodos({ force: true });
             await recarregarListaTerceirosTab(_terceirosTabAtual);
         } catch (e2) {
             console.error(e2);
         }
         showMessage('Erro ao excluir NF. A lista foi atualizada.', 'error');
     } finally {
-        window._terceirosExclusaoEmAndamento = false;
+        delete window._terceirosExclusaoIdsEmAndamento[idKey];
         fecharTerAcaoLoading();
     }
 }
