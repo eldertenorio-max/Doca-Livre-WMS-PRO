@@ -1201,8 +1201,8 @@ function _painelTerceirosStatsRapidasFromRows(rows) {
         s.quantidade_total_bipada += qBip;
         if ((row.area || '').toLowerCase() === 'carreta') s.nfs_carreta += 1;
         if (isTerceirosFlagSim(row.recebimento_concluido)) s.recebimento_concluido += 1;
-        if (etapaEx === 'fornecedores-recebidos') s.fornecedores_recebidos += 1;
-        if (etapaEx === 'pendentes-lancamento') s.pendentes_lancamento += 1;
+        if (_terceirosRowApareceNaEtapa(row, 'fornecedores-recebidos')) s.fornecedores_recebidos += 1;
+        if (_terceirosRowApareceNaEtapa(row, 'pendentes-lancamento')) s.pendentes_lancamento += 1;
         if (etapaEx === 'notas-lancadas') s.notas_lancadas += 1;
         if (etapaEx === 'pendencias-mg') s.pendencias_mg += 1;
         if (etapaEx === 'recebimentos-mg') s.recebimentos_mg += 1;
@@ -1934,11 +1934,14 @@ async function _terceirosAplicarUiAposRecebimentoConcluido(documentoId, document
         void loadTerceirosDocumentos().catch(function(e2) {
             console.error(e2);
         });
+        void loadTerceirosPendentesLancamento().catch(function(e3) {
+            console.error(e3);
+        });
         animarConclusaoTerceiros(prefixoConcl);
         window.setTimeout(function() {
             abrirModalRecebimentoConcluidoTerceiros();
         }, 0);
-        showMessage('Recebimento concluído. A NF está na aba Fornecedores recebidos.', 'success');
+        showMessage('Recebimento concluído. A NF está em Fornecedores recebidos e em NFs pendentes de lançamento.', 'success');
         return;
     }
     try {
@@ -2735,14 +2738,12 @@ function _terceirosConsideraPendenciaRecebimento(row) {
     return true;
 }
 
-/** 3ª aba — recebimento concluído, lançamento fiscal ainda pendente (sem bipagem em andamento). */
+/** 3ª aba — histórico de recebimento concluído (permanece após lançamento fiscal). */
 function _terceirosConsideraFornecedorRecebido(row) {
     row = _terceirosRowEstadoMesclado(row);
     if (!row || row.id == null) return false;
     if (!isTerceirosFlagSim(row.recebimento_concluido)) return false;
-    if (isTerceirosFlagSim(row.nota_lancada)) return false;
     if (_terceirosConsideraHistorico(row)) return false;
-    if (_terceirosConsideraNotasLancadas(row)) return false;
     return true;
 }
 
@@ -2761,24 +2762,41 @@ function _terceirosOpPodeLancarNotaSemConfirmacao(opcoes) {
     return false;
 }
 
-/** 4ª aba — bipagem em andamento sem recebimento concluído (lançamento ainda pendente). */
+/** 4ª aba — recebimento concluído aguardando lançamento, ou bipagem sem concluir recebimento. */
 function _terceirosConsideraPendenteLancamento(row) {
     row = _terceirosRowEstadoMesclado(row);
     if (!row || row.id == null) return false;
     if (isTerceirosFlagSim(row.nota_lancada)) return false;
-    if (isTerceirosFlagSim(row.recebimento_concluido)) return false;
+    if (_terceirosConsideraHistorico(row)) return false;
+    if (isTerceirosFlagSim(row.recebimento_concluido)) return true;
     return _terceirosTemBipagemIniciada(row);
 }
 
-/** Uma NF só pode estar numa aba do fluxo (2ª → 8ª / histórico). */
+/** NF listada na aba (3ª e 4ª podem ter a mesma NF ao mesmo tempo). */
+function _terceirosRowApareceNaEtapa(row, etapa) {
+    row = _terceirosRowEstadoMesclado(row);
+    if (!row || row.id == null) return false;
+    if (etapa === 'historico') return _terceirosConsideraHistorico(row);
+    if (etapa === 'fornecedores-recebidos') return _terceirosConsideraFornecedorRecebido(row);
+    if (etapa === 'pendentes-lancamento') return _terceirosConsideraPendenteLancamento(row);
+    if (etapa === 'pendencia-recebimento') return _terceirosConsideraPendenciaRecebimento(row);
+    return _terceirosEtapaExclusivaDoRow(row) === etapa;
+}
+
+/** Etapa principal para alertas/navegação (uma NF, uma etiqueta). */
 function _terceirosEtapaExclusivaDoRow(row) {
     row = _terceirosRowEstadoMesclado(row);
     if (!row || row.id == null) return '';
     if (_terceirosConsideraPendenciaRecebimento(row)) return 'pendencia-recebimento';
-    if (_terceirosConsideraPendenteLancamento(row)) return 'pendentes-lancamento';
-    if (_terceirosConsideraFornecedorRecebido(row)) return 'fornecedores-recebidos';
     if (_terceirosConsideraHistorico(row)) return 'historico';
     if (_terceirosConsideraNotasLancadas(row)) return 'notas-lancadas';
+    if (!isTerceirosFlagSim(row.recebimento_concluido) && _terceirosTemBipagemIniciada(row) && !isTerceirosFlagSim(row.nota_lancada)) {
+        return 'pendentes-lancamento';
+    }
+    if (isTerceirosFlagSim(row.recebimento_concluido) && !isTerceirosFlagSim(row.nota_lancada)) {
+        return 'fornecedores-recebidos';
+    }
+    if (isTerceirosFlagSim(row.recebimento_concluido)) return 'fornecedores-recebidos';
     if (_terceirosUsaFluxoMg(row) && isTerceirosFlagSim(row.carga_recebida_mg) && !isTerceirosFlagSim(row.nota_lancada)) {
         return 'notas-enviadas-mg';
     }
@@ -2847,13 +2865,8 @@ function _terceirosFecharDescargaSeDocumentoNaoNaListaPendencia(rowsPendencia) {
 
 function getTerceirosRowsPorEtapa(rows, etapa) {
     rows = _terceirosRowsEstadoMesclado(rows);
-    if (etapa === 'historico') {
-        return rows.filter(function(row) {
-            return _terceirosConsideraHistorico(row);
-        });
-    }
     return rows.filter(function(row) {
-        return _terceirosEtapaExclusivaDoRow(row) === etapa;
+        return _terceirosRowApareceNaEtapa(row, etapa);
     });
 }
 
@@ -3677,7 +3690,9 @@ var TERCEIROS_COLS_LISTA_FLUXO = 14;
 var TERCEIROS_COLS_LISTA_POS_RECEBIMENTO = TERCEIROS_COLS_LISTA_FLUXO;
 
 function renderTerceirosFornecedorRecebidoRowHtml(row) {
-    return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
+    var arquivada = isTerceirosFlagSim(row.nota_lancada);
+    var trClass = arquivada ? ' class="ter-fornecedor-row-arquivo"' : '';
+    return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '"' + trClass + '>'
         + renderTerceirosCelulasNfAtePrevisao(row)
         + renderTerceirosCelulasStatusFluxo(row, 'fornecedores')
         + renderTerceirosListaAcoesCelula(
@@ -4169,7 +4184,7 @@ async function loadTerceirosFornecedoresRecebidos(dataPreloaded) {
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'fornecedores-recebidos');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF nesta etapa. Aparecem aqui após <strong>recebimento concluído</strong>, antes do lançamento fiscal (aba 4). Com <strong>bipagem em andamento</strong> sem concluir recebimento, use a aba <strong>NFs pendentes de lançamento</strong>.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF nesta etapa. O histórico reúne todas as notas com <strong>recebimento concluído</strong> (inclusive após marcar lançada na 4ª aba).</td></tr>';
         _terceirosDestacarDocIdAposCarga = null;
         return;
     }
@@ -4232,6 +4247,7 @@ function aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualiz
     } else if (documentoId != null) {
         _terceirosGuardarFornecedorRecebidoLocal({ id: documentoId, recebimento_concluido: 'Sim' });
     }
+    void loadTerceirosPendentesLancamento();
 }
 
 function _terceirosNfTexto(row) {
@@ -4363,7 +4379,7 @@ async function loadTerceirosPendentesLancamento(dataPreloaded) {
     if (countOutras) countOutras.textContent = String(grupos.OUTRAS.length);
     if (blocoOutras) blocoOutras.hidden = grupos.OUTRAS.length === 0;
     if (!rows.length) {
-        var msgGeral = 'Nenhuma NF aguardando lançamento fiscal. As notas entram aqui quando aparecem em <strong>Fornecedores recebidos</strong> com <strong>Nota lançada</strong> ainda sem marcar como Sim.';
+        var msgGeral = 'Nenhuma NF aguardando lançamento fiscal. Entram aqui ao <strong>concluir o recebimento</strong> (junto com Fornecedores recebidos) ou com <strong>bipagem em andamento</strong> na pendência.';
         var htmlVazio = '<tr><td colspan="' + cols + '" class="loading">' + msgGeral + '</td></tr>';
         tbodyMg.innerHTML = htmlVazio;
         tbodySp.innerHTML = htmlVazio;

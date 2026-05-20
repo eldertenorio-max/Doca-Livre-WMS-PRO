@@ -585,6 +585,16 @@ body {
     color: #37474f;
 }
 
+/* 3ª aba — NF já lançada permanece no histórico de fornecedores recebidos */
+#modulo-terceiros .ter-tabela-lista tbody tr.ter-fornecedor-row-arquivo {
+    background: #f5f5f5;
+    opacity: 0.92;
+}
+
+#modulo-terceiros .ter-tabela-lista tbody tr.ter-fornecedor-row-arquivo td {
+    color: #546e7a;
+}
+
 #modulo-terceiros .stats-grid {
     margin-bottom: 0;
 }

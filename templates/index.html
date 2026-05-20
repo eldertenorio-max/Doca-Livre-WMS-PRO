@@ -1734,7 +1734,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🏭</span>
                         <h2 class="painel-titulo-texto">Fornecedores Recebidos</h2>
-                        <p class="painel-titulo-sub">Notas com <strong>recebimento concluído</strong> e lançamento fiscal ainda <strong>pendente</strong>. <strong>Bipagem em andamento</strong> sem concluir recebimento fica na aba <strong>4 — NFs pendentes de lançamento</strong>.</p>
+                        <p class="painel-titulo-sub"><strong>Histórico</strong> de notas com recebimento concluído (permanecem aqui após o lançamento fiscal). Ao concluir o recebimento, a NF também entra na <strong>4ª aba — NFs pendentes de lançamento</strong>.</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
@@ -2391,16 +2391,12 @@
         <div class="modal-content modal-terceiros-recebimento-concluido-box" style="max-width: 420px; border-top: 4px solid #366092;">
             <span class="close" id="modal-terceiros-recebimento-concluido-close" title="Fechar">&times;</span>
             <h3 id="ter-rec-concluido-aviso-titulo" style="margin-top: 0; color: #1a237e;">Recebimento concluído</h3>
-            <p id="ter-rec-concluido-aviso-texto" class="ter-rec-concluido-aviso-principal">A NF saiu da 2ª aba (Pendência) e passa a aparecer na <strong>3ª aba — Fornecedores Recebidos</strong>.</p>
+            <p id="ter-rec-concluido-aviso-texto" class="ter-rec-concluido-aviso-principal">A NF saiu da 2ª aba (Pendência) e passa a aparecer na <strong>3ª — Fornecedores Recebidos</strong> e na <strong>4ª — NFs pendentes de lançamento</strong> ao mesmo tempo.</p>
             <p style="margin: 0 0 12px 0; color: #455a64; font-size: 14px; line-height: 1.5;">
-                <strong>Fluxo das abas (nesta ordem):</strong><br>
-                3° <strong>Fornecedores Recebidos</strong> (a NF listada aqui) →
-                4° <strong>NFs pendentes de lançamento</strong> (marcar nota lançada) →
-                5° <strong>Notas Fiscais Lançadas</strong> →
-                6°–8° envio / MG e histórico, conforme o processo da empresa.
+                <strong>Histórico:</strong> a 3ª aba guarda todas as notas com recebimento concluído (mesmo após lançar). Na 4ª aba marque <strong>Nota lançada</strong>; depois siga para a 5ª e demais etapas (MG / histórico).
             </p>
             <p style="margin: 0 0 20px 0; color: #455a64; font-size: 14px; line-height: 1.45;">
-                Use <strong>Fechar</strong> para continuar em Fornecedores Recebidos, ou avance direto para a etapa de lançamento.
+                Use <strong>Fechar</strong> para continuar em Fornecedores Recebidos, ou avance para NFs pendentes de lançamento.
             </p>
             <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
                 <button type="button" class="btn btn-secondary" id="btn-ter-proxima-etapa-lancamento">Próxima etapa: NFs pendentes de lançamento</button>
