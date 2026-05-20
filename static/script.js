@@ -89,6 +89,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initTerceirosAlertasHeader();
     initTerceirosPendenciaRecebimentoDelegacao();
     initTerceirosBotoesPdfXmlDelegacao();
+    initTerceirosModalPopupBloqueado();
     initTerceirosModalConfirmarRecebimentoFornecedores();
     initTerceirosConferenciaAcoesDelegacao();
     initForms();
@@ -2101,13 +2102,29 @@ async function uploadXmlTerceirosComPrefixo(prefixo, areaChave, opcoes) {
     Array.prototype.forEach.call(filesEl.files, function(file) {
         form.append('files', file);
     });
-    resultadoEl.textContent = 'Enviando XMLs...';
+    var qtdArquivos = filesEl.files.length;
+    var btnUploadId = prefixo === 'ter-carreta' ? 'btn-ter-carreta-upload' : 'btn-ter-recebimento-upload';
+    var btnUpload = document.getElementById(btnUploadId);
+    resultadoEl.textContent = '';
+    if (btnUpload) btnUpload.disabled = true;
+    mostrarTerAcaoLoading(
+        'Enviando ' + qtdArquivos + ' arquivo' + (qtdArquivos > 1 ? 's' : '') + ' XML…',
+        'Aguarde enquanto os XMLs são processados no servidor.',
+        { mensagemCancelado: 'Envio de XMLs cancelado.' }
+    );
     try {
-        const resp = await fetch(API_BASE + '/terceiros/upload-xml', {
+        var fetchOpts = {
             method: 'POST',
             body: form,
             credentials: 'same-origin'
-        });
+        };
+        var sigUpload = terAcaoLoadingSignal();
+        if (sigUpload) fetchOpts.signal = sigUpload;
+        const resp = await fetch(API_BASE + '/terceiros/upload-xml', fetchOpts);
+        if (window._terAcaoLoadCancelado) {
+            resultadoEl.textContent = 'Envio cancelado.';
+            return;
+        }
         const data = await resp.json().catch(function() { return {}; });
         if (!resp.ok || !data.ok) {
             resultadoEl.textContent = (data && data.erro) ? data.erro : 'Erro ao enviar XMLs.';
@@ -2125,7 +2142,14 @@ async function uploadXmlTerceirosComPrefixo(prefixo, areaChave, opcoes) {
             areaLabel: _terceirosLabelAreaUpload(areaChave)
         });
     } catch (e) {
+        if (_terAcaoFoiCancelado(e)) {
+            resultadoEl.textContent = 'Envio cancelado.';
+            return;
+        }
         resultadoEl.textContent = 'Erro ao enviar XMLs.';
+    } finally {
+        fecharTerAcaoLoading();
+        if (btnUpload) btnUpload.disabled = false;
     }
 }
 
@@ -2552,28 +2576,47 @@ function _terceirosTotalBipadoItensLocais() {
     return total;
 }
 
-/** Na 2ª aba: fecha descarga e leva à 3ª somente quando o recebimento foi marcado como concluído. */
+/** Na 2ª aba: fecha descarga e leva à etapa correta quando a NF não pertence mais à pendência. */
 function _terceirosFecharDescargaSeForaDaPendencia(documentoIdOpt) {
     if (_terceirosTabAtual !== 'pendencia-recebimento') return;
     var docId = documentoIdOpt != null ? Number(documentoIdOpt) : _terceirosDocumentoIdAtualParaApi();
     if (!Number.isFinite(docId) || docId <= 0) return;
+    if (window._terceirosSuprimirFecharDescargaDocId != null
+        && String(window._terceirosSuprimirFecharDescargaDocId) === String(docId)) {
+        return;
+    }
     var detalhe = document.getElementById('ter-recebimento-detalhe');
     if (!detalhe || detalhe.style.display === 'none') return;
 
-    var rowLike = {
-        recebimento_concluido: _terceirosDocAtual && _terceirosDocAtual.recebimento_concluido
-    };
+    var rowLike = _terceirosRowEstadoMesclado(
+        (_terceirosDocAtual && _terceirosDocAtual.id != null) ? _terceirosDocAtual : { id: docId }
+    );
+    if (!rowLike.id) rowLike.id = docId;
     if (_terceirosConsideraPendenciaRecebimento(rowLike)) return;
+    if (_terceirosConsideraPendenteLancamento(rowLike)) return;
 
     resetTerceirosDetalhe();
     definirDestaqueLinhaTerceirosDoc(docId);
-    terceirosAplicarPainelAbaSomenteUi('fornecedores-recebidos');
-    void loadTerceirosFornecedoresRecebidos();
+    var etapa = _terceirosEtapaExclusivaDoRow(rowLike);
+    var tabDestino = (etapa && etapa !== 'pendencia-recebimento' && etapa !== 'historico')
+        ? etapa
+        : 'fornecedores-recebidos';
+    terceirosAplicarPainelAbaSomenteUi(tabDestino);
+    void recarregarListaTerceirosTab(tabDestino);
 }
 
 function _terceirosFecharDescargaSeDocumentoNaoNaListaPendencia(rowsPendencia) {
     var docId = _terceirosDocumentoIdAtualParaApi();
     if (docId == null) return;
+    if (window._terceirosSuprimirFecharDescargaDocId != null
+        && String(window._terceirosSuprimirFecharDescargaDocId) === String(docId)) {
+        return;
+    }
+    var cache = window._terceirosPendenciaRowsCache || [];
+    var naListaCache = cache.some(function(r) {
+        return r && String(r.id) === String(docId);
+    });
+    if (naListaCache) return;
     var naLista = (Array.isArray(rowsPendencia) ? rowsPendencia : []).some(function(r) {
         return r && String(r.id) === String(docId);
     });
@@ -2882,6 +2925,124 @@ function renderTerceirosExcluirButton(row, atributo) {
         + '</button>';
 }
 
+function _terceirosDetectarPopupBloqueado(win) {
+    if (!win) return true;
+    try {
+        if (win.closed) return true;
+        void win.document;
+    } catch (e) {
+        return true;
+    }
+    return false;
+}
+
+function mostrarModalPopupBloqueado(opcoes) {
+    opcoes = opcoes || {};
+    window._terPopupBloqueadoPending = opcoes;
+    var modal = document.getElementById('modal-ter-popup-bloqueado');
+    var tituloEl = document.getElementById('modal-ter-popup-bloqueado-titulo');
+    var btnBaixar = document.getElementById('btn-ter-popup-baixar-fallback');
+    if (tituloEl && opcoes.titulo) {
+        tituloEl.textContent = opcoes.titulo;
+    }
+    if (btnBaixar) {
+        btnBaixar.style.display = opcoes.urlDownload ? 'inline-block' : 'none';
+    }
+    if (modal) modal.style.display = 'block';
+}
+
+function fecharModalPopupBloqueado() {
+    var modal = document.getElementById('modal-ter-popup-bloqueado');
+    if (modal) modal.style.display = 'none';
+    var p = window._terPopupBloqueadoPending;
+    if (p && p.revogarBlobUrl) {
+        try {
+            URL.revokeObjectURL(p.revogarBlobUrl);
+        } catch (e) { /* ignore */ }
+    }
+    window._terPopupBloqueadoPending = null;
+}
+
+function terceirosTentarAbrirPopupNovamente() {
+    var p = window._terPopupBloqueadoPending;
+    if (!p || typeof p.retry !== 'function') {
+        fecharModalPopupBloqueado();
+        return;
+    }
+    var retryFn = p.retry;
+    fecharModalPopupBloqueado();
+    retryFn();
+}
+
+function terceirosBaixarFallbackPopup() {
+    var p = window._terPopupBloqueadoPending;
+    if (p && p.urlDownload) {
+        var a = document.createElement('a');
+        a.href = p.urlDownload;
+        a.download = p.nomeDownload || 'documento.pdf';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showMessage('PDF baixado. Abra o arquivo no leitor de PDF do seu computador.', 'success');
+    }
+    fecharModalPopupBloqueado();
+}
+
+/** Abre nova aba; se pop-up bloqueado, exibe modal com instruções. */
+function terceirosAbrirNovaJanela(conteudo, opcoes) {
+    opcoes = opcoes || {};
+    var win = window.open('about:blank', '_blank');
+    if (_terceirosDetectarPopupBloqueado(win)) {
+        mostrarModalPopupBloqueado(opcoes);
+        return null;
+    }
+    try {
+        try {
+            win.opener = null;
+        } catch (eOp) { /* ignore */ }
+        if (conteudo && conteudo.tipo === 'url' && conteudo.url) {
+            win.location.href = conteudo.url;
+        } else if (conteudo && conteudo.html) {
+            win.document.open();
+            win.document.write(conteudo.html);
+            win.document.close();
+        }
+    } catch (e) {
+        try {
+            win.close();
+        } catch (e2) { /* ignore */ }
+        mostrarModalPopupBloqueado(opcoes);
+        return null;
+    }
+    return win;
+}
+
+function initTerceirosModalPopupBloqueado() {
+    var btnFechar = document.getElementById('btn-ter-popup-bloqueado-fechar');
+    var btnTentar = document.getElementById('btn-ter-popup-bloqueado-tentar');
+    var btnBaixar = document.getElementById('btn-ter-popup-baixar-fallback');
+    var modal = document.getElementById('modal-ter-popup-bloqueado');
+    if (btnFechar && btnFechar.dataset.bound !== '1') {
+        btnFechar.dataset.bound = '1';
+        btnFechar.addEventListener('click', fecharModalPopupBloqueado);
+    }
+    if (btnTentar && btnTentar.dataset.bound !== '1') {
+        btnTentar.dataset.bound = '1';
+        btnTentar.addEventListener('click', terceirosTentarAbrirPopupNovamente);
+    }
+    if (btnBaixar && btnBaixar.dataset.bound !== '1') {
+        btnBaixar.dataset.bound = '1';
+        btnBaixar.addEventListener('click', terceirosBaixarFallbackPopup);
+    }
+    if (modal && modal.dataset.bound !== '1') {
+        modal.dataset.bound = '1';
+        modal.addEventListener('click', function(ev) {
+            if (ev.target === modal) fecharModalPopupBloqueado();
+        });
+    }
+}
+
 async function abrirDanfeNotaFiscalTerceiros(documentoId) {
     documentoId = parseInt(documentoId, 10);
     if (!Number.isFinite(documentoId) || documentoId <= 0) {
@@ -2909,10 +3070,18 @@ async function abrirDanfeNotaFiscalTerceiros(documentoId) {
             var blob = await resp.blob();
             if (window._terAcaoLoadCancelado) return;
             var blobUrl = URL.createObjectURL(blob);
-            var janela = window.open(blobUrl, '_blank', 'noopener,noreferrer');
-            if (!janela) {
-                showMessage('Permita pop-ups para visualizar o PDF da nota fiscal.', 'warning');
-            } else {
+            var docIdPdf = documentoId;
+            var popupOpts = {
+                titulo: 'Pop-up bloqueado — Ver PDF da NF',
+                urlDownload: blobUrl,
+                nomeDownload: 'danfe-nf-' + String(docIdPdf) + '.pdf',
+                revogarBlobUrl: blobUrl,
+                retry: function() {
+                    abrirDanfeNotaFiscalTerceiros(docIdPdf);
+                }
+            };
+            var janela = terceirosAbrirNovaJanela({ tipo: 'url', url: blobUrl }, popupOpts);
+            if (janela) {
                 setTimeout(function() {
                     try { URL.revokeObjectURL(blobUrl); } catch (e) { /* ignore */ }
                 }, 120000);
@@ -2921,14 +3090,16 @@ async function abrirDanfeNotaFiscalTerceiros(documentoId) {
         }
         var html = await resp.text();
         if (window._terAcaoLoadCancelado) return;
-        var janelaHtml = window.open('', '_blank', 'noopener,noreferrer');
-        if (!janelaHtml) {
-            showMessage('Permita pop-ups para visualizar o DANFE.', 'warning');
-            return;
-        }
-        janelaHtml.document.open();
-        janelaHtml.document.write(html);
-        janelaHtml.document.close();
+        var docIdHtml = documentoId;
+        terceirosAbrirNovaJanela(
+            { tipo: 'html', html: html },
+            {
+                titulo: 'Pop-up bloqueado — Ver DANFE',
+                retry: function() {
+                    abrirDanfeNotaFiscalTerceiros(docIdHtml);
+                }
+            }
+        );
     } catch (e) {
         if (_terAcaoFoiCancelado(e)) return;
         showMessage('Erro ao gerar DANFE: ' + (e && e.message ? e.message : String(e)), 'error');
@@ -2937,20 +3108,63 @@ async function abrirDanfeNotaFiscalTerceiros(documentoId) {
     }
 }
 
-function baixarXmlNotaFiscalTerceiros(documentoId) {
+function _terceirosNomeArquivoContentDisposition(header) {
+    if (!header) return '';
+    var m = /filename\*=UTF-8''([^;\s]+)|filename="([^"]+)"|filename=([^;\s]+)/i.exec(header);
+    if (!m) return '';
+    var nome = (m[1] || m[2] || m[3] || '').trim();
+    try {
+        return decodeURIComponent(nome);
+    } catch (e) {
+        return nome;
+    }
+}
+
+async function baixarXmlNotaFiscalTerceiros(documentoId) {
     documentoId = parseInt(documentoId, 10);
     if (!Number.isFinite(documentoId) || documentoId <= 0) {
         showMessage('Não foi possível identificar a nota.', 'warning');
         return;
     }
     var url = API_BASE + '/terceiros/documentos/' + encodeURIComponent(documentoId) + '/xml';
-    var link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', '');
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    mostrarTerAcaoLoading(
+        'Baixando XML da NF…',
+        'Preparando o arquivo para download.',
+        { mensagemCancelado: 'Download do XML cancelado.' }
+    );
+    try {
+        var fetchOpts = { credentials: 'same-origin' };
+        var sigXml = terAcaoLoadingSignal();
+        if (sigXml) fetchOpts.signal = sigXml;
+        var resp = await fetch(url, fetchOpts);
+        if (window._terAcaoLoadCancelado) return;
+        if (!resp.ok) {
+            var errMsg = await resp.text();
+            showMessage((errMsg || 'Erro ao baixar XML.').trim(), 'error');
+            return;
+        }
+        var blob = await resp.blob();
+        if (window._terAcaoLoadCancelado) return;
+        var nomeArquivo = _terceirosNomeArquivoContentDisposition(resp.headers.get('Content-Disposition'));
+        if (!nomeArquivo) nomeArquivo = 'nota_fiscal_' + String(documentoId) + '.xml';
+        var blobUrl = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = nomeArquivo;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(function() {
+            try { URL.revokeObjectURL(blobUrl); } catch (e) { /* ignore */ }
+        }, 60000);
+        showMessage('Download do XML iniciado.', 'success');
+    } catch (e) {
+        if (_terAcaoFoiCancelado(e)) return;
+        showMessage('Erro ao baixar XML: ' + (e && e.message ? e.message : String(e)), 'error');
+    } finally {
+        fecharTerAcaoLoading();
+    }
 }
 
 function renderTerceirosBotoesPdfXmlNf(row) {
@@ -3187,7 +3401,9 @@ function renderTerceirosConferenciaResumoHtml(row) {
 
 function scrollTerceirosRecebimentoDetalheSecao(secao) {
     window.requestAnimationFrame(function() {
-        var id = secao === 'bipagem' ? 'ter-bipagem-bloco' : 'ter-descarga-conferencia-modelo';
+        var id = 'ter-descarga-conferencia-modelo';
+        if (secao === 'bipagem') id = 'ter-bipagem-bloco';
+        else if (secao === 'resumo') id = 'ter-resumo-descarga-bloco';
         var el = document.getElementById(id);
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
@@ -3261,8 +3477,10 @@ function _terAcaoFoiCancelado(err) {
     return false;
 }
 
-function mostrarTerAcaoLoading(titulo, subtitulo) {
+function mostrarTerAcaoLoading(titulo, subtitulo, opcoes) {
+    opcoes = opcoes || {};
     window._terAcaoLoadCancelado = false;
+    window._terAcaoLoadingCancelMsg = opcoes.mensagemCancelado || 'Operação cancelada.';
     _terAcaoLoadAbort = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var el = document.getElementById('ter-acao-loading-overlay');
     var text = document.getElementById('ter-acao-loading-text');
@@ -3295,7 +3513,7 @@ function cancelarTerAcaoLoading() {
         } catch (e) { /* ignore */ }
     }
     fecharTerAcaoLoading();
-    showMessage('Operação cancelada.', 'warning');
+    showMessage(window._terAcaoLoadingCancelMsg || 'Operação cancelada.', 'warning');
 }
 
 function terAcaoLoadingSignal() {
@@ -3311,13 +3529,23 @@ async function abrirPendenciaTerceirosComScroll(area, documentoId, secao, opcoes
     if (!window._terceirosDetalheOrigemTab) {
         window._terceirosDetalheOrigemTab = 'pendencia-recebimento';
     }
-    var comModal = opcoes.modalLoading !== false;
-    if (comModal) abrirModalCarregandoDescargaTerceiros(opcoes.mensagemLoading || 'Abrindo nota fiscal e preparando descarga…');
+    var comModal = opcoes.modalLoading === true;
+    window._terceirosSuprimirFecharDescargaDocId = documentoId;
+    if (comModal) {
+        abrirModalCarregandoDescargaTerceiros(
+            opcoes.mensagemLoading || 'Abrindo descarga e conferência…'
+        );
+    }
     try {
         if (terceirosDescargaFoiCancelado()) throw new Error('cancelado');
-        abrirAbaTerceirosSeDiferente('pendencia-recebimento');
+        if (_terceirosTabAtual !== 'pendencia-recebimento') {
+            terceirosAplicarPainelAbaSomenteUi('pendencia-recebimento');
+        }
         if (terceirosDescargaFoiCancelado()) throw new Error('cancelado');
-        scrollTerceirosRecebimentoDetalheSecao(secao);
+        var vazio = document.getElementById('ter-recebimento-detalhe-vazio');
+        var detalhe = document.getElementById('ter-recebimento-detalhe');
+        if (vazio) vazio.style.display = 'none';
+        if (detalhe) detalhe.style.display = 'block';
         if (terceirosDescargaFoiCancelado()) throw new Error('cancelado');
         await loadTerceirosDocumentoDetalhe(area, documentoId, { descargaLoad: comModal });
         if (terceirosDescargaFoiCancelado()) throw new Error('cancelado');
@@ -3326,6 +3554,7 @@ async function abrirPendenciaTerceirosComScroll(area, documentoId, secao, opcoes
         if (_terceirosErroDescargaCancelada(err) || terceirosDescargaFoiCancelado()) return;
         throw err;
     } finally {
+        window._terceirosSuprimirFecharDescargaDocId = null;
         if (comModal) fecharModalCarregandoDescargaTerceiros();
     }
 }
@@ -3372,6 +3601,7 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
         }
         var desc = el.closest('[data-ter-descarregar-pend]');
         if (desc && tbody.contains(desc)) {
+            ev.preventDefault();
             var idD = terceirosIdDocumentoDeAtributo(desc.getAttribute('data-ter-descarregar-pend'));
             var areaD = desc.getAttribute('data-ter-area') || 'recebimento';
             if (!Number.isFinite(idD)) {
@@ -3381,7 +3611,10 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
             window._terceirosDetalheOrigemTab = 'pendencia-recebimento';
             var btnDesc = desc;
             btnDesc.disabled = true;
-            void abrirPendenciaTerceirosComScroll(areaD, idD, 'bipagem', { modalLoading: true }).then(function() {
+            void abrirPendenciaTerceirosComScroll(areaD, idD, 'bipagem', {
+                modalLoading: true,
+                mensagemLoading: 'Abrindo descarga e conferência…'
+            }).then(function() {
                 btnDesc.disabled = false;
             }).catch(function(err) {
                 if (_terceirosErroDescargaCancelada(err) || terceirosDescargaFoiCancelado()) {
@@ -3389,13 +3622,14 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
                     return;
                 }
                 console.error(err);
-                showMessage('Erro ao abrir a nota.', 'error');
+                showMessage('Erro ao abrir a descarga.', 'error');
                 btnDesc.disabled = false;
             });
             return;
         }
         var det = el.closest('[data-ter-ver-detalhe-pend]');
         if (det && tbody.contains(det)) {
+            ev.preventDefault();
             var idV = terceirosIdDocumentoDeAtributo(det.getAttribute('data-ter-ver-detalhe-pend'));
             var areaV = det.getAttribute('data-ter-area') || 'recebimento';
             if (!Number.isFinite(idV)) {
@@ -3403,9 +3637,18 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
                 return;
             }
             window._terceirosDetalheOrigemTab = 'pendencia-recebimento';
-            void abrirPendenciaTerceirosComScroll(areaV, idV, 'resumo').catch(function(err) {
+            var btnDet = det;
+            btnDet.disabled = true;
+            void abrirPendenciaTerceirosComScroll(areaV, idV, 'resumo', { modalLoading: false }).then(function() {
+                btnDet.disabled = false;
+            }).catch(function(err) {
+                if (_terceirosErroDescargaCancelada(err) || terceirosDescargaFoiCancelado()) {
+                    btnDet.disabled = false;
+                    return;
+                }
                 console.error(err);
-                showMessage('Erro ao abrir a nota.', 'error');
+                showMessage('Erro ao abrir o detalhe da nota.', 'error');
+                btnDet.disabled = false;
             });
             return;
         }
@@ -3466,14 +3709,7 @@ function bindTerceirosAbrirButtons(seletor) {
             var tabDestino = btn.getAttribute('data-ter-open-tab') || 'pendencia-recebimento';
             window._terceirosDetalheOrigemTab = tabDestino;
             if (!id) return;
-            if (tabDestino === 'pendencia-recebimento') {
-                abrirAbaTerceirosSeDiferente('pendencia-recebimento');
-                void loadTerceirosDocumentoDetalhe(area, id).then(function() {
-                    scrollTerceirosRecebimentoDetalheSecao('resumo');
-                });
-            } else {
-                void abrirPendenciaTerceirosComScroll(area, id, 'resumo', { modalLoading: false });
-            }
+            void abrirPendenciaTerceirosComScroll(area, id, 'resumo', { modalLoading: false });
         });
     });
 }
@@ -4710,13 +4946,11 @@ window.imprimirComprovanteDescargaTerceiros = function(divergente) {
         + '<th>Item</th><th>EAN</th><th>Cód. XML</th><th>Descrição</th><th>Qtd. XML</th><th>Qtd. bipada</th><th>Falta</th><th>Status</th>'
         + '</tr></thead><tbody>' + rows + '</tbody></table>'
         + '</body></html>';
-    var w = window.open('', '_blank');
-    if (!w) {
-        showMessage('Permita pop-ups para imprimir o comprovante.', 'warning');
-        return;
-    }
-    w.document.write(html);
-    w.document.close();
+    var w = terceirosAbrirNovaJanela(
+        { tipo: 'html', html: html },
+        { titulo: 'Pop-up bloqueado — Gerar comprovante' }
+    );
+    if (!w) return;
     w.focus();
     try {
         w.print();
@@ -4780,13 +5014,11 @@ function imprimirComprovanteDescargaTerceirosDoc(doc) {
         + '<th>Item</th><th>EAN</th><th>Cód. XML</th><th>Descrição</th><th>Qtd. XML</th><th>Qtd. bipada</th><th>Falta</th><th>Status</th>'
         + '</tr></thead><tbody>' + rows + '</tbody></table>'
         + '</body></html>';
-    var w = window.open('', '_blank');
-    if (!w) {
-        showMessage('Permita pop-ups para imprimir o comprovante.', 'warning');
-        return;
-    }
-    w.document.write(html);
-    w.document.close();
+    var w = terceirosAbrirNovaJanela(
+        { tipo: 'html', html: html },
+        { titulo: 'Pop-up bloqueado — Gerar comprovante' }
+    );
+    if (!w) return;
     w.focus();
     try {
         w.print();

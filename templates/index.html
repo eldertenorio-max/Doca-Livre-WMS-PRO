@@ -1600,7 +1600,7 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div class="conferencia-bloco conferencia-bloco-3 form-container" style="background: #fff8e1; border-left: 4px solid #1976D2;">
+                                            <div id="ter-resumo-descarga-bloco" class="conferencia-bloco conferencia-bloco-3 form-container" style="background: #fff8e1; border-left: 4px solid #1976D2;">
                                                 <h3 style="margin-top: 0; color: #1976D2;">3. RESUMO DA DESCARGA</h3>
                                                 <div id="ter-rec-resumo-box" style="margin-top: 4px; padding: 10px; background: #fff3e0; border-radius: 6px;">
                                                     <div style="display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center;">
@@ -2124,6 +2124,29 @@
             <div style="display: flex; gap: 12px; justify-content: flex-end;">
                 <button type="button" class="btn btn-secondary" onclick="fecharModalComprovanteDivergente()">Cancelar</button>
                 <button type="button" class="btn btn-primary" id="btn-confirmar-comprovante-divergente" onclick="confirmarGerarComprovanteDivergente()" style="background: #e65100;">Sim, gerar comprovante divergente</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-ter-popup-bloqueado" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 480px; border-top: 4px solid #f57c00;">
+            <h3 id="modal-ter-popup-bloqueado-titulo" style="margin-top: 0; color: #e65100;">Pop-up bloqueado pelo navegador</h3>
+            <p style="margin: 12px 0; font-size: 14px; line-height: 1.5;">
+                O navegador impediu abrir uma nova aba. Sem liberar pop-ups, <strong>Ver PDF da NF</strong> e <strong>Gerar comprovante</strong> não funcionam.
+            </p>
+            <div style="background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 12px 14px; margin: 12px 0; font-size: 13px; line-height: 1.45; color: #5d4037;">
+                <strong>Como liberar (Chrome / Edge):</strong>
+                <ol style="margin: 8px 0 0 18px; padding: 0;">
+                    <li>Veja o ícone <strong>Pop-up bloqueado</strong> na barra de endereço (canto direito).</li>
+                    <li>Clique nele e escolha <strong>Sempre permitir pop-ups</strong> neste site.</li>
+                    <li>Recarregue a página se pedido e clique em <strong>Tentar novamente</strong>.</li>
+                </ol>
+                <p style="margin: 10px 0 0 0;"><strong>Firefox:</strong> ícone na barra de endereço → Preferências → Permitir pop-ups.</p>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 16px;">
+                <button type="button" class="btn btn-secondary" id="btn-ter-popup-bloqueado-fechar">Fechar</button>
+                <button type="button" class="btn btn-secondary" id="btn-ter-popup-baixar-fallback" style="display: none;">Baixar PDF</button>
+                <button type="button" class="btn btn-primary" id="btn-ter-popup-bloqueado-tentar">Tentar novamente</button>
             </div>
         </div>
     </div>
