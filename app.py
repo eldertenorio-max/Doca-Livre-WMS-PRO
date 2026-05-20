@@ -407,7 +407,7 @@ def init_db():
                 except Exception:
                     pass
             try:
-                _ensure_terceiros_schema(conn, rodar_backfill=True)
+                _ensure_terceiros_schema(conn, rodar_backfill=False)
             except Exception:
                 try:
                     conn.rollback()
@@ -890,6 +890,46 @@ def _sql_cols_terceiros_documentos_listagem(alias):
         '%s.carga_recebida_mg, %s.carga_recebida_mg_em, %s.carga_recebida_mg_por, '
         '%s.criado_em, %s.criado_por, %s.atualizado_em, %s.atualizado_por'
     ) % ((a,) * 33)
+
+
+def _terceiros_sql_join_resumo_itens(conn, tbl_i, alias_doc='d'):
+    """Totais por NF: LATERAL no Postgres (usa índice por documento_id); subquery global no SQLite."""
+    if getattr(conn, 'kind', None) == 'pg':
+        return (
+            ' LEFT JOIN LATERAL ('
+            '   SELECT COUNT(id) AS total_itens,'
+            '          COALESCE(SUM(quantidade_xml), 0) AS quantidade_total_xml,'
+            '          COALESCE(SUM(quantidade_bipada), 0) AS quantidade_total_bipada,'
+            '          SUM(CASE WHEN ABS(COALESCE(quantidade_xml, 0) - COALESCE(quantidade_bipada, 0)) > 0.000001'
+            '               THEN 1 ELSE 0 END) AS itens_divergentes'
+            '   FROM ' + tbl_i + ' i WHERE i.documento_id = ' + alias_doc + '.id'
+            ') si ON TRUE'
+        )
+    return (
+        ' LEFT JOIN ('
+        '   SELECT documento_id,'
+        '          COUNT(id) AS total_itens,'
+        '          COALESCE(SUM(quantidade_xml), 0) AS quantidade_total_xml,'
+        '          COALESCE(SUM(quantidade_bipada), 0) AS quantidade_total_bipada,'
+        '          SUM(CASE WHEN ABS(COALESCE(quantidade_xml, 0) - COALESCE(quantidade_bipada, 0)) > 0.000001'
+        '               THEN 1 ELSE 0 END) AS itens_divergentes'
+        '   FROM ' + tbl_i + ' GROUP BY documento_id'
+        ') si ON si.documento_id = ' + alias_doc + '.id'
+    )
+
+
+def _terceiros_cols_select_listagem(cols, com_resumo=True):
+    if com_resumo:
+        return (
+            cols + ', COALESCE(si.total_itens, 0) AS total_itens,'
+            ' COALESCE(si.quantidade_total_xml, 0) AS quantidade_total_xml,'
+            ' COALESCE(si.quantidade_total_bipada, 0) AS quantidade_total_bipada,'
+            ' COALESCE(si.itens_divergentes, 0) AS itens_divergentes'
+        )
+    return (
+        cols + ', 0 AS total_itens, 0 AS quantidade_total_xml,'
+        ' 0 AS quantidade_total_bipada, 0 AS itens_divergentes'
+    )
 
 
 _TERCEIROS_SCHEMA_PRONTO = False
@@ -8167,22 +8207,10 @@ def api_terceiros_painel():
     tbl_i = _tbl_terceiros_documento_itens(conn)
     cols = _sql_cols_terceiros_documentos_listagem('d')
     doc_rows = conn.execute(
-      '''SELECT ''' + cols + ''',
-                COALESCE(si.total_itens, 0) AS total_itens,
-                COALESCE(si.quantidade_total_xml, 0) AS quantidade_total_xml,
-                COALESCE(si.quantidade_total_bipada, 0) AS quantidade_total_bipada,
-                COALESCE(si.itens_divergentes, 0) AS itens_divergentes
-         FROM ''' + tbl_d + ''' d
-         LEFT JOIN (
-             SELECT documento_id,
-                    COUNT(id) AS total_itens,
-                    COALESCE(SUM(quantidade_xml), 0) AS quantidade_total_xml,
-                    COALESCE(SUM(quantidade_bipada), 0) AS quantidade_total_bipada,
-                    SUM(CASE WHEN ABS(COALESCE(quantidade_xml, 0) - COALESCE(quantidade_bipada, 0)) > 0.000001 THEN 1 ELSE 0 END) AS itens_divergentes
-             FROM ''' + tbl_i + '''
-             GROUP BY documento_id
-         ) si ON si.documento_id = d.id
-         ORDER BY d.criado_em DESC, d.id DESC''',
+      'SELECT ' + _terceiros_cols_select_listagem(cols, com_resumo=True)
+      + ' FROM ' + tbl_d + ' d'
+      + _terceiros_sql_join_resumo_itens(conn, tbl_i, 'd')
+      + ' ORDER BY d.criado_em DESC, d.id DESC',
     ).fetchall()
 
     def _row_dict(r):
@@ -8475,23 +8503,11 @@ def _terceiros_listagem_rows_por_ids(conn, documento_ids, enriquecer=True):
     tbl_i = _tbl_terceiros_documento_itens(conn)
     ph = ','.join(['?'] * len(ids))
     rows = conn.execute(
-        '''SELECT ''' + cols + ''',
-                  COALESCE(si.total_itens, 0) AS total_itens,
-                  COALESCE(si.quantidade_total_xml, 0) AS quantidade_total_xml,
-                  COALESCE(si.quantidade_total_bipada, 0) AS quantidade_total_bipada,
-                  COALESCE(si.itens_divergentes, 0) AS itens_divergentes
-           FROM ''' + tbl_d + ''' d
-           LEFT JOIN (
-               SELECT documento_id,
-                      COUNT(id) AS total_itens,
-                      COALESCE(SUM(quantidade_xml), 0) AS quantidade_total_xml,
-                      COALESCE(SUM(quantidade_bipada), 0) AS quantidade_total_bipada,
-                      SUM(CASE WHEN ABS(COALESCE(quantidade_xml, 0) - COALESCE(quantidade_bipada, 0)) > 0.000001 THEN 1 ELSE 0 END) AS itens_divergentes
-               FROM ''' + tbl_i + '''
-               GROUP BY documento_id
-           ) si ON si.documento_id = d.id
-           WHERE d.id IN (''' + ph + ''')
-           ORDER BY d.criado_em DESC, d.id DESC''',
+        'SELECT ' + _terceiros_cols_select_listagem(cols, com_resumo=True)
+        + ' FROM ' + tbl_d + ' d'
+        + _terceiros_sql_join_resumo_itens(conn, tbl_i, 'd')
+        + ' WHERE d.id IN (' + ph + ')'
+        + ' ORDER BY d.criado_em DESC, d.id DESC',
         tuple(ids),
     ).fetchall()
     rows_list = [dict(r) if hasattr(r, 'keys') else {} for r in (rows or [])]
@@ -8515,31 +8531,19 @@ def api_terceiros_documentos():
         params_area = (area,)
     else:
         return jsonify({'erro': 'Área inválida.', 'rows': []}), 400
+    leve = (request.args.get('leve') or '').strip().lower() in ('1', 'sim', 'true', 'yes')
     conn = get_db()
     try:
         _ensure_terceiros_schema(conn, rodar_backfill=False)
         cols = _sql_cols_terceiros_documentos_listagem('d')
         tbl_d = _tbl_terceiros_documentos(conn)
         tbl_i = _tbl_terceiros_documento_itens(conn)
-        # Agregação em subconsulta (evita GROUP BY com muitas colunas de d no PostgreSQL / diferenças de modo SQL)
+        join_resumo = '' if leve else _terceiros_sql_join_resumo_itens(conn, tbl_i, 'd')
         rows = conn.execute(
-            '''SELECT ''' + cols + ''',
-                      COALESCE(si.total_itens, 0) AS total_itens,
-                      COALESCE(si.quantidade_total_xml, 0) AS quantidade_total_xml,
-                      COALESCE(si.quantidade_total_bipada, 0) AS quantidade_total_bipada,
-                      COALESCE(si.itens_divergentes, 0) AS itens_divergentes
-               FROM ''' + tbl_d + ''' d
-               LEFT JOIN (
-                   SELECT documento_id,
-                          COUNT(id) AS total_itens,
-                          COALESCE(SUM(quantidade_xml), 0) AS quantidade_total_xml,
-                          COALESCE(SUM(quantidade_bipada), 0) AS quantidade_total_bipada,
-                          SUM(CASE WHEN ABS(COALESCE(quantidade_xml, 0) - COALESCE(quantidade_bipada, 0)) > 0.000001 THEN 1 ELSE 0 END) AS itens_divergentes
-                   FROM ''' + tbl_i + '''
-                   GROUP BY documento_id
-               ) si ON si.documento_id = d.id
-               WHERE ''' + where_area + '''
-               ORDER BY d.criado_em DESC, d.id DESC''',
+            'SELECT ' + _terceiros_cols_select_listagem(cols, com_resumo=not leve)
+            + ' FROM ' + tbl_d + ' d' + join_resumo
+            + ' WHERE ' + where_area
+            + ' ORDER BY d.criado_em DESC, d.id DESC',
             params_area
         ).fetchall()
         rows_list = [dict(r) if hasattr(r, 'keys') else {} for r in (rows or [])]
@@ -9140,17 +9144,22 @@ def get_estatisticas():
         'veiculos': [dict(row) for row in veiculos]
     })
 
-# Inicializar banco ao carregar o app (gunicorn não executa __main__; evita 500 em /api/painel-completo no Render)
-try:
-    init_db()
-    sync_usuarios_from_config()
-except Exception as e:
-    import traceback
+def _init_db_em_background():
+    """Não bloqueia o boot do Gunicorn (evita 502 no health check do Render)."""
     try:
-        print("[controle-carregamento] init_db/sync_usuarios falhou:", e, flush=True)
-        traceback.print_exc()
-    except Exception:
-        pass
+        init_db()
+        sync_usuarios_from_config()
+    except Exception as e:
+        import traceback
+        try:
+            print("[controle-carregamento] init_db/sync_usuarios falhou:", e, flush=True)
+            traceback.print_exc()
+        except Exception:
+            pass
+
+
+# Inicializar banco ao carregar o app (gunicorn não executa __main__)
+threading.Thread(target=_init_db_em_background, daemon=True, name='init_db').start()
 
 if __name__ == '__main__':
     init_db()

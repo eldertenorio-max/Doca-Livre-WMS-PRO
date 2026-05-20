@@ -2368,26 +2368,86 @@ async function fetchTerceirosDocumentosTodos(opcoes) {
         }
         if (_terceirosListaCache.promise) return _terceirosListaCache.promise;
     }
-    var executar = async function() {
-        const resp = await fetchAPIComTimeout(
-            '/terceiros/documentos?area=' + encodeURIComponent('todas'),
-            {},
-            90000
-        );
-        var erro = null;
-        if (!resp || resp.erro) {
-            erro = (resp && resp.erro) || 'Erro ao carregar documentos.';
-        } else if (resp._timeout) {
-            erro = 'Tempo esgotado ao contactar o servidor.';
-        }
-        const rows = Array.isArray(resp && resp.rows) ? resp.rows : [];
-        var ordenadas = rows.slice().sort(function(a, b) {
+    function _terceirosOrdenarRowsLista(rows) {
+        return (rows || []).slice().sort(function(a, b) {
             return Number(b.id || 0) - Number(a.id || 0);
         });
+    }
+    function _terceirosErroRespostaDocumentos(resp) {
+        if (!resp) return 'Erro ao carregar documentos.';
+        if (resp._timeout) return 'Tempo esgotado ao contactar o servidor.';
+        if (resp._falhaGateway) {
+            return mensagemErroRespostaNaoJson(502, typeof resp.erro === 'string' ? resp.erro : '');
+        }
+        return (resp && resp.erro) ? resp.erro : null;
+    }
+    function _terceirosMesclarResumoItensNasRows(baseRows, fullRows) {
+        if (!Array.isArray(baseRows) || !Array.isArray(fullRows)) return baseRows;
+        var porId = {};
+        fullRows.forEach(function(r) {
+            if (r && r.id != null) porId[String(r.id)] = r;
+        });
+        return baseRows.map(function(r) {
+            var f = porId[String(r.id)];
+            if (!f) return r;
+            return Object.assign({}, r, {
+                total_itens: f.total_itens,
+                quantidade_total_xml: f.quantidade_total_xml,
+                quantidade_total_bipada: f.quantidade_total_bipada,
+                itens_divergentes: f.itens_divergentes
+            });
+        });
+    }
+    function _terceirosAtualizarCacheLista(ordenadas, erro) {
         if (ordenadas.length || !erro) {
             _terceirosListaCache.rows = ordenadas;
             _terceirosListaCache.erro = erro;
             _terceirosListaCache.ts = Date.now();
+        }
+    }
+    async function _terceirosBuscarResumoCompletoEmBackground() {
+        try {
+            var respFull = await fetchAPIComTimeout(
+                '/terceiros/documentos?area=' + encodeURIComponent('todas'),
+                {},
+                90000
+            );
+            var erroFull = _terceirosErroRespostaDocumentos(respFull);
+            var rowsFull = Array.isArray(respFull && respFull.rows) ? respFull.rows : [];
+            if (erroFull || !rowsFull.length) return;
+            var ordenadasFull = _terceirosOrdenarRowsLista(rowsFull);
+            var base = _terceirosListaCache.rows || ordenadasFull;
+            var merged = _terceirosMesclarResumoItensNasRows(base, ordenadasFull);
+            _terceirosAtualizarCacheLista(_terceirosOrdenarRowsLista(merged.length ? merged : ordenadasFull), null);
+            _terceirosRecarregarAbasAposListaAtualizada({ rows: _terceirosListaCache.rows, erro: null });
+        } catch (e) {
+            console.error('_terceirosBuscarResumoCompletoEmBackground:', e);
+        }
+    }
+    var executar = async function() {
+        var respLeve = await fetchAPIComTimeout(
+            '/terceiros/documentos?area=' + encodeURIComponent('todas') + '&leve=1',
+            {},
+            45000
+        );
+        var erroLeve = _terceirosErroRespostaDocumentos(respLeve);
+        var rowsLeve = Array.isArray(respLeve && respLeve.rows) ? respLeve.rows : [];
+        if (!erroLeve && rowsLeve.length) {
+            var ordenadasLeve = _terceirosOrdenarRowsLista(rowsLeve);
+            _terceirosAtualizarCacheLista(ordenadasLeve, null);
+            void _terceirosBuscarResumoCompletoEmBackground();
+            return { erro: null, rows: ordenadasLeve };
+        }
+        var resp = await fetchAPIComTimeout(
+            '/terceiros/documentos?area=' + encodeURIComponent('todas'),
+            {},
+            90000
+        );
+        var erro = _terceirosErroRespostaDocumentos(resp);
+        var rows = Array.isArray(resp && resp.rows) ? resp.rows : [];
+        var ordenadas = _terceirosOrdenarRowsLista(rows);
+        if (ordenadas.length || !erro) {
+            _terceirosAtualizarCacheLista(ordenadas, erro);
         } else if (_terceirosListaCache.rows && _terceirosListaCache.rows.length) {
             return { erro: erro, rows: _terceirosListaCache.rows, _stale: true };
         }
