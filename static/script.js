@@ -2226,15 +2226,15 @@ async function uploadXmlTerceirosComPrefixo(prefixo, areaChave, opcoes) {
         filesEl.value = '';
         if (opcoes.exigeMotoristaPlaca && motEl) motEl.value = '';
         if (opcoes.exigeMotoristaPlaca && plaEl) plaEl.value = '';
-        var subLoad = document.getElementById('ter-acao-loading-sub');
-        if (subLoad) {
-            subLoad.textContent = 'Atualizando a lista de Pendência de recebimento…';
-        }
         var idsCriados = Array.isArray(data.criados) ? data.criados : [];
         if (idsCriados.length) {
             definirDestaqueLinhaTerceirosDoc(idsCriados[idsCriados.length - 1]);
         }
-        await _terceirosRecarregarAposUpload();
+        if ((data.total_criados || 0) > 0) {
+            var subLoad = document.getElementById('ter-acao-loading-sub');
+            if (subLoad) subLoad.textContent = 'Registrando na lista de pendências…';
+            await _terceirosAplicarUploadNoCache(data);
+        }
         abrirModalUploadXmlTerceirosConcluido({
             totalCriados: data.total_criados || 0,
             erros: data.erros || [],
@@ -4480,8 +4480,60 @@ async function loadTerceirosHistorico(dataPreloaded) {
     aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
+/** Incorpora NFs recém-enviadas no cache local (sem baixar todas as notas de novo). */
+function _terceirosMesclarRowsUploadNoCache(novosRows) {
+    if (!Array.isArray(novosRows) || !novosRows.length) return;
+    var idsNovos = {};
+    novosRows.forEach(function(r) {
+        if (r && r.id != null) idsNovos[String(r.id)] = true;
+    });
+    var base = Array.isArray(_terceirosListaCache.rows) ? _terceirosListaCache.rows : [];
+    var merged = novosRows.concat(base.filter(function(r) {
+        return r && !idsNovos[String(r.id)];
+    }));
+    merged.sort(function(a, b) {
+        return Number(b.id || 0) - Number(a.id || 0);
+    });
+    _terceirosListaCache.rows = merged;
+    _terceirosListaCache.erro = null;
+    _terceirosListaCache.ts = Date.now();
+}
+
+/** Sincronização completa em segundo plano (painel + demais abas). */
+function _terceirosSincronizarListasAposUploadBackground() {
+    void (async function() {
+        try {
+            invalidateTerceirosListaCache();
+            _terceirosPrefetchPromise = null;
+            var data = await fetchTerceirosDocumentosTodos({ force: true });
+            await warmTerceirosTodasListas(data);
+            await loadPainelTerceiros().catch(function(e) {
+                console.error('_terceirosSincronizarListasAposUploadBackground painel:', e);
+            });
+            void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows || []));
+        } catch (e) {
+            console.error('_terceirosSincronizarListasAposUploadBackground:', e);
+        }
+    })();
+}
+
 /**
- * Após upload de XML: busca lista nova e atualiza Pendência na hora (demais abas em background).
+ * Atualiza Pendência na hora com criados_rows da API; lista completa sincroniza em background.
+ */
+async function _terceirosAplicarUploadNoCache(uploadResp) {
+    var rowsNovos = uploadResp && Array.isArray(uploadResp.criados_rows) ? uploadResp.criados_rows : [];
+    if (rowsNovos.length) {
+        _terceirosMesclarRowsUploadNoCache(rowsNovos);
+        await loadTerceirosDocumentos({ rows: _terceirosListaCache.rows, erro: null });
+        void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(_terceirosListaCache.rows));
+        _terceirosSincronizarListasAposUploadBackground();
+        return { rows: _terceirosListaCache.rows, erro: null };
+    }
+    return _terceirosRecarregarAposUpload();
+}
+
+/**
+ * Após upload de XML: busca lista nova e atualiza Pendência (fallback se API não enviar criados_rows).
  */
 async function _terceirosRecarregarAposUpload() {
     invalidateTerceirosListaCache();

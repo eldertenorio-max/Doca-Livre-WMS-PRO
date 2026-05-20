@@ -7918,7 +7918,14 @@ def api_terceiros_upload_xml():
             except Exception as e:
                 erros.append('%s: %s' % (nome, str(e)))
         conn.commit()
-        return jsonify({'ok': True, 'criados': criados, 'total_criados': len(criados), 'erros': erros})
+        criados_rows = _terceiros_listagem_rows_por_ids(conn, criados)
+        return jsonify({
+            'ok': True,
+            'criados': criados,
+            'criados_rows': criados_rows,
+            'total_criados': len(criados),
+            'erros': erros,
+        })
     except Exception as e:
         conn.rollback()
         return jsonify({'ok': False, 'erro': str(e), 'criados': criados, 'erros': erros}), 500
@@ -8166,6 +8173,98 @@ def api_terceiros_painel():
     conn.close()
 
 
+def _terceiros_serializar_row_listagem(row):
+    """Formata uma linha da listagem de NFs (mesmo formato do GET /documentos)."""
+    rc = row.get('recebimento_concluido')
+    if isinstance(rc, str) and rc.strip().lower() in ('sim', 's', 'true', '1'):
+        rc_flag = True
+    elif isinstance(rc, str) and rc.strip().lower() in ('nao', 'n', 'false', '0', ''):
+        rc_flag = False
+    else:
+        rc_flag = bool(rc) if rc is not None else False
+    return {
+        'id': row.get('id'),
+        'area': row.get('area') or '',
+        'numero_nf': row.get('numero_nf') or '',
+        'serie_nf': row.get('serie_nf') or '',
+        'numero_pedido': _normalizar_numero_pedido_terceiros(row.get('numero_pedido')),
+        'chave_nfe': row.get('chave_nfe') or '',
+        'data_emissao': _fmt_data_br(row.get('data_emissao') or ''),
+        'remetente_nome': row.get('remetente_nome') or '',
+        'destinatario_nome': row.get('destinatario_nome') or '',
+        'destinatario_uf': (row.get('destinatario_uf') or '').strip().upper(),
+        'previsao_chegada': _fmt_datahora_br(row.get('previsao_chegada') or ''),
+        'recebimento_concluido': rc_flag,
+        'nota_lancada': row.get('nota_lancada') or '',
+        'enviar_para_mg': row.get('enviar_para_mg') or '',
+        'motorista_carreta': row.get('motorista_carreta') or '',
+        'placa_carreta': row.get('placa_carreta') or '',
+        'motorista_obrigatorio': _motorista_obrigatorio_terceiros(row),
+        'carga_recebida_mg': row.get('carga_recebida_mg') or '',
+        'criado_por': row.get('criado_por') or '',
+        'atualizado_por': row.get('atualizado_por') or '',
+        'recebimento_concluido_por': row.get('recebimento_concluido_por') or '',
+        'nota_lancada_por': row.get('nota_lancada_por') or '',
+        'enviar_para_mg_por': row.get('enviar_para_mg_por') or '',
+        'carga_recebida_mg_por': row.get('carga_recebida_mg_por') or '',
+        'total_itens': int(row.get('total_itens') or 0),
+        'quantidade_total_xml': float(row.get('quantidade_total_xml') or 0),
+        'quantidade_total_bipada': float(row.get('quantidade_total_bipada') or 0),
+        'itens_divergentes': int(row.get('itens_divergentes') or 0),
+        'criado_em': _fmt_datahora_br(row.get('criado_em') or ''),
+        'atualizado_em': _fmt_datahora_br(row.get('atualizado_em') or ''),
+        'recebimento_concluido_em': _fmt_datahora_br(row.get('recebimento_concluido_em') or ''),
+        'nota_lancada_em': _fmt_datahora_br(row.get('nota_lancada_em') or ''),
+        'enviar_para_mg_em': _fmt_datahora_br(row.get('enviar_para_mg_em') or ''),
+        'motorista_carreta_em': _fmt_datahora_br(row.get('motorista_carreta_em') or ''),
+        'carga_recebida_mg_em': _fmt_datahora_br(row.get('carga_recebida_mg_em') or ''),
+    }
+
+
+def _terceiros_listagem_rows_por_ids(conn, documento_ids):
+    """Carrega só as NFs recém-criadas (evita GET de todas as notas após upload)."""
+    ids = []
+    for x in documento_ids or []:
+        try:
+            n = int(x)
+            if n > 0:
+                ids.append(n)
+        except (TypeError, ValueError):
+            pass
+    if not ids:
+        return []
+    cols = _sql_cols_terceiros_documentos_listagem('d')
+    tbl_d = _tbl_terceiros_documentos(conn)
+    tbl_i = _tbl_terceiros_documento_itens(conn)
+    ph = ','.join(['?'] * len(ids))
+    rows = conn.execute(
+        '''SELECT ''' + cols + ''',
+                  COALESCE(si.total_itens, 0) AS total_itens,
+                  COALESCE(si.quantidade_total_xml, 0) AS quantidade_total_xml,
+                  COALESCE(si.quantidade_total_bipada, 0) AS quantidade_total_bipada,
+                  COALESCE(si.itens_divergentes, 0) AS itens_divergentes
+           FROM ''' + tbl_d + ''' d
+           LEFT JOIN (
+               SELECT documento_id,
+                      COUNT(id) AS total_itens,
+                      COALESCE(SUM(quantidade_xml), 0) AS quantidade_total_xml,
+                      COALESCE(SUM(quantidade_bipada), 0) AS quantidade_total_bipada,
+                      SUM(CASE WHEN ABS(COALESCE(quantidade_xml, 0) - COALESCE(quantidade_bipada, 0)) > 0.000001 THEN 1 ELSE 0 END) AS itens_divergentes
+               FROM ''' + tbl_i + '''
+               GROUP BY documento_id
+           ) si ON si.documento_id = d.id
+           WHERE d.id IN (''' + ph + ''')
+           ORDER BY d.criado_em DESC, d.id DESC''',
+        tuple(ids),
+    ).fetchall()
+    rows_list = [dict(r) if hasattr(r, 'keys') else {} for r in (rows or [])]
+    try:
+        _terceiros_enriquecer_campos_xml_listagem(conn, rows_list)
+    except Exception:
+        pass
+    return [_terceiros_serializar_row_listagem(row) for row in rows_list]
+
+
 @app.route('/api/terceiros/documentos', methods=['GET'])
 def api_terceiros_documentos():
     area = (request.args.get('area') or '').strip().lower()
@@ -8210,52 +8309,7 @@ def api_terceiros_documentos():
             _terceiros_enriquecer_campos_xml_listagem(conn, rows_list)
         except Exception:
             pass
-        out = []
-        for row in rows_list:
-            rc = row.get('recebimento_concluido')
-            if isinstance(rc, str) and rc.strip().lower() in ('sim', 's', 'true', '1'):
-                rc_flag = True
-            elif isinstance(rc, str) and rc.strip().lower() in ('nao', 'n', 'false', '0', ''):
-                rc_flag = False
-            else:
-                rc_flag = bool(rc) if rc is not None else False
-            out.append({
-                'id': row.get('id'),
-                'area': row.get('area') or '',
-                'numero_nf': row.get('numero_nf') or '',
-                'serie_nf': row.get('serie_nf') or '',
-                'numero_pedido': _normalizar_numero_pedido_terceiros(row.get('numero_pedido')),
-                'chave_nfe': row.get('chave_nfe') or '',
-                'data_emissao': _fmt_data_br(row.get('data_emissao') or ''),
-                'remetente_nome': row.get('remetente_nome') or '',
-                'destinatario_nome': row.get('destinatario_nome') or '',
-                'destinatario_uf': (row.get('destinatario_uf') or '').strip().upper(),
-                'previsao_chegada': _fmt_datahora_br(row.get('previsao_chegada') or ''),
-                'recebimento_concluido': rc_flag,
-                'nota_lancada': row.get('nota_lancada') or '',
-                'enviar_para_mg': row.get('enviar_para_mg') or '',
-                'motorista_carreta': row.get('motorista_carreta') or '',
-                'placa_carreta': row.get('placa_carreta') or '',
-                'motorista_obrigatorio': _motorista_obrigatorio_terceiros(row),
-                'carga_recebida_mg': row.get('carga_recebida_mg') or '',
-                'criado_por': row.get('criado_por') or '',
-                'atualizado_por': row.get('atualizado_por') or '',
-                'recebimento_concluido_por': row.get('recebimento_concluido_por') or '',
-                'nota_lancada_por': row.get('nota_lancada_por') or '',
-                'enviar_para_mg_por': row.get('enviar_para_mg_por') or '',
-                'carga_recebida_mg_por': row.get('carga_recebida_mg_por') or '',
-                'total_itens': int(row.get('total_itens') or 0),
-                'quantidade_total_xml': float(row.get('quantidade_total_xml') or 0),
-                'quantidade_total_bipada': float(row.get('quantidade_total_bipada') or 0),
-                'itens_divergentes': int(row.get('itens_divergentes') or 0),
-                'criado_em': _fmt_datahora_br(row.get('criado_em') or ''),
-                'atualizado_em': _fmt_datahora_br(row.get('atualizado_em') or ''),
-                'recebimento_concluido_em': _fmt_datahora_br(row.get('recebimento_concluido_em') or ''),
-                'nota_lancada_em': _fmt_datahora_br(row.get('nota_lancada_em') or ''),
-                'enviar_para_mg_em': _fmt_datahora_br(row.get('enviar_para_mg_em') or ''),
-                'motorista_carreta_em': _fmt_datahora_br(row.get('motorista_carreta_em') or ''),
-                'carga_recebida_mg_em': _fmt_datahora_br(row.get('carga_recebida_mg_em') or ''),
-            })
+        out = [_terceiros_serializar_row_listagem(row) for row in rows_list]
         return jsonify({'rows': out})
     except Exception as e:
         return jsonify({'erro': str(e), 'rows': []}), 500
