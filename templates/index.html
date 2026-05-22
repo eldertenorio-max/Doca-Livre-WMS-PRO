@@ -1866,7 +1866,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🧾</span>
                         <h2 class="painel-titulo-texto">Notas Fiscais Lançadas</h2>
-                        <p class="painel-titulo-sub">Histórico completo das NFs com lançamento fiscal <strong>Sim</strong>. Linhas em destaque aguardam ação; as demais mostram a <strong>etapa atual</strong> do fluxo. <strong>Carreta:</strong> <strong>Registrar no histórico</strong>. <strong>Demais rotas:</strong> em <strong>Enviar MG</strong>, escolha <strong>Sim</strong> (6ª aba) ou <strong>Não — não enviar</strong> (vai ao Histórico e permanece listada aqui).</p>
+                        <p class="painel-titulo-sub">NFs com <strong>Lançada = Sim</strong> aguardando decisão de envio para MG (em paralelo com a 6ª aba). <strong>Carreta:</strong> use <strong>Registrar no histórico</strong>. <strong>Demais rotas:</strong> defina <strong>Enviar MG</strong> aqui ou na 6ª aba.</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
@@ -1903,7 +1903,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🚚</span>
                         <h2 class="painel-titulo-texto">Pendência Envio MG</h2>
-                        <p class="painel-titulo-sub">Notas aguardando confirmação de <strong>Enviado para MG</strong>. Ajuste <strong>motorista</strong> e <strong>placa</strong> na lista abaixo; marque <strong>Sim</strong> em Enviado para MG. A NF sai desta lista e o sistema pergunta se deseja ir ao <strong>Histórico</strong>.</p>
+                        <p class="painel-titulo-sub">Mesmas NFs da 5ª aba: <strong>Lançada = Sim</strong> e envio para MG ainda pendente. Marque <strong>Sim</strong> ou <strong>Não</strong> (com motivo → Histórico).</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
@@ -1940,7 +1940,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🚛</span>
                         <h2 class="painel-titulo-texto">Notas Fiscais Enviadas para MG</h2>
-                        <p class="painel-titulo-sub">Etapa intermediária rara. Quando <strong>Lançada</strong>, <strong>Enviar MG</strong> e <strong>Recebida MG</strong> estão Sim, a NF vai para o <strong>Histórico</strong> e permanece em <strong>Notas lançadas</strong>.</p>
+                        <p class="painel-titulo-sub">NFs com <strong>Enviado MG = Sim</strong>, aguardando confirmação na 8ª aba (<strong>Recebida MG</strong>).</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
@@ -1960,7 +1960,7 @@
                                         <th title="Recebimento">Receb.</th>
                                         <th title="Conferência">Conf.</th>
                                         <th title="Nota lançada">Lançada</th>
-                                        <th title="Enviado para Minas Gerais">Enviar MG</th>
+                                        <th title="Enviado para Minas Gerais">Enviado MG</th>
                                         <th title="Recebida em Minas Gerais">Recebida MG</th>
                                         <th>Ações</th>
                                     </tr>
@@ -1997,7 +1997,7 @@
                                         <th title="Recebimento">Receb.</th>
                                         <th title="Conferência">Conf.</th>
                                         <th title="Nota lançada">Lançada</th>
-                                        <th title="Enviado para Minas Gerais">Enviar MG</th>
+                                        <th title="Enviado para Minas Gerais">Enviado MG</th>
                                         <th title="Recebida em Minas Gerais">Recebida MG</th>
                                         <th>Ações</th>
                                     </tr>
@@ -2077,7 +2077,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🗂️</span>
                         <h2 class="painel-titulo-texto">Histórico de NFs</h2>
-                        <p class="painel-titulo-sub"><strong>Carreta:</strong> após concluir na 5ª aba. <strong>Demais rotas:</strong> com <strong>Lançada</strong>, <strong>Enviar MG</strong> e <strong>Recebida MG</strong> = Sim, ou <strong>Enviar MG</strong> = Não (sem envio). As NFs lançadas continuam visíveis na aba <strong>Notas lançadas</strong>.</p>
+                        <p class="painel-titulo-sub">Consulta de NFs <strong>finalizadas</strong>: fluxo MG completo (<strong>Recebida MG</strong> = Sim), encerradas com <strong>Não + motivo</strong> na 4ª, 6ª ou 8ª aba, ou <strong>carreta</strong> concluída na 5ª aba. Não aparecem mais nas abas de andamento.</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
@@ -2097,7 +2097,7 @@
                                         <th title="Recebimento">Receb.</th>
                                         <th title="Conferência">Conf.</th>
                                         <th title="Nota lançada">Lançada</th>
-                                        <th title="Enviado para Minas Gerais">Enviar MG</th>
+                                        <th title="Enviado para Minas Gerais">Enviado MG</th>
                                         <th title="Recebida em Minas Gerais">Recebida MG</th>
                                         <th>Ações</th>
                                     </tr>
@@ -2362,6 +2362,19 @@
             <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
                 <button type="button" class="btn btn-secondary" id="btn-ter-cancelar-lancar-sem-recebimento">Cancelar</button>
                 <button type="button" class="btn btn-primary" id="btn-ter-confirmar-lancar-sem-recebimento" style="background: #e65100;">Sim, lançar mesmo assim</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-terceiros-motivo-fluxo" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 480px; border-top: 4px solid #1565c0;">
+            <span class="close" id="modal-terceiros-motivo-fluxo-close">&times;</span>
+            <h3 id="ter-motivo-fluxo-titulo" style="margin-top: 0; color: #1565c0;">Informe o motivo</h3>
+            <p style="margin: 8px 0 12px 0; color: #607d8b;">Este motivo ficará registrado e a NF irá para o <strong>Histórico</strong>.</p>
+            <textarea id="ter-motivo-fluxo-texto" rows="4" style="width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #cfd8dc; border-radius: 6px;" placeholder="Descreva o motivo…"></textarea>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 16px;">
+                <button type="button" class="btn btn-secondary" id="btn-ter-cancelar-motivo-fluxo">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-ter-confirmar-motivo-fluxo">Confirmar</button>
             </div>
         </div>
     </div>
