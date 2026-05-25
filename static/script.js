@@ -519,8 +519,14 @@ function _terceirosAtualizarNotaLancadaLocal(documentoId, valorNorm) {
     if (documentoId == null) return;
     var id = String(documentoId);
     var locais = window._terceirosFornecedoresRecebidosLocais || {};
-    if (locais[id]) {
-        locais[id] = Object.assign({}, locais[id], { nota_lancada: valorNorm });
+    var baseLocal = locais[id] || { id: documentoId };
+    locais[id] = Object.assign({}, baseLocal, { nota_lancada: valorNorm });
+    if (Array.isArray(_terceirosListaCache.rows)) {
+        _terceirosListaCache.rows = _terceirosListaCache.rows.map(function(row) {
+            if (!row || String(row.id) !== id) return row;
+            return Object.assign({}, row, { nota_lancada: valorNorm });
+        });
+        _terceirosListaCache.ts = Date.now();
     }
     if (_terceirosDocAtual && String(_terceirosDocAtual.id) === id) {
         _terceirosDocAtual.nota_lancada = valorNorm;
@@ -683,6 +689,21 @@ async function terceirosNavegarParaNotasLancadasAposMarcarSim(documentoId) {
     } catch (e2) {
         console.error(e2);
     }
+}
+
+/** 5ª → 6ª aba: escolher enviar para MG não registra envio ainda; apenas abre a pendência. */
+async function terceirosNavegarParaPendenciasMgAposEscolherEnviar(documentoId) {
+    if (documentoId == null) return;
+    definirDestaqueLinhaTerceirosDoc(documentoId);
+    abrirAbaTerceirosSeDiferente('pendencias-mg', true);
+    try {
+        await loadTerceirosPendenciasMg();
+        var tbody6 = document.getElementById('ter-tbody-pendencias-mg');
+        if (tbody6) aplicarDestaqueLinhaTerceirosDoc(tbody6);
+    } catch (e) {
+        console.error(e);
+    }
+    showMessage('NF enviada para a 6ª aba — Pendências envio MG. Confirme o envio por lá.', 'success');
 }
 
 /**
@@ -2027,13 +2048,14 @@ async function _terceirosAplicarUiAposRecebimentoConcluido(documentoId, document
 async function _terceirosAposConfirmarNotaLancadaSim(documentoId, documentoResp) {
     if (documentoId == null) return;
     var notaVal = (documentoResp && documentoResp.nota_lancada) ? documentoResp.nota_lancada : 'sim';
-    _terceirosAtualizarNotaLancadaLocal(documentoId, notaVal);
-    definirDestaqueLinhaTerceirosDoc(documentoId);
-    try {
-        await recarregarTodasListasTerceiros();
-    } catch (e) {
-        console.error(e);
+    if (documentoResp && _terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
+        Object.assign(_terceirosDocAtual, documentoResp);
     }
+    _terceirosAtualizarNotaLancadaLocal(documentoId, notaVal);
+    await terceirosNavegarParaNotasLancadasAposMarcarSim(documentoId);
+    void recarregarTodasListasTerceiros().catch(function(e) {
+        console.error(e);
+    });
     showMessage('Nota lançada. A NF está nas abas 5 — Notas lançadas e 6 — Pendências envio MG.', 'success');
 }
 
@@ -3884,7 +3906,7 @@ function renderTerceirosCelulaEnviarMgFluxo(row, etapa) {
         if (_terceirosConsideraNotasLancadas(row) && _terceirosUsaFluxoMg(row)) {
             return '<td><select class="ter-select-inline" data-ter-enviar-mg-lanc-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
                 + '<option value="">Selecione</option>'
-                + '<option value="sim">Sim — enviar para MG</option>'
+                + '<option value="sim">Sim — ir para pendência MG</option>'
                 + '<option value="nao"' + (isTerceirosFlagNao(row.enviar_para_mg) ? ' selected' : '') + '>Não — não enviar</option>'
             + '</select>' + renderTerceirosUsuarioMeta(row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>';
         }
@@ -4728,10 +4750,13 @@ function bindTerceirosEnviarMgNotasLancadas(tbody) {
             if (window._terceirosEnviarMgLancEmAndamento[id]) return;
             window._terceirosEnviarMgLancEmAndamento[id] = true;
             select.disabled = true;
-            _terceirosAtualizarStatusComMotivo(id, 'enviar_para_mg', valor, {
-                motorista_obrigatorio: select.getAttribute('data-ter-motorista-obrigatorio') === 'sim',
-                motorista_atual: select.getAttribute('data-ter-motorista-atual') || ''
-            }).finally(function() {
+            var promessa = valor === 'sim'
+                ? terceirosNavegarParaPendenciasMgAposEscolherEnviar(id)
+                : _terceirosAtualizarStatusComMotivo(id, 'enviar_para_mg', valor, {
+                    motorista_obrigatorio: select.getAttribute('data-ter-motorista-obrigatorio') === 'sim',
+                    motorista_atual: select.getAttribute('data-ter-motorista-atual') || ''
+                });
+            Promise.resolve(promessa).finally(function() {
                 delete window._terceirosEnviarMgLancEmAndamento[id];
                 if (select.isConnected) select.disabled = false;
             });
