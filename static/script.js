@@ -515,21 +515,25 @@ function terceirosReaplicarFiltroPrevisaoPendenciaSeAplicavel() {
 }
 
 /** Atualiza cache local e remove NF da tabela da 4ª aba após marcar nota lançada. */
-function _terceirosAtualizarNotaLancadaLocal(documentoId, valorNorm) {
+function _terceirosAtualizarNotaLancadaLocal(documentoId, valorNorm, motivo) {
     if (documentoId == null) return;
     var id = String(documentoId);
     var locais = window._terceirosFornecedoresRecebidosLocais || {};
     var baseLocal = locais[id] || { id: documentoId };
-    locais[id] = Object.assign({}, baseLocal, { nota_lancada: valorNorm });
+    var patch = { nota_lancada: valorNorm };
+    if (motivo != null && String(motivo).trim() !== '') {
+        patch.motivo_nao_lancada = String(motivo).trim();
+    }
+    locais[id] = Object.assign({}, baseLocal, patch);
     if (Array.isArray(_terceirosListaCache.rows)) {
         _terceirosListaCache.rows = _terceirosListaCache.rows.map(function(row) {
             if (!row || String(row.id) !== id) return row;
-            return Object.assign({}, row, { nota_lancada: valorNorm });
+            return Object.assign({}, row, patch);
         });
         _terceirosListaCache.ts = Date.now();
     }
     if (_terceirosDocAtual && String(_terceirosDocAtual.id) === id) {
-        _terceirosDocAtual.nota_lancada = valorNorm;
+        Object.assign(_terceirosDocAtual, patch);
     }
 }
 
@@ -609,10 +613,15 @@ function bindTerceirosPendentesLancamentoTbody(tbody) {
             if (window._terceirosNotaLancadaPendEmAndamento[id]) return;
             window._terceirosNotaLancadaPendEmAndamento[id] = true;
             select.disabled = true;
-            _terceirosAtualizarStatusComMotivo(id, 'nota_lancada', valor, {
+            var opcoesStatus = {
                 recebimento_concluido: recebimentoConcluido,
                 fornecedor_recebido: fornecedorRecebido
-            }).finally(function() {
+            };
+            if (valor === 'sim') {
+                opcoesStatus.movimento_lancada_sim_aplicado = true;
+                void terceirosNavegarParaNotasLancadasAposMarcarSim(id);
+            }
+            _terceirosAtualizarStatusComMotivo(id, 'nota_lancada', valor, opcoesStatus).finally(function() {
                 delete window._terceirosNotaLancadaPendEmAndamento[id];
                 if (select.isConnected) select.disabled = false;
             });
@@ -647,15 +656,47 @@ function _terceirosRemoverLinhaPendentesLancamento(documentoId) {
     }
 }
 
-function _terceirosAtualizarEnviarMgLocal(documentoId, valorNorm) {
+function _terceirosAtualizarEnviarMgLocal(documentoId, valorNorm, motivo) {
     if (documentoId == null) return;
     var id = String(documentoId);
     var locais = window._terceirosFornecedoresRecebidosLocais || {};
-    if (locais[id]) {
-        locais[id] = Object.assign({}, locais[id], { enviar_para_mg: valorNorm });
+    var baseLocal = locais[id] || { id: documentoId };
+    var patch = { enviar_para_mg: valorNorm };
+    if (motivo != null && String(motivo).trim() !== '') {
+        patch.motivo_nao_enviar_mg = String(motivo).trim();
+    }
+    locais[id] = Object.assign({}, baseLocal, patch);
+    if (Array.isArray(_terceirosListaCache.rows)) {
+        _terceirosListaCache.rows = _terceirosListaCache.rows.map(function(row) {
+            if (!row || String(row.id) !== id) return row;
+            return Object.assign({}, row, patch);
+        });
+        _terceirosListaCache.ts = Date.now();
     }
     if (_terceirosDocAtual && String(_terceirosDocAtual.id) === id) {
-        _terceirosDocAtual.enviar_para_mg = valorNorm;
+        Object.assign(_terceirosDocAtual, patch);
+    }
+}
+
+function _terceirosAtualizarRecebidaMgLocal(documentoId, valorNorm, motivo) {
+    if (documentoId == null) return;
+    var id = String(documentoId);
+    var patch = { carga_recebida_mg: valorNorm };
+    if (motivo != null && String(motivo).trim() !== '') {
+        patch.motivo_nao_recebida_mg = String(motivo).trim();
+    }
+    var locais = window._terceirosFornecedoresRecebidosLocais || {};
+    var baseLocal = locais[id] || { id: documentoId };
+    locais[id] = Object.assign({}, baseLocal, patch);
+    if (Array.isArray(_terceirosListaCache.rows)) {
+        _terceirosListaCache.rows = _terceirosListaCache.rows.map(function(row) {
+            if (!row || String(row.id) !== id) return row;
+            return Object.assign({}, row, patch);
+        });
+        _terceirosListaCache.ts = Date.now();
+    }
+    if (_terceirosDocAtual && String(_terceirosDocAtual.id) === id) {
+        Object.assign(_terceirosDocAtual, patch);
     }
 }
 
@@ -704,6 +745,40 @@ async function terceirosNavegarParaPendenciasMgAposEscolherEnviar(documentoId) {
         console.error(e);
     }
     showMessage('NF enviada para a 6ª aba — Pendências envio MG. Confirme o envio por lá.', 'success');
+}
+
+/** 6ª → 7ª/8ª abas: envio MG confirmado. */
+async function terceirosNavegarParaNotasEnviadasMgAposConfirmar(documentoId) {
+    if (documentoId == null) return;
+    _terceirosAtualizarEnviarMgLocal(documentoId, 'sim');
+    _terceirosRemoverLinhaPendenciasMg(documentoId);
+    definirDestaqueLinhaTerceirosDoc(documentoId);
+    abrirAbaTerceirosSeDiferente('notas-enviadas-mg', true);
+    try {
+        await loadTerceirosNotasEnviadasMg();
+        var tbody7 = document.getElementById('ter-tbody-notas-enviadas-mg');
+        if (tbody7) aplicarDestaqueLinhaTerceirosDoc(tbody7);
+        void loadTerceirosRecebimentosMg();
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+/** 8ª → Histórico: recebimento MG finalizado. */
+async function terceirosNavegarParaHistoricoAposRecebidaMg(documentoId, valorNorm, motivo) {
+    if (documentoId == null) return;
+    _terceirosAtualizarRecebidaMgLocal(documentoId, valorNorm || 'sim', motivo || '');
+    definirDestaqueLinhaTerceirosDoc(documentoId);
+    abrirAbaTerceirosSeDiferente('historico', true);
+    try {
+        await loadTerceirosHistorico();
+        var tbodyHist = document.getElementById('ter-tbody-historico');
+        if (tbodyHist) aplicarDestaqueLinhaTerceirosDoc(tbodyHist);
+        void loadTerceirosRecebimentosMg();
+        void loadTerceirosNotasEnviadasMg();
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 /**
@@ -1849,6 +1924,19 @@ async function _terceirosAtualizarStatusComMotivo(documentoId, campo, valor, opc
             return;
         }
         opcoes.motivo = motivo;
+        if (campo === 'nota_lancada') {
+            _terceirosAtualizarNotaLancadaLocal(documentoId, 'nao', motivo);
+            opcoes.movimento_historico_aplicado = true;
+            void terceirosNavegarParaHistoricoAposEnviarMg(documentoId);
+        } else if (campo === 'enviar_para_mg') {
+            _terceirosAtualizarEnviarMgLocal(documentoId, 'nao', motivo);
+            opcoes.movimento_historico_aplicado = true;
+            void terceirosNavegarParaHistoricoAposEnviarMg(documentoId);
+        } else if (campo === 'carga_recebida_mg') {
+            _terceirosAtualizarRecebidaMgLocal(documentoId, 'nao', motivo);
+            opcoes.movimento_recebida_mg_aplicado = true;
+            void terceirosNavegarParaHistoricoAposRecebidaMg(documentoId, 'nao', motivo);
+        }
     }
     return atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes);
 }
@@ -2045,14 +2133,17 @@ async function _terceirosAplicarUiAposRecebimentoConcluido(documentoId, document
 }
 
 /** Após salvar «Sim» em Nota lançada — NF nas abas 5 e 6. */
-async function _terceirosAposConfirmarNotaLancadaSim(documentoId, documentoResp) {
+async function _terceirosAposConfirmarNotaLancadaSim(documentoId, documentoResp, opcoes) {
     if (documentoId == null) return;
+    opcoes = opcoes || {};
     var notaVal = (documentoResp && documentoResp.nota_lancada) ? documentoResp.nota_lancada : 'sim';
     if (documentoResp && _terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
         Object.assign(_terceirosDocAtual, documentoResp);
     }
     _terceirosAtualizarNotaLancadaLocal(documentoId, notaVal);
-    await terceirosNavegarParaNotasLancadasAposMarcarSim(documentoId);
+    if (!opcoes.movimento_lancada_sim_aplicado) {
+        await terceirosNavegarParaNotasLancadasAposMarcarSim(documentoId);
+    }
     void recarregarTodasListasTerceiros().catch(function(e) {
         console.error(e);
     });
@@ -2060,18 +2151,20 @@ async function _terceirosAposConfirmarNotaLancadaSim(documentoId, documentoResp)
 }
 
 /** Após «Não» em Lançada — vai ao Histórico com motivo. */
-async function _terceirosAposConfirmarNotaLancadaNao(documentoId, documentoResp) {
+async function _terceirosAposConfirmarNotaLancadaNao(documentoId, documentoResp, opcoes) {
     if (documentoId == null) return;
+    opcoes = opcoes || {};
     if (documentoResp && _terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
         Object.assign(_terceirosDocAtual, documentoResp);
     }
-    definirDestaqueLinhaTerceirosDoc(documentoId);
-    try {
-        await recarregarTodasListasTerceiros();
-    } catch (e) {
-        console.error(e);
+    var motivo = (documentoResp && documentoResp.motivo_nao_lancada) || opcoes.motivo || '';
+    _terceirosAtualizarNotaLancadaLocal(documentoId, 'nao', motivo);
+    if (!opcoes.movimento_historico_aplicado) {
+        await terceirosNavegarParaHistoricoAposEnviarMg(documentoId);
     }
-    abrirAbaTerceirosSeDiferente('historico', true);
+    void recarregarTodasListasTerceiros().catch(function(e) {
+        console.error(e);
+    });
     showMessage('Lançamento «Não» registrado. A NF está no Histórico.', 'success');
 }
 
@@ -2153,8 +2246,9 @@ async function _terceirosAposConcluirCarretaNoHistorico(documentoId, documentoRe
 }
 
 /** Após confirmar recebimento em MG (fluxo normal) — vai ao Histórico. */
-async function _terceirosAposConfirmarRecebidaMgSim(documentoId, documentoResp) {
+async function _terceirosAposConfirmarRecebidaMgSim(documentoId, documentoResp, opcoes) {
     if (documentoId == null) return;
+    opcoes = opcoes || {};
     if (documentoResp && isTerceirosAreaCarreta(documentoResp)) {
         await _terceirosAposConcluirCarretaNoHistorico(documentoId, documentoResp);
         return;
@@ -2162,47 +2256,75 @@ async function _terceirosAposConfirmarRecebidaMgSim(documentoId, documentoResp) 
     if (documentoResp && _terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
         Object.assign(_terceirosDocAtual, documentoResp);
     }
-    await terceirosNavegarParaHistoricoAposEnviarMg(documentoId);
+    _terceirosAtualizarRecebidaMgLocal(documentoId, 'sim');
+    if (!opcoes.movimento_recebida_mg_aplicado) {
+        await terceirosNavegarParaHistoricoAposRecebidaMg(documentoId, 'sim');
+    }
+    void recarregarTodasListasTerceiros().catch(function(e) {
+        console.error(e);
+    });
     showMessage('Recebida MG confirmada. A NF está no Histórico.', 'success');
 }
 
 /** Após «Não» em Recebida MG — Histórico com motivo. */
-async function _terceirosAposConfirmarRecebidaMgNao(documentoId, documentoResp) {
+async function _terceirosAposConfirmarRecebidaMgNao(documentoId, documentoResp, opcoes) {
     if (documentoId == null) return;
+    opcoes = opcoes || {};
     if (documentoResp && _terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
         Object.assign(_terceirosDocAtual, documentoResp);
     }
-    await terceirosNavegarParaHistoricoAposEnviarMg(documentoId);
+    var motivo = (documentoResp && documentoResp.motivo_nao_recebida_mg) || opcoes.motivo || '';
+    _terceirosAtualizarRecebidaMgLocal(documentoId, 'nao', motivo);
+    if (!opcoes.movimento_recebida_mg_aplicado) {
+        await terceirosNavegarParaHistoricoAposRecebidaMg(documentoId, 'nao', motivo);
+    }
+    void recarregarTodasListasTerceiros().catch(function(e) {
+        console.error(e);
+    });
     showMessage('Recebida MG «Não» registrada. A NF está no Histórico.', 'success');
 }
 
 /** Após marcar que não é necessário envio para MG — vai ao Histórico. */
-async function _terceirosAposConfirmarEnviarMgNao(documentoId, documentoResp) {
+async function _terceirosAposConfirmarEnviarMgNao(documentoId, documentoResp, opcoes) {
     if (documentoResp && isTerceirosAreaCarreta(documentoResp)) {
         showMessage('NF de carreta não utiliza envio para MG. Conclua na 5ª aba — Notas lançadas.', 'warning');
         return;
     }
     if (documentoId == null) return;
-    _terceirosAtualizarEnviarMgLocal(documentoId, 'nao');
-    await terceirosNavegarParaHistoricoAposEnviarMg(documentoId);
+    opcoes = opcoes || {};
+    if (documentoResp && _terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
+        Object.assign(_terceirosDocAtual, documentoResp);
+    }
+    var motivo = (documentoResp && documentoResp.motivo_nao_enviar_mg) || opcoes.motivo || '';
+    _terceirosAtualizarEnviarMgLocal(documentoId, 'nao', motivo);
+    if (!opcoes.movimento_historico_aplicado) {
+        await terceirosNavegarParaHistoricoAposEnviarMg(documentoId);
+    }
+    void recarregarTodasListasTerceiros().catch(function(e) {
+        console.error(e);
+    });
     showMessage('Envio para MG «Não» registrado. A NF está no Histórico.', 'success');
 }
 
 /** Após «Sim» em Enviar/Enviado MG — NF nas abas 7 e 8. */
-async function _terceirosAposConfirmarEnviarMgSim(documentoId, documentoResp) {
+async function _terceirosAposConfirmarEnviarMgSim(documentoId, documentoResp, opcoes) {
     if (documentoResp && isTerceirosAreaCarreta(documentoResp)) {
         showMessage('NF de carreta não utiliza envio para MG. Conclua na 5ª aba — Notas lançadas.', 'warning');
         return;
     }
     if (documentoId == null) return;
+    opcoes = opcoes || {};
+    if (documentoResp && _terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
+        Object.assign(_terceirosDocAtual, documentoResp);
+    }
     var envVal = (documentoResp && documentoResp.enviar_para_mg) ? documentoResp.enviar_para_mg : 'sim';
     _terceirosAtualizarEnviarMgLocal(documentoId, envVal);
-    definirDestaqueLinhaTerceirosDoc(documentoId);
-    try {
-        await recarregarTodasListasTerceiros();
-    } catch (e) {
-        console.error(e);
+    if (!opcoes.movimento_enviar_mg_sim_aplicado) {
+        await terceirosNavegarParaNotasEnviadasMgAposConfirmar(documentoId);
     }
+    void recarregarTodasListasTerceiros().catch(function(e) {
+        console.error(e);
+    });
     showMessage('Enviado para MG registrado. A NF está nas abas 7 e 8.', 'success');
 }
 
@@ -4858,14 +4980,28 @@ async function loadTerceirosRecebimentosMg(dataPreloaded) {
     bindTerceirosAbrirButtons('[data-ter-receb-mg-doc]');
     bindTerceirosExcluirButtons('[data-ter-excluir-receb-mg-doc]');
     bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
+    if (!window._terceirosRecebidaMgEmAndamento) window._terceirosRecebidaMgEmAndamento = {};
     tbody.querySelectorAll('[data-ter-recebida-mg-receb-doc]').forEach(function(select) {
         select.addEventListener('change', function() {
             var id = parseInt(select.getAttribute('data-ter-recebida-mg-receb-doc') || '0', 10);
             var motoristaObrigatorio = select.getAttribute('data-ter-motorista-obrigatorio') === 'sim';
             var motoristaAtual = select.getAttribute('data-ter-motorista-atual') || '';
-            if (id && select.value) _terceirosAtualizarStatusComMotivo(id, 'carga_recebida_mg', select.value, {
+            var valor = (select.value || '').trim().toLowerCase();
+            if (!id || !valor) return;
+            if (window._terceirosRecebidaMgEmAndamento[id]) return;
+            window._terceirosRecebidaMgEmAndamento[id] = true;
+            select.disabled = true;
+            var opcoesStatus = {
                 motorista_obrigatorio: motoristaObrigatorio,
                 motorista_atual: motoristaAtual
+            };
+            if (valor === 'sim') {
+                opcoesStatus.movimento_recebida_mg_aplicado = true;
+                void terceirosNavegarParaHistoricoAposRecebidaMg(id, 'sim');
+            }
+            _terceirosAtualizarStatusComMotivo(id, 'carga_recebida_mg', valor, opcoesStatus).finally(function() {
+                delete window._terceirosRecebidaMgEmAndamento[id];
+                if (select.isConnected) select.disabled = false;
             });
         });
     });
@@ -4920,6 +5056,10 @@ async function loadTerceirosPendenciasMg(dataPreloaded) {
                 motorista_obrigatorio: motoristaObrigatorio,
                 motorista_atual: motoristaAtual
             };
+            if (valor === 'sim' && (!motoristaObrigatorio || motoristaAtual || (inputMot && inputMot.value.trim()))) {
+                opcoesStatus.movimento_enviar_mg_sim_aplicado = true;
+                void terceirosNavegarParaNotasEnviadasMgAposConfirmar(id);
+            }
             var promessa;
             if (valor === 'sim' && inputMot && inputPla) {
                 var motVal = inputMot.value.trim();
@@ -5241,19 +5381,19 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
         }
     }
     if (campo === 'nota_lancada' && isTerceirosFlagSim(valor)) {
-        await _terceirosAposConfirmarNotaLancadaSim(documentoId, resp && resp.documento);
+        await _terceirosAposConfirmarNotaLancadaSim(documentoId, resp && resp.documento, opcoes);
         return;
     }
     if (campo === 'nota_lancada' && isTerceirosFlagNao(valor)) {
-        await _terceirosAposConfirmarNotaLancadaNao(documentoId, resp && resp.documento);
+        await _terceirosAposConfirmarNotaLancadaNao(documentoId, resp && resp.documento, opcoes);
         return;
     }
     if (campo === 'enviar_para_mg' && isTerceirosFlagSim(valor)) {
-        await _terceirosAposConfirmarEnviarMgSim(documentoId, resp && resp.documento);
+        await _terceirosAposConfirmarEnviarMgSim(documentoId, resp && resp.documento, opcoes);
         return;
     }
     if (campo === 'enviar_para_mg' && isTerceirosFlagNao(valor)) {
-        await _terceirosAposConfirmarEnviarMgNao(documentoId, resp && resp.documento);
+        await _terceirosAposConfirmarEnviarMgNao(documentoId, resp && resp.documento, opcoes);
         return;
     }
     if (campo === 'carga_recebida_mg' && isTerceirosFlagSim(valor) && opcoes.forcar_fluxo_carreta) {
@@ -5261,11 +5401,11 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
         return;
     }
     if (campo === 'carga_recebida_mg' && isTerceirosFlagSim(valor)) {
-        await _terceirosAposConfirmarRecebidaMgSim(documentoId, resp && resp.documento);
+        await _terceirosAposConfirmarRecebidaMgSim(documentoId, resp && resp.documento, opcoes);
         return;
     }
     if (campo === 'carga_recebida_mg' && isTerceirosFlagNao(valor)) {
-        await _terceirosAposConfirmarRecebidaMgNao(documentoId, resp && resp.documento);
+        await _terceirosAposConfirmarRecebidaMgNao(documentoId, resp && resp.documento, opcoes);
         return;
     }
     var navegouFluxo = await moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor);
@@ -7030,19 +7170,19 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 return;
             }
             if (campo === 'nota_lancada' && isTerceirosFlagSim(valor)) {
-                await _terceirosAposConfirmarNotaLancadaSim(documentoId, resp && resp.documento);
+                await _terceirosAposConfirmarNotaLancadaSim(documentoId, resp && resp.documento, opcoes);
                 return;
             }
             if (campo === 'nota_lancada' && isTerceirosFlagNao(valor)) {
-                await _terceirosAposConfirmarNotaLancadaNao(documentoId, resp && resp.documento);
+                await _terceirosAposConfirmarNotaLancadaNao(documentoId, resp && resp.documento, opcoes);
                 return;
             }
             if (campo === 'enviar_para_mg' && isTerceirosFlagSim(valor)) {
-                await _terceirosAposConfirmarEnviarMgSim(documentoId, resp && resp.documento);
+                await _terceirosAposConfirmarEnviarMgSim(documentoId, resp && resp.documento, opcoes);
                 return;
             }
             if (campo === 'enviar_para_mg' && isTerceirosFlagNao(valor)) {
-                await _terceirosAposConfirmarEnviarMgNao(documentoId, resp && resp.documento);
+                await _terceirosAposConfirmarEnviarMgNao(documentoId, resp && resp.documento, opcoes);
                 return;
             }
             if (campo === 'carga_recebida_mg' && isTerceirosFlagSim(valor) && opcoes.forcar_fluxo_carreta) {
@@ -7050,11 +7190,11 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 return;
             }
             if (campo === 'carga_recebida_mg' && isTerceirosFlagSim(valor)) {
-                await _terceirosAposConfirmarRecebidaMgSim(documentoId, resp && resp.documento);
+                await _terceirosAposConfirmarRecebidaMgSim(documentoId, resp && resp.documento, opcoes);
                 return;
             }
             if (campo === 'carga_recebida_mg' && isTerceirosFlagNao(valor)) {
-                await _terceirosAposConfirmarRecebidaMgNao(documentoId, resp && resp.documento);
+                await _terceirosAposConfirmarRecebidaMgNao(documentoId, resp && resp.documento, opcoes);
                 return;
             }
             showMessage('Status atualizado.', 'success');
