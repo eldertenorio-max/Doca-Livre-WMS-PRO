@@ -873,7 +873,7 @@ async function terceirosNavegarParaNotasEnviadasMgAposConfirmar(documentoId) {
 async function terceirosNavegarParaHistoricoAposRecebidaMg(documentoId, valorNorm, motivo) {
     if (documentoId == null) return;
     _terceirosAtualizarRecebidaMgLocal(documentoId, valorNorm || 'sim', motivo || '');
-    _terceirosRemoverLinhaRecebimentosMg(documentoId);
+    _terceirosRemoverLinhaDeTodasListas(documentoId);
     definirDestaqueLinhaTerceirosDoc(documentoId);
     terceirosAplicarPainelAbaSomenteUi('historico');
     _terceirosInserirLinhaHistoricoLocal(documentoId);
@@ -2328,25 +2328,10 @@ async function _terceirosAposConcluirCarretaNoHistorico(documentoId, documentoRe
     if (documentoResp && _terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
         Object.assign(_terceirosDocAtual, documentoResp);
     }
-    invalidateTerceirosListaCache();
-    var irHistorico = await abrirModalIrParaRecebimentosMg();
-    if (irHistorico) {
-        await terceirosNavegarParaHistoricoAposEnviarMg(documentoId);
-        showMessage('NF de carreta registrada no histórico.', 'success');
-        return;
-    }
-    definirDestaqueLinhaTerceirosDoc(documentoId);
-    try {
-        if (_terceirosTabAtual === 'notas-lancadas') {
-            await loadTerceirosNotasLancadas();
-        } else {
-            await recarregarListaTerceirosTab(_terceirosTabAtual);
-        }
-        void loadTerceirosHistorico();
-        void atualizarAlertasTerceirosHeader();
-    } catch (e) {
-        console.error(e);
-    }
+    _terceirosAtualizarRecebidaMgLocal(documentoId, 'sim');
+    await terceirosNavegarParaHistoricoAposRecebidaMg(documentoId, 'sim');
+    void recarregarTodasListasTerceiros().catch(function(e) { console.error(e); });
+    void atualizarAlertasTerceirosHeader();
     showMessage('NF de carreta registrada no histórico.', 'success');
 }
 
@@ -3070,6 +3055,7 @@ function textoResumoNotaLancadaTerceiros(row) {
 }
 
 function textoResumoEnviarMgTerceiros(row, etapa) {
+    if (isTerceirosAreaCarreta(row)) return 'N/A';
     if (isTerceirosFlagSim(row && row.enviar_para_mg)) {
         return (etapa === 'notas-enviadas-mg' || etapa === 'recebimentos-mg' || etapa === 'historico') ? 'Sim' : 'Sim';
     }
@@ -3078,6 +3064,7 @@ function textoResumoEnviarMgTerceiros(row, etapa) {
 }
 
 function textoResumoEnviadoMgColuna(row, etapa) {
+    if (isTerceirosAreaCarreta(row)) return 'N/A';
     if (etapa === 'notas-enviadas-mg' || etapa === 'recebimentos-mg' || etapa === 'historico') {
         if (isTerceirosFlagSim(row && row.enviar_para_mg)) return 'Sim';
         if (isTerceirosFlagNao(row && row.enviar_para_mg)) return 'Não';
@@ -3087,6 +3074,9 @@ function textoResumoEnviadoMgColuna(row, etapa) {
 }
 
 function textoResumoRecebidaMgTerceiros(row) {
+    if (isTerceirosAreaCarreta(row)) {
+        return isTerceirosFlagSim(row && row.carga_recebida_mg) ? 'Concluído' : 'Sem MG';
+    }
     if (_terceirosEnviarMgEhNao(row)) return 'Não vai para MG';
     if (isTerceirosFlagSim(row && row.carga_recebida_mg)) return 'Sim';
     if (isTerceirosFlagNao(row && row.carga_recebida_mg)) return 'Não';
@@ -4175,6 +4165,9 @@ function renderTerceirosCelulaLancadaFluxo(row, etapa) {
 
 function renderTerceirosCelulaEnviarMgFluxo(row, etapa) {
     if (etapa === 'pendencia') return renderTerceirosCelulaIndisponivelFluxo();
+    if (isTerceirosAreaCarreta(row)) {
+        return '<td>' + renderTerceirosStatusComUsuario('N/A', '', '', 'Carreta sem envio MG') + '<div class="ter-status-meta">Fluxo de carreta encerra na 5ª aba</div></td>';
+    }
     if (etapa === 'notas-lancadas') {
         if (_terceirosConsideraNotasLancadas(row) && _terceirosUsaFluxoMg(row)) {
             return '<td><select class="ter-select-inline" data-ter-enviar-mg-lanc-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_saida_mg || '') + '">'
@@ -4215,6 +4208,9 @@ function renderTerceirosCelulaRecebidaMgFluxo(row, etapa) {
     }
     if (etapa === 'notas-lancadas') {
         return renderTerceirosConclusaoCarretaTab5(row);
+    }
+    if (isTerceirosAreaCarreta(row)) {
+        return '<td>' + renderTerceirosStatusComUsuario(textoResumoRecebidaMgTerceiros(row), row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>';
     }
     if (etapa === 'pendencias-mg') {
         return '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>';

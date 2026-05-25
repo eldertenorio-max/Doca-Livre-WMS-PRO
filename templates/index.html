@@ -1469,23 +1469,23 @@
                                 <span class="painel-titulo-icon" aria-hidden="true">📤</span>
                                 <div class="terceiros-carreta-banner-texto">
                                     <h2 class="painel-titulo-texto terceiros-carreta-banner-titulo">Enviar XML da carreta</h2>
-                                    <p class="painel-titulo-sub terceiros-carreta-banner-sub">Envie a NF-e da carga transportada na carreta. É <strong>obrigatório</strong> informar o <strong>nome do motorista</strong> e a <strong>placa</strong> antes dos arquivos. O fluxo segue pelas abas <strong>2ª a 5ª</strong> e vai ao <strong>Histórico</strong> — <strong>sem envio para MG</strong> (etiqueta <strong>Carreta</strong>).</p>
+                                    <p class="painel-titulo-sub terceiros-carreta-banner-sub">Envie a NF-e recebida pela carreta. Informe o <strong>motorista que trouxe</strong> e a <strong>placa de chegada</strong>. Esse fluxo só recebe a NF e encerra no <strong>Histórico</strong> — <strong>não envia para MG</strong>.</p>
                                 </div>
                             </div>
                         </div>
                         <div class="conferencia-bloco form-container terceiros-upload-bloco terceiros-upload-bloco--carreta" style="background: #f3e5f5; border-left: 4px solid #7b1fa2;">
-                            <h3 style="margin-top: 0; color: #7b1fa2;">DADOS DO ENVIO (CARRETA)</h3>
+                            <h3 style="margin-top: 0; color: #7b1fa2;">DADOS DE CHEGADA (CARRETA)</h3>
                             <div class="form-row">
                                 <div class="form-group" style="flex: 1;">
                                     <label for="ter-carreta-previsao">Previsão de chegada *</label>
                                     <input type="datetime-local" id="ter-carreta-previsao">
                                 </div>
                                 <div class="form-group" style="flex: 1;">
-                                    <label for="ter-carreta-motorista">Nome do motorista *</label>
+                                    <label for="ter-carreta-motorista">Motorista que trouxe *</label>
                                     <input type="text" id="ter-carreta-motorista" name="ter_carreta_motorista" autocomplete="name" placeholder="Nome completo" required>
                                 </div>
                                 <div class="form-group" style="flex: 1;">
-                                    <label for="ter-carreta-placa">Placa da carreta *</label>
+                                    <label for="ter-carreta-placa">Placa de chegada *</label>
                                     <input type="text" id="ter-carreta-placa" name="ter_carreta_placa" list="datalist-placas" maxlength="10" placeholder="Ex.: ABC1D23" style="text-transform: uppercase;" required>
                                 </div>
                             </div>
@@ -1748,8 +1748,8 @@
                                         <th>Remetente</th>
                                         <th>Destinatário</th>
                                         <th>UF</th>
-                                        <th>Motoristas<br><small>Trouxe / Levou</small></th>
-                                        <th>Placas<br><small>Trouxe / Levou</small></th>
+                                        <th>Motorista</th>
+                                        <th>Placa</th>
                                         <th>Previsão</th>
                                         <th title="Recebimento">Receb.</th>
                                         <th title="Conferência">Conf.</th>
@@ -1866,7 +1866,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🧾</span>
                         <h2 class="painel-titulo-texto">Notas Fiscais Lançadas</h2>
-                        <p class="painel-titulo-sub">NFs com <strong>Lançada = Sim</strong> aguardando decisão de envio para MG (em paralelo com a 6ª aba). <strong>Carreta:</strong> use <strong>Registrar no histórico</strong>. <strong>Demais rotas:</strong> defina <strong>Enviar MG</strong> aqui ou na 6ª aba.</p>
+                        <p class="painel-titulo-sub">NFs com <strong>Lançada = Sim</strong>. <strong>Carreta:</strong> use <strong>Registrar no histórico</strong> e encerre o fluxo. <strong>Demais rotas:</strong> escolha <strong>Enviar MG = Sim</strong> para mover a NF para a 6ª aba.</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
@@ -1903,7 +1903,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🚚</span>
                         <h2 class="painel-titulo-texto">Pendência Envio MG</h2>
-                        <p class="painel-titulo-sub">Mesmas NFs da 5ª aba: <strong>Lançada = Sim</strong> e envio para MG ainda pendente. Marque <strong>Sim</strong> ou <strong>Não</strong> (com motivo → Histórico).</p>
+                        <p class="painel-titulo-sub">NFs encaminhadas pela 5ª aba e aguardando confirmação de envio para MG. Marque <strong>Sim</strong> para avançar para 7ª/8ª ou <strong>Não</strong> com motivo para Histórico.</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
@@ -1917,8 +1917,8 @@
                                         <th>Remetente</th>
                                         <th>Destinatário</th>
                                         <th>UF</th>
-                                        <th>Motorista</th>
-                                        <th>Placa</th>
+                                        <th>Motorista que levou</th>
+                                        <th>Placa de saída</th>
                                         <th>Previsão</th>
                                         <th title="Recebimento">Receb.</th>
                                         <th title="Conferência">Conf.</th>
@@ -1954,8 +1954,8 @@
                                         <th>Remetente</th>
                                         <th>Destinatário</th>
                                         <th>UF</th>
-                                        <th>Motorista</th>
-                                        <th>Placa</th>
+                                        <th>Motorista que levou</th>
+                                        <th>Placa de saída</th>
                                         <th>Previsão</th>
                                         <th title="Recebimento">Receb.</th>
                                         <th title="Conferência">Conf.</th>
@@ -1991,8 +1991,8 @@
                                         <th>Remetente</th>
                                         <th>Destinatário</th>
                                         <th>UF</th>
-                                        <th>Motorista</th>
-                                        <th>Placa</th>
+                                        <th>Motorista que levou</th>
+                                        <th>Placa de saída</th>
                                         <th>Previsão</th>
                                         <th title="Recebimento">Receb.</th>
                                         <th title="Conferência">Conf.</th>
@@ -2091,8 +2091,8 @@
                                         <th>Remetente</th>
                                         <th>Destinatário</th>
                                         <th>UF</th>
-                                        <th>Motorista</th>
-                                        <th>Placa</th>
+                                        <th>Motoristas<br><small>Trouxe / Levou</small></th>
+                                        <th>Placas<br><small>Trouxe / Levou</small></th>
                                         <th>Previsão</th>
                                         <th title="Recebimento">Receb.</th>
                                         <th title="Conferência">Conf.</th>
