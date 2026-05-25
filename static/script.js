@@ -2004,14 +2004,6 @@ async function _terceirosAplicarUiAposRecebimentoConcluido(documentoId, document
                 painelForn.scrollIntoView({ behavior: 'smooth', block: 'start' });
             });
         }
-        invalidateTerceirosListaCache();
-        void recarregarTodasListasTerceiros().catch(function(e) {
-            console.error(e);
-            showMessage(
-                'Recebimento concluído. Se as listas não atualizarem, atualize a página.',
-                'warning'
-            );
-        });
         animarConclusaoTerceiros(prefixoConcl);
         window.setTimeout(function() {
             abrirModalRecebimentoConcluidoTerceiros();
@@ -2938,22 +2930,26 @@ function _terceirosRowEstadoMesclado(row) {
     var locais = window._terceirosFornecedoresRecebidosLocais || {};
     var local = locais[String(row.id)];
     if (!local) return row;
+    var valorLocal = function(campo) {
+        var v = local[campo];
+        return v != null && String(v).trim() !== '' ? v : row[campo];
+    };
     return Object.assign({}, row, {
         recebimento_concluido: local.recebimento_concluido != null ? local.recebimento_concluido : row.recebimento_concluido,
         recebimento_concluido_em: local.recebimento_concluido_em || row.recebimento_concluido_em,
         recebimento_concluido_por: local.recebimento_concluido_por || row.recebimento_concluido_por,
-        nota_lancada: local.nota_lancada != null ? local.nota_lancada : row.nota_lancada,
+        nota_lancada: valorLocal('nota_lancada'),
         nota_lancada_em: local.nota_lancada_em || row.nota_lancada_em,
         nota_lancada_por: local.nota_lancada_por || row.nota_lancada_por,
-        enviar_para_mg: local.enviar_para_mg != null ? local.enviar_para_mg : row.enviar_para_mg,
+        enviar_para_mg: valorLocal('enviar_para_mg'),
         enviar_para_mg_em: local.enviar_para_mg_em || row.enviar_para_mg_em,
         enviar_para_mg_por: local.enviar_para_mg_por || row.enviar_para_mg_por,
-        carga_recebida_mg: local.carga_recebida_mg != null ? local.carga_recebida_mg : row.carga_recebida_mg,
+        carga_recebida_mg: valorLocal('carga_recebida_mg'),
         carga_recebida_mg_em: local.carga_recebida_mg_em || row.carga_recebida_mg_em,
         carga_recebida_mg_por: local.carga_recebida_mg_por || row.carga_recebida_mg_por,
-        motivo_nao_lancada: local.motivo_nao_lancada != null ? local.motivo_nao_lancada : row.motivo_nao_lancada,
-        motivo_nao_enviar_mg: local.motivo_nao_enviar_mg != null ? local.motivo_nao_enviar_mg : row.motivo_nao_enviar_mg,
-        motivo_nao_recebida_mg: local.motivo_nao_recebida_mg != null ? local.motivo_nao_recebida_mg : row.motivo_nao_recebida_mg,
+        motivo_nao_lancada: valorLocal('motivo_nao_lancada'),
+        motivo_nao_enviar_mg: valorLocal('motivo_nao_enviar_mg'),
+        motivo_nao_recebida_mg: valorLocal('motivo_nao_recebida_mg'),
         quantidade_total_bipada: local.quantidade_total_bipada != null ? local.quantidade_total_bipada : row.quantidade_total_bipada,
         quantidade_total_xml: local.quantidade_total_xml != null ? local.quantidade_total_xml : row.quantidade_total_xml,
         itens_divergentes: local.itens_divergentes != null ? local.itens_divergentes : row.itens_divergentes
@@ -6680,9 +6676,9 @@ function _terceirosMontarDocumentoRecebidoLocal(documentoId, documentoApi) {
     doc.previsao_chegada = doc.previsao_chegada || textoEl(prefixo + '-previsao');
     doc.motorista_carreta = doc.motorista_carreta || textoEl(prefixo + '-motorista-carreta');
     doc.placa_carreta = doc.placa_carreta || textoEl(prefixo + '-placa-carreta');
-    if (doc.nota_lancada == null) doc.nota_lancada = (_terceirosDocAtual && _terceirosDocAtual.nota_lancada) || 'nao';
-    if (doc.enviar_para_mg == null) doc.enviar_para_mg = (_terceirosDocAtual && _terceirosDocAtual.enviar_para_mg) || 'nao';
-    if (doc.carga_recebida_mg == null) doc.carga_recebida_mg = (_terceirosDocAtual && _terceirosDocAtual.carga_recebida_mg) || 'nao';
+    if (doc.nota_lancada == null) doc.nota_lancada = (_terceirosDocAtual && _terceirosDocAtual.nota_lancada) || '';
+    if (doc.enviar_para_mg == null) doc.enviar_para_mg = (_terceirosDocAtual && _terceirosDocAtual.enviar_para_mg) || '';
+    if (doc.carga_recebida_mg == null) doc.carga_recebida_mg = (_terceirosDocAtual && _terceirosDocAtual.carga_recebida_mg) || '';
 
     var itens = window._terceirosBipagemItens || [];
     if (itens.length) {
@@ -6751,11 +6747,15 @@ async function _terceirosExecutarConcluirRecebimento(documentoId, btnEl, opcoes)
         _terceirosDocAtual = Object.assign({}, _terceirosDocAtual || {}, resp.documento, {
             recebimento_concluido: isTerceirosFlagSim(resp.documento.recebimento_concluido)
         });
+        aplicarMovimentoRecebimentoConcluidoLocal(documentoId, _terceirosDocAtual);
     }
     void _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 3000).catch(function(eBg) {
         console.error(eBg);
     });
     if (!irParaFornecedores) return;
+    void recarregarTodasListasTerceiros().catch(function(eRec) {
+        console.error(eRec);
+    });
     void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
 }
 
