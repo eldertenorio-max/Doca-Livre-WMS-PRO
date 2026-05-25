@@ -700,6 +700,47 @@ function _terceirosAtualizarRecebidaMgLocal(documentoId, valorNorm, motivo) {
     }
 }
 
+function _terceirosAtualizarMotoristaPlacaLocal(documentoId, motorista, placa, tipo) {
+    if (documentoId == null) return;
+    var id = String(documentoId);
+    var patch = {};
+    var saidaMg = tipo === 'saida_mg';
+    if (motorista != null) patch[saidaMg ? 'motorista_saida_mg' : 'motorista_carreta'] = String(motorista).trim();
+    if (placa != null) patch[saidaMg ? 'placa_saida_mg' : 'placa_carreta'] = String(placa).trim().toUpperCase();
+    var locais = window._terceirosFornecedoresRecebidosLocais || {};
+    var baseLocal = locais[id] || { id: documentoId };
+    locais[id] = Object.assign({}, baseLocal, patch);
+    if (Array.isArray(_terceirosListaCache.rows)) {
+        _terceirosListaCache.rows = _terceirosListaCache.rows.map(function(row) {
+            if (!row || String(row.id) !== id) return row;
+            return Object.assign({}, row, patch);
+        });
+        _terceirosListaCache.ts = Date.now();
+    }
+    if (_terceirosDocAtual && String(_terceirosDocAtual.id) === id) {
+        Object.assign(_terceirosDocAtual, patch);
+    }
+}
+
+function _terceirosUsaMotoristaSaidaMgNaAba(aba) {
+    return aba === 'pendencias-mg' || aba === 'notas-enviadas-mg' || aba === 'recebimentos-mg' || aba === 'historico';
+}
+
+function _terceirosMotoristaLista(row, attrPrefix) {
+    var usaSaida = attrPrefix === 'pend-mg' || _terceirosUsaMotoristaSaidaMgNaAba(_terceirosTabAtual);
+    return usaSaida ? (row.motorista_saida_mg || '') : (row.motorista_carreta || '');
+}
+
+function _terceirosPlacaLista(row, attrPrefix) {
+    var usaSaida = attrPrefix === 'pend-mg' || _terceirosUsaMotoristaSaidaMgNaAba(_terceirosTabAtual);
+    return usaSaida ? (row.placa_saida_mg || '') : (row.placa_carreta || '');
+}
+
+function _terceirosMotoristaEmLista(row, attrPrefix) {
+    var usaSaida = attrPrefix === 'pend-mg' || _terceirosUsaMotoristaSaidaMgNaAba(_terceirosTabAtual);
+    return usaSaida ? (row.motorista_saida_mg_em || '') : (row.motorista_carreta_em || '');
+}
+
 function _terceirosRemoverLinhaPendenciasMg(documentoId) {
     var tbody = document.getElementById('ter-tbody-pendencias-mg');
     if (!tbody || documentoId == null) return;
@@ -708,6 +749,49 @@ function _terceirosRemoverLinhaPendenciasMg(documentoId) {
     if (!tbody.querySelector('tr[data-ter-doc-id]')) {
         tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF aguardando <strong>envio para MG</strong>. As notas entram aqui junto com a 5ª aba após <strong>Lançada = Sim</strong>.</td></tr>';
     }
+}
+
+function _terceirosRemoverLinhaRecebimentosMg(documentoId) {
+    var tbody = document.getElementById('ter-tbody-recebimentos-mg');
+    if (!tbody || documentoId == null) return;
+    var tr = tbody.querySelector('tr[data-ter-doc-id="' + String(documentoId) + '"]');
+    if (tr) tr.remove();
+    if (!tbody.querySelector('tr[data-ter-doc-id]')) {
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF aguardando <strong>Recebida MG</strong>. Entram aqui após <strong>Enviado MG = Sim</strong> na 6ª ou 7ª aba.</td></tr>';
+    }
+}
+
+function _terceirosInserirLinhaHistoricoLocal(documentoId) {
+    var tbody = document.getElementById('ter-tbody-historico');
+    if (!tbody || documentoId == null) return;
+    var row = _terceirosRowPorId(documentoId);
+    if (!row || !_terceirosConsideraHistorico(row)) return;
+    var id = String(documentoId);
+    var html = '<tr data-ter-doc-id="' + escapeHtml(id) + '">'
+        + renderTerceirosCelulasNfAtePrevisao(row, { historicoMotoristaPlaca: true })
+        + renderTerceirosCelulasStatusFluxo(row, 'historico')
+        + renderTerceirosListaAcoesCelula(
+            renderTerceirosAbrirButton(row, 'data-ter-historico-doc', 'Abrir detalhe', 'historico')
+            + renderTerceirosBotoesPdfXmlNf(row)
+            + renderTerceirosComprovanteButton(row)
+            + renderTerceirosExcluirButton(row, 'data-ter-excluir-historico-doc')
+        )
+        + '</tr>';
+    var atual = tbody.querySelector('tr[data-ter-doc-id="' + id + '"]');
+    if (atual) {
+        atual.outerHTML = html;
+    } else {
+        var loading = tbody.querySelector('tr.loading, td.loading');
+        if (loading || !tbody.querySelector('tr[data-ter-doc-id]')) {
+            tbody.innerHTML = html;
+        } else {
+            tbody.insertAdjacentHTML('afterbegin', html);
+        }
+    }
+    bindTerceirosAbrirButtons('[data-ter-historico-doc]');
+    bindTerceirosExcluirButtons('[data-ter-excluir-historico-doc]');
+    bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
+    aplicarDestaqueLinhaTerceirosDoc(tbody);
 }
 
 /** 4ª → 5ª aba: após marcar «Sim» em Nota lançada. */
@@ -789,12 +873,12 @@ async function terceirosNavegarParaNotasEnviadasMgAposConfirmar(documentoId) {
 async function terceirosNavegarParaHistoricoAposRecebidaMg(documentoId, valorNorm, motivo) {
     if (documentoId == null) return;
     _terceirosAtualizarRecebidaMgLocal(documentoId, valorNorm || 'sim', motivo || '');
+    _terceirosRemoverLinhaRecebimentosMg(documentoId);
     definirDestaqueLinhaTerceirosDoc(documentoId);
-    abrirAbaTerceirosSeDiferente('historico', true);
+    terceirosAplicarPainelAbaSomenteUi('historico');
+    _terceirosInserirLinhaHistoricoLocal(documentoId);
     try {
-        await loadTerceirosHistorico();
-        var tbodyHist = document.getElementById('ter-tbody-historico');
-        if (tbodyHist) aplicarDestaqueLinhaTerceirosDoc(tbodyHist);
+        void loadTerceirosHistorico();
         void loadTerceirosRecebimentosMg();
         void loadTerceirosNotasEnviadasMg();
     } catch (e) {
@@ -3010,12 +3094,27 @@ function textoResumoRecebidaMgTerceiros(row) {
 }
 
 function terceirosCelulaPlacaLista(row) {
-    var plc = ((row.placa_carreta || '').trim() || '—');
+    var plc = ((_terceirosPlacaLista(row) || '').trim() || '—');
     return '<td><strong>' + escapeHtml(plc) + '</strong></td>';
 }
 
 function terceirosCelulaMotoristaListaLeitura(row) {
-    return '<td>' + terceirosListaCellTextoLongo(row.motorista_carreta) + '</td>';
+    return '<td>' + terceirosListaCellTextoLongo(_terceirosMotoristaLista(row)) + '</td>';
+}
+
+function terceirosCelulasMotoristaPlacaHistorico(row) {
+    var motChegada = (row.motorista_carreta || '').trim() || '—';
+    var plaChegada = (row.placa_carreta || '').trim() || '—';
+    var motSaida = (row.motorista_saida_mg || '').trim() || '—';
+    var plaSaida = (row.placa_saida_mg || '').trim() || '—';
+    return '<td><div class="ter-inline-stack">'
+            + '<div><strong>Trouxe:</strong> ' + escapeHtml(motChegada) + '</div>'
+            + '<div><strong>Levou:</strong> ' + escapeHtml(motSaida) + '</div>'
+        + '</div></td>'
+        + '<td><div class="ter-inline-stack">'
+            + '<div><strong>Trouxe:</strong> ' + escapeHtml(plaChegada) + '</div>'
+            + '<div><strong>Levou:</strong> ' + escapeHtml(plaSaida) + '</div>'
+        + '</div></td>';
 }
 
 function renderTerceirosCelulasMotoristaPlacaLista(row, attrPrefix) {
@@ -3024,16 +3123,19 @@ function renderTerceirosCelulasMotoristaPlacaLista(row, attrPrefix) {
     }
     attrPrefix = attrPrefix || 'doc';
     var id = String(row.id);
+    var motoristaVal = _terceirosMotoristaLista(row, attrPrefix);
+    var placaVal = _terceirosPlacaLista(row, attrPrefix);
+    var motoristaEm = _terceirosMotoristaEmLista(row, attrPrefix);
     var aviso = isTerceirosMotoristaObrigatorio(row)
         ? '<div class="ter-status-meta ter-status-meta--alerta">Obrigatório para esta rota</div>'
         : '';
     return '<td><div class="ter-inline-stack">'
-            + '<input type="text" class="ter-input-inline" data-ter-motorista-' + attrPrefix + '-doc="' + escapeHtml(id) + '" value="' + escapeHtml(row.motorista_carreta || '') + '" placeholder="Motorista">'
-            + renderTerceirosUsuarioMeta(row.atualizado_por || '', row.motorista_carreta_em || '')
+            + '<input type="text" class="ter-input-inline" data-ter-motorista-' + attrPrefix + '-doc="' + escapeHtml(id) + '" value="' + escapeHtml(motoristaVal || '') + '" placeholder="Motorista">'
+            + renderTerceirosUsuarioMeta(row.atualizado_por || '', motoristaEm)
             + aviso
         + '</div></td>'
         + '<td><div class="ter-inline-stack">'
-            + '<input type="text" class="ter-input-inline" data-ter-placa-' + attrPrefix + '-doc="' + escapeHtml(id) + '" value="' + escapeHtml(row.placa_carreta || '') + '" placeholder="Placa" style="text-transform: uppercase;">'
+            + '<input type="text" class="ter-input-inline" data-ter-placa-' + attrPrefix + '-doc="' + escapeHtml(id) + '" value="' + escapeHtml(placaVal || '') + '" placeholder="Placa" style="text-transform: uppercase;">'
             + '<button type="button" class="btn btn-secondary btn-sm" data-ter-salvar-mot-placa-' + attrPrefix + '-doc="' + escapeHtml(id) + '">Salvar</button>'
         + '</div></td>';
 }
@@ -3048,7 +3150,17 @@ function bindTerceirosSalvarMotoristaPlacaLista(tbody, attrPrefix) {
             var inputPla = document.querySelector('[data-ter-placa-' + attrPrefix + '-doc="' + String(id) + '"]');
             var motorista = inputMot ? inputMot.value.trim() : '';
             var placa = inputPla ? inputPla.value.trim() : '';
-            if (id) void salvarMotoristaPlacaTerceirosDireto(id, motorista, placa);
+            if (!id) return;
+            btn.disabled = true;
+            var textoOriginal = btn.textContent;
+            btn.textContent = 'Salvo';
+            var tipo = attrPrefix === 'pend-mg' ? 'saida_mg' : 'chegada';
+            void salvarMotoristaPlacaTerceirosDireto(id, motorista, placa, tipo).finally(function() {
+                if (btn.isConnected) {
+                    btn.disabled = false;
+                    btn.textContent = textoOriginal || 'Salvar';
+                }
+            });
         });
     });
 }
@@ -3119,6 +3231,12 @@ function _terceirosRowEstadoMesclado(row) {
         enviar_para_mg: valorLocal('enviar_para_mg'),
         enviar_para_mg_em: local.enviar_para_mg_em || row.enviar_para_mg_em,
         enviar_para_mg_por: local.enviar_para_mg_por || row.enviar_para_mg_por,
+        motorista_carreta: valorLocal('motorista_carreta'),
+        motorista_carreta_em: local.motorista_carreta_em || row.motorista_carreta_em,
+        placa_carreta: valorLocal('placa_carreta'),
+        motorista_saida_mg: valorLocal('motorista_saida_mg'),
+        motorista_saida_mg_em: local.motorista_saida_mg_em || row.motorista_saida_mg_em,
+        placa_saida_mg: valorLocal('placa_saida_mg'),
         carga_recebida_mg: valorLocal('carga_recebida_mg'),
         carga_recebida_mg_em: local.carga_recebida_mg_em || row.carga_recebida_mg_em,
         carga_recebida_mg_por: local.carga_recebida_mg_por || row.carga_recebida_mg_por,
@@ -4012,7 +4130,9 @@ function renderTerceirosCelulasNfAtePrevisao(row, opcoes) {
         previsaoExtra = '<div class="ter-status-meta ter-status-meta--alerta">Motorista obrigatório</div>';
     }
     var motoristaPlaca;
-    if (opcoes.motoristaPlacaPrefix) {
+    if (opcoes.historicoMotoristaPlaca) {
+        motoristaPlaca = terceirosCelulasMotoristaPlacaHistorico(row);
+    } else if (opcoes.motoristaPlacaPrefix) {
         motoristaPlaca = renderTerceirosCelulasMotoristaPlacaLista(row, opcoes.motoristaPlacaPrefix);
     } else {
         motoristaPlaca = terceirosCelulaMotoristaListaLeitura(row) + terceirosCelulaPlacaLista(row);
@@ -4057,7 +4177,7 @@ function renderTerceirosCelulaEnviarMgFluxo(row, etapa) {
     if (etapa === 'pendencia') return renderTerceirosCelulaIndisponivelFluxo();
     if (etapa === 'notas-lancadas') {
         if (_terceirosConsideraNotasLancadas(row) && _terceirosUsaFluxoMg(row)) {
-            return '<td><select class="ter-select-inline" data-ter-enviar-mg-lanc-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
+            return '<td><select class="ter-select-inline" data-ter-enviar-mg-lanc-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_saida_mg || '') + '">'
                 + '<option value="">Selecione</option>'
                 + '<option value="sim">Sim — ir para pendência MG</option>'
                 + '<option value="nao"' + (isTerceirosFlagNao(row.enviar_para_mg) ? ' selected' : '') + '>Não — não enviar</option>'
@@ -4072,7 +4192,7 @@ function renderTerceirosCelulaEnviarMgFluxo(row, etapa) {
         if (isTerceirosFlagSim(row.enviar_para_mg)) {
             return '<td>' + renderTerceirosStatusComUsuario(textoResumoEnviarMgTerceiros(row), row.enviar_para_mg_por || '', row.enviar_para_mg_em || '') + '</td>';
         }
-        return '<td><select class="ter-select-inline" data-ter-enviar-mg-pend-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
+        return '<td><select class="ter-select-inline" data-ter-enviar-mg-pend-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_saida_mg || '') + '">'
             + '<option value="">Selecione</option>'
             + '<option value="sim">Sim</option>'
             + '<option value="nao"' + (isTerceirosFlagNao(row.enviar_para_mg) ? ' selected' : '') + '>Não</option>'
@@ -4100,7 +4220,7 @@ function renderTerceirosCelulaRecebidaMgFluxo(row, etapa) {
         return '<td>' + renderTerceirosRecebidaMgSomenteLeitura(row) + '</td>';
     }
     if (etapa === 'recebimentos-mg') {
-        return '<td><select class="ter-select-inline" data-ter-recebida-mg-receb-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_carreta || '') + '">'
+        return '<td><select class="ter-select-inline" data-ter-recebida-mg-receb-doc="' + escapeHtml(String(row.id)) + '" data-ter-motorista-obrigatorio="' + escapeHtml(isTerceirosMotoristaObrigatorio(row) ? 'sim' : 'nao') + '" data-ter-motorista-atual="' + escapeHtml(row.motorista_saida_mg || '') + '">'
             + '<option value="">Selecione</option>'
             + '<option value="sim"' + (isTerceirosFlagSim(row.carga_recebida_mg) ? ' selected' : '') + '>Sim</option>'
             + '<option value="nao"' + (isTerceirosFlagNao(row.carga_recebida_mg) && !isTerceirosFlagSim(row.carga_recebida_mg) ? ' selected' : '') + '>Não</option>'
@@ -5097,7 +5217,7 @@ async function loadTerceirosPendenciasMg(dataPreloaded) {
                 var plaVal = inputPla.value.trim();
                 if (motVal || plaVal) {
                     opcoesStatus.motorista_atual = motVal || motoristaAtual;
-                    promessa = salvarMotoristaPlacaTerceirosDireto(id, motVal, plaVal).then(function() {
+                    promessa = salvarMotoristaPlacaTerceirosDireto(id, motVal, plaVal, 'saida_mg').then(function() {
                         return _terceirosAtualizarStatusComMotivo(id, 'enviar_para_mg', valor, opcoesStatus);
                     });
                 } else {
@@ -5136,7 +5256,7 @@ async function loadTerceirosHistorico(dataPreloaded) {
 
     tbody.innerHTML = rows.map(function(row) {
         return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
-            + renderTerceirosCelulasNfAtePrevisao(row)
+            + renderTerceirosCelulasNfAtePrevisao(row, { historicoMotoristaPlaca: true })
             + renderTerceirosCelulasStatusFluxo(row, 'historico')
             + renderTerceirosListaAcoesCelula(
                 renderTerceirosAbrirButton(row, 'data-ter-historico-doc', 'Abrir detalhe', 'historico')
@@ -5459,10 +5579,10 @@ async function salvarMotoristaTerceirosDireto(documentoId, motorista) {
         showMessage('Motorista e placa só podem ser alterados nas abas Enviar XML e Pendências envio MG.', 'warning');
         return;
     }
-    return salvarMotoristaPlacaTerceirosDireto(documentoId, motorista, null);
+    return salvarMotoristaPlacaTerceirosDireto(documentoId, motorista, null, 'chegada');
 }
 
-async function salvarMotoristaPlacaTerceirosDireto(documentoId, motorista, placa) {
+async function salvarMotoristaPlacaTerceirosDireto(documentoId, motorista, placa, tipo) {
     if (!documentoId) return;
     if (!_terceirosPodeEditarMotoristaPlaca()) {
         showMessage('Motorista e placa só podem ser alterados nas abas Enviar XML e Pendências envio MG.', 'warning');
@@ -5470,25 +5590,40 @@ async function salvarMotoristaPlacaTerceirosDireto(documentoId, motorista, placa
     }
     motorista = (motorista != null ? String(motorista) : '').trim();
     if (placa != null) placa = String(placa).trim().toUpperCase();
+    tipo = tipo || (_terceirosTabAtual === 'pendencias-mg' ? 'saida_mg' : 'chegada');
     if (!motorista) {
         showMessage('Digite o motorista da carreta.', 'warning');
         return;
     }
-    var body = { motorista: motorista };
+    var body = { motorista: motorista, tipo: tipo };
     if (placa != null) body.placa = placa;
+    _terceirosAtualizarMotoristaPlacaLocal(documentoId, motorista, placa, tipo);
+    if (_terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
+        var prefixo = getTerceirosPrefixo();
+        var motEl = document.getElementById(prefixo + '-motorista-carreta');
+        var plaEl = document.getElementById(prefixo + '-placa-carreta');
+        if (motEl) motEl.textContent = motorista || '-';
+        if (plaEl && placa != null) plaEl.textContent = placa || '-';
+    }
+    showMessage(placa != null ? 'Motorista e placa salvos.' : 'Motorista salvo.', 'success');
     var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/motorista', {
         method: 'POST',
         body: JSON.stringify(body)
     });
     if (!resp || !resp.ok) {
         showMessage((resp && resp.erro) || 'Erro ao salvar motorista e placa.', 'error');
+        void refreshTerceirosViews().catch(function(e) { console.error(e); });
         return;
     }
-    if (_terceirosDocAtual.id === documentoId) {
-        await loadTerceirosDocumentoDetalhe(_terceirosDocAtual.area, documentoId);
+    if (resp.documento) {
+        _terceirosAtualizarMotoristaPlacaLocal(
+            documentoId,
+            tipo === 'saida_mg' ? (resp.documento.motorista_saida_mg || motorista) : (resp.documento.motorista_carreta || motorista),
+            placa != null ? (tipo === 'saida_mg' ? (resp.documento.placa_saida_mg || placa) : (resp.documento.placa_carreta || placa)) : placa,
+            tipo
+        );
     }
-    await refreshTerceirosViews();
-    showMessage(placa != null ? 'Motorista e placa salvos.' : 'Motorista salvo.', 'success');
+    void refreshTerceirosViews({ usarCache: true }).catch(function(e) { console.error(e); });
 }
 
 function resetTerceirosDetalhe() {

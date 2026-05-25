@@ -291,6 +291,9 @@ def init_db():
                     motorista_carreta TEXT,
                     motorista_carreta_em TIMESTAMPTZ,
                     placa_carreta TEXT,
+                    motorista_saida_mg TEXT,
+                    motorista_saida_mg_em TIMESTAMPTZ,
+                    placa_saida_mg TEXT,
                     carga_recebida_mg TEXT,
                     carga_recebida_mg_em TIMESTAMPTZ,
                     carga_recebida_mg_por TEXT,
@@ -575,6 +578,9 @@ def init_db():
                 motorista_carreta TEXT,
                 motorista_carreta_em TEXT,
                 placa_carreta TEXT,
+                motorista_saida_mg TEXT,
+                motorista_saida_mg_em TEXT,
+                placa_saida_mg TEXT,
                 carga_recebida_mg TEXT,
                 carga_recebida_mg_em TEXT,
                 carga_recebida_mg_por TEXT,
@@ -893,10 +899,11 @@ def _sql_cols_terceiros_documentos_listagem(alias):
         '%s.nota_lancada, %s.nota_lancada_em, %s.nota_lancada_por, '
         '%s.enviar_para_mg, %s.enviar_para_mg_em, %s.enviar_para_mg_por, '
         '%s.motorista_carreta, %s.motorista_carreta_em, %s.placa_carreta, '
+        '%s.motorista_saida_mg, %s.motorista_saida_mg_em, %s.placa_saida_mg, '
         '%s.carga_recebida_mg, %s.carga_recebida_mg_em, %s.carga_recebida_mg_por, '
         '%s.motivo_nao_lancada, %s.motivo_nao_enviar_mg, %s.motivo_nao_recebida_mg, '
         '%s.criado_em, %s.criado_por, %s.atualizado_em, %s.atualizado_por'
-    ) % ((a,) * 36)
+    ) % ((a,) * 39)
 
 
 def _terceiros_sql_join_resumo_itens(conn, tbl_i, alias_doc='d'):
@@ -975,6 +982,9 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
                 motorista_carreta TEXT,
                 motorista_carreta_em TIMESTAMPTZ,
                 placa_carreta TEXT,
+                motorista_saida_mg TEXT,
+                motorista_saida_mg_em TIMESTAMPTZ,
+                placa_saida_mg TEXT,
                 carga_recebida_mg TEXT,
                 carga_recebida_mg_em TIMESTAMPTZ,
                 carga_recebida_mg_por TEXT,
@@ -1050,6 +1060,9 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
                 motorista_carreta TEXT,
                 motorista_carreta_em TEXT,
                 placa_carreta TEXT,
+                motorista_saida_mg TEXT,
+                motorista_saida_mg_em TEXT,
+                placa_saida_mg TEXT,
                 carga_recebida_mg TEXT,
                 carga_recebida_mg_em TEXT,
                 carga_recebida_mg_por TEXT,
@@ -1114,6 +1127,9 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
         tbl_doc = _tbl_terceiros_documentos(conn)
         if getattr(conn, 'kind', None) == 'pg':
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS placa_carreta TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS motorista_saida_mg TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS motorista_saida_mg_em TIMESTAMPTZ')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS placa_saida_mg TEXT')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS destinatario_uf TEXT')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS numero_pedido TEXT')
         else:
@@ -1121,6 +1137,12 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
             nomes = [r[1] for r in (info or [])]
             if 'placa_carreta' not in nomes:
                 conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN placa_carreta TEXT')
+            if 'motorista_saida_mg' not in nomes:
+                conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN motorista_saida_mg TEXT')
+            if 'motorista_saida_mg_em' not in nomes:
+                conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN motorista_saida_mg_em TEXT')
+            if 'placa_saida_mg' not in nomes:
+                conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN placa_saida_mg TEXT')
             if 'destinatario_uf' not in nomes:
                 conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN destinatario_uf TEXT')
             if 'numero_pedido' not in nomes:
@@ -8429,6 +8451,8 @@ def _terceiros_row_listagem_apos_criar(documento_id, area, previsao_chegada, xml
         'enviar_para_mg': '',
         'motorista_carreta': (motorista_carreta or '').strip(),
         'placa_carreta': (placa_carreta or '').strip().upper(),
+            'motorista_saida_mg': '',
+            'placa_saida_mg': '',
         'carga_recebida_mg': '',
         'criado_por': usuario or '',
         'atualizado_por': usuario or '',
@@ -8468,6 +8492,8 @@ def _terceiros_serializar_row_listagem(row):
         'enviar_para_mg': row.get('enviar_para_mg') or '',
         'motorista_carreta': row.get('motorista_carreta') or '',
         'placa_carreta': row.get('placa_carreta') or '',
+        'motorista_saida_mg': row.get('motorista_saida_mg') or '',
+        'placa_saida_mg': row.get('placa_saida_mg') or '',
         'motorista_obrigatorio': _motorista_obrigatorio_terceiros(row),
         'carga_recebida_mg': row.get('carga_recebida_mg') or '',
         'criado_por': row.get('criado_por') or '',
@@ -8486,6 +8512,7 @@ def _terceiros_serializar_row_listagem(row):
         'nota_lancada_em': _fmt_datahora_br(row.get('nota_lancada_em') or ''),
         'enviar_para_mg_em': _fmt_datahora_br(row.get('enviar_para_mg_em') or ''),
         'motorista_carreta_em': _fmt_datahora_br(row.get('motorista_carreta_em') or ''),
+        'motorista_saida_mg_em': _fmt_datahora_br(row.get('motorista_saida_mg_em') or ''),
         'carga_recebida_mg_em': _fmt_datahora_br(row.get('carga_recebida_mg_em') or ''),
     }
 
@@ -8587,7 +8614,7 @@ def api_terceiros_documento_detalhe(documento_id):
             return jsonify({'erro': 'Documento não encontrado.'}), 404
         doc['motorista_obrigatorio'] = _motorista_obrigatorio_terceiros(doc)
         doc['previsao_chegada'] = _fmt_datahora_br(doc.get('previsao_chegada') or '')
-        for campo in ('recebimento_concluido_em', 'nota_lancada_em', 'enviar_para_mg_em', 'motorista_carreta_em', 'carga_recebida_mg_em', 'criado_em', 'atualizado_em'):
+        for campo in ('recebimento_concluido_em', 'nota_lancada_em', 'enviar_para_mg_em', 'motorista_carreta_em', 'motorista_saida_mg_em', 'carga_recebida_mg_em', 'criado_em', 'atualizado_em'):
             doc[campo] = _fmt_datahora_br(doc.get(campo) or '')
         for ev in doc.get('eventos') or []:
             ev['criado_em'] = _fmt_datahora_br(ev.get('criado_em') or '')
@@ -9057,10 +9084,10 @@ def api_terceiros_status(documento_id):
                     'confirmacao_necessaria': True,
                     'codigo': 'confirmar_lancamento_sem_recebimento'
                 }), 409
-            if campo in ('enviar_para_mg', 'carga_recebida_mg') and valor_norm == 'sim' and _motorista_obrigatorio_terceiros(doc) and not (doc.get('motorista_carreta') or '').strip():
+            if campo in ('enviar_para_mg', 'carga_recebida_mg') and valor_norm == 'sim' and _motorista_obrigatorio_terceiros(doc) and not (doc.get('motorista_saida_mg') or '').strip():
                 return jsonify({
                     'ok': False,
-                    'erro': 'Para esta rota, informe o motorista da carreta antes de continuar.',
+                    'erro': 'Para esta rota, informe o motorista que vai levar para MG antes de continuar.',
                     'codigo': 'motorista_obrigatorio_terceiros'
                 }), 400
             campo_em = campo + '_em'
@@ -9117,6 +9144,8 @@ def api_terceiros_motorista(documento_id):
     motorista = (data.get('motorista') or '').strip()
     placa_informada = 'placa' in data
     placa = (data.get('placa') or '').strip().upper() if placa_informada else None
+    tipo = (data.get('tipo') or 'chegada').strip().lower()
+    saida_mg = tipo in ('saida_mg', 'envio_mg', 'levar_mg')
     if not motorista:
         return jsonify({'ok': False, 'erro': 'Informe o motorista da carreta.'}), 400
     usuario = session.get('usuario', '')
@@ -9124,7 +9153,7 @@ def api_terceiros_motorista(documento_id):
     try:
         _ensure_terceiros_schema(conn)
         row = conn.execute(
-            'SELECT motorista_carreta, placa_carreta, remetente_nome, destinatario_nome FROM '
+            'SELECT motorista_carreta, placa_carreta, motorista_saida_mg, placa_saida_mg, remetente_nome, destinatario_nome FROM '
             + _tbl_terceiros_documentos(conn) + ' WHERE id = ?',
             (documento_id,)
         ).fetchone()
@@ -9133,28 +9162,33 @@ def api_terceiros_motorista(documento_id):
         row_d = dict(row) if hasattr(row, 'keys') else {
             'motorista_carreta': row[0] if len(row) > 0 else '',
             'placa_carreta': row[1] if len(row) > 1 else '',
-            'remetente_nome': row[2] if len(row) > 2 else '',
-            'destinatario_nome': row[3] if len(row) > 3 else '',
+            'motorista_saida_mg': row[2] if len(row) > 2 else '',
+            'placa_saida_mg': row[3] if len(row) > 3 else '',
+            'remetente_nome': row[4] if len(row) > 4 else '',
+            'destinatario_nome': row[5] if len(row) > 5 else '',
         }
-        valor_antigo = (row_d.get('motorista_carreta') or '')
+        campo_motorista = 'motorista_saida_mg' if saida_mg else 'motorista_carreta'
+        campo_motorista_em = 'motorista_saida_mg_em' if saida_mg else 'motorista_carreta_em'
+        campo_placa = 'placa_saida_mg' if saida_mg else 'placa_carreta'
+        valor_antigo = (row_d.get(campo_motorista) or '')
         if _motorista_obrigatorio_terceiros(row_d) and not motorista:
-            return jsonify({'ok': False, 'erro': 'Para esta rota, informe o motorista da carreta.'}), 400
+            return jsonify({'ok': False, 'erro': 'Para esta rota, informe o motorista.'}), 400
         agora = _agora_iso()
         if placa_informada:
-            placa_antiga = (row_d.get('placa_carreta') or '')
+            placa_antiga = (row_d.get(campo_placa) or '')
             conn.execute(
                 'UPDATE ' + _tbl_terceiros_documentos(conn)
-                + ' SET motorista_carreta = ?, motorista_carreta_em = ?, placa_carreta = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+                + ' SET ' + campo_motorista + ' = ?, ' + campo_motorista_em + ' = ?, ' + campo_placa + ' = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
                 (motorista, agora, placa or None, agora, usuario, documento_id)
             )
             if placa != placa_antiga:
-                _registrar_evento_terceiros(conn, documento_id, 'placa_carreta', placa_antiga, placa, usuario)
+                _registrar_evento_terceiros(conn, documento_id, campo_placa, placa_antiga, placa, usuario)
         else:
             conn.execute(
-                'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET motorista_carreta = ?, motorista_carreta_em = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+                'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET ' + campo_motorista + ' = ?, ' + campo_motorista_em + ' = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
                 (motorista, agora, agora, usuario, documento_id)
             )
-        _registrar_evento_terceiros(conn, documento_id, 'motorista_carreta', valor_antigo, motorista, usuario)
+        _registrar_evento_terceiros(conn, documento_id, campo_motorista, valor_antigo, motorista, usuario)
         conn.commit()
         return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
     except Exception as e:
