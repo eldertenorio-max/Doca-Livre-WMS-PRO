@@ -2636,6 +2636,13 @@ function _terceirosDesmarcarDocumentoExcluidoOculto(documentoId) {
     window._terceirosIdsOcultosExclusao.delete(String(documentoId));
 }
 
+function _terceirosDesmarcarDocumentoExcluidoOcultoDepois(documentoId, ms) {
+    if (documentoId == null || documentoId === '') return;
+    window.setTimeout(function() {
+        _terceirosDesmarcarDocumentoExcluidoOculto(documentoId);
+    }, ms || 15000);
+}
+
 function _terceirosFiltrarRowsNaoExcluidas(rows) {
     if (!Array.isArray(rows)) return rows;
     var ocultos = window._terceirosIdsOcultosExclusao;
@@ -5305,7 +5312,7 @@ async function excluirDocumentoTerceiros(documentoId) {
             showMessage((resp && resp.erro) || 'Erro ao excluir NF.', 'error');
             return;
         }
-        _terceirosDesmarcarDocumentoExcluidoOculto(idNum);
+        _terceirosDesmarcarDocumentoExcluidoOcultoDepois(idNum, 30000);
         try {
             await recarregarTodasListasTerceiros();
         } catch (eLista) {
