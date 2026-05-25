@@ -735,6 +735,7 @@ async function terceirosNavegarParaNotasLancadasAposMarcarSim(documentoId) {
 /** 5ª → 6ª aba: escolher enviar para MG não registra envio ainda; apenas abre a pendência. */
 async function terceirosNavegarParaPendenciasMgAposEscolherEnviar(documentoId) {
     if (documentoId == null) return;
+    _terceirosAtualizarEnviarMgLocal(documentoId, 'pendente');
     definirDestaqueLinhaTerceirosDoc(documentoId);
     abrirAbaTerceirosSeDiferente('pendencias-mg', true);
     try {
@@ -745,6 +746,26 @@ async function terceirosNavegarParaPendenciasMgAposEscolherEnviar(documentoId) {
         console.error(e);
     }
     showMessage('NF enviada para a 6ª aba — Pendências envio MG. Confirme o envio por lá.', 'success');
+}
+
+async function terceirosMarcarPendenciaMgDaNotaLancada(documentoId) {
+    if (documentoId == null) return;
+    await terceirosNavegarParaPendenciasMgAposEscolherEnviar(documentoId);
+    var resp = await fetchAPI('/terceiros/documentos/' + encodeURIComponent(documentoId) + '/status', {
+        method: 'POST',
+        body: JSON.stringify({ campo: 'enviar_para_mg', valor: 'pendente' })
+    });
+    if (!_terceirosRespostaApiOk(resp)) {
+        showMessage((resp && resp.erro) || 'Erro ao mover NF para pendência MG.', 'error');
+        await recarregarTodasListasTerceiros();
+        return;
+    }
+    if (resp && resp.documento) {
+        _terceirosAtualizarEnviarMgLocal(documentoId, resp.documento.enviar_para_mg || 'pendente');
+    }
+    void recarregarTodasListasTerceiros().catch(function(e) {
+        console.error(e);
+    });
 }
 
 /** 6ª → 7ª/8ª abas: envio MG confirmado. */
@@ -2847,6 +2868,10 @@ function _terceirosUsaFluxoMg(row) {
     return !isTerceirosAreaCarreta(row);
 }
 
+function _terceirosEnviarMgEstaPendente(row) {
+    return String((row && row.enviar_para_mg) || '').trim().toLowerCase() === 'pendente';
+}
+
 /** 5ª aba: NF lançada aguardando decisão MG ou conclusão carreta (somente ativos; sem arquivo). */
 function _terceirosConsideraNotasLancadas(row) {
     row = _terceirosRowEstadoMesclado(row);
@@ -2857,18 +2882,17 @@ function _terceirosConsideraNotasLancadas(row) {
         return !isTerceirosFlagSim(row.carga_recebida_mg);
     }
     if (!_terceirosUsaFluxoMg(row)) return false;
-    if (isTerceirosFlagSim(row.enviar_para_mg) || isTerceirosFlagNao(row.enviar_para_mg)) return false;
+    if (String(row.enviar_para_mg || '').trim()) return false;
     return true;
 }
 
-/** 6ª aba: mesma NF da 5ª enquanto envio MG ainda não foi definido. */
+/** 6ª aba: NF já encaminhada pela 5ª aba, aguardando confirmar envio MG. */
 function _terceirosConsideraPendenciasMg(row) {
     row = _terceirosRowEstadoMesclado(row);
     if (_terceirosConsideraHistorico(row)) return false;
     if (!isTerceirosFlagSim(row.nota_lancada)) return false;
     if (!_terceirosUsaFluxoMg(row)) return false;
-    if (isTerceirosFlagSim(row.enviar_para_mg) || isTerceirosFlagNao(row.enviar_para_mg)) return false;
-    return true;
+    return _terceirosEnviarMgEstaPendente(row);
 }
 
 /** 7ª aba: envio MG confirmado (Enviado MG = Sim), aguardando recebida MG. */
@@ -4873,7 +4897,7 @@ function bindTerceirosEnviarMgNotasLancadas(tbody) {
             window._terceirosEnviarMgLancEmAndamento[id] = true;
             select.disabled = true;
             var promessa = valor === 'sim'
-                ? terceirosNavegarParaPendenciasMgAposEscolherEnviar(id)
+                ? terceirosMarcarPendenciaMgDaNotaLancada(id)
                 : _terceirosAtualizarStatusComMotivo(id, 'enviar_para_mg', valor, {
                     motorista_obrigatorio: select.getAttribute('data-ter-motorista-obrigatorio') === 'sim',
                     motorista_atual: select.getAttribute('data-ter-motorista-atual') || ''

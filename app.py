@@ -9046,8 +9046,10 @@ def api_terceiros_status(documento_id):
             _registrar_evento_terceiros(conn, documento_id, campo, str(doc.get('recebimento_concluido') or 0), str(novo_bool), usuario)
         else:
             valor_norm = _valor_bool_texto(valor)
+            if campo == 'enviar_para_mg' and (valor or '').strip().lower() == 'pendente':
+                valor_norm = 'pendente'
             if not valor_norm:
-                return jsonify({'ok': False, 'erro': 'Use sim ou nao.'}), 400
+                return jsonify({'ok': False, 'erro': 'Use sim, nao ou pendente.'}), 400
             if campo == 'nota_lancada' and valor_norm == 'sim' and not forcar_lancamento_sem_recebimento and not _terceiros_pode_lancar_nota_sem_confirmacao_recebimento(conn, doc, documento_id):
                 return jsonify({
                     'ok': False,
