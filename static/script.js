@@ -3095,6 +3095,14 @@ function terceirosCelulaMotoristaListaLeitura(row) {
 function terceirosCelulasMotoristaPlacaHistorico(row) {
     var motChegada = (row.motorista_carreta || '').trim() || '—';
     var plaChegada = (row.placa_carreta || '').trim() || '—';
+    if (isTerceirosAreaCarreta(row)) {
+        return '<td><div class="ter-inline-stack">'
+                + '<div><strong>Trouxe:</strong> ' + escapeHtml(motChegada) + '</div>'
+            + '</div></td>'
+            + '<td><div class="ter-inline-stack">'
+                + '<div><strong>Trouxe:</strong> ' + escapeHtml(plaChegada) + '</div>'
+            + '</div></td>';
+    }
     var motSaida = (row.motorista_saida_mg || '').trim() || '—';
     var plaSaida = (row.placa_saida_mg || '').trim() || '—';
     return '<td><div class="ter-inline-stack">'
