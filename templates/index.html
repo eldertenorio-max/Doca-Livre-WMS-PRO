@@ -1444,7 +1444,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">📤</span>
                         <h2 class="painel-titulo-texto">Enviar XML de terceiros</h2>
-                        <p class="painel-titulo-sub">Envie XMLs de NF-e de terceiros e, quando houver, o XML da <strong>carreta</strong>. Informe a previsão de chegada em cada bloco. As notas entram na aba Pendência de Recebimento (etiqueta <strong>Carreta</strong> quando for o caso).</p>
+                        <p class="painel-titulo-sub">Envie XMLs de NF-e de terceiros e, quando houver, o XML da <strong>carreta</strong>. Para terceiros, informe o <strong>número de pedido</strong>; carreta não precisa. Informe a previsão de chegada em cada bloco.</p>
                     </div>
 
                     <div class="conferencia-blocos-grid terceiros-upload-grid">
@@ -1454,6 +1454,20 @@
                                 <div class="form-group" style="flex: 1;">
                                     <label for="ter-recebimento-previsao">Previsão de chegada *</label>
                                     <input type="datetime-local" id="ter-recebimento-previsao">
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="ter-recebimento-pedido">Número de pedido *</label>
+                                    <input type="text" id="ter-recebimento-pedido" placeholder="Ex.: 123456">
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label style="display:flex; gap:8px; align-items:center; margin-top: 28px;">
+                                        <input type="checkbox" id="ter-recebimento-consumivel-sp">
+                                        Consumível SP
+                                    </label>
+                                </div>
+                                <div class="form-group" id="ter-recebimento-consumivel-sp-box" style="flex: 1; display:none;">
+                                    <label for="ter-recebimento-recebedor-consumivel-sp">Quem solicitou/irá receber *</label>
+                                    <input type="text" id="ter-recebimento-recebedor-consumivel-sp" placeholder="Nome da pessoa">
                                 </div>
                                 <div class="form-group" style="flex: 2;">
                                     <label for="ter-recebimento-xml">XMLs da nota fiscal *</label>
@@ -1722,7 +1736,7 @@
                                         </div>
                                         <div class="form-group">
                                             <label>Próximas etapas</label>
-                                            <div class="info-text">Depois do recebimento concluído, a NF segue para <strong>Fornecedores Recebidos</strong>, <strong>NFs pendentes de lançamento</strong>, <strong>Notas Fiscais Lançadas</strong>, <strong>Pendências Envio MG</strong>, <strong>Notas Fiscais Enviadas para MG</strong>, <strong>Recebimentos de MG</strong> e <strong>Histórico</strong>.</div>
+                                            <div class="info-text">Depois do recebimento concluído, a NF segue para <strong>Pendências Envio MG</strong>, <strong>Notas Fiscais Enviadas para MG</strong>, <strong>Recebimentos de MG</strong> e só então entra em <strong>NFs pendentes de lançamento</strong>. Após lançar, vai ao <strong>Histórico</strong>.</div>
                                         </div>
                                     </div>
                                 </div>
@@ -1735,7 +1749,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">🏭</span>
                         <h2 class="painel-titulo-texto">Fornecedores Recebidos</h2>
-                        <p class="painel-titulo-sub"><strong>Histórico</strong> de notas com recebimento concluído (permanecem aqui após o lançamento fiscal). Ao concluir o recebimento, a NF também entra na <strong>4ª aba — NFs pendentes de lançamento</strong>.</p>
+                        <p class="painel-titulo-sub"><strong>Histórico</strong> de notas com recebimento concluído. Para fluxo MG, a NF só vai para lançamento depois de <strong>Recebida MG = Sim</strong>.</p>
                     </div>
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
@@ -2448,15 +2462,15 @@
         <div class="modal-content modal-terceiros-recebimento-concluido-box" style="max-width: 420px; border-top: 4px solid #366092;">
             <span class="close" id="modal-terceiros-recebimento-concluido-close" title="Fechar">&times;</span>
             <h3 id="ter-rec-concluido-aviso-titulo" style="margin-top: 0; color: #1a237e;">Recebimento concluído</h3>
-            <p id="ter-rec-concluido-aviso-texto" class="ter-rec-concluido-aviso-principal">A NF saiu da 2ª aba (Pendência) e passa a aparecer na <strong>3ª — Fornecedores Recebidos</strong> e na <strong>4ª — NFs pendentes de lançamento</strong> ao mesmo tempo.</p>
+            <p id="ter-rec-concluido-aviso-texto" class="ter-rec-concluido-aviso-principal">A NF saiu da 2ª aba (Pendência). No fluxo MG, ela segue para <strong>Pendências envio MG</strong> e só entra em <strong>NFs pendentes de lançamento</strong> depois de <strong>Recebida MG = Sim</strong>.</p>
             <p style="margin: 0 0 12px 0; color: #455a64; font-size: 14px; line-height: 1.5;">
-                <strong>Histórico:</strong> a 3ª aba guarda todas as notas com recebimento concluído (mesmo após lançar). Na 4ª aba marque <strong>Nota lançada</strong>; depois siga para a 5ª e demais etapas (MG / histórico).
+                <strong>Novo fluxo:</strong> confirme o envio e o recebimento em MG antes do lançamento fiscal. Depois de <strong>Recebida MG = Sim</strong>, a NF entra na 4ª aba para marcar <strong>Nota lançada</strong>.
             </p>
             <p style="margin: 0 0 20px 0; color: #455a64; font-size: 14px; line-height: 1.45;">
-                Use <strong>Fechar</strong> para continuar em Fornecedores Recebidos, ou avance para NFs pendentes de lançamento.
+                Use <strong>Fechar</strong> para continuar, ou avance para a próxima etapa do fluxo.
             </p>
             <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
-                <button type="button" class="btn btn-secondary" id="btn-ter-proxima-etapa-lancamento">Próxima etapa: NFs pendentes de lançamento</button>
+                <button type="button" class="btn btn-secondary" id="btn-ter-proxima-etapa-lancamento">Próxima etapa do fluxo</button>
                 <button type="button" class="btn btn-primary" id="btn-ter-fechar-recebimento-concluido">Fechar</button>
             </div>
         </div>

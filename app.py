@@ -298,6 +298,11 @@ def init_db():
                     carga_recebida_mg_em TIMESTAMPTZ,
                     carga_recebida_mg_por TEXT,
                     recebedor_mg TEXT,
+                    consumivel_sp TEXT,
+                    recebedor_consumivel_sp TEXT,
+                    consumivel_sp_historico TEXT,
+                    consumivel_sp_historico_em TIMESTAMPTZ,
+                    consumivel_sp_historico_por TEXT,
                     motivo_nao_lancada TEXT,
                     motivo_nao_enviar_mg TEXT,
                     motivo_nao_recebida_mg TEXT,
@@ -586,6 +591,11 @@ def init_db():
                 carga_recebida_mg_em TEXT,
                 carga_recebida_mg_por TEXT,
                 recebedor_mg TEXT,
+                consumivel_sp TEXT,
+                recebedor_consumivel_sp TEXT,
+                consumivel_sp_historico TEXT,
+                consumivel_sp_historico_em TEXT,
+                consumivel_sp_historico_por TEXT,
                 motivo_nao_lancada TEXT,
                 motivo_nao_enviar_mg TEXT,
                 motivo_nao_recebida_mg TEXT,
@@ -903,9 +913,10 @@ def _sql_cols_terceiros_documentos_listagem(alias):
         '%s.motorista_carreta, %s.motorista_carreta_em, %s.placa_carreta, '
         '%s.motorista_saida_mg, %s.motorista_saida_mg_em, %s.placa_saida_mg, '
         '%s.carga_recebida_mg, %s.carga_recebida_mg_em, %s.carga_recebida_mg_por, %s.recebedor_mg, '
+        '%s.consumivel_sp, %s.recebedor_consumivel_sp, %s.consumivel_sp_historico, %s.consumivel_sp_historico_em, %s.consumivel_sp_historico_por, '
         '%s.motivo_nao_lancada, %s.motivo_nao_enviar_mg, %s.motivo_nao_recebida_mg, '
         '%s.criado_em, %s.criado_por, %s.atualizado_em, %s.atualizado_por'
-    ) % ((a,) * 40)
+    ) % ((a,) * 45)
 
 
 def _terceiros_sql_join_resumo_itens(conn, tbl_i, alias_doc='d'):
@@ -991,6 +1002,11 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
                 carga_recebida_mg_em TIMESTAMPTZ,
                 carga_recebida_mg_por TEXT,
                 recebedor_mg TEXT,
+                consumivel_sp TEXT,
+                recebedor_consumivel_sp TEXT,
+                consumivel_sp_historico TEXT,
+                consumivel_sp_historico_em TIMESTAMPTZ,
+                consumivel_sp_historico_por TEXT,
                 criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 criado_por TEXT,
                 atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1070,6 +1086,11 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
                 carga_recebida_mg_em TEXT,
                 carga_recebida_mg_por TEXT,
                 recebedor_mg TEXT,
+                consumivel_sp TEXT,
+                recebedor_consumivel_sp TEXT,
+                consumivel_sp_historico TEXT,
+                consumivel_sp_historico_em TEXT,
+                consumivel_sp_historico_por TEXT,
                 motivo_nao_lancada TEXT,
                 motivo_nao_enviar_mg TEXT,
                 motivo_nao_recebida_mg TEXT,
@@ -1137,6 +1158,11 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS recebedor_mg TEXT')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS destinatario_uf TEXT')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS numero_pedido TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS consumivel_sp TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS recebedor_consumivel_sp TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS consumivel_sp_historico TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS consumivel_sp_historico_em TIMESTAMPTZ')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS consumivel_sp_historico_por TEXT')
         else:
             info = conn.execute('PRAGMA table_info(terceiros_documentos)').fetchall()
             nomes = [r[1] for r in (info or [])]
@@ -1154,6 +1180,16 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
                 conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN destinatario_uf TEXT')
             if 'numero_pedido' not in nomes:
                 conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN numero_pedido TEXT')
+            if 'consumivel_sp' not in nomes:
+                conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN consumivel_sp TEXT')
+            if 'recebedor_consumivel_sp' not in nomes:
+                conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN recebedor_consumivel_sp TEXT')
+            if 'consumivel_sp_historico' not in nomes:
+                conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN consumivel_sp_historico TEXT')
+            if 'consumivel_sp_historico_em' not in nomes:
+                conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN consumivel_sp_historico_em TEXT')
+            if 'consumivel_sp_historico_por' not in nomes:
+                conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN consumivel_sp_historico_por TEXT')
             for col_m in ('motivo_nao_lancada', 'motivo_nao_enviar_mg', 'motivo_nao_recebida_mg'):
                 if col_m not in nomes:
                     conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN ' + col_m + ' TEXT')
@@ -1166,6 +1202,11 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS motivo_nao_enviar_mg TEXT')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS motivo_nao_recebida_mg TEXT')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS recebedor_mg TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS consumivel_sp TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS recebedor_consumivel_sp TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS consumivel_sp_historico TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS consumivel_sp_historico_em TIMESTAMPTZ')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS consumivel_sp_historico_por TEXT')
         except Exception:
             pass
     if rodar_backfill:
@@ -7550,14 +7591,17 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
     mot = (motorista_carreta_ini or '').strip() or None
     plc = (placa_carreta_ini or '').strip().upper() or None
     mot_em = _agora_iso() if mot else None
+    consumivel_sp = 'sim' if _valor_bool_texto(xml_data.get('consumivel_sp') or '') == 'sim' else ''
+    recebedor_consumivel_sp = (xml_data.get('recebedor_consumivel_sp') or '').strip() if consumivel_sp == 'sim' else ''
     if getattr(conn, 'kind', None) == 'pg':
         row = conn.execute(
             '''INSERT INTO ''' + _tbl_terceiros_documentos(conn) + ''' (
                    area, chave_nfe, numero_nf, serie_nf, data_emissao, remetente_nome, remetente_cnpj,
                    destinatario_nome, destinatario_cnpj, destinatario_uf, numero_pedido, previsao_chegada, arquivo_nome, xml_conteudo,
                    motorista_carreta, motorista_carreta_em, placa_carreta,
+                   consumivel_sp, recebedor_consumivel_sp,
                    criado_em, criado_por, atualizado_em, atualizado_por
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id''',
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id''',
             (
                 area, xml_data.get('chave_nfe') or '', xml_data.get('numero_nf') or '', xml_data.get('serie_nf') or '',
                 xml_data.get('data_emissao') or '', xml_data.get('remetente_nome') or '', _somente_digitos(xml_data.get('remetente_cnpj') or ''),
@@ -7565,7 +7609,7 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
                 (xml_data.get('destinatario_uf') or '').strip(),
                 (xml_data.get('numero_pedido') or '').strip(),
                 previsao_chegada or '', arquivo_nome or '', xml_texto,
-                mot, mot_em, plc,
+                mot, mot_em, plc, consumivel_sp, recebedor_consumivel_sp,
                 _agora_iso(), usuario or '', _agora_iso(), usuario or ''
             )
         ).fetchone()
@@ -7576,8 +7620,9 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
                    area, chave_nfe, numero_nf, serie_nf, data_emissao, remetente_nome, remetente_cnpj,
                    destinatario_nome, destinatario_cnpj, destinatario_uf, numero_pedido, previsao_chegada, arquivo_nome, xml_conteudo,
                    motorista_carreta, motorista_carreta_em, placa_carreta,
+                   consumivel_sp, recebedor_consumivel_sp,
                    criado_em, criado_por, atualizado_em, atualizado_por
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (
                 area, xml_data.get('chave_nfe') or '', xml_data.get('numero_nf') or '', xml_data.get('serie_nf') or '',
                 xml_data.get('data_emissao') or '', xml_data.get('remetente_nome') or '', _somente_digitos(xml_data.get('remetente_cnpj') or ''),
@@ -7585,7 +7630,7 @@ def _criar_documento_terceiros(conn, area, previsao_chegada, arquivo_nome, xml_t
                 (xml_data.get('destinatario_uf') or '').strip(),
                 (xml_data.get('numero_pedido') or '').strip(),
                 previsao_chegada or '', arquivo_nome or '', xml_texto,
-                mot, mot_em, plc,
+                mot, mot_em, plc, consumivel_sp, recebedor_consumivel_sp,
                 _agora_iso(), usuario or '', _agora_iso(), usuario or ''
             )
         )
@@ -7679,6 +7724,14 @@ def _normalizar_texto_regra_terceiros(valor):
 
 def _terceiros_eh_area_carreta(doc):
     return str((doc or {}).get('area') or '').strip().lower() == 'carreta'
+
+
+def _terceiros_eh_consumivel_sp(doc):
+    return _valor_bool_texto((doc or {}).get('consumivel_sp') or '') == 'sim'
+
+
+def _terceiros_usa_fluxo_mg(doc):
+    return not _terceiros_eh_area_carreta(doc) and not _terceiros_eh_consumivel_sp(doc)
 
 
 def _motorista_obrigatorio_terceiros(doc):
@@ -8132,10 +8185,19 @@ def export_terceiros_nf_detalhe():
 def api_terceiros_upload_xml():
     area = (request.form.get('area') or '').strip().lower()
     previsao = (request.form.get('previsao_chegada') or '').strip()
+    numero_pedido_form = _normalizar_numero_pedido_terceiros(request.form.get('numero_pedido') or '')
+    consumivel_sp_form = _valor_bool_texto(request.form.get('consumivel_sp') or '') == 'sim'
+    recebedor_consumivel_sp_form = (request.form.get('recebedor_consumivel_sp') or '').strip()
     if area not in ('recebimento', 'expedicao', 'carreta'):
         return jsonify({'ok': False, 'erro': 'Área inválida.'}), 400
     if not previsao:
         return jsonify({'ok': False, 'erro': 'Informe a previsão de chegada.'}), 400
+    if area != 'carreta' and not numero_pedido_form:
+        return jsonify({'ok': False, 'erro': 'Informe o número de pedido antes de subir XML de terceiros.'}), 400
+    if area == 'carreta' and consumivel_sp_form:
+        return jsonify({'ok': False, 'erro': 'XML de carreta não pode ser marcado como consumível SP.'}), 400
+    if consumivel_sp_form and not recebedor_consumivel_sp_form:
+        return jsonify({'ok': False, 'erro': 'Informe quem solicitou/irá receber o consumível SP.'}), 400
     motorista_carreta_form = (request.form.get('motorista_carreta') or '').strip()
     placa_carreta_form = (request.form.get('placa_carreta') or '').strip().upper()
     if area == 'carreta':
@@ -8169,6 +8231,10 @@ def api_terceiros_upload_xml():
                 continue
             try:
                 xml_data = _parse_nfe_xml(xml_texto, resolver_base=resolver_base)
+                if area != 'carreta':
+                    xml_data['numero_pedido'] = numero_pedido_form
+                    xml_data['consumivel_sp'] = 'sim' if consumivel_sp_form else ''
+                    xml_data['recebedor_consumivel_sp'] = recebedor_consumivel_sp_form if consumivel_sp_form else ''
                 identificador = _identificador_duplicidade_terceiros(xml_data)
                 if identificador[1] and identificador in vistos_lote:
                     erros.append('%s: XML desta NF já foi incluído neste envio.' % nome)
@@ -8226,6 +8292,8 @@ def _terceiros_etapa_painel_row(row):
     cmg_carreta = _valor_bool_texto(row.get('carga_recebida_mg') or '')
     if cmg_carreta == 'sim':
       return 'historico'
+  if _terceiros_eh_consumivel_sp(row) and _valor_bool_texto(row.get('consumivel_sp_historico') or '') == 'sim':
+    return 'historico'
   if _valor_bool_texto(row.get('nota_lancada') or '') == 'nao' and str(row.get('motivo_nao_lancada') or '').strip():
     return 'historico'
   if _valor_bool_texto(row.get('enviar_para_mg') or '') == 'nao' and str(row.get('motivo_nao_enviar_mg') or '').strip():
@@ -8242,30 +8310,37 @@ def _terceiros_etapa_painel_row(row):
   if not rc:
     return 'pendencia_recebimento'
   nl = _valor_bool_texto(row.get('nota_lancada') or '')
-  if nl != 'sim':
-    return 'fornecedores_recebidos'
   if _terceiros_eh_area_carreta(row):
+    if nl != 'sim':
+      return 'fornecedores_recebidos'
     cmg = _valor_bool_texto(row.get('carga_recebida_mg') or '')
     if cmg != 'sim':
       return 'notas_lancadas'
     return 'historico'
+  if _terceiros_eh_consumivel_sp(row):
+    if nl == 'sim':
+      return 'notas_lancadas'
+    return 'pendentes_lancamento'
   emg_raw = str(row.get('enviar_para_mg') or '').strip().lower()
   emg = _valor_bool_texto(emg_raw)
   if emg == 'nao':
     return 'historico'
-  if emg_raw == 'pendente':
+  if emg_raw == 'pendente' or not emg_raw:
     return 'pendencias_mg'
-  if emg != 'sim':
-    return 'notas_lancadas'
   cmg = _valor_bool_texto(row.get('carga_recebida_mg') or '')
-  if cmg == 'sim':
+  if emg == 'sim' and cmg != 'sim':
+    return 'recebimentos_mg'
+  if cmg == 'sim' and nl != 'sim':
+    return 'pendentes_lancamento'
+  if cmg == 'sim' and nl == 'sim':
     return 'historico'
-  return 'recebimentos_mg'
+  return 'pendencias_mg'
 
 
 _ETAPAS_PAINEL_TERCEIROS_LABELS = {
   'pendencia_recebimento': 'Pendência de recebimento',
   'fornecedores_recebidos': 'Fornecedores recebidos',
+  'pendentes_lancamento': 'Pendentes de lançamento',
   'notas_lancadas': 'Notas lançadas',
   'pendencias_mg': 'Pendências envio MG',
   'recebimentos_mg': 'Recebimentos MG',
@@ -8433,7 +8508,7 @@ def api_terceiros_painel():
         'pendencia_recebimento': etapa_counts.get('pendencia_recebimento', 0),
         'fornecedores_recebidos': fornecedores_recebidos,
         'recebimento_concluido': recebimento_concluido,
-        'pendentes_lancamento': etapa_counts.get('fornecedores_recebidos', 0),
+        'pendentes_lancamento': etapa_counts.get('pendentes_lancamento', 0),
         'notas_lancadas': etapa_counts.get('notas_lancadas', 0),
         'pendencias_mg': etapa_counts.get('pendencias_mg', 0),
         'recebimentos_mg': etapa_counts.get('recebimentos_mg', 0),
@@ -8483,10 +8558,13 @@ def _terceiros_row_listagem_apos_criar(documento_id, area, previsao_chegada, xml
         'enviar_para_mg': '',
         'motorista_carreta': (motorista_carreta or '').strip(),
         'placa_carreta': (placa_carreta or '').strip().upper(),
-            'motorista_saida_mg': '',
-            'placa_saida_mg': '',
+        'motorista_saida_mg': '',
+        'placa_saida_mg': '',
         'carga_recebida_mg': '',
         'recebedor_mg': '',
+        'consumivel_sp': 'sim' if _valor_bool_texto(xml_data.get('consumivel_sp') or '') == 'sim' else '',
+        'recebedor_consumivel_sp': (xml_data.get('recebedor_consumivel_sp') or '').strip(),
+        'consumivel_sp_historico': '',
         'criado_por': usuario or '',
         'atualizado_por': usuario or '',
         'total_itens': len(itens),
@@ -8537,6 +8615,10 @@ def _terceiros_serializar_row_listagem(row):
         'motorista_obrigatorio': _motorista_obrigatorio_terceiros(row),
         'carga_recebida_mg': row.get('carga_recebida_mg') or '',
         'recebedor_mg': row.get('recebedor_mg') or '',
+        'consumivel_sp': row.get('consumivel_sp') or '',
+        'recebedor_consumivel_sp': row.get('recebedor_consumivel_sp') or '',
+        'consumivel_sp_historico': row.get('consumivel_sp_historico') or '',
+        'consumivel_sp_historico_por': row.get('consumivel_sp_historico_por') or '',
         'criado_por': row.get('criado_por') or '',
         'atualizado_por': row.get('atualizado_por') or '',
         'recebimento_concluido_por': row.get('recebimento_concluido_por') or '',
@@ -8555,6 +8637,7 @@ def _terceiros_serializar_row_listagem(row):
         'motorista_carreta_em': _fmt_datahora_br(row.get('motorista_carreta_em') or ''),
         'motorista_saida_mg_em': _fmt_datahora_br(row.get('motorista_saida_mg_em') or ''),
         'carga_recebida_mg_em': _fmt_datahora_br(row.get('carga_recebida_mg_em') or ''),
+        'consumivel_sp_historico_em': _fmt_datahora_br(row.get('consumivel_sp_historico_em') or ''),
     }
 
 
@@ -8655,7 +8738,7 @@ def api_terceiros_documento_detalhe(documento_id):
             return jsonify({'erro': 'Documento não encontrado.'}), 404
         doc['motorista_obrigatorio'] = _motorista_obrigatorio_terceiros(doc)
         doc['previsao_chegada'] = _fmt_datahora_br(doc.get('previsao_chegada') or '')
-        for campo in ('recebimento_concluido_em', 'nota_lancada_em', 'enviar_para_mg_em', 'motorista_carreta_em', 'motorista_saida_mg_em', 'carga_recebida_mg_em', 'criado_em', 'atualizado_em'):
+        for campo in ('recebimento_concluido_em', 'nota_lancada_em', 'enviar_para_mg_em', 'motorista_carreta_em', 'motorista_saida_mg_em', 'carga_recebida_mg_em', 'consumivel_sp_historico_em', 'criado_em', 'atualizado_em'):
             doc[campo] = _fmt_datahora_br(doc.get(campo) or '')
         for ev in doc.get('eventos') or []:
             ev['criado_em'] = _fmt_datahora_br(ev.get('criado_em') or '')
@@ -9082,7 +9165,7 @@ def api_terceiros_status(documento_id):
         'enviar_para_mg': 'motivo_nao_enviar_mg',
         'carga_recebida_mg': 'motivo_nao_recebida_mg',
     }
-    if campo not in ('recebimento_concluido', 'nota_lancada', 'enviar_para_mg', 'carga_recebida_mg'):
+    if campo not in ('recebimento_concluido', 'nota_lancada', 'enviar_para_mg', 'carga_recebida_mg', 'consumivel_sp_historico'):
         return jsonify({'ok': False, 'erro': 'Campo inválido.'}), 400
     conn = get_db()
     try:
@@ -9098,6 +9181,15 @@ def api_terceiros_status(documento_id):
         if not row:
             return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
         doc = dict(row) if hasattr(row, 'keys') else {}
+        if campo == 'consumivel_sp_historico' and not _terceiros_eh_consumivel_sp(doc):
+            return jsonify({'ok': False, 'erro': 'Somente NF marcada como consumível SP pode usar este envio ao Histórico.'}), 400
+        if campo == 'consumivel_sp_historico' and _valor_bool_texto(doc.get('nota_lancada') or '') != 'sim':
+            return jsonify({'ok': False, 'erro': 'Consumível SP só pode ir para o Histórico depois de Lançada = Sim.'}), 400
+        if campo in ('enviar_para_mg', 'carga_recebida_mg') and _terceiros_eh_consumivel_sp(doc):
+            return jsonify({
+                'ok': False,
+                'erro': 'Consumível SP não utiliza fluxo MG. Depois de lançado, envie ao Histórico.'
+            }), 400
         if campo == 'enviar_para_mg' and _terceiros_eh_area_carreta(doc):
             return jsonify({
                 'ok': False,
@@ -9116,6 +9208,8 @@ def api_terceiros_status(documento_id):
             valor_norm = _valor_bool_texto(valor)
             if campo == 'enviar_para_mg' and (valor or '').strip().lower() == 'pendente':
                 valor_norm = 'pendente'
+            if campo == 'consumivel_sp_historico' and valor_norm != 'sim':
+                return jsonify({'ok': False, 'erro': 'Use Sim para enviar o consumível SP ao Histórico.'}), 400
             if not valor_norm:
                 return jsonify({'ok': False, 'erro': 'Use sim, nao ou pendente.'}), 400
             if campo == 'nota_lancada' and valor_norm == 'sim' and not forcar_lancamento_sem_recebimento and not _terceiros_pode_lancar_nota_sem_confirmacao_recebimento(conn, doc, documento_id):
@@ -9125,6 +9219,12 @@ def api_terceiros_status(documento_id):
                     'confirmacao_necessaria': True,
                     'codigo': 'confirmar_lancamento_sem_recebimento'
                 }), 409
+            if campo == 'nota_lancada' and valor_norm == 'sim' and _terceiros_usa_fluxo_mg(doc) and _valor_bool_texto(doc.get('carga_recebida_mg') or '') != 'sim':
+                return jsonify({
+                    'ok': False,
+                    'erro': 'NF de MG só pode ser lançada depois de Recebida MG = Sim.',
+                    'codigo': 'recebida_mg_obrigatoria_para_lancamento'
+                }), 400
             if campo in ('enviar_para_mg', 'carga_recebida_mg') and valor_norm == 'sim' and _motorista_obrigatorio_terceiros(doc) and not (doc.get('motorista_saida_mg') or '').strip():
                 return jsonify({
                     'ok': False,
