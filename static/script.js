@@ -536,6 +536,7 @@ function _terceirosAtualizarNotaLancadaLocal(documentoId, valorNorm, motivo) {
     if (_terceirosDocAtual && String(_terceirosDocAtual.id) === id) {
         Object.assign(_terceirosDocAtual, patch);
     }
+    _terceirosAtualizarPainelLocalRapido();
 }
 
 var TERCEIROS_PEND_LANC_TBODY_IDS = [
@@ -677,6 +678,7 @@ function _terceirosAtualizarEnviarMgLocal(documentoId, valorNorm, motivo) {
     if (_terceirosDocAtual && String(_terceirosDocAtual.id) === id) {
         Object.assign(_terceirosDocAtual, patch);
     }
+    _terceirosAtualizarPainelLocalRapido();
 }
 
 function _terceirosAtualizarRecebidaMgLocal(documentoId, valorNorm, motivo, recebedorMg) {
@@ -702,6 +704,7 @@ function _terceirosAtualizarRecebidaMgLocal(documentoId, valorNorm, motivo, rece
     if (_terceirosDocAtual && String(_terceirosDocAtual.id) === id) {
         Object.assign(_terceirosDocAtual, patch);
     }
+    _terceirosAtualizarPainelLocalRapido();
 }
 
 function _terceirosAtualizarMotoristaPlacaLocal(documentoId, motorista, placa, tipo) {
@@ -724,6 +727,7 @@ function _terceirosAtualizarMotoristaPlacaLocal(documentoId, motorista, placa, t
     if (_terceirosDocAtual && String(_terceirosDocAtual.id) === id) {
         Object.assign(_terceirosDocAtual, patch);
     }
+    _terceirosAtualizarPainelLocalRapido();
 }
 
 function _terceirosUsaMotoristaSaidaMgNaAba(aba) {
@@ -1372,6 +1376,13 @@ function _terceirosPainelModuloVisivel() {
         && mod.classList.contains('modulo-area--ativo'));
 }
 
+function _terceirosAtualizarPainelLocalRapido() {
+    if (!_terceirosPainelModuloVisivel()) return;
+    var hit = _terceirosObterCacheLista({ staleOk: true });
+    if (!hit || !Array.isArray(hit.rows) || !hit.rows.length) return;
+    _terceirosRenderPainelTerceirosData(_terceirosPainelDataLocalFromRows(hit.rows));
+}
+
 function _agendarChartsPainelTerceiros() {
     if (!_terceirosPainelModuloVisivel() || !window._terceirosPainelUltimoData || window._terceirosPainelUltimoData.erro) {
         return;
@@ -1422,6 +1433,74 @@ function _painelTerceirosStatsRapidasFromRows(rows) {
         else if (qBip > 1e-9 || divIt > 0) s.conferencia_divergente += 1;
     });
     return s;
+}
+
+function _terceirosTopPainelFromAgg(agg, limit) {
+    return Object.keys(agg || {}).sort(function(a, b) {
+        var diff = (agg[b] || 0) - (agg[a] || 0);
+        return diff !== 0 ? diff : a.localeCompare(b);
+    }).slice(0, limit || 12).map(function(k) {
+        return { nome: k, total: agg[k] || 0 };
+    });
+}
+
+function _terceirosPainelDataLocalFromRows(rows) {
+    rows = _terceirosRowsEstadoMesclado(rows || []);
+    var stats = _painelTerceirosStatsRapidasFromRows(rows);
+    var etapas = [
+        ['pendencia-recebimento', 'Pendência de recebimento', stats.pendencia_recebimento],
+        ['fornecedores-recebidos', 'Fornecedores recebidos', stats.pendentes_lancamento],
+        ['notas-lancadas', 'Notas lançadas', stats.notas_lancadas],
+        ['pendencias-mg', 'Pendências envio MG', stats.pendencias_mg],
+        ['recebimentos-mg', 'Recebimentos MG', stats.recebimentos_mg],
+        ['historico', 'Histórico', getTerceirosRowsPorEtapa(rows, 'historico').length]
+    ].filter(function(item) { return item[2] > 0; }).map(function(item) {
+        return { etapa: item[0], label: item[1], total: item[2] };
+    });
+    var remetentes = {};
+    var placas = {};
+    var ufs = {};
+    var motoristas = {};
+    rows.forEach(function(row) {
+        if (!row) return;
+        var rem = String(row.remetente_nome || 'Sem remetente').trim() || 'Sem remetente';
+        var uf = String(row.destinatario_uf || '—').trim().toUpperCase() || '—';
+        var placa = String(row.placa_carreta || '').trim().toUpperCase();
+        var motorista = String(row.motorista_carreta || '').trim();
+        remetentes[rem] = (remetentes[rem] || 0) + 1;
+        ufs[uf] = (ufs[uf] || 0) + 1;
+        if (placa) placas[placa] = (placas[placa] || 0) + 1;
+        if (motorista) motoristas[motorista] = (motoristas[motorista] || 0) + 1;
+    });
+    return {
+        _local: true,
+        estatisticas: stats,
+        etapas: etapas,
+        top_remetentes: _terceirosTopPainelFromAgg(remetentes, 12),
+        top_placas: _terceirosTopPainelFromAgg(placas, 12),
+        por_uf: _terceirosTopPainelFromAgg(ufs, 10),
+        top_motoristas: _terceirosTopPainelFromAgg(motoristas, 12).map(function(m) {
+            return { motorista: m.nome, nfs: m.total };
+        }),
+        top_itens: [],
+        chegadas_carreta: [],
+        ultimas_nfs: rows.slice().sort(function(a, b) {
+            return Number(b.id || 0) - Number(a.id || 0);
+        }).slice(0, 30).map(function(row) {
+            var etapa = _terceirosLabelEtapaAtual(row);
+            return {
+                id: row.id,
+                nf: [row.numero_nf || '-', row.serie_nf ? ('Série ' + row.serie_nf) : ''].filter(Boolean).join(' / '),
+                remetente: row.remetente_nome || 'Sem remetente',
+                destinatario: row.destinatario_nome || '-',
+                uf: row.destinatario_uf || '—',
+                etapa: etapa,
+                qtd_xml: parseFloat(row.quantidade_total_xml) || 0,
+                qtd_bipada: parseFloat(row.quantidade_total_bipada) || 0,
+                area: row.area || ''
+            };
+        })
+    };
 }
 
 function _aplicarPainelTerceirosStats(s) {
@@ -1710,15 +1789,11 @@ function renderPainelTerceirosCharts(data) {
     _terceirosMarcarChartBoxPainel('ter-chart-chegadas-carreta', !!terChartChegadasCarreta);
 }
 
-async function loadPainelTerceiros() {
-    var cacheHit = _terceirosObterCacheLista();
-    if (cacheHit && cacheHit.rows && cacheHit.rows.length) {
-        _aplicarPainelTerceirosStats(_painelTerceirosStatsRapidasFromRows(
-            _terceirosMesclarRecebidosLocaisNasRows(cacheHit.rows)
-        ));
-    }
+var _terceirosPainelFetchSeq = 0;
+var _terceirosPainelFetchPromise = null;
+var _terceirosPainelFetchUltimoTs = 0;
 
-    var data = await fetchAPI('/terceiros/painel');
+function _terceirosRenderPainelTerceirosData(data) {
     if (!data) return;
     window._terceirosPainelUltimoData = data;
 
@@ -1753,7 +1828,7 @@ async function loadPainelTerceiros() {
         tbody.innerHTML = rows.map(renderRow).join('');
     };
 
-    preencher('ter-tbody-painel-ultimas', data.ultimas_nfs || [], 8, 'Nenhuma NF cadastrada ainda.', function(n) {
+    preencher('ter-tbody-painel-ultimas', data.ultimas_nfs || [], 8, data._local ? 'Sincronizando últimas NFs...' : 'Nenhuma NF cadastrada ainda.', function(n) {
         var origem = (n.area === 'carreta') ? 'Carreta' : ((n.area === 'expedicao') ? 'Expedição' : 'Recebimento');
         return '<tr>'
             + '<td><strong>' + escapeHtml(n.nf || '-') + '</strong></td>'
@@ -1767,7 +1842,7 @@ async function loadPainelTerceiros() {
             + '</tr>';
     });
 
-    preencher('ter-tbody-painel-itens', data.top_itens || [], 3, 'Nenhum item bipado ainda.', function(i) {
+    preencher('ter-tbody-painel-itens', data.top_itens || [], 3, data._local ? 'Sincronizando itens bipados...' : 'Nenhum item bipado ainda.', function(i) {
         return '<tr>'
             + '<td>' + terceirosListaCellTextoLongo(i.produto) + '</td>'
             + '<td>' + escapeHtml(i.codigo_ean || '-') + '</td>'
@@ -1788,6 +1863,57 @@ async function loadPainelTerceiros() {
     });
 
     _agendarChartsPainelTerceiros();
+}
+
+async function loadPainelTerceiros(opcoes) {
+    opcoes = opcoes || {};
+    var cacheHit = _terceirosObterCacheLista({ staleOk: true });
+    var renderizouLocal = false;
+    if (cacheHit && cacheHit.rows && cacheHit.rows.length) {
+        _terceirosRenderPainelTerceirosData(_terceirosPainelDataLocalFromRows(
+            _terceirosMesclarRecebidosLocaisNasRows(cacheHit.rows)
+        ));
+        renderizouLocal = true;
+    }
+    if (!renderizouLocal && !opcoes.force) {
+        try {
+            var dataLista = await fetchTerceirosDocumentosTodos();
+            if (dataLista && Array.isArray(dataLista.rows) && dataLista.rows.length) {
+                _terceirosRenderPainelTerceirosData(_terceirosPainelDataLocalFromRows(dataLista.rows));
+                renderizouLocal = true;
+            }
+        } catch (eListaPainel) {
+            console.error('loadPainelTerceiros lista local:', eListaPainel);
+        }
+    }
+    if (renderizouLocal && !opcoes.force) {
+        var agoraBg = Date.now();
+        if (_terceirosPainelFetchPromise && agoraBg - _terceirosPainelFetchUltimoTs < 15000) return;
+        var seqBg = ++_terceirosPainelFetchSeq;
+        _terceirosPainelFetchUltimoTs = agoraBg;
+        _terceirosPainelFetchPromise = fetchAPIComTimeout('/terceiros/painel', {}, 12000).then(function(data) {
+            if (!data || seqBg !== _terceirosPainelFetchSeq) return;
+            if (data.erro) {
+                console.error('loadPainelTerceiros background:', data.erro);
+                return;
+            }
+            _terceirosRenderPainelTerceirosData(data);
+        }).catch(function(e) {
+            console.error('loadPainelTerceiros background:', e);
+        }).finally(function() {
+            _terceirosPainelFetchPromise = null;
+        });
+        return;
+    }
+
+    var seq = ++_terceirosPainelFetchSeq;
+    var data = await fetchAPIComTimeout('/terceiros/painel', {}, 15000);
+    if (!data || seq !== _terceirosPainelFetchSeq) return;
+    if (data.erro && renderizouLocal) {
+        console.error('loadPainelTerceiros:', data.erro);
+        return;
+    }
+    _terceirosRenderPainelTerceirosData(data);
 }
 
 function getTerceirosPrefixo() {
@@ -2863,7 +2989,7 @@ async function fetchTerceirosDocumentosTodos(opcoes) {
         return merged;
     }
     function _terceirosAtualizarCacheLista(ordenadas, erro) {
-        ordenadas = _terceirosFiltrarRowsNaoExcluidas(ordenadas);
+        ordenadas = _terceirosRowsEstadoMesclado(_terceirosFiltrarRowsNaoExcluidas(ordenadas));
         if (ordenadas.length || !erro) {
             _terceirosListaCache.rows = ordenadas;
             _terceirosListaCache.erro = erro;
@@ -3514,6 +3640,7 @@ function _terceirosAtualizarRecebimentoConcluidoNoCacheLista(documentoId, patch)
         _terceirosListaCache.ts = Date.now();
     }
     _terceirosInvalidarCachePendenciaLista();
+    _terceirosAtualizarPainelLocalRapido();
 }
 
 /** Remove NF do cache compartilhado das listas (sem novo fetch). */
@@ -5429,6 +5556,7 @@ function _terceirosMesclarRowsUploadNoCache(novosRows) {
     _terceirosListaCache.rows = merged;
     _terceirosListaCache.erro = null;
     _terceirosListaCache.ts = Date.now();
+    _terceirosAtualizarPainelLocalRapido();
 }
 
 /** Atualiza só o painel em background (lista já veio em criados_rows). */
@@ -5476,7 +5604,6 @@ async function _terceirosRecarregarAposUpload() {
  * Mantém a sub-aba ativa só na UI; os dados de todas as listas ficam alinhados ao servidor.
  */
 async function recarregarTodasListasTerceiros() {
-    invalidateTerceirosListaCache();
     _terceirosPrefetchPromise = null;
     var data = await fetchTerceirosDocumentosTodos({ force: true });
     await warmTerceirosTodasListas(data);
