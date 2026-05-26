@@ -250,8 +250,40 @@ function aplicarDestaqueLinhaTerceirosDoc(tbody) {
 function _terceirosDadosListaParaRender() {
     var hit = _terceirosObterCacheLista();
     if (hit) return hit;
+    var stale = _terceirosObterCacheLista({ staleOk: true });
+    if (stale) return stale;
+    if (_terceirosListaCache.rows && _terceirosListaCache.rows.length) {
+        return {
+            rows: _terceirosFiltrarRowsNaoExcluidas(_terceirosListaCache.rows),
+            erro: _terceirosListaCache.erro,
+            _stale: true
+        };
+    }
     return undefined;
 }
+
+function _terceirosLoaderPorAba(tab) {
+    if (tab === 'pendencia-recebimento' || tab === 'enviar-xml') return loadTerceirosDocumentos;
+    if (tab === 'fornecedores-recebidos') return loadTerceirosFornecedoresRecebidos;
+    if (tab === 'pendentes-lancamento') return loadTerceirosPendentesLancamento;
+    if (tab === 'notas-lancadas') return loadTerceirosNotasLancadas;
+    if (tab === 'pendencias-mg') return loadTerceirosPendenciasMg;
+    if (tab === 'notas-enviadas-mg') return loadTerceirosNotasEnviadasMg;
+    if (tab === 'recebimentos-mg') return loadTerceirosRecebimentosMg;
+    if (tab === 'historico') return loadTerceirosHistorico;
+    return null;
+}
+
+var TERCEIROS_ABAS_LISTA_WARM = [
+    'pendencia-recebimento',
+    'fornecedores-recebidos',
+    'pendentes-lancamento',
+    'notas-lancadas',
+    'pendencias-mg',
+    'notas-enviadas-mg',
+    'recebimentos-mg',
+    'historico'
+];
 
 async function recarregarListaTerceirosTab(tab) {
     var pre = _terceirosDadosListaParaRender();
@@ -262,6 +294,7 @@ async function recarregarListaTerceirosTab(tab) {
             console.error('recarregarListaTerceirosTab prefetch:', e);
         }
     }
+    if (!pre) pre = _terceirosDadosListaParaRender();
     if (tab === 'painel') return loadPainelTerceiros();
     if (tab === 'pendencia-recebimento' || tab === 'enviar-xml') return loadTerceirosDocumentos(pre);
     if (tab === 'fornecedores-recebidos') return loadTerceirosFornecedoresRecebidos(pre);
@@ -1129,13 +1162,6 @@ function initTerceirosTabs() {
     function mostrarTerTab(tab) {
         var aba = _terceirosNormalizarAbaTab(tab);
         terceirosAplicarPainelAbaSomenteUi(aba);
-        if (aba === 'pendencia-recebimento') {
-            var hitPend = _terceirosObterCacheLista();
-            if (hitPend && Array.isArray(hitPend.rows)) {
-                void loadTerceirosDocumentos(hitPend);
-                return;
-            }
-        }
         void recarregarListaTerceirosTab(aba);
     }
 
@@ -1167,8 +1193,8 @@ function initTerceirosTabs() {
     if (btnTerVoltarLista) {
         btnTerVoltarLista.addEventListener('click', terceirosVoltarDaNotaParaLista);
     }
-    mostrarTerTab(tabInicial);
     void _terceirosGarantirPrefetchLista();
+    mostrarTerTab(tabInicial);
 }
 
 /** Após init: reabre pendência + NF só com ?modulo=terceiros (F5 na descarga). Não rouba outras telas. */
@@ -1432,7 +1458,14 @@ function _terceirosPainelModuloVisivel() {
         && mod.classList.contains('modulo-area--ativo'));
 }
 
+function _terceirosAtualizarAlertasHeaderDoCache() {
+    var hit = _terceirosObterCacheLista({ staleOk: true });
+    if (!hit || !Array.isArray(hit.rows)) return;
+    void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(hit.rows));
+}
+
 function _terceirosAtualizarPainelLocalRapido() {
+    _terceirosAtualizarAlertasHeaderDoCache();
     if (!_terceirosPainelModuloVisivel()) return;
     var hit = _terceirosObterCacheLista({ staleOk: true });
     if (!hit || !Array.isArray(hit.rows) || !hit.rows.length) return;
@@ -2594,7 +2627,6 @@ async function _terceirosAposConcluirCarretaNoHistorico(documentoId, documentoRe
     _terceirosAtualizarRecebidaMgLocal(documentoId, 'sim');
     await terceirosNavegarParaHistoricoAposRecebidaMg(documentoId, 'sim');
     void recarregarTodasListasTerceiros().catch(function(e) { console.error(e); });
-    void atualizarAlertasTerceirosHeader();
     showMessage('NF de carreta registrada no histórico.', 'success');
 }
 
@@ -2610,7 +2642,6 @@ async function _terceirosAposConcluirConsumivelNoHistorico(documentoId, document
         _terceirosInserirLinhaHistoricoLocal(documentoId);
     }
     void recarregarTodasListasTerceiros().catch(function(e) { console.error(e); });
-    void atualizarAlertasTerceirosHeader();
     showMessage('Consumível SP enviado para o Histórico.', 'success');
 }
 
@@ -3046,7 +3077,8 @@ var _terceirosPrefetchPromise = null;
 function _terceirosGarantirPrefetchLista() {
     if (_terceirosPrefetchPromise) return _terceirosPrefetchPromise;
     _terceirosPrefetchPromise = fetchTerceirosDocumentosTodos().then(function(data) {
-        return warmTerceirosTodasListas(data).then(function() { return data; });
+        void warmTerceirosTodasListas(data);
+        return data;
     }).catch(function(e) {
         console.error('_terceirosGarantirPrefetchLista:', e);
         _terceirosPrefetchPromise = null;
@@ -3055,33 +3087,37 @@ function _terceirosGarantirPrefetchLista() {
     return _terceirosPrefetchPromise;
 }
 
-/** Preenche todas as listas do módulo a partir dos mesmos dados (troca de aba instantânea). */
-async function warmTerceirosTodasListas(dataPreloaded) {
+/** Preenche listas: aba visível primeiro; demais em background (troca de aba instantânea). */
+async function warmTerceirosTodasListas(dataPreloaded, opcoes) {
+    opcoes = opcoes || {};
     var data = dataPreloaded;
     if (!data || (!data.rows && !data.erro)) {
         data = await fetchTerceirosDocumentosTodos();
     }
     if (!data) return;
-    var abaAtiva = _terceirosTabAtual || 'painel';
-    var tarefas = [
-        loadTerceirosDocumentos(data),
-        loadTerceirosFornecedoresRecebidos(data),
-        loadTerceirosPendentesLancamento(data),
-        loadTerceirosNotasLancadas(data),
-        loadTerceirosPendenciasMg(data),
-        loadTerceirosNotasEnviadasMg(data),
-        loadTerceirosRecebimentosMg(data),
-        loadTerceirosHistorico(data)
-    ];
-    if (abaAtiva === 'painel') {
-        tarefas.push(loadPainelTerceiros());
+    var abaAtiva = opcoes.abaPrioritaria != null
+        ? _terceirosNormalizarAbaTab(opcoes.abaPrioritaria)
+        : _terceirosNormalizarAbaTab(_terceirosTabAtual || 'painel');
+    var pularAtiva = !!opcoes.pularAbaAtiva;
+    if (!pularAtiva) {
+        if (abaAtiva === 'painel') {
+            await loadPainelTerceiros();
+        } else {
+            var loaderAtivo = _terceirosLoaderPorAba(abaAtiva);
+            if (loaderAtivo) await loaderAtivo(data);
+        }
+        void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows || []));
     }
-    await Promise.all(tarefas.map(function(p) {
-        return Promise.resolve(p).catch(function(err) {
-            console.error('warmTerceirosTodasListas:', err);
+    var demais = TERCEIROS_ABAS_LISTA_WARM.filter(function(t) {
+        return pularAtiva || t !== abaAtiva;
+    });
+    void Promise.all(demais.map(function(tab) {
+        var fn = _terceirosLoaderPorAba(tab);
+        if (!fn) return Promise.resolve();
+        return Promise.resolve(fn(data)).catch(function(err) {
+            console.error('warmTerceirosTodasListas:', tab, err);
         });
     }));
-    void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows || []));
 }
 
 function invalidateTerceirosListaCache() {
@@ -3134,16 +3170,9 @@ function _terceirosObterCacheLista(opcoes) {
 
 function _terceirosRecarregarAbasAposListaAtualizada(data) {
     if (!data || !data.rows) return;
-    var tab = _terceirosTabAtual || 'painel';
-    if (tab === 'pendencia-recebimento' || tab === 'enviar-xml') void loadTerceirosDocumentos(data);
-    else if (tab === 'fornecedores-recebidos') void loadTerceirosFornecedoresRecebidos(data);
-    else if (tab === 'pendentes-lancamento') void loadTerceirosPendentesLancamento(data);
-    else if (tab === 'notas-lancadas') void loadTerceirosNotasLancadas(data);
-    else if (tab === 'pendencias-mg') void loadTerceirosPendenciasMg(data);
-    else if (tab === 'notas-enviadas-mg') void loadTerceirosNotasEnviadasMg(data);
-    else if (tab === 'recebimentos-mg') void loadTerceirosRecebimentosMg(data);
-    else if (tab === 'historico') void loadTerceirosHistorico(data);
-    else if (tab === 'painel') void loadPainelTerceiros();
+    var tab = _terceirosNormalizarAbaTab(_terceirosTabAtual || 'painel');
+    void recarregarListaTerceirosTab(tab);
+    void warmTerceirosTodasListas(data, { pularAbaAtiva: true });
 }
 
 /** Uma requisição compartilhada; abas leem do cache ou reutilizam fetch em andamento. */
@@ -3281,17 +3310,26 @@ async function fetchTerceirosDocumentosTodos(opcoes) {
 
 async function _terceirosResolverDadosLista(dataPreloaded, tbody, colspan) {
     if (dataPreloaded && (dataPreloaded.rows || dataPreloaded.erro)) return dataPreloaded;
-    var hit = _terceirosObterCacheLista();
-    if (hit) return hit;
-    var staleHit = _terceirosObterCacheLista({ staleOk: true });
-    if (staleHit && staleHit._stale) {
-        void fetchTerceirosDocumentosTodos();
-        return staleHit;
+    var hit = _terceirosDadosListaParaRender();
+    if (hit) {
+        if (hit._stale) void fetchTerceirosDocumentosTodos();
+        return hit;
     }
     if (_terceirosListaCache.promise) {
+        var hitParcial = _terceirosDadosListaParaRender();
+        if (hitParcial && hitParcial.rows && hitParcial.rows.length) {
+            void _terceirosListaCache.promise.then(function(data) {
+                if (data && data.rows) _terceirosRecarregarAbasAposListaAtualizada(data);
+            }).catch(function() {});
+            return hitParcial;
+        }
         return _terceirosListaCache.promise;
     }
     if (_terceirosPrefetchPromise) {
+        var hitPrefetch = _terceirosDadosListaParaRender();
+        if (hitPrefetch && hitPrefetch.rows && hitPrefetch.rows.length) {
+            return hitPrefetch;
+        }
         return _terceirosPrefetchPromise;
     }
     if (tbody) {
@@ -3887,14 +3925,8 @@ function _terceirosMesclarFornecedoresRecebidosLocais(rows) {
     return _terceirosRowsEstadoMesclado(rows);
 }
 
-async function atualizarAlertasTerceirosHeaderAposMudancaRecebimento() {
-    try {
-        var data = await fetchTerceirosDocumentosTodos();
-        var rows = data && Array.isArray(data.rows) ? data.rows : [];
-        void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(rows));
-    } catch (e) {
-        console.error(e);
-    }
+function atualizarAlertasTerceirosHeaderAposMudancaRecebimento() {
+    _terceirosAtualizarAlertasHeaderDoCache();
 }
 
 /** Linhas atuais da 2ª aba (sempre recalcula a partir do cache global). */
@@ -5445,6 +5477,7 @@ function aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualiz
     }
     void loadTerceirosPendenciasMg();
     void loadTerceirosPendentesLancamento();
+    _terceirosAtualizarAlertasHeaderDoCache();
 }
 
 function _terceirosNfTexto(row) {
@@ -5543,9 +5576,12 @@ function initTerceirosAlertasHeader() {
             menu.hidden = true;
         }
     });
-    setTimeout(function() {
-        void atualizarAlertasTerceirosHeader();
-    }, 600);
+    _terceirosAtualizarAlertasHeaderDoCache();
+    void _terceirosGarantirPrefetchLista().then(function(data) {
+        if (data && Array.isArray(data.rows)) {
+            void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows));
+        }
+    }).catch(function() {});
 }
 
 async function loadTerceirosPendentesLancamento(dataPreloaded) {
@@ -6015,6 +6051,7 @@ async function excluirDocumentoTerceiros(documentoId) {
     try {
         _terceirosListaFetchGen++;
         _terceirosRemoverDocumentoDosCachesLocais(idNum);
+        _terceirosAtualizarAlertasHeaderDoCache();
         _terceirosRemoverLinhaDeTodasListas(idNum);
         if (Number(_terceirosDestacarDocIdAposCarga) === idNum) {
             _terceirosDestacarDocIdAposCarga = null;
@@ -6046,7 +6083,6 @@ async function excluirDocumentoTerceiros(documentoId) {
         void loadPainelTerceiros({ force: true }).catch(function(ePainel) {
             console.error('excluirDocumentoTerceiros painel:', ePainel);
         });
-        void atualizarAlertasTerceirosHeader(_terceirosListaCache.rows || []);
         showMessage((resp && resp.mensagem) || 'NF excluída.', 'success');
     } catch (e) {
         console.error(e);
@@ -6136,6 +6172,8 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
         if (_terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
             Object.assign(_terceirosDocAtual, resp.documento);
         }
+    } else {
+        _terceirosAtualizarAlertasHeaderDoCache();
     }
     if (campo === 'nota_lancada' && isTerceirosFlagSim(valor)) {
         await _terceirosAposConfirmarNotaLancadaSim(documentoId, resp && resp.documento, opcoes);
