@@ -8077,6 +8077,634 @@ def _relatorio_terceiros_carreta(data_inicio='', data_fim=''):
     return wb
 
 
+def _terceiros_nf_texto_rel(row):
+    return '/'.join(filter(None, [str(row.get('numero_nf') or '').strip(), str(row.get('serie_nf') or '').strip()])) or '-'
+
+
+def _terceiros_tipo_fluxo_rel(row):
+    if _terceiros_eh_area_carreta(row):
+        return 'Carreta'
+    if _terceiros_eh_consumivel_sp(row):
+        return 'Consumível SP'
+    return 'Normal (MG)'
+
+
+def _terceiros_parse_datahora_iso(s):
+    if not s or not str(s).strip():
+        return None
+    txt = str(s).strip()[:19].replace('T', ' ')
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(txt, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _terceiros_dias_entre(a, b):
+    da = _terceiros_parse_datahora_iso(a)
+    db = _terceiros_parse_datahora_iso(b)
+    if not da or not db:
+        return ''
+    return round((db - da).total_seconds() / 86400.0, 1)
+
+
+def _terceiros_ultima_acao_em(row):
+    candidatos = [
+        row.get('consumivel_sp_historico_em'), row.get('carga_recebida_mg_em'),
+        row.get('enviar_para_mg_em'), row.get('nota_lancada_em'),
+        row.get('recebimento_concluido_em'), row.get('atualizado_em'), row.get('criado_em'),
+    ]
+    datas = [_terceiros_parse_datahora_iso(c) for c in candidatos]
+    datas = [d for d in datas if d]
+    return max(datas) if datas else None
+
+
+def _terceiros_dias_parados(row):
+    ult = _terceiros_ultima_acao_em(row)
+    if not ult:
+        return ''
+    return round((datetime.now() - ult).total_seconds() / 86400.0, 1)
+
+
+def _terceiros_motivo_encerramento_rel(row):
+    if _valor_bool_texto(row.get('nota_lancada') or '') == 'nao' and str(row.get('motivo_nao_lancada') or '').strip():
+        return 'Não lançada: ' + str(row.get('motivo_nao_lancada') or '').strip()
+    if _valor_bool_texto(row.get('enviar_para_mg') or '') == 'nao' and str(row.get('motivo_nao_enviar_mg') or '').strip():
+        return 'Não enviou MG: ' + str(row.get('motivo_nao_enviar_mg') or '').strip()
+    if _valor_bool_texto(row.get('carga_recebida_mg') or '') == 'nao' and str(row.get('motivo_nao_recebida_mg') or '').strip():
+        return 'Não recebida MG: ' + str(row.get('motivo_nao_recebida_mg') or '').strip()
+    if _terceiros_eh_consumivel_sp(row) and _valor_bool_texto(row.get('consumivel_sp_historico') or '') == 'sim':
+        return 'Consumível SP enviado ao histórico'
+    if _terceiros_eh_area_carreta(row) and _valor_bool_texto(row.get('carga_recebida_mg') or '') == 'sim':
+        return 'Carreta registrada no histórico'
+    if _valor_bool_texto(row.get('carga_recebida_mg') or '') == 'sim' and _valor_bool_texto(row.get('nota_lancada') or '') == 'sim':
+        return 'Fluxo MG completo'
+    return ''
+
+
+def _terceiros_docs_filtrados(data_inicio='', data_fim=''):
+    conn = get_db()
+    try:
+        return _terceiros_docs_com_resumo(conn, data_inicio, data_fim)
+    finally:
+        conn.close()
+
+
+def _relatorio_terceiros_notas_lancadas(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    linhas = []
+    for item in docs:
+        row = item['row']
+        nl = _valor_bool_texto(row.get('nota_lancada') or '')
+        if nl != 'sim':
+            continue
+        linhas.append([
+            row.get('id'),
+            _terceiros_nf_texto_rel(row),
+            row.get('numero_pedido') or '',
+            _terceiros_tipo_fluxo_rel(row),
+            row.get('remetente_nome') or '',
+            row.get('destinatario_nome') or '',
+            row.get('destinatario_uf') or '',
+            row.get('nota_lancada_por') or '',
+            _fmt_datahora_br(row.get('nota_lancada_em') or ''),
+            _fmt_datahora_br(row.get('recebimento_concluido_em') or ''),
+            row.get('recebimento_concluido_por') or '',
+            item['etapa'],
+            row.get('enviar_para_mg') or '',
+            row.get('carga_recebida_mg') or '',
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'Pedido', 'Tipo fluxo', 'Remetente', 'Destinatário', 'UF',
+            'Quem lançou', 'Lançada em', 'Recebimento concluído em', 'Quem concluiu recebimento',
+            'Etapa atual', 'Enviar MG', 'Recebida MG',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Notas lançadas'
+    return wb
+
+
+def _relatorio_terceiros_historico(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    linhas = []
+    for item in docs:
+        row = item['row']
+        if _terceiros_etapa_painel_row(row) != 'historico':
+            continue
+        linhas.append([
+            row.get('id'),
+            _terceiros_nf_texto_rel(row),
+            row.get('numero_pedido') or '',
+            _terceiros_tipo_fluxo_rel(row),
+            row.get('recebedor_consumivel_sp') or '',
+            row.get('remetente_nome') or '',
+            row.get('destinatario_uf') or '',
+            _terceiros_motivo_encerramento_rel(row),
+            _fmt_datahora_br(row.get('criado_em') or ''),
+            _fmt_datahora_br(row.get('recebimento_concluido_em') or ''),
+            _fmt_datahora_br(row.get('nota_lancada_em') or ''),
+            _fmt_datahora_br(row.get('enviar_para_mg_em') or ''),
+            _fmt_datahora_br(row.get('carga_recebida_mg_em') or ''),
+            _fmt_datahora_br(row.get('consumivel_sp_historico_em') or ''),
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'Pedido', 'Tipo fluxo', 'Quem irá receber (consumível)',
+            'Remetente', 'UF', 'Motivo / forma de encerramento', 'Cadastro',
+            'Recebimento concluído', 'Lançada em', 'Enviado MG em', 'Recebida MG em', 'Histórico consumível em',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Histórico'
+    return wb
+
+
+def _relatorio_terceiros_consumivel_sp(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    linhas = []
+    for item in docs:
+        row = item['row']
+        if not _terceiros_eh_consumivel_sp(row):
+            continue
+        linhas.append([
+            row.get('id'),
+            _terceiros_nf_texto_rel(row),
+            row.get('numero_pedido') or '',
+            row.get('recebedor_consumivel_sp') or '',
+            item['etapa'],
+            'Sim' if _terceiros_bool_sim_db(row.get('recebimento_concluido')) else 'Não',
+            row.get('nota_lancada') or '',
+            row.get('nota_lancada_por') or '',
+            _fmt_datahora_br(row.get('nota_lancada_em') or ''),
+            row.get('consumivel_sp_historico') or '',
+            row.get('consumivel_sp_historico_por') or '',
+            _fmt_datahora_br(row.get('consumivel_sp_historico_em') or ''),
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'Pedido', 'Quem solicitou/receberá', 'Etapa atual',
+            'Receb. concluído', 'Lançada', 'Quem lançou', 'Lançada em',
+            'No histórico', 'Enviado ao histórico por', 'Enviado ao histórico em',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Consumível SP'
+    return wb
+
+
+def _relatorio_terceiros_pendencias_etapa(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    linhas = []
+    for item in docs:
+        row = item['row']
+        if _terceiros_etapa_painel_row(row) == 'historico':
+            continue
+        linhas.append([
+            row.get('id'),
+            _terceiros_nf_texto_rel(row),
+            row.get('numero_pedido') or '',
+            _terceiros_tipo_fluxo_rel(row),
+            item['etapa'],
+            _terceiros_dias_parados(row),
+            row.get('remetente_nome') or '',
+            row.get('destinatario_uf') or '',
+            _fmt_datahora_br(row.get('previsao_chegada') or ''),
+            row.get('atualizado_por') or '',
+            _fmt_datahora_br(row.get('atualizado_em') or ''),
+        ])
+    linhas.sort(key=lambda r: (r[4], -(float(r[5]) if r[5] != '' else 0)))
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'Pedido', 'Tipo fluxo', 'Etapa parada', 'Dias parados',
+            'Remetente', 'UF', 'Previsão chegada', 'Último usuário', 'Última atualização',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Pendências'
+    return wb
+
+
+def _relatorio_terceiros_encerradas_motivo(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    linhas = []
+    for item in docs:
+        row = item['row']
+        motivo = _terceiros_motivo_encerramento_rel(row)
+        if not motivo or not motivo.startswith(('Não lançada', 'Não enviou', 'Não recebida')):
+            continue
+        linhas.append([
+            row.get('id'),
+            _terceiros_nf_texto_rel(row),
+            row.get('numero_pedido') or '',
+            _terceiros_tipo_fluxo_rel(row),
+            motivo,
+            row.get('motivo_nao_lancada') or '',
+            row.get('motivo_nao_enviar_mg') or '',
+            row.get('motivo_nao_recebida_mg') or '',
+            row.get('nota_lancada_por') or row.get('enviar_para_mg_por') or row.get('carga_recebida_mg_por') or '',
+            _fmt_datahora_br(row.get('atualizado_em') or ''),
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'Pedido', 'Tipo fluxo', 'Resumo encerramento',
+            'Motivo não lançada', 'Motivo não enviar MG', 'Motivo não recebida MG',
+            'Registrado por', 'Atualizado em',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Encerradas c motivo'
+    return wb
+
+
+def _relatorio_terceiros_fluxo_mg(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    linhas = []
+    for item in docs:
+        row = item['row']
+        if _terceiros_eh_area_carreta(row) or _terceiros_eh_consumivel_sp(row):
+            continue
+        emg = _valor_bool_texto(row.get('enviar_para_mg') or '')
+        if emg not in ('sim', 'nao', 'pendente') and not str(row.get('enviar_para_mg') or '').strip():
+            continue
+        linhas.append([
+            row.get('id'),
+            _terceiros_nf_texto_rel(row),
+            row.get('destinatario_uf') or '',
+            row.get('enviar_para_mg') or '',
+            row.get('enviar_para_mg_por') or '',
+            _fmt_datahora_br(row.get('enviar_para_mg_em') or ''),
+            row.get('motorista_saida_mg') or '',
+            row.get('placa_saida_mg') or '',
+            row.get('carga_recebida_mg') or '',
+            row.get('recebedor_mg') or '',
+            row.get('carga_recebida_mg_por') or '',
+            _fmt_datahora_br(row.get('carga_recebida_mg_em') or ''),
+            row.get('nota_lancada') or '',
+            item['etapa'],
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'UF', 'Enviar MG', 'Quem marcou envio', 'Enviado em',
+            'Motorista saída MG', 'Placa saída', 'Recebida MG', 'Quem recebeu MG',
+            'Recebida por', 'Recebida em', 'Nota lançada', 'Etapa atual',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Fluxo MG'
+    return wb
+
+
+def _relatorio_terceiros_por_uf(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    agg = {}
+    for item in docs:
+        row = item['row']
+        uf = (row.get('destinatario_uf') or '').strip().upper() or '—'
+        if uf not in agg:
+            agg[uf] = {'total': 0, 'historico': 0, 'pendentes': 0, 'q_xml': 0.0, 'q_bip': 0.0}
+        agg[uf]['total'] += 1
+        if _terceiros_etapa_painel_row(row) == 'historico':
+            agg[uf]['historico'] += 1
+        else:
+            agg[uf]['pendentes'] += 1
+        agg[uf]['q_xml'] += float(row.get('quantidade_total_xml') or 0)
+        agg[uf]['q_bip'] += float(row.get('quantidade_total_bipada') or 0)
+    linhas = []
+    for uf in sorted(agg.keys(), key=lambda u: (-agg[u]['total'], u)):
+        a = agg[uf]
+        linhas.append([uf, a['total'], a['pendentes'], a['historico'], round(a['q_xml'], 3), round(a['q_bip'], 3)])
+    wb = _terceiros_workbook_simple(
+        ['UF destino', 'Total NFs', 'Em andamento', 'No histórico', 'Qtd. XML', 'Qtd. bipada'],
+        linhas,
+    )
+    wb.active.title = 'Por UF'
+    return wb
+
+
+def _relatorio_terceiros_por_remetente(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    agg = {}
+    for item in docs:
+        row = item['row']
+        rem = (row.get('remetente_nome') or '').strip() or 'Sem remetente'
+        if rem not in agg:
+            agg[rem] = {'total': 0, 'div': 0, 'dias_rec': []}
+        agg[rem]['total'] += 1
+        q_xml = float(row.get('quantidade_total_xml') or 0)
+        q_bip = float(row.get('quantidade_total_bipada') or 0)
+        div_it = int(row.get('itens_divergentes') or 0)
+        if div_it > 0 or abs(q_xml - q_bip) > 1e-6:
+            agg[rem]['div'] += 1
+        dias = _terceiros_dias_entre(row.get('criado_em'), row.get('recebimento_concluido_em'))
+        if dias != '':
+            agg[rem]['dias_rec'].append(dias)
+    linhas = []
+    for rem in sorted(agg.keys(), key=lambda r: (-agg[r]['total'], r)):
+        a = agg[rem]
+        media = round(sum(a['dias_rec']) / len(a['dias_rec']), 1) if a['dias_rec'] else ''
+        linhas.append([rem, a['total'], a['div'], media])
+    wb = _terceiros_workbook_simple(
+        ['Remetente', 'Total NFs', 'NFs com divergência', 'Média dias até recebimento'],
+        linhas,
+    )
+    wb.active.title = 'Por remetente'
+    return wb
+
+
+def _relatorio_terceiros_previsao_chegada(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    linhas = []
+    for item in docs:
+        row = item['row']
+        prev = _terceiros_parse_datahora_iso(row.get('previsao_chegada'))
+        ini = _terceiros_parse_datahora_iso(row.get('inicio_descarga'))
+        rec = _terceiros_parse_datahora_iso(row.get('recebimento_concluido_em'))
+        ref = ini or rec
+        situacao = 'Sem descarga/recebimento'
+        diff = ''
+        if prev and ref:
+            diff = round((ref - prev).total_seconds() / 86400.0, 1)
+            situacao = 'No prazo' if diff <= 0 else 'Atrasada'
+        elif prev and not ref:
+            if prev.date() < datetime.now().date():
+                situacao = 'Previsão vencida (sem descarga)'
+        linhas.append([
+            row.get('id'),
+            _terceiros_nf_texto_rel(row),
+            row.get('remetente_nome') or '',
+            _fmt_datahora_br(row.get('previsao_chegada') or ''),
+            _fmt_datahora_br(row.get('inicio_descarga') or ''),
+            _fmt_datahora_br(row.get('recebimento_concluido_em') or ''),
+            situacao,
+            diff,
+            item['etapa'],
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'Remetente', 'Previsão', 'Início descarga', 'Recebimento concluído',
+            'Situação', 'Diferença dias (descarga vs previsão)', 'Etapa',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Previsão x chegada'
+    return wb
+
+
+def _relatorio_terceiros_recebimentos_periodo(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    linhas = []
+    for item in docs:
+        row = item['row']
+        if not _terceiros_bool_sim_db(row.get('recebimento_concluido')):
+            continue
+        linhas.append([
+            row.get('id'),
+            _terceiros_nf_texto_rel(row),
+            row.get('numero_pedido') or '',
+            _terceiros_tipo_fluxo_rel(row),
+            row.get('recebimento_concluido_por') or '',
+            _fmt_datahora_br(row.get('recebimento_concluido_em') or ''),
+            float(row.get('quantidade_total_xml') or 0),
+            float(row.get('quantidade_total_bipada') or 0),
+            item['etapa'],
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'Pedido', 'Tipo fluxo', 'Quem concluiu recebimento',
+            'Recebimento concluído em', 'Qtd. XML', 'Qtd. bipada', 'Etapa atual',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Recebimentos'
+    return wb
+
+
+def _relatorio_terceiros_divergencia_itens(data_inicio='', data_fim=''):
+    conn = get_db()
+    try:
+        _ensure_terceiros_schema(conn)
+        tbl_d = _tbl_terceiros_documentos(conn)
+        tbl_i = _tbl_terceiros_documento_itens(conn)
+        where_parts = ['ABS(COALESCE(i.quantidade_xml, 0) - COALESCE(i.quantidade_bipada, 0)) > 0.000001']
+        params = []
+        wp, pp = _terceiros_sql_periodo_criado('d', data_inicio, data_fim)
+        where_parts.extend(wp)
+        params.extend(pp)
+        sql = (
+            '''SELECT d.id AS documento_id, d.numero_nf, d.serie_nf, d.remetente_nome,
+                      i.codigo_ean, i.descricao_xml, i.quantidade_xml, i.quantidade_bipada,
+                      i.status_bipagem
+               FROM ''' + tbl_i + ''' i
+               INNER JOIN ''' + tbl_d + ''' d ON d.id = i.documento_id
+               WHERE ''' + ' AND '.join(where_parts) + '''
+               ORDER BY d.id DESC, i.n_item, i.id'''
+        )
+        rows = conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+    linhas = []
+    for r in rows or []:
+        rd = dict(r) if hasattr(r, 'keys') else {}
+        q_xml = float(rd.get('quantidade_xml') or 0)
+        q_bip = float(rd.get('quantidade_bipada') or 0)
+        linhas.append([
+            rd.get('documento_id'),
+            _terceiros_nf_texto_rel(rd),
+            rd.get('remetente_nome') or '',
+            rd.get('codigo_ean') or '',
+            (rd.get('descricao_xml') or '')[:120],
+            q_xml,
+            q_bip,
+            round(q_xml - q_bip, 3),
+            rd.get('status_bipagem') or '',
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID NF', 'NF', 'Remetente', 'Código barras', 'Produto',
+            'Qtd. XML', 'Qtd. bipada', 'Diferença', 'Status',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Divergência itens'
+    return wb
+
+
+def _relatorio_terceiros_sem_bipagem(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    linhas = []
+    for item in docs:
+        row = item['row']
+        q_bip = float(row.get('quantidade_total_bipada') or 0)
+        if q_bip > 1e-9:
+            continue
+        if _terceiros_etapa_painel_row(row) == 'historico':
+            continue
+        linhas.append([
+            row.get('id'),
+            _terceiros_nf_texto_rel(row),
+            row.get('remetente_nome') or '',
+            _fmt_datahora_br(row.get('criado_em') or ''),
+            _fmt_datahora_br(row.get('previsao_chegada') or ''),
+            _terceiros_dias_parados(row),
+            item['etapa'],
+        ])
+    wb = _terceiros_workbook_simple(
+        ['ID', 'NF', 'Remetente', 'Cadastro', 'Previsão', 'Dias parados', 'Etapa'],
+        linhas,
+    )
+    wb.active.title = 'Sem bipagem'
+    return wb
+
+
+def _relatorio_terceiros_conferencia_incompleta(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    linhas = []
+    for item in docs:
+        row = item['row']
+        q_bip = float(row.get('quantidade_total_bipada') or 0)
+        if q_bip <= 1e-9:
+            continue
+        if _terceiros_bool_sim_db(row.get('recebimento_concluido')):
+            continue
+        linhas.append([
+            row.get('id'),
+            _terceiros_nf_texto_rel(row),
+            row.get('remetente_nome') or '',
+            float(row.get('quantidade_total_xml') or 0),
+            q_bip,
+            int(row.get('itens_divergentes') or 0),
+            _fmt_datahora_br(row.get('inicio_descarga') or ''),
+            item['etapa'],
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'Remetente', 'Qtd. XML', 'Qtd. bipada', 'Itens divergentes',
+            'Início descarga', 'Etapa',
+        ],
+        linhas,
+    )
+    wb.active.title = 'Conferência incompleta'
+    return wb
+
+
+def _relatorio_terceiros_eventos(data_inicio='', data_fim=''):
+    conn = get_db()
+    try:
+        _ensure_terceiros_schema(conn)
+        tbl_d = _tbl_terceiros_documentos(conn)
+        tbl_e = _tbl_terceiros_documento_eventos(conn)
+        where_parts = []
+        params = []
+        wp, pp = _terceiros_sql_periodo_criado('d', data_inicio, data_fim)
+        where_parts.extend(wp)
+        params.extend(pp)
+        sql = (
+            '''SELECT e.documento_id, d.numero_nf, d.serie_nf, e.evento, e.valor_anterior,
+                      e.valor_novo, e.usuario, e.criado_em, e.detalhes
+               FROM ''' + tbl_e + ''' e
+               INNER JOIN ''' + tbl_d + ''' d ON d.id = e.documento_id'''
+        )
+        if where_parts:
+            sql += ' WHERE ' + ' AND '.join(where_parts)
+        sql += ' ORDER BY e.criado_em DESC, e.id DESC'
+        rows = conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+    linhas = []
+    for r in rows or []:
+        rd = dict(r) if hasattr(r, 'keys') else {}
+        linhas.append([
+            rd.get('documento_id'),
+            _terceiros_nf_texto_rel(rd),
+            rd.get('evento') or '',
+            rd.get('valor_anterior') or '',
+            rd.get('valor_novo') or '',
+            rd.get('usuario') or '',
+            _fmt_datahora_br(rd.get('criado_em') or ''),
+            (rd.get('detalhes') or '')[:200],
+        ])
+    wb = _terceiros_workbook_simple(
+        ['ID NF', 'NF', 'Evento', 'Valor anterior', 'Valor novo', 'Usuário', 'Data/hora', 'Detalhes'],
+        linhas,
+    )
+    wb.active.title = 'Eventos'
+    return wb
+
+
+def _relatorio_terceiros_auditoria_usuario(data_inicio='', data_fim=''):
+    conn = get_db()
+    try:
+        _ensure_terceiros_schema(conn)
+        tbl_d = _tbl_terceiros_documentos(conn)
+        tbl_e = _tbl_terceiros_documento_eventos(conn)
+        where_parts = ["COALESCE(TRIM(e.usuario), '') <> ''"]
+        params = []
+        wp, pp = _terceiros_sql_periodo_criado('d', data_inicio, data_fim)
+        where_parts.extend(wp)
+        params.extend(pp)
+        sql = (
+            '''SELECT COALESCE(NULLIF(TRIM(e.usuario), ''), 'Sem usuário') AS usuario,
+                      e.evento,
+                      COUNT(*) AS total,
+                      COUNT(DISTINCT e.documento_id) AS num_nfs
+               FROM ''' + tbl_e + ''' e
+               INNER JOIN ''' + tbl_d + ''' d ON d.id = e.documento_id
+               WHERE ''' + ' AND '.join(where_parts) + '''
+               GROUP BY e.usuario, e.evento
+               ORDER BY total DESC, usuario, e.evento'''
+        )
+        rows = conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+    linhas = []
+    for r in rows or []:
+        rd = dict(r) if hasattr(r, 'keys') else {}
+        linhas.append([
+            rd.get('usuario') or '',
+            rd.get('evento') or '',
+            int(rd.get('total') or 0),
+            int(rd.get('num_nfs') or 0),
+        ])
+    wb = _terceiros_workbook_simple(
+        ['Usuário', 'Tipo de evento', 'Quantidade', 'NFs distintas'],
+        linhas,
+    )
+    wb.active.title = 'Auditoria usuário'
+    return wb
+
+
+def _relatorio_terceiros_sla_etapas(data_inicio='', data_fim=''):
+    docs = _terceiros_docs_filtrados(data_inicio, data_fim)
+    linhas = []
+    for item in docs:
+        row = item['row']
+        linhas.append([
+            row.get('id'),
+            _terceiros_nf_texto_rel(row),
+            _terceiros_tipo_fluxo_rel(row),
+            _terceiros_dias_entre(row.get('criado_em'), row.get('recebimento_concluido_em')),
+            _terceiros_dias_entre(row.get('recebimento_concluido_em'), row.get('nota_lancada_em')),
+            _terceiros_dias_entre(row.get('nota_lancada_em'), row.get('enviar_para_mg_em')),
+            _terceiros_dias_entre(row.get('enviar_para_mg_em'), row.get('carga_recebida_mg_em')),
+            _terceiros_dias_entre(row.get('criado_em'), row.get('carga_recebida_mg_em')),
+            item['etapa'],
+        ])
+    wb = _terceiros_workbook_simple(
+        [
+            'ID', 'NF', 'Tipo fluxo',
+            'Dias cadastro → recebimento', 'Dias recebimento → lançamento',
+            'Dias lançamento → envio MG', 'Dias envio → recebida MG',
+            'Dias cadastro → recebida MG (total)', 'Etapa atual',
+        ],
+        linhas,
+    )
+    wb.active.title = 'SLA etapas'
+    return wb
+
+
 def _relatorio_terceiros_nf_detalhe(documento_id):
     conn = get_db()
     try:
@@ -8168,6 +8796,102 @@ def export_terceiros_divergencias():
 def export_terceiros_carreta():
     de, ate = _terceiros_periodo_request_args()
     return _terceiros_send_workbook(_relatorio_terceiros_carreta(de, ate), 'relatorio_terceiros_carreta.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/notas_lancadas', methods=['GET'])
+def export_terceiros_notas_lancadas():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_notas_lancadas(de, ate), 'relatorio_terceiros_notas_lancadas.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/historico', methods=['GET'])
+def export_terceiros_historico():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_historico(de, ate), 'relatorio_terceiros_historico.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/consumivel_sp', methods=['GET'])
+def export_terceiros_consumivel_sp():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_consumivel_sp(de, ate), 'relatorio_terceiros_consumivel_sp.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/pendencias_etapa', methods=['GET'])
+def export_terceiros_pendencias_etapa():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_pendencias_etapa(de, ate), 'relatorio_terceiros_pendencias_etapa.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/encerradas_motivo', methods=['GET'])
+def export_terceiros_encerradas_motivo():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_encerradas_motivo(de, ate), 'relatorio_terceiros_encerradas_motivo.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/fluxo_mg', methods=['GET'])
+def export_terceiros_fluxo_mg():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_fluxo_mg(de, ate), 'relatorio_terceiros_fluxo_mg.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/por_uf', methods=['GET'])
+def export_terceiros_por_uf():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_por_uf(de, ate), 'relatorio_terceiros_por_uf.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/por_remetente', methods=['GET'])
+def export_terceiros_por_remetente():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_por_remetente(de, ate), 'relatorio_terceiros_por_remetente.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/previsao_chegada', methods=['GET'])
+def export_terceiros_previsao_chegada():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_previsao_chegada(de, ate), 'relatorio_terceiros_previsao_chegada.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/recebimentos_periodo', methods=['GET'])
+def export_terceiros_recebimentos_periodo():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_recebimentos_periodo(de, ate), 'relatorio_terceiros_recebimentos.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/divergencia_itens', methods=['GET'])
+def export_terceiros_divergencia_itens():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_divergencia_itens(de, ate), 'relatorio_terceiros_divergencia_itens.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/sem_bipagem', methods=['GET'])
+def export_terceiros_sem_bipagem():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_sem_bipagem(de, ate), 'relatorio_terceiros_sem_bipagem.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/conferencia_incompleta', methods=['GET'])
+def export_terceiros_conferencia_incompleta():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_conferencia_incompleta(de, ate), 'relatorio_terceiros_conferencia_incompleta.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/eventos', methods=['GET'])
+def export_terceiros_eventos():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_eventos(de, ate), 'relatorio_terceiros_eventos.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/auditoria_usuario', methods=['GET'])
+def export_terceiros_auditoria_usuario():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_auditoria_usuario(de, ate), 'relatorio_terceiros_auditoria_usuario.xlsx')
+
+
+@app.route('/api/terceiros/relatorios/excel/sla_etapas', methods=['GET'])
+def export_terceiros_sla_etapas():
+    de, ate = _terceiros_periodo_request_args()
+    return _terceiros_send_workbook(_relatorio_terceiros_sla_etapas(de, ate), 'relatorio_terceiros_sla_etapas.xlsx')
 
 
 @app.route('/api/terceiros/relatorios/excel/nf', methods=['GET'])

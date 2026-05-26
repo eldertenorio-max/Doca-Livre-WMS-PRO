@@ -2067,6 +2067,62 @@
                     </div>
 
                     <div class="form-container relatorios-secao">
+                        <h3 style="margin-top: 0; color: #366092;">Fiscal e fluxo</h3>
+                        <div class="relatorios-lista">
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosNotasLancadas()">📥 Notas fiscais lançadas</button>
+                                <span>NFs com lançamento = Sim: quem lançou, data, remetente, UF e etapa atual.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosHistorico()">📥 Histórico — NFs finalizadas</button>
+                                <span>NFs encerradas no fluxo (MG completo, carreta, consumível SP ou Não + motivo).</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosConsumivelSp()">📥 Consumível SP</button>
+                                <span>Fluxo consumível: quem solicitou/receberá, lançamento e envio ao histórico.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosFluxoMg()">📥 Fluxo MG completo</button>
+                                <span>Envio, recebimento em MG, motoristas/placas e quem recebeu.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-secondary" onclick="gerarRelatorioTerceirosEncerradasMotivo()">📥 Encerradas com Não + motivo</button>
+                                <span>NFs que não foram lançadas, enviadas ou recebidas em MG, com motivo registrado.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosRecebimentosPeriodo()">📥 Recebimentos concluídos</button>
+                                <span>Quem concluiu o recebimento e quando, por NF.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-container relatorios-secao">
+                        <h3 style="margin-top: 0; color: #366092;">Operação e pendências</h3>
+                        <div class="relatorios-lista">
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosPendenciasEtapa()">📥 Pendências por etapa</button>
+                                <span>NFs paradas em cada aba, com dias desde a última ação.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosPorUf()">📥 Resumo por UF destino</button>
+                                <span>Quantidade de NFs, andamento e histórico por UF (MG, SP, etc.).</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosPorRemetente()">📥 Resumo por remetente</button>
+                                <span>Fornecedores com total de NFs, divergências e tempo médio até recebimento.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosPrevisaoChegada()">📥 Previsão vs. chegada</button>
+                                <span>Compara previsão de chegada com início da descarga e recebimento.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosSlaEtapas()">📥 SLA entre etapas</button>
+                                <span>Dias entre cadastro, recebimento, lançamento, envio e recebimento MG.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-container relatorios-secao">
                         <h3 style="margin-top: 0; color: #366092;">Resumo e bipagem</h3>
                         <div class="relatorios-lista">
                             <div class="relatorio-item">
@@ -2085,15 +2141,41 @@
                     </div>
 
                     <div class="form-container relatorios-secao">
-                        <h3 style="margin-top: 0; color: #366092;">Divergências e carreta</h3>
+                        <h3 style="margin-top: 0; color: #366092;">Divergências, conferência e carreta</h3>
                         <div class="relatorios-lista">
                             <div class="relatorio-item">
                                 <button type="button" class="btn btn-secondary" onclick="gerarRelatorioTerceirosDivergencias()">📥 NFs com divergência</button>
                                 <span>Notas com diferença entre XML e bipagem ou itens divergentes.</span>
                             </div>
                             <div class="relatorio-item">
+                                <button type="button" class="btn btn-secondary" onclick="gerarRelatorioTerceirosDivergenciaItens()">📥 Divergência por item</button>
+                                <span>Linha a linha: produto, qtd. XML, qtd. bipada e diferença.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-secondary" onclick="gerarRelatorioTerceirosSemBipagem()">📥 NFs sem bipagem iniciada</button>
+                                <span>Cadastradas e ainda sem nenhuma unidade bipada.</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-secondary" onclick="gerarRelatorioTerceirosConferenciaIncompleta()">📥 Conferência incompleta</button>
+                                <span>Bipagem iniciada, mas recebimento ainda não concluído.</span>
+                            </div>
+                            <div class="relatorio-item">
                                 <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosCarreta()">📥 Carreta — quem trouxe e chegada</button>
-                                <span>NFs da área carreta com motorista/placa que trouxe, previsão, início da descarga e recebimento.</span>
+                                <span>NFs da área carreta com motorista/placa, previsão e recebimento.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-container relatorios-secao">
+                        <h3 style="margin-top: 0; color: #366092;">Auditoria</h3>
+                        <div class="relatorios-lista">
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosEventos()">📥 Linha do tempo — eventos por NF</button>
+                                <span>Histórico de alterações registradas no sistema (status, usuário, data).</span>
+                            </div>
+                            <div class="relatorio-item">
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosAuditoriaUsuario()">📥 Auditoria por usuário</button>
+                                <span>Quantidade de ações por usuário e tipo de evento.</span>
                             </div>
                         </div>
                     </div>

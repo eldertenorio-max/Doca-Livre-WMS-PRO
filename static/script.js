@@ -11808,24 +11808,98 @@ function appendParamsDataCriacaoTerceiros(url) {
     return url + (url.indexOf('?') >= 0 ? '&' : '?') + qs;
 }
 
+function appendParamsDataCriacaoTerceiros(url) {
+    const qs = getParamsDataCriacaoTerceiros();
+    if (!qs) return url;
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + qs;
+}
+
+function gerarRelatorioTerceirosExcel(suffix, filename) {
+    downloadRelatorio(appendParamsDataCriacaoTerceiros(API_BASE + '/terceiros/relatorios/excel/' + suffix), filename);
+}
+
 window.gerarRelatorioTerceirosResumoNf = function() {
-    downloadRelatorio(appendParamsDataCriacaoTerceiros(API_BASE + '/terceiros/relatorios/excel/resumo_nf'), 'relatorio_terceiros_resumo_nf.xlsx');
+    gerarRelatorioTerceirosExcel('resumo_nf', 'relatorio_terceiros_resumo_nf.xlsx');
 };
 
 window.gerarRelatorioTerceirosItensBipados = function() {
-    downloadRelatorio(appendParamsDataCriacaoTerceiros(API_BASE + '/terceiros/relatorios/excel/itens_bipados'), 'relatorio_terceiros_itens_bipados.xlsx');
+    gerarRelatorioTerceirosExcel('itens_bipados', 'relatorio_terceiros_itens_bipados.xlsx');
 };
 
 window.gerarRelatorioTerceirosItensMaisBipados = function() {
-    downloadRelatorio(appendParamsDataCriacaoTerceiros(API_BASE + '/terceiros/relatorios/excel/itens_mais_bipados'), 'relatorio_terceiros_itens_mais_bipados.xlsx');
+    gerarRelatorioTerceirosExcel('itens_mais_bipados', 'relatorio_terceiros_itens_mais_bipados.xlsx');
 };
 
 window.gerarRelatorioTerceirosDivergencias = function() {
-    downloadRelatorio(appendParamsDataCriacaoTerceiros(API_BASE + '/terceiros/relatorios/excel/divergencias'), 'relatorio_terceiros_divergencias.xlsx');
+    gerarRelatorioTerceirosExcel('divergencias', 'relatorio_terceiros_divergencias.xlsx');
 };
 
 window.gerarRelatorioTerceirosCarreta = function() {
-    downloadRelatorio(appendParamsDataCriacaoTerceiros(API_BASE + '/terceiros/relatorios/excel/carreta'), 'relatorio_terceiros_carreta.xlsx');
+    gerarRelatorioTerceirosExcel('carreta', 'relatorio_terceiros_carreta.xlsx');
+};
+
+window.gerarRelatorioTerceirosNotasLancadas = function() {
+    gerarRelatorioTerceirosExcel('notas_lancadas', 'relatorio_terceiros_notas_lancadas.xlsx');
+};
+
+window.gerarRelatorioTerceirosHistorico = function() {
+    gerarRelatorioTerceirosExcel('historico', 'relatorio_terceiros_historico.xlsx');
+};
+
+window.gerarRelatorioTerceirosConsumivelSp = function() {
+    gerarRelatorioTerceirosExcel('consumivel_sp', 'relatorio_terceiros_consumivel_sp.xlsx');
+};
+
+window.gerarRelatorioTerceirosPendenciasEtapa = function() {
+    gerarRelatorioTerceirosExcel('pendencias_etapa', 'relatorio_terceiros_pendencias_etapa.xlsx');
+};
+
+window.gerarRelatorioTerceirosEncerradasMotivo = function() {
+    gerarRelatorioTerceirosExcel('encerradas_motivo', 'relatorio_terceiros_encerradas_motivo.xlsx');
+};
+
+window.gerarRelatorioTerceirosFluxoMg = function() {
+    gerarRelatorioTerceirosExcel('fluxo_mg', 'relatorio_terceiros_fluxo_mg.xlsx');
+};
+
+window.gerarRelatorioTerceirosPorUf = function() {
+    gerarRelatorioTerceirosExcel('por_uf', 'relatorio_terceiros_por_uf.xlsx');
+};
+
+window.gerarRelatorioTerceirosPorRemetente = function() {
+    gerarRelatorioTerceirosExcel('por_remetente', 'relatorio_terceiros_por_remetente.xlsx');
+};
+
+window.gerarRelatorioTerceirosPrevisaoChegada = function() {
+    gerarRelatorioTerceirosExcel('previsao_chegada', 'relatorio_terceiros_previsao_chegada.xlsx');
+};
+
+window.gerarRelatorioTerceirosRecebimentosPeriodo = function() {
+    gerarRelatorioTerceirosExcel('recebimentos_periodo', 'relatorio_terceiros_recebimentos.xlsx');
+};
+
+window.gerarRelatorioTerceirosDivergenciaItens = function() {
+    gerarRelatorioTerceirosExcel('divergencia_itens', 'relatorio_terceiros_divergencia_itens.xlsx');
+};
+
+window.gerarRelatorioTerceirosSemBipagem = function() {
+    gerarRelatorioTerceirosExcel('sem_bipagem', 'relatorio_terceiros_sem_bipagem.xlsx');
+};
+
+window.gerarRelatorioTerceirosConferenciaIncompleta = function() {
+    gerarRelatorioTerceirosExcel('conferencia_incompleta', 'relatorio_terceiros_conferencia_incompleta.xlsx');
+};
+
+window.gerarRelatorioTerceirosEventos = function() {
+    gerarRelatorioTerceirosExcel('eventos', 'relatorio_terceiros_eventos.xlsx');
+};
+
+window.gerarRelatorioTerceirosAuditoriaUsuario = function() {
+    gerarRelatorioTerceirosExcel('auditoria_usuario', 'relatorio_terceiros_auditoria_usuario.xlsx');
+};
+
+window.gerarRelatorioTerceirosSlaEtapas = function() {
+    gerarRelatorioTerceirosExcel('sla_etapas', 'relatorio_terceiros_sla_etapas.xlsx');
 };
 
 window.exportarRelatorioTerceirosNf = function() {
