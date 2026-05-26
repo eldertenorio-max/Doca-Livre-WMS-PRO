@@ -7831,6 +7831,8 @@ def _relatorio_terceiros_resumo_nf(data_inicio='', data_fim=''):
             row.get('carga_recebida_mg') or '',
             row.get('motorista_carreta') or '',
             row.get('placa_carreta') or '',
+            row.get('motorista_saida_mg') or '',
+            row.get('placa_saida_mg') or '',
         ])
     wb = _terceiros_workbook_simple(
         [
@@ -7838,7 +7840,7 @@ def _relatorio_terceiros_resumo_nf(data_inicio='', data_fim=''):
             'Previsão chegada', 'Cadastro NF', 'Início descarga', 'Recebimento concluído',
             'Etapa atual', 'Qtd. XML', 'Qtd. bipada', 'Itens divergentes',
             'Receb. concluído', 'Nota lançada', 'Enviar MG', 'Recebida MG',
-            'Motorista', 'Placa',
+            'Motorista que trouxe', 'Placa chegada', 'Motorista que levou MG', 'Placa saída MG',
         ],
         linhas,
     )
@@ -8048,8 +8050,10 @@ def _relatorio_terceiros_nf_detalhe(documento_id):
         ('Remetente', doc.get('remetente_nome') or ''),
         ('Destinatário', doc.get('destinatario_nome') or ''),
         ('Previsão', _fmt_datahora_br(doc.get('previsao_chegada') or '')),
-        ('Motorista', doc.get('motorista_carreta') or ''),
-        ('Placa', doc.get('placa_carreta') or ''),
+        ('Motorista que trouxe', doc.get('motorista_carreta') or ''),
+        ('Placa chegada', doc.get('placa_carreta') or ''),
+        ('Motorista que levou MG', doc.get('motorista_saida_mg') or ''),
+        ('Placa saída MG', doc.get('placa_saida_mg') or ''),
         ('Recebimento concluído', 'Sim' if _terceiros_bool_sim_db(doc.get('recebimento_concluido')) else 'Não'),
         ('Receb. concluído em', _fmt_datahora_br(doc.get('recebimento_concluido_em') or '')),
     ]
@@ -8208,6 +8212,16 @@ def _terceiros_bool_sim_db(valor):
 
 def _terceiros_etapa_painel_row(row):
   """Mesma lógica das abas do módulo (pendência → fornecedores → lançamento → MG ou histórico carreta)."""
+  if _terceiros_eh_area_carreta(row):
+    cmg_carreta = _valor_bool_texto(row.get('carga_recebida_mg') or '')
+    if cmg_carreta == 'sim':
+      return 'historico'
+  if _valor_bool_texto(row.get('nota_lancada') or '') == 'nao' and str(row.get('motivo_nao_lancada') or '').strip():
+    return 'historico'
+  if _valor_bool_texto(row.get('enviar_para_mg') or '') == 'nao' and str(row.get('motivo_nao_enviar_mg') or '').strip():
+    return 'historico'
+  if _valor_bool_texto(row.get('carga_recebida_mg') or '') == 'nao' and str(row.get('motivo_nao_recebida_mg') or '').strip():
+    return 'historico'
   rc = _terceiros_bool_sim_db(row.get('recebimento_concluido'))
   if not rc:
     return 'pendencia_recebimento'
@@ -8219,9 +8233,12 @@ def _terceiros_etapa_painel_row(row):
     if cmg != 'sim':
       return 'notas_lancadas'
     return 'historico'
-  emg = _valor_bool_texto(row.get('enviar_para_mg') or '')
+  emg_raw = str(row.get('enviar_para_mg') or '').strip().lower()
+  emg = _valor_bool_texto(emg_raw)
   if emg == 'nao':
     return 'historico'
+  if emg_raw == 'pendente':
+    return 'pendencias_mg'
   if emg != 'sim':
     return 'notas_lancadas'
   cmg = _valor_bool_texto(row.get('carga_recebida_mg') or '')
@@ -8335,8 +8352,7 @@ def api_terceiros_painel():
       '''SELECT COALESCE(NULLIF(TRIM(motorista_carreta), ''), 'Sem motorista') AS motorista,
                 COUNT(*) AS nfs
          FROM ''' + tbl_d + '''
-         WHERE LOWER(TRIM(COALESCE(area, ''))) = 'carreta'
-           AND motorista_carreta IS NOT NULL AND TRIM(COALESCE(motorista_carreta, '')) != ''
+         WHERE motorista_carreta IS NOT NULL AND TRIM(COALESCE(motorista_carreta, '')) != ''
          GROUP BY motorista_carreta
          ORDER BY nfs DESC
          LIMIT 12''',

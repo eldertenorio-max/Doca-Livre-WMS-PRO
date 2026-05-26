@@ -1381,21 +1381,22 @@
                         <div class="stat-card"><h3>Recebimento concluído</h3><p class="stat-number" id="ter-stat-receb-concluido">0</p></div>
                         <div class="stat-card"><h3>Pendentes de lançamento</h3><p class="stat-number" id="ter-stat-pend-lanc">0</p></div>
                         <div class="stat-card"><h3>Notas lançadas</h3><p class="stat-number" id="ter-stat-notas-lanc">0</p></div>
+                        <div class="stat-card"><h3>Pendências envio MG</h3><p class="stat-number" id="ter-stat-pend-mg">0</p></div>
                         <div class="stat-card"><h3>Qtd. XML (itens)</h3><p class="stat-number" id="ter-stat-qtd-xml">0</p></div>
                         <div class="stat-card"><h3>Qtd. bipada</h3><p class="stat-number" id="ter-stat-qtd-bip">0</p></div>
                         <div class="stat-card"><h3>NFs carreta</h3><p class="stat-number" id="ter-stat-carreta">0</p></div>
                         <div class="stat-card"><h3>Conferência OK</h3><p class="stat-number" id="ter-stat-conf-ok">0</p></div>
                         <div class="stat-card"><h3>Com divergência</h3><p class="stat-number" id="ter-stat-conf-div">0</p></div>
-                        <div class="stat-card"><h3>Recebimentos MG</h3><p class="stat-number" id="ter-stat-mg-ok">0</p></div>
+                        <div class="stat-card"><h3>Aguard. recebimento MG</h3><p class="stat-number" id="ter-stat-mg-ok">0</p></div>
                     </div>
                     <div class="painel-charts ter-painel-charts">
                         <div class="chart-box"><h3>NFs por etapa do fluxo</h3><canvas id="ter-chart-etapas" height="220"></canvas></div>
                         <div class="chart-box"><h3>Quantidade XML vs bipada</h3><canvas id="ter-chart-bipagem-xml" height="220"></canvas></div>
                         <div class="chart-box"><h3>Top remetentes</h3><canvas id="ter-chart-remetentes" height="220"></canvas></div>
-                        <div class="chart-box"><h3>Placas (carreta)</h3><canvas id="ter-chart-placas" height="220"></canvas></div>
+                        <div class="chart-box"><h3>Placas de chegada</h3><canvas id="ter-chart-placas" height="220"></canvas></div>
                         <div class="chart-box"><h3>Distribuição por UF</h3><canvas id="ter-chart-uf" height="220"></canvas></div>
                         <div class="chart-box"><h3>Conferência da descarga</h3><canvas id="ter-chart-conferencia" height="220"></canvas></div>
-                        <div class="chart-box"><h3>Motoristas (carreta)</h3><canvas id="ter-chart-motoristas" height="220"></canvas></div>
+                        <div class="chart-box"><h3>Motoristas que trouxeram</h3><canvas id="ter-chart-motoristas" height="220"></canvas></div>
                         <div class="chart-box"><h3>Início da descarga — carreta</h3><p class="chart-box-subtitulo">Data/hora da 1ª bipagem (chegada para recebimento)</p><canvas id="ter-chart-chegadas-carreta" height="220"></canvas></div>
                     </div>
                     <h2 class="ter-painel-secao-titulo">ÚLTIMAS NOTAS FISCAIS</h2>
@@ -1423,14 +1424,14 @@
                     </div>
                     <div class="romaneio-charts-grid ter-painel-tabelas-grid">
                         <div class="table-container">
-                            <h3>Motoristas (carreta)</h3>
+                            <h3>Motoristas que trouxeram</h3>
                             <table class="data-table">
                                 <thead><tr><th>Motorista</th><th>NFs</th></tr></thead>
                                 <tbody id="ter-tbody-painel-motoristas"><tr><td colspan="2" class="loading">Carregando...</td></tr></tbody>
                             </table>
                         </div>
                         <div class="table-container">
-                            <h3 style="margin-bottom: 10px;">Placas mais frequentes</h3>
+                            <h3 style="margin-bottom: 10px;">Placas de chegada</h3>
                             <table class="data-table">
                                 <thead><tr><th>Placa</th><th>NFs</th></tr></thead>
                                 <tbody id="ter-tbody-painel-placas"><tr><td colspan="2" class="loading">Carregando...</td></tr></tbody>
@@ -2045,7 +2046,7 @@
                         <div class="relatorios-lista">
                             <div class="relatorio-item">
                                 <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosResumoNf()">📥 Resumo por NF</button>
-                                <span>Uma linha por nota: etapa, quantidades, status e carreta.</span>
+                                <span>Uma linha por nota: etapa, quantidades, status, motorista/placa de chegada e saída MG.</span>
                             </div>
                             <div class="relatorio-item">
                                 <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosItensBipados()">📥 Tudo que foi bipado</button>
@@ -2066,8 +2067,8 @@
                                 <span>Notas com diferença entre XML e bipagem ou itens divergentes.</span>
                             </div>
                             <div class="relatorio-item">
-                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosCarreta()">📥 Carreta — motorista e chegada</button>
-                                <span>NFs da área carreta com previsão, início da descarga e recebimento.</span>
+                                <button type="button" class="btn btn-primary" onclick="gerarRelatorioTerceirosCarreta()">📥 Carreta — quem trouxe e chegada</button>
+                                <span>NFs da área carreta com motorista/placa que trouxe, previsão, início da descarga e recebimento.</span>
                             </div>
                         </div>
                     </div>
@@ -2082,6 +2083,22 @@
 
                     <div class="conferencia-bloco form-container terceiros-lista-bloco">
                         <h3 style="margin-top: 0; color: #366092;">NFS COM RECEBIMENTO CONCLUÍDO — VISÃO GERAL</h3>
+                        <div class="ter-pendencia-filtro-previsao" style="margin-bottom: 12px;">
+                            <span class="ter-filtro-previsao-label">Data</span>
+                            <button type="button" class="btn btn-secondary btn-sm ter-historico-filtro-data-btn ter-filtro-previsao-btn--ativo" data-ter-hist-filtro-data="todos">Todos</button>
+                            <button type="button" class="btn btn-secondary btn-sm ter-historico-filtro-data-btn" data-ter-hist-filtro-data="hoje">Hoje</button>
+                            <button type="button" class="btn btn-secondary btn-sm ter-historico-filtro-data-btn" data-ter-hist-filtro-data="atrasado">Atrasado</button>
+                            <button type="button" class="btn btn-secondary btn-sm ter-historico-filtro-data-btn" data-ter-hist-filtro-data="amanha">Amanhã</button>
+                            <button type="button" class="btn btn-secondary btn-sm ter-historico-filtro-data-btn" data-ter-hist-filtro-data="depois">Depois de amanhã</button>
+                            <button type="button" class="btn btn-secondary btn-sm ter-historico-filtro-data-btn" data-ter-hist-filtro-data="semana">Semana que vem</button>
+                            <label class="ter-filtro-data-livre-wrap">Data livre
+                                <input type="date" id="ter-historico-filtro-data-livre" class="ter-filtro-data-livre-input" title="Filtrar pela data da previsão (somente dia)">
+                            </label>
+                            <span class="ter-filtro-previsao-label" style="margin-left: 12px;">UF</span>
+                            <button type="button" class="btn btn-secondary btn-sm ter-historico-filtro-uf-btn ter-filtro-previsao-btn--ativo" data-ter-hist-filtro-uf="todos">Todos</button>
+                            <button type="button" class="btn btn-secondary btn-sm ter-historico-filtro-uf-btn" data-ter-hist-filtro-uf="MG">MG</button>
+                            <button type="button" class="btn btn-secondary btn-sm ter-historico-filtro-uf-btn" data-ter-hist-filtro-uf="SP">SP</button>
+                        </div>
                         <div class="table-container">
                             <table class="data-table ter-tabela-lista ter-cols-14">
                                 <thead>

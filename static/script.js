@@ -1437,6 +1437,7 @@ function _aplicarPainelTerceirosStats(s) {
     set('ter-stat-receb-concluido', s.recebimento_concluido ?? 0);
     set('ter-stat-pend-lanc', s.pendentes_lancamento ?? 0);
     set('ter-stat-notas-lanc', s.notas_lancadas ?? 0);
+    set('ter-stat-pend-mg', s.pendencias_mg ?? 0);
     set('ter-stat-qtd-xml', s.quantidade_total_xml ?? 0);
     set('ter-stat-qtd-bip', s.quantidade_total_bipada ?? 0);
     set('ter-stat-carreta', s.nfs_carreta ?? 0);
@@ -1493,7 +1494,8 @@ function renderPainelTerceirosCharts(data) {
         'Fornecedores recebidos',
         'Notas lançadas',
         'Pendências envio MG',
-        'Recebimentos MG'
+        'Recebimentos MG',
+        'Histórico'
     ];
     var mapaEtapas = {};
     etapas.forEach(function(e) {
@@ -1718,7 +1720,7 @@ async function loadPainelTerceiros() {
 
     var statIds = [
         'ter-stat-total-nf', 'ter-stat-pendencia', 'ter-stat-fornecedores', 'ter-stat-receb-concluido',
-        'ter-stat-pend-lanc', 'ter-stat-notas-lanc', 'ter-stat-qtd-xml', 'ter-stat-qtd-bip',
+        'ter-stat-pend-lanc', 'ter-stat-notas-lanc', 'ter-stat-pend-mg', 'ter-stat-qtd-xml', 'ter-stat-qtd-bip',
         'ter-stat-carreta', 'ter-stat-conf-ok', 'ter-stat-conf-div', 'ter-stat-mg-ok'
     ];
     if (data.erro) {
@@ -3742,6 +3744,78 @@ function _terceirosMsgListaVaziaFiltroPrevisao() {
     return 'Nenhuma NF com <strong>previsão</strong> neste filtro. Use <strong>Todos</strong> ou escolha outra data.';
 }
 
+function _terceirosFiltrarRowsHistorico(rows) {
+    rows = Array.isArray(rows) ? rows : [];
+    var tipo = window._terceirosHistoricoFiltroDataTipo || 'todos';
+    var dataLivre = window._terceirosHistoricoFiltroDataLivre || '';
+    var uf = String(window._terceirosHistoricoFiltroUf || 'todos').toUpperCase();
+    rows = filtrarRowsPendenciaPorPrevisao(rows, tipo, dataLivre);
+    if (uf !== 'TODOS') {
+        rows = rows.filter(function(row) {
+            return String((row && row.destinatario_uf) || '').trim().toUpperCase() === uf;
+        });
+    }
+    return rows;
+}
+
+function atualizarUiFiltrosHistoricoTerceiros() {
+    var tipo = (window._terceirosHistoricoFiltroDataTipo || 'todos').toLowerCase();
+    var uf = String(window._terceirosHistoricoFiltroUf || 'todos').toUpperCase();
+    document.querySelectorAll('.ter-historico-filtro-data-btn').forEach(function(btn) {
+        var t = (btn.getAttribute('data-ter-hist-filtro-data') || '').toLowerCase();
+        btn.classList.toggle('ter-filtro-previsao-btn--ativo', t === tipo);
+    });
+    document.querySelectorAll('.ter-historico-filtro-uf-btn').forEach(function(btn) {
+        var u = String(btn.getAttribute('data-ter-hist-filtro-uf') || 'todos').toUpperCase();
+        btn.classList.toggle('ter-filtro-previsao-btn--ativo', u === uf);
+    });
+}
+
+function _terceirosMsgListaVaziaHistoricoFiltro() {
+    return 'Nenhuma NF no histórico com os filtros selecionados. Use <strong>Todos</strong> ou escolha outra data/UF.';
+}
+
+function reaplicarFiltrosHistoricoTerceiros() {
+    var data = _terceirosObterCacheLista({ staleOk: true });
+    if (!data || !Array.isArray(data.rows)) {
+        void loadTerceirosHistorico();
+        return;
+    }
+    void loadTerceirosHistorico(data);
+}
+
+function initTerceirosFiltrosHistorico() {
+    if (window._terceirosFiltrosHistoricoBound) return;
+    window._terceirosFiltrosHistoricoBound = true;
+    if (typeof window._terceirosHistoricoFiltroDataTipo === 'undefined') window._terceirosHistoricoFiltroDataTipo = 'todos';
+    if (typeof window._terceirosHistoricoFiltroUf === 'undefined') window._terceirosHistoricoFiltroUf = 'todos';
+    document.querySelectorAll('.ter-historico-filtro-data-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            window._terceirosHistoricoFiltroDataTipo = (btn.getAttribute('data-ter-hist-filtro-data') || 'todos').toLowerCase();
+            window._terceirosHistoricoFiltroDataLivre = '';
+            var inp = document.getElementById('ter-historico-filtro-data-livre');
+            if (inp) inp.value = '';
+            reaplicarFiltrosHistoricoTerceiros();
+        });
+    });
+    document.querySelectorAll('.ter-historico-filtro-uf-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            window._terceirosHistoricoFiltroUf = btn.getAttribute('data-ter-hist-filtro-uf') || 'todos';
+            reaplicarFiltrosHistoricoTerceiros();
+        });
+    });
+    var inpData = document.getElementById('ter-historico-filtro-data-livre');
+    if (inpData) {
+        inpData.addEventListener('change', function() {
+            var v = (inpData.value || '').trim();
+            window._terceirosHistoricoFiltroDataTipo = v ? 'livre' : 'todos';
+            window._terceirosHistoricoFiltroDataLivre = v;
+            reaplicarFiltrosHistoricoTerceiros();
+        });
+    }
+    atualizarUiFiltrosHistoricoTerceiros();
+}
+
 function initTerceirosFiltroPrevisaoPendencia() {
     if (window._terceirosFiltroPrevisaoBound) return;
     window._terceirosFiltroPrevisaoBound = true;
@@ -5252,13 +5326,19 @@ async function loadTerceirosHistorico(dataPreloaded) {
     var rows = rowsMerged.filter(function(row) {
         return _terceirosConsideraHistorico(row);
     });
+    var rowsFiltradas = _terceirosFiltrarRowsHistorico(rows);
+    atualizarUiFiltrosHistoricoTerceiros();
 
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">Nenhuma NF no histórico. Entram aqui quando o fluxo termina (todas as etapas <strong>Sim</strong>) ou ao registrar <strong>Não</strong> com motivo nas abas 4, 6 ou 8.</td></tr>';
         return;
     }
+    if (!rowsFiltradas.length) {
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + _terceirosMsgListaVaziaHistoricoFiltro() + '</td></tr>';
+        return;
+    }
 
-    tbody.innerHTML = rows.map(function(row) {
+    tbody.innerHTML = rowsFiltradas.map(function(row) {
         return '<tr data-ter-doc-id="' + escapeHtml(String(row.id)) + '">'
             + renderTerceirosCelulasNfAtePrevisao(row, { historicoMotoristaPlaca: true })
             + renderTerceirosCelulasStatusFluxo(row, 'historico')
@@ -8135,6 +8215,7 @@ function initForms() {
     }
     initTerceirosBipagemForm();
     initTerceirosFiltroPrevisaoPendencia();
+    initTerceirosFiltrosHistorico();
 
     [
         ['ter-rec-nota-lancada', 'recebimento', 'nota_lancada'],
