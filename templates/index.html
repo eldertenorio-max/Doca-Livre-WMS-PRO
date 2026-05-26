@@ -1450,31 +1450,33 @@
                     <div class="conferencia-blocos-grid terceiros-upload-grid">
                         <div class="conferencia-bloco form-container terceiros-upload-bloco" style="background: #e3f2fd; border-left: 4px solid #1976D2;">
                             <h3 style="margin-top: 0; color: #1976D2;">ENVIAR XMLS DE TERCEIROS</h3>
-                            <div class="form-row">
-                                <div class="form-group" style="flex: 1;">
+                            <div class="form-row ter-upload-linha-principal">
+                                <div class="form-group">
                                     <label for="ter-recebimento-previsao">Previsão de chegada *</label>
                                     <input type="datetime-local" id="ter-recebimento-previsao">
                                 </div>
-                                <div class="form-group" style="flex: 1;">
+                                <div class="form-group">
                                     <label for="ter-recebimento-pedido">Número de pedido *</label>
                                     <input type="text" id="ter-recebimento-pedido" placeholder="Ex.: 123456">
                                 </div>
-                                <div class="form-group" style="flex: 1;">
-                                    <label style="display:flex; gap:8px; align-items:center; margin-top: 28px;">
-                                        <input type="checkbox" id="ter-recebimento-consumivel-sp">
-                                        Consumível SP
-                                    </label>
-                                </div>
-                                <div class="form-group" id="ter-recebimento-consumivel-sp-box" style="flex: 1; display:none;">
-                                    <label for="ter-recebimento-recebedor-consumivel-sp">Quem solicitou/irá receber *</label>
-                                    <input type="text" id="ter-recebimento-recebedor-consumivel-sp" placeholder="Nome da pessoa">
-                                </div>
-                                <div class="form-group" style="flex: 2;">
+                                <div class="form-group ter-upload-xml-group">
                                     <label for="ter-recebimento-xml">XMLs da nota fiscal *</label>
                                     <input type="file" id="ter-recebimento-xml" multiple accept=".xml">
                                 </div>
-                                <div class="form-group" style="align-self: flex-end;">
+                                <div class="form-group ter-upload-btn-group">
                                     <button type="button" class="btn btn-primary" id="btn-ter-recebimento-upload">📤 Subir XMLs</button>
+                                </div>
+                            </div>
+                            <div class="form-row ter-upload-linha-consumivel">
+                                <div class="form-group ter-upload-consumivel-group">
+                                    <label for="ter-recebimento-consumivel-sp" class="ter-upload-consumivel-label">
+                                        <input type="checkbox" id="ter-recebimento-consumivel-sp">
+                                        <span>Consumível SP</span>
+                                    </label>
+                                </div>
+                                <div class="form-group ter-upload-recebedor-group" id="ter-recebimento-consumivel-sp-box" style="display:none;">
+                                    <label for="ter-recebimento-recebedor-consumivel-sp">Quem solicitou/irá receber *</label>
+                                    <input type="text" id="ter-recebimento-recebedor-consumivel-sp" placeholder="Nome da pessoa">
                                 </div>
                             </div>
                             <div id="ter-recebimento-upload-resultado" class="info-text" style="margin-top: 10px;"></div>

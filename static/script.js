@@ -3034,6 +3034,7 @@ async function uploadXmlTerceirosCarreta() {
 }
 
 var _terceirosListaCache = { rows: null, erro: null, ts: 0, promise: null };
+var _terceirosListaFetchGen = 0;
 var TERCEIROS_LISTA_CACHE_MS = 90000;
 /** Lista antiga ainda exibida enquanto o servidor responde (evita tela vazia por timeout). */
 var TERCEIROS_LISTA_CACHE_STALE_MS = 600000;
@@ -3149,6 +3150,10 @@ function _terceirosRecarregarAbasAposListaAtualizada(data) {
 async function fetchTerceirosDocumentosTodos(opcoes) {
     opcoes = opcoes || {};
     var force = !!opcoes.force;
+    if (force) {
+        _terceirosListaFetchGen++;
+        window._terceirosFornecedoresRecebidosLocais = {};
+    }
     if (!force) {
         var hit = _terceirosObterCacheLista();
         if (hit) return hit;
@@ -3217,19 +3222,23 @@ async function fetchTerceirosDocumentosTodos(opcoes) {
         }
     }
     async function _terceirosBuscarResumoCompletoEmBackground() {
+        var genInicio = _terceirosListaFetchGen;
         try {
             var respFull = await fetchAPIComTimeout(
                 '/terceiros/documentos?area=' + encodeURIComponent('todas'),
                 {},
                 90000
             );
+            if (genInicio !== _terceirosListaFetchGen) return;
             var erroFull = _terceirosErroRespostaDocumentos(respFull);
             var rowsFull = Array.isArray(respFull && respFull.rows) ? respFull.rows : [];
             if (erroFull || !rowsFull.length) return;
+            if (genInicio !== _terceirosListaFetchGen) return;
             var ordenadasFull = _terceirosOrdenarRowsLista(rowsFull);
             var base = _terceirosListaCache.rows || ordenadasFull;
             var merged = _terceirosMesclarResumoItensNasRows(base, ordenadasFull);
             _terceirosAtualizarCacheLista(_terceirosOrdenarRowsLista(merged.length ? merged : ordenadasFull), null);
+            if (genInicio !== _terceirosListaFetchGen) return;
             _terceirosRecarregarAbasAposListaAtualizada({ rows: _terceirosListaCache.rows, erro: null });
         } catch (e) {
             console.error('_terceirosBuscarResumoCompletoEmBackground:', e);
@@ -3410,8 +3419,7 @@ function _terceirosFluxoMgConcluido(row) {
 }
 
 /** Histórico: fluxo encerrado (Sim em todas as etapas) ou «Não» com motivo registrado. */
-function _terceirosConsideraHistorico(row) {
-    row = _terceirosRowEstadoMesclado(row);
+function _terceirosHistoricoPeloEstadoRow(row) {
     if (!row || row.id == null) return false;
     if (isTerceirosAreaCarreta(row)) {
         return isTerceirosFlagSim(row.carga_recebida_mg);
@@ -3422,7 +3430,16 @@ function _terceirosConsideraHistorico(row) {
     if (isTerceirosFlagNao(row.nota_lancada) && String(row.motivo_nao_lancada || '').trim()) return true;
     if (isTerceirosFlagNao(row.enviar_para_mg) && String(row.motivo_nao_enviar_mg || '').trim()) return true;
     if (isTerceirosFlagNao(row.carga_recebida_mg) && String(row.motivo_nao_recebida_mg || '').trim()) return true;
-    return _terceirosFluxoMgConcluido(row);
+    if (!_terceirosUsaFluxoMg(row)) return false;
+    return isTerceirosFlagSim(row.nota_lancada)
+        && isTerceirosFlagSim(row.enviar_para_mg)
+        && isTerceirosFlagSim(row.carga_recebida_mg);
+}
+
+/** Histórico: fluxo encerrado (Sim em todas as etapas) ou «Não» com motivo registrado. */
+function _terceirosConsideraHistorico(row) {
+    row = _terceirosRowEstadoMesclado(row);
+    return _terceirosHistoricoPeloEstadoRow(row);
 }
 
 function _terceirosMotivoHtmlCampo(row, colMotivo) {
@@ -3641,8 +3658,15 @@ function _terceirosTemBipagemIniciada(row) {
 /** Mescla cache local (recebimento / status) sobre a linha vinda da API. */
 function _terceirosRowEstadoMesclado(row) {
     if (!row || row.id == null) return row || {};
+    var id = String(row.id);
     var locais = window._terceirosFornecedoresRecebidosLocais || {};
-    var local = locais[String(row.id)];
+    var local = locais[id];
+    if (_terceirosHistoricoPeloEstadoRow(row)) {
+        if (local) {
+            try { delete locais[id]; } catch (e) { /* ignore */ }
+        }
+        return row;
+    }
     if (!local) return row;
     var valorLocal = function(campo) {
         var v = local[campo];
@@ -3911,6 +3935,29 @@ function _terceirosRemoverDocumentoDoCacheLista(documentoId) {
         });
         _terceirosListaCache.ts = Date.now();
     }
+}
+
+/** Grava resposta do servidor no cache global e descarta override local da NF. */
+function _terceirosPersistirDocumentoServidorNoCache(documento) {
+    if (!documento || documento.id == null) return;
+    var id = String(documento.id);
+    try {
+        var loc = window._terceirosFornecedoresRecebidosLocais;
+        if (loc && Object.prototype.hasOwnProperty.call(loc, id)) delete loc[id];
+    } catch (e) { /* ignore */ }
+    if (Array.isArray(_terceirosListaCache.rows)) {
+        var achou = false;
+        _terceirosListaCache.rows = _terceirosListaCache.rows.map(function(row) {
+            if (!row || String(row.id) !== id) return row;
+            achou = true;
+            return Object.assign({}, row, documento);
+        });
+        if (!achou) {
+            _terceirosListaCache.rows.unshift(Object.assign({}, documento));
+        }
+        _terceirosListaCache.ts = Date.now();
+    }
+    _terceirosAtualizarPainelLocalRapido();
 }
 
 function _terceirosAtualizarContadoresPendLancamentoUfFromDom() {
@@ -5955,6 +6002,7 @@ async function excluirDocumentoTerceiros(documentoId) {
     }
     window._terceirosExclusaoIdsEmAndamento[idKey] = true;
     try {
+        _terceirosListaFetchGen++;
         _terceirosRemoverDocumentoDosCachesLocais(idNum);
         _terceirosRemoverLinhaDeTodasListas(idNum);
         if (Number(_terceirosDestacarDocIdAposCarga) === idNum) {
@@ -5982,17 +6030,12 @@ async function excluirDocumentoTerceiros(documentoId) {
             showMessage((resp && resp.erro) || 'Erro ao excluir NF.', 'error');
             return;
         }
-        _terceirosDesmarcarDocumentoExcluidoOcultoDepois(idNum, 30000);
-        try {
-            await recarregarTodasListasTerceiros();
-        } catch (eLista) {
-            console.error(eLista);
-            try {
-                await recarregarListaTerceirosTab(_terceirosTabAtual);
-            } catch (eTab) {
-                console.error(eTab);
-            }
-        }
+        _terceirosDesmarcarDocumentoExcluidoOculto(idNum);
+        _terceirosReaplicarTodasListasDoCacheLocal();
+        void loadPainelTerceiros({ force: true }).catch(function(ePainel) {
+            console.error('excluirDocumentoTerceiros painel:', ePainel);
+        });
+        void atualizarAlertasTerceirosHeader(_terceirosListaCache.rows || []);
         showMessage((resp && resp.mensagem) || 'NF excluída.', 'success');
     } catch (e) {
         console.error(e);
@@ -6078,6 +6121,7 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
         return;
     }
     if (resp && resp.documento) {
+        _terceirosPersistirDocumentoServidorNoCache(resp.documento);
         if (_terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
             Object.assign(_terceirosDocAtual, resp.documento);
         }

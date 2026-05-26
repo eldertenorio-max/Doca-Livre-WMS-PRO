@@ -1090,6 +1090,60 @@ body {
     flex-wrap: wrap;
 }
 
+#modulo-terceiros .terceiros-upload-bloco .ter-upload-linha-principal {
+    gap: 12px;
+}
+
+#modulo-terceiros .terceiros-upload-bloco .ter-upload-linha-consumivel {
+    gap: 10px;
+    margin-top: 4px;
+    align-items: center;
+}
+
+#modulo-terceiros .terceiros-upload-bloco .ter-upload-consumivel-group {
+    min-width: 0;
+    width: max-content;
+    flex: 0 0 auto;
+}
+
+#modulo-terceiros .terceiros-upload-bloco .ter-upload-recebedor-group {
+    min-width: 220px;
+    flex: 1 1 240px;
+    max-width: 360px;
+}
+
+#modulo-terceiros .terceiros-upload-bloco .ter-upload-consumivel-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    padding: 8px 12px 8px 8px;
+    font-size: 1.08rem;
+    font-weight: 600;
+    color: #1565c0;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+}
+
+#modulo-terceiros .terceiros-upload-bloco .ter-upload-consumivel-label input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    accent-color: #1976d2;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+#modulo-terceiros .terceiros-upload-bloco .ter-upload-xml-group {
+    min-width: 260px;
+}
+
+#modulo-terceiros .terceiros-upload-bloco .ter-upload-btn-group {
+    min-width: 190px;
+    align-self: end;
+}
+
 #modulo-terceiros .terceiros-upload-bloco .form-group {
     min-width: 220px;
 }
