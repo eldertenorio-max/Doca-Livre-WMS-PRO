@@ -297,6 +297,7 @@ def init_db():
                     carga_recebida_mg TEXT,
                     carga_recebida_mg_em TIMESTAMPTZ,
                     carga_recebida_mg_por TEXT,
+                    recebedor_mg TEXT,
                     motivo_nao_lancada TEXT,
                     motivo_nao_enviar_mg TEXT,
                     motivo_nao_recebida_mg TEXT,
@@ -584,6 +585,7 @@ def init_db():
                 carga_recebida_mg TEXT,
                 carga_recebida_mg_em TEXT,
                 carga_recebida_mg_por TEXT,
+                recebedor_mg TEXT,
                 motivo_nao_lancada TEXT,
                 motivo_nao_enviar_mg TEXT,
                 motivo_nao_recebida_mg TEXT,
@@ -900,10 +902,10 @@ def _sql_cols_terceiros_documentos_listagem(alias):
         '%s.enviar_para_mg, %s.enviar_para_mg_em, %s.enviar_para_mg_por, '
         '%s.motorista_carreta, %s.motorista_carreta_em, %s.placa_carreta, '
         '%s.motorista_saida_mg, %s.motorista_saida_mg_em, %s.placa_saida_mg, '
-        '%s.carga_recebida_mg, %s.carga_recebida_mg_em, %s.carga_recebida_mg_por, '
+        '%s.carga_recebida_mg, %s.carga_recebida_mg_em, %s.carga_recebida_mg_por, %s.recebedor_mg, '
         '%s.motivo_nao_lancada, %s.motivo_nao_enviar_mg, %s.motivo_nao_recebida_mg, '
         '%s.criado_em, %s.criado_por, %s.atualizado_em, %s.atualizado_por'
-    ) % ((a,) * 39)
+    ) % ((a,) * 40)
 
 
 def _terceiros_sql_join_resumo_itens(conn, tbl_i, alias_doc='d'):
@@ -988,6 +990,7 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
                 carga_recebida_mg TEXT,
                 carga_recebida_mg_em TIMESTAMPTZ,
                 carga_recebida_mg_por TEXT,
+                recebedor_mg TEXT,
                 criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 criado_por TEXT,
                 atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1066,6 +1069,7 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
                 carga_recebida_mg TEXT,
                 carga_recebida_mg_em TEXT,
                 carga_recebida_mg_por TEXT,
+                recebedor_mg TEXT,
                 motivo_nao_lancada TEXT,
                 motivo_nao_enviar_mg TEXT,
                 motivo_nao_recebida_mg TEXT,
@@ -1130,6 +1134,7 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS motorista_saida_mg TEXT')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS motorista_saida_mg_em TIMESTAMPTZ')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS placa_saida_mg TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS recebedor_mg TEXT')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS destinatario_uf TEXT')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS numero_pedido TEXT')
         else:
@@ -1143,6 +1148,8 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
                 conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN motorista_saida_mg_em TEXT')
             if 'placa_saida_mg' not in nomes:
                 conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN placa_saida_mg TEXT')
+            if 'recebedor_mg' not in nomes:
+                conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN recebedor_mg TEXT')
             if 'destinatario_uf' not in nomes:
                 conn.execute('ALTER TABLE terceiros_documentos ADD COLUMN destinatario_uf TEXT')
             if 'numero_pedido' not in nomes:
@@ -1158,6 +1165,7 @@ def _ensure_terceiros_schema(conn, rodar_backfill=False):
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS motivo_nao_lancada TEXT')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS motivo_nao_enviar_mg TEXT')
             conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS motivo_nao_recebida_mg TEXT')
+            conn.execute('ALTER TABLE ' + tbl_doc + ' ADD COLUMN IF NOT EXISTS recebedor_mg TEXT')
         except Exception:
             pass
     if rodar_backfill:
@@ -7829,6 +7837,7 @@ def _relatorio_terceiros_resumo_nf(data_inicio='', data_fim=''):
             row.get('nota_lancada') or '',
             row.get('enviar_para_mg') or '',
             row.get('carga_recebida_mg') or '',
+            row.get('recebedor_mg') or '',
             row.get('motorista_carreta') or '',
             row.get('placa_carreta') or '',
             row.get('motorista_saida_mg') or '',
@@ -7840,7 +7849,7 @@ def _relatorio_terceiros_resumo_nf(data_inicio='', data_fim=''):
             'Previsão chegada', 'Cadastro NF', 'Início descarga', 'Recebimento concluído',
             'Etapa atual', 'Qtd. XML', 'Qtd. bipada', 'Itens divergentes',
             'Receb. concluído', 'Nota lançada', 'Enviar MG', 'Recebida MG',
-            'Motorista que trouxe', 'Placa chegada', 'Motorista que levou MG', 'Placa saída MG',
+            'Quem recebeu MG', 'Motorista que trouxe', 'Placa chegada', 'Motorista que levou MG', 'Placa saída MG',
         ],
         linhas,
     )
@@ -8054,6 +8063,7 @@ def _relatorio_terceiros_nf_detalhe(documento_id):
         ('Placa chegada', doc.get('placa_carreta') or ''),
         ('Motorista que levou MG', doc.get('motorista_saida_mg') or ''),
         ('Placa saída MG', doc.get('placa_saida_mg') or ''),
+        ('Quem recebeu MG', doc.get('recebedor_mg') or ''),
         ('Recebimento concluído', 'Sim' if _terceiros_bool_sim_db(doc.get('recebimento_concluido')) else 'Não'),
         ('Receb. concluído em', _fmt_datahora_br(doc.get('recebimento_concluido_em') or '')),
     ]
@@ -8222,7 +8232,13 @@ def _terceiros_etapa_painel_row(row):
     return 'historico'
   if _valor_bool_texto(row.get('carga_recebida_mg') or '') == 'nao' and str(row.get('motivo_nao_recebida_mg') or '').strip():
     return 'historico'
-  rc = _terceiros_bool_sim_db(row.get('recebimento_concluido'))
+  rc = (
+    _terceiros_bool_sim_db(row.get('recebimento_concluido'))
+    or bool(str(row.get('recebimento_concluido_em') or '').strip())
+    or bool(str(row.get('nota_lancada') or '').strip())
+    or bool(str(row.get('enviar_para_mg') or '').strip())
+    or bool(str(row.get('carga_recebida_mg') or '').strip())
+  )
   if not rc:
     return 'pendencia_recebimento'
   nl = _valor_bool_texto(row.get('nota_lancada') or '')
@@ -8470,6 +8486,7 @@ def _terceiros_row_listagem_apos_criar(documento_id, area, previsao_chegada, xml
             'motorista_saida_mg': '',
             'placa_saida_mg': '',
         'carga_recebida_mg': '',
+        'recebedor_mg': '',
         'criado_por': usuario or '',
         'atualizado_por': usuario or '',
         'total_itens': len(itens),
@@ -8491,6 +8508,13 @@ def _terceiros_serializar_row_listagem(row):
         rc_flag = False
     else:
         rc_flag = bool(rc) if rc is not None else False
+    if not rc_flag:
+        rc_flag = any(str(row.get(campo) or '').strip() for campo in (
+            'recebimento_concluido_em',
+            'nota_lancada',
+            'enviar_para_mg',
+            'carga_recebida_mg',
+        ))
     return {
         'id': row.get('id'),
         'area': row.get('area') or '',
@@ -8512,6 +8536,7 @@ def _terceiros_serializar_row_listagem(row):
         'placa_saida_mg': row.get('placa_saida_mg') or '',
         'motorista_obrigatorio': _motorista_obrigatorio_terceiros(row),
         'carga_recebida_mg': row.get('carga_recebida_mg') or '',
+        'recebedor_mg': row.get('recebedor_mg') or '',
         'criado_por': row.get('criado_por') or '',
         'atualizado_por': row.get('atualizado_por') or '',
         'recebimento_concluido_por': row.get('recebimento_concluido_por') or '',
@@ -9050,6 +9075,7 @@ def api_terceiros_status(documento_id):
     forcar_lancamento_sem_recebimento = bool(data.get('forcar_lancamento_sem_recebimento'))
     forcar_fluxo_carreta = bool(data.get('forcar_fluxo_carreta'))
     motivo = (data.get('motivo') or '').strip()
+    recebedor_mg = (data.get('recebedor_mg') or '').strip()
     usuario = session.get('usuario', '')
     _MOTIVO_COL_TERCEIROS = {
         'nota_lancada': 'motivo_nao_lancada',
@@ -9062,8 +9088,7 @@ def api_terceiros_status(documento_id):
     try:
         if getattr(conn, 'kind', None) == 'pg':
             _ensure_pg_tabela_geral_dados(conn)
-        else:
-            _ensure_terceiros_schema(conn)
+        _ensure_terceiros_schema(conn, rodar_backfill=False)
         tbl_d = _tbl_terceiros_documentos(conn)
         cols_d = _sql_cols_terceiros_documentos_listagem('d')
         row = conn.execute(
@@ -9080,7 +9105,7 @@ def api_terceiros_status(documento_id):
             }), 400
         agora = _agora_iso()
         if campo == 'recebimento_concluido':
-            novo_bool = 1 if str(valor).strip().lower() in ('1', 'true', 'sim', 's', 'yes') else 0
+            novo_bool = str(valor).strip().lower() in ('1', 'true', 'sim', 's', 'yes')
             _pg_auditoria_sync_desligar(conn)
             conn.execute(
                 'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET recebimento_concluido = ?, recebimento_concluido_em = ?, recebimento_concluido_por = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
@@ -9106,6 +9131,12 @@ def api_terceiros_status(documento_id):
                     'erro': 'Para esta rota, informe o motorista que vai levar para MG antes de continuar.',
                     'codigo': 'motorista_obrigatorio_terceiros'
                 }), 400
+            if campo == 'carga_recebida_mg' and valor_norm == 'sim' and not _terceiros_eh_area_carreta(doc) and not recebedor_mg:
+                return jsonify({
+                    'ok': False,
+                    'erro': 'Informe quem recebeu em MG.',
+                    'codigo': 'recebedor_mg_obrigatorio'
+                }), 400
             campo_em = campo + '_em'
             campo_por = campo + '_por'
             col_motivo = _MOTIVO_COL_TERCEIROS.get(campo)
@@ -9117,10 +9148,11 @@ def api_terceiros_status(documento_id):
                         'motivo_obrigatorio': True,
                     }), 400
                 _pg_auditoria_sync_desligar(conn)
+                sql_recebedor_nao = ', recebedor_mg = NULL' if campo == 'carga_recebida_mg' else ''
                 conn.execute(
                     'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET '
                     + campo + ' = ?, ' + campo_em + ' = ?, ' + campo_por + ' = ?, '
-                    + col_motivo + ' = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?',
+                    + col_motivo + ' = ?' + sql_recebedor_nao + ', atualizado_em = ?, atualizado_por = ? WHERE id = ?',
                     (valor_norm, agora, usuario, motivo, agora, usuario, documento_id),
                 )
             else:
@@ -9128,12 +9160,15 @@ def api_terceiros_status(documento_id):
                 params_extra = ()
                 if col_motivo:
                     sql_clear_motivo = ', ' + col_motivo + ' = NULL'
+                if campo == 'carga_recebida_mg':
+                    sql_clear_motivo += ', recebedor_mg = ?'
+                    params_extra = (recebedor_mg if valor_norm == 'sim' else None,)
                 _pg_auditoria_sync_desligar(conn)
                 conn.execute(
                     'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET '
                     + campo + ' = ?, ' + campo_em + ' = ?, ' + campo_por + ' = ?'
                     + sql_clear_motivo + ', atualizado_em = ?, atualizado_por = ? WHERE id = ?',
-                    (valor_norm, agora, usuario, agora, usuario, documento_id),
+                    (valor_norm, agora, usuario) + params_extra + (agora, usuario, documento_id),
                 )
             _registrar_evento_terceiros(conn, documento_id, campo, str(doc.get(campo) or ''), valor_norm, usuario)
         conn.commit()

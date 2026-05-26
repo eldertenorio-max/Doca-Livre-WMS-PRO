@@ -134,6 +134,7 @@ let _terceirosRecebimentoConcluindo = false;
 let _terceirosConfirmacaoLancamentoResolver = null;
 let _terceirosConfirmacaoConcluirSemBipagemResolver = null;
 let _terceirosConfirmacaoMotivoFluxoResolver = null;
+let _terceirosConfirmacaoRecebedorMgResolver = null;
 let _terceirosConfirmacaoIrNotasLancadasResolver = null;
 let _terceirosConfirmacaoIrRecebimentosMgResolver = null;
 let _terceirosConfirmacaoRecebimentoFornecedoresResolver = null;
@@ -678,12 +679,15 @@ function _terceirosAtualizarEnviarMgLocal(documentoId, valorNorm, motivo) {
     }
 }
 
-function _terceirosAtualizarRecebidaMgLocal(documentoId, valorNorm, motivo) {
+function _terceirosAtualizarRecebidaMgLocal(documentoId, valorNorm, motivo, recebedorMg) {
     if (documentoId == null) return;
     var id = String(documentoId);
     var patch = { carga_recebida_mg: valorNorm };
     if (motivo != null && String(motivo).trim() !== '') {
         patch.motivo_nao_recebida_mg = String(motivo).trim();
+    }
+    if (recebedorMg != null) {
+        patch.recebedor_mg = String(recebedorMg || '').trim();
     }
     var locais = window._terceirosFornecedoresRecebidosLocais || {};
     var baseLocal = locais[id] || { id: documentoId };
@@ -2017,8 +2021,50 @@ function abrirModalMotivoFluxoTerceiros(campo) {
     });
 }
 
+function fecharModalRecebedorMgTerceiros(confirmado, nome) {
+    var modal = document.getElementById('modal-terceiros-recebedor-mg');
+    _terceirosOcultarModalOverlay(modal);
+    if (_terceirosConfirmacaoRecebedorMgResolver) {
+        _terceirosConfirmacaoRecebedorMgResolver(confirmado ? (nome || '').trim() : false);
+        _terceirosConfirmacaoRecebedorMgResolver = null;
+    }
+}
+
+function abrirModalRecebedorMgTerceiros() {
+    var modal = document.getElementById('modal-terceiros-recebedor-mg');
+    var input = document.getElementById('ter-recebedor-mg-nome');
+    if (input) input.value = '';
+    if (!modal) {
+        return Promise.resolve(window.prompt('Quem recebeu em MG?'));
+    }
+    return new Promise(function(resolve) {
+        _terceirosConfirmacaoRecebedorMgResolver = resolve;
+        _terceirosPrepararModalConfirmacaoBackdrop();
+        window.setTimeout(function() {
+            _terceirosExibirModalOverlay(modal);
+            if (input) input.focus();
+        }, 0);
+    });
+}
+
 async function _terceirosAtualizarStatusComMotivo(documentoId, campo, valor, opcoes) {
     opcoes = opcoes || {};
+    if (isTerceirosFlagSim(valor) && campo === 'carga_recebida_mg' && !opcoes.forcar_fluxo_carreta && !opcoes.recebedor_mg) {
+        var recebedor = await abrirModalRecebedorMgTerceiros();
+        if (!recebedor) {
+            try {
+                await recarregarTodasListasTerceiros();
+            } catch (eRec) {
+                console.error(eRec);
+            }
+            showMessage('Operação cancelada. Informe quem recebeu em MG para concluir.', 'warning');
+            return;
+        }
+        opcoes.recebedor_mg = recebedor;
+        _terceirosAtualizarRecebidaMgLocal(documentoId, 'sim', '', recebedor);
+        opcoes.movimento_recebida_mg_aplicado = true;
+        void terceirosNavegarParaHistoricoAposRecebidaMg(documentoId, 'sim');
+    }
     if (isTerceirosFlagNao(valor) && (campo === 'nota_lancada' || campo === 'enviar_para_mg' || campo === 'carga_recebida_mg')) {
         var motivo = await abrirModalMotivoFluxoTerceiros(campo);
         if (!motivo) {
@@ -2348,7 +2394,8 @@ async function _terceirosAposConfirmarRecebidaMgSim(documentoId, documentoResp, 
     if (documentoResp && _terceirosDocAtual && String(_terceirosDocAtual.id) === String(documentoId)) {
         Object.assign(_terceirosDocAtual, documentoResp);
     }
-    _terceirosAtualizarRecebidaMgLocal(documentoId, 'sim');
+    var recebedorMg = (documentoResp && documentoResp.recebedor_mg) || opcoes.recebedor_mg || '';
+    _terceirosAtualizarRecebidaMgLocal(documentoId, 'sim', '', recebedorMg);
     if (!opcoes.movimento_recebida_mg_aplicado) {
         await terceirosNavegarParaHistoricoAposRecebidaMg(documentoId, 'sim');
     }
@@ -2923,6 +2970,9 @@ function _terceirosRecebimentoEstaConcluido(row) {
     if (!row || row.id == null) return false;
     if (isTerceirosFlagSim(row.recebimento_concluido)) return true;
     if (String(row.recebimento_concluido_em || '').trim()) return true;
+    if (String(row.nota_lancada || '').trim()) return true;
+    if (String(row.enviar_para_mg || '').trim()) return true;
+    if (String(row.carga_recebida_mg || '').trim()) return true;
     return false;
 }
 
@@ -3190,7 +3240,8 @@ function renderTerceirosRecebidaMgSomenteLeitura(row) {
         textoResumoRecebidaMgTerceiros(row),
         row.carga_recebida_mg_por || '',
         row.carga_recebida_mg_em || ''
-    ) + '<div class="ter-status-meta">Alterar na aba <strong>Recebimentos de MG</strong></div>';
+    ) + renderTerceirosRecebedorMgMeta(row)
+        + '<div class="ter-status-meta">Alterar na aba <strong>Recebimentos de MG</strong></div>';
 }
 
 /** 5ª aba — carreta: concluir fluxo sem MG. */
@@ -3240,6 +3291,7 @@ function _terceirosRowEstadoMesclado(row) {
         carga_recebida_mg: valorLocal('carga_recebida_mg'),
         carga_recebida_mg_em: local.carga_recebida_mg_em || row.carga_recebida_mg_em,
         carga_recebida_mg_por: local.carga_recebida_mg_por || row.carga_recebida_mg_por,
+        recebedor_mg: valorLocal('recebedor_mg'),
         motivo_nao_lancada: valorLocal('motivo_nao_lancada'),
         motivo_nao_enviar_mg: valorLocal('motivo_nao_enviar_mg'),
         motivo_nao_recebida_mg: valorLocal('motivo_nao_recebida_mg'),
@@ -4178,6 +4230,13 @@ function renderTerceirosStatusComUsuario(valor, usuario, datahora, fallback) {
     return '<strong>' + escapeHtml(texto) + '</strong>' + renderTerceirosUsuarioMeta(usuario, datahora, fallback);
 }
 
+function renderTerceirosRecebedorMgMeta(row) {
+    if (!row || isTerceirosAreaCarreta(row) || !isTerceirosFlagSim(row.carga_recebida_mg)) return '';
+    var nome = String(row.recebedor_mg || '').trim();
+    if (!nome) return '<div class="ter-status-meta ter-status-meta--alerta"><strong>Recebeu MG:</strong> não informado</div>';
+    return '<div class="ter-status-meta"><strong>Recebeu MG:</strong> ' + escapeHtml(nome) + '</div>';
+}
+
 /** NF já saiu da 2ª aba (fornecedores recebidos e etapas seguintes). */
 function _terceirosJaSaiuPendenciaRecebimento(row) {
     return !_terceirosConsideraPendenciaRecebimento(row);
@@ -4305,7 +4364,8 @@ function renderTerceirosCelulaRecebidaMgFluxo(row, etapa) {
         + '</select>' + renderTerceirosUsuarioMeta(row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '') + '</td>';
     }
     var textoRec = etapa === 'historico' ? textoResumoRecebidaMgHistorico(row) : textoResumoRecebidaMgTerceiros(row);
-    var htmlRec = renderTerceirosStatusComUsuario(textoRec, row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '');
+    var htmlRec = renderTerceirosStatusComUsuario(textoRec, row.carga_recebida_mg_por || '', row.carga_recebida_mg_em || '')
+        + renderTerceirosRecebedorMgMeta(row);
     if ((etapa === 'historico' || etapa === 'recebimentos-mg') && isTerceirosFlagNao(row.carga_recebida_mg)) {
         htmlRec += _terceirosMotivoHtmlCampo(row, 'motivo_nao_recebida_mg');
     }
@@ -5224,10 +5284,6 @@ async function loadTerceirosRecebimentosMg(dataPreloaded) {
                 motorista_obrigatorio: motoristaObrigatorio,
                 motorista_atual: motoristaAtual
             };
-            if (valor === 'sim') {
-                opcoesStatus.movimento_recebida_mg_aplicado = true;
-                void terceirosNavegarParaHistoricoAposRecebidaMg(id, 'sim');
-            }
             _terceirosAtualizarStatusComMotivo(id, 'carga_recebida_mg', valor, opcoesStatus).finally(function() {
                 delete window._terceirosRecebidaMgEmAndamento[id];
                 if (select.isConnected) select.disabled = false;
@@ -5589,6 +5645,7 @@ async function atualizarStatusTerceirosDireto(documentoId, campo, valor, opcoes)
             campo: campo,
             valor: valor,
             motivo: opcoes.motivo || '',
+            recebedor_mg: opcoes.recebedor_mg || '',
             forcar_lancamento_sem_recebimento: !!opcoes.forcar_lancamento_sem_recebimento,
             forcar_fluxo_carreta: !!opcoes.forcar_fluxo_carreta
         })
@@ -7365,10 +7422,21 @@ async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
                 return;
             }
             opcoes = opcoes || {};
+            if (isTerceirosFlagSim(valor) && campo === 'carga_recebida_mg' && !opcoes.forcar_fluxo_carreta && !opcoes.recebedor_mg) {
+                var recebedorMgDetalhe = await abrirModalRecebedorMgTerceiros();
+                if (!recebedorMgDetalhe) {
+                    showMessage('Operação cancelada. Informe quem recebeu em MG para concluir.', 'warning');
+                    await recarregarListaTerceirosTab(_terceirosTabAtual).catch(function(eR) { console.error(eR); });
+                    return;
+                }
+                opcoes.recebedor_mg = recebedorMgDetalhe;
+                _terceirosAtualizarRecebidaMgLocal(documentoId, 'sim', '', recebedorMgDetalhe);
+            }
             var payload = {
                 campo: campo,
                 valor: valor,
                 motivo: opcoes.motivo || '',
+                recebedor_mg: opcoes.recebedor_mg || '',
                 forcar_lancamento_sem_recebimento: !!opcoes.forcar_lancamento_sem_recebimento,
                 forcar_fluxo_carreta: !!opcoes.forcar_fluxo_carreta
             };
@@ -7600,6 +7668,23 @@ function initForms() {
     if (btnTerMotivoCancelar) btnTerMotivoCancelar.addEventListener('click', function() { fecharModalMotivoFluxoTerceiros(false); });
     if (btnTerMotivoClose) btnTerMotivoClose.addEventListener('click', function() { fecharModalMotivoFluxoTerceiros(false); });
 
+    const modalTerRecebedorMg = document.getElementById('modal-terceiros-recebedor-mg');
+    const btnTerRecebedorMgConfirmar = document.getElementById('btn-ter-confirmar-recebedor-mg');
+    const btnTerRecebedorMgCancelar = document.getElementById('btn-ter-cancelar-recebedor-mg');
+    const btnTerRecebedorMgClose = document.getElementById('modal-terceiros-recebedor-mg-close');
+    function _terConfirmarRecebedorMgModal() {
+        var inp = document.getElementById('ter-recebedor-mg-nome');
+        var txt = inp ? String(inp.value || '').trim() : '';
+        if (!txt) {
+            showMessage('Informe quem recebeu em MG antes de confirmar.', 'warning');
+            return;
+        }
+        fecharModalRecebedorMgTerceiros(true, txt);
+    }
+    if (btnTerRecebedorMgConfirmar) btnTerRecebedorMgConfirmar.addEventListener('click', _terConfirmarRecebedorMgModal);
+    if (btnTerRecebedorMgCancelar) btnTerRecebedorMgCancelar.addEventListener('click', function() { fecharModalRecebedorMgTerceiros(false); });
+    if (btnTerRecebedorMgClose) btnTerRecebedorMgClose.addEventListener('click', function() { fecharModalRecebedorMgTerceiros(false); });
+
     const modalTerExcluir = document.getElementById('modal-terceiros-excluir-documento');
     const btnTerExcluirConfirmar = document.getElementById('btn-ter-confirmar-excluir-documento');
     const btnTerExcluirCancelar = document.getElementById('btn-ter-cancelar-excluir-documento');
@@ -7647,6 +7732,9 @@ function initForms() {
         }
         if (modalTerMotivo && e.target === modalTerMotivo && !_terceirosDeveIgnorarCliqueBackdropModal()) {
             fecharModalMotivoFluxoTerceiros(false);
+        }
+        if (modalTerRecebedorMg && e.target === modalTerRecebedorMg && !_terceirosDeveIgnorarCliqueBackdropModal()) {
+            fecharModalRecebedorMgTerceiros(false);
         }
         if (modalTerExcluir && e.target === modalTerExcluir && !_terceirosDeveIgnorarCliqueBackdropModal()) {
             fecharModalExcluirDocumento(false);
