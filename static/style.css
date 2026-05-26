@@ -1053,6 +1053,14 @@ body {
     border: 1px solid #ce93d8;
 }
 
+#modulo-terceiros .ter-origem-badge--consumivel-sp {
+    display: block;
+    margin: 4px 0 0;
+    background: #e3f2fd;
+    color: #1565c0;
+    border: 1px solid #90caf9;
+}
+
 #modulo-terceiros .terceiros-upload-bloco--carreta-banner {
     background: #e8eaf6;
     border-left: 4px solid #5c6bc0;
@@ -1393,6 +1401,39 @@ body {
 #modulo-terceiros .ter-cols-14 td:nth-child(13) { width: 7%; min-width: 76px; }
 #modulo-terceiros .ter-cols-14 th:nth-child(14),
 #modulo-terceiros .ter-cols-14 td:nth-child(14) { width: 9%; min-width: 168px; }
+
+/* 15 colunas — fluxo completo (inclui quem irá receber) */
+#modulo-terceiros .ter-cols-15 { min-width: 1620px; }
+#modulo-terceiros .ter-cols-15 th:nth-child(1),
+#modulo-terceiros .ter-cols-15 td:nth-child(1) { width: 6%; }
+#modulo-terceiros .ter-cols-15 th:nth-child(2),
+#modulo-terceiros .ter-cols-15 td:nth-child(2) { width: 5%; }
+#modulo-terceiros .ter-cols-15 th:nth-child(3),
+#modulo-terceiros .ter-cols-15 td:nth-child(3) { width: 8%; min-width: 96px; }
+#modulo-terceiros .ter-cols-15 th:nth-child(4),
+#modulo-terceiros .ter-cols-15 td:nth-child(4) { width: 9%; }
+#modulo-terceiros .ter-cols-15 th:nth-child(5),
+#modulo-terceiros .ter-cols-15 td:nth-child(5) { width: 9%; }
+#modulo-terceiros .ter-cols-15 th:nth-child(6),
+#modulo-terceiros .ter-cols-15 td:nth-child(6) { width: 3%; }
+#modulo-terceiros .ter-cols-15 th:nth-child(7),
+#modulo-terceiros .ter-cols-15 td:nth-child(7) { width: 7%; }
+#modulo-terceiros .ter-cols-15 th:nth-child(8),
+#modulo-terceiros .ter-cols-15 td:nth-child(8) { width: 5%; }
+#modulo-terceiros .ter-cols-15 th:nth-child(9),
+#modulo-terceiros .ter-cols-15 td:nth-child(9) { width: 7%; }
+#modulo-terceiros .ter-cols-15 th:nth-child(10),
+#modulo-terceiros .ter-cols-15 td:nth-child(10) { width: 8%; min-width: 92px; }
+#modulo-terceiros .ter-cols-15 th:nth-child(11),
+#modulo-terceiros .ter-cols-15 td:nth-child(11) { width: 8%; min-width: 96px; }
+#modulo-terceiros .ter-cols-15 th:nth-child(12),
+#modulo-terceiros .ter-cols-15 td:nth-child(12) { width: 6%; min-width: 80px; }
+#modulo-terceiros .ter-cols-15 th:nth-child(13),
+#modulo-terceiros .ter-cols-15 td:nth-child(13) { width: 6%; min-width: 76px; }
+#modulo-terceiros .ter-cols-15 th:nth-child(14),
+#modulo-terceiros .ter-cols-15 td:nth-child(14) { width: 6%; min-width: 76px; }
+#modulo-terceiros .ter-cols-15 th:nth-child(15),
+#modulo-terceiros .ter-cols-15 td:nth-child(15) { width: 9%; min-width: 168px; }
 
 #modulo-terceiros .ter-select-inline,
 #modulo-terceiros .ter-input-inline {

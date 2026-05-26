@@ -3636,7 +3636,6 @@ function renderTerceirosConclusaoSemMgTab5(row) {
         return '<td><div class="ter-inline-stack">'
             + '<button type="button" class="btn btn-primary btn-sm" data-ter-concluir-consumivel-doc="' + escapeHtml(String(row.id)) + '">Enviar para histórico</button>'
             + '<span class="ter-status-meta">Consumível SP sem envio MG</span>'
-            + renderTerceirosConsumivelSpMeta(row)
             + '</div></td>';
     }
     if (!isTerceirosAreaCarreta(row)) {
@@ -4677,6 +4676,17 @@ function renderTerceirosConsumivelSpMeta(row) {
         + '</div>';
 }
 
+function renderTerceirosCelulaQuemIraReceber(row) {
+    var nome = String(row.recebedor_consumivel_sp || '').trim();
+    if (!nome) {
+        return '<td><span class="ter-status-meta">—</span></td>';
+    }
+    var badge = isTerceirosConsumivelSp(row)
+        ? ' <span class="ter-origem-badge ter-origem-badge--consumivel-sp">Consumível SP</span>'
+        : '';
+    return '<td>' + escapeHtml(nome) + badge + '</td>';
+}
+
 /** NF já saiu da 2ª aba (fornecedores recebidos e etapas seguintes). */
 function _terceirosJaSaiuPendenciaRecebimento(row) {
     return !_terceirosConsideraPendenciaRecebimento(row);
@@ -4688,6 +4698,7 @@ function renderTerceirosCelulasNfPedidoRemDestUf(row) {
     var badgeCarreta = (row.area === 'carreta') ? ' <span class="ter-origem-badge ter-origem-badge--carreta">Carreta</span>' : '';
     return '<td><strong>' + escapeHtml(nf) + '</strong>' + badgeCarreta + '</td>'
         + '<td>' + escapeHtml(row.numero_pedido || '-') + '</td>'
+        + renderTerceirosCelulaQuemIraReceber(row)
         + '<td>' + terceirosListaCellTextoLongo(row.remetente_nome) + '</td>'
         + '<td>' + terceirosListaCellTextoLongo(row.destinatario_nome) + '</td>'
         + '<td>' + escapeHtml(row.destinatario_uf || '-') + '</td>';
@@ -4747,7 +4758,7 @@ function renderTerceirosCelulaLancadaFluxo(row, etapa) {
 function renderTerceirosCelulaEnviarMgFluxo(row, etapa) {
     if (etapa === 'pendencia') return renderTerceirosCelulaIndisponivelFluxo();
     if (isTerceirosConsumivelSp(row)) {
-        return '<td>' + renderTerceirosStatusComUsuario('N/A', '', '', 'Consumível SP sem envio MG') + renderTerceirosConsumivelSpMeta(row) + '</td>';
+        return '<td>' + renderTerceirosStatusComUsuario('N/A', '', '', 'Consumível SP sem envio MG') + '</td>';
     }
     if (isTerceirosAreaCarreta(row)) {
         return '<td>' + renderTerceirosStatusComUsuario('N/A', '', '', 'Carreta sem envio MG') + '<div class="ter-status-meta">Fluxo de carreta encerra na 5ª aba</div></td>';
@@ -4846,7 +4857,7 @@ function renderTerceirosRecebimentoComUsuario(row) {
     );
 }
 
-var TERCEIROS_COLS_LISTA_FLUXO = 14;
+var TERCEIROS_COLS_LISTA_FLUXO = 15;
 var TERCEIROS_COLS_LISTA_POS_RECEBIMENTO = TERCEIROS_COLS_LISTA_FLUXO;
 
 function renderTerceirosFornecedorRecebidoRowHtml(row) {
@@ -5982,7 +5993,7 @@ async function refreshTerceirosViews(opcoes) {
             } else if (tbodyAtivo.id === 'ter-tbody-notas-enviadas-mg') {
                 cols = 10;
             } else if (tbodyAtivo.id === 'ter-tbody-historico') {
-                cols = 14;
+                cols = 15;
             }
             tbodyAtivo.innerHTML = '<tr><td colspan="' + cols + '" class="loading" style="color:#c62828;">Erro ao carregar os dados desta aba.</td></tr>';
         }
