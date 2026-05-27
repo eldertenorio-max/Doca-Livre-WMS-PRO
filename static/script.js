@@ -7779,6 +7779,18 @@ async function _terceirosExecutarConcluirRecebimento(documentoId, btnEl, opcoes)
         });
         aplicarMovimentoRecebimentoConcluidoLocal(documentoId, _terceirosDocAtual);
     }
+    if (resp && resp.email_consumivel_sp && isTerceirosConsumivelSp(_terceirosDocAtual)) {
+        var em = resp.email_consumivel_sp;
+        if (em.enviado) {
+            showMessage('E-mail enviado ao fiscal (consumível SP).', 'success');
+        } else if (em.motivo === 'recebimento_ja_estava_concluido') {
+            console.info('[terceiros] E-mail consumível SP não reenviado (recebimento já estava concluído).');
+        } else if (em.motivo === 'smtp_nao_configurado' || em.motivo === 'smtp_sem_senha') {
+            showMessage('Recebimento salvo, mas o servidor não tem SMTP configurado (Render: variáveis SMTP_*).', 'warning');
+        } else if (em.motivo && em.motivo.indexOf('erro_smtp') === 0) {
+            showMessage('Recebimento salvo, mas falhou o e-mail: ' + em.motivo.replace(/^erro_smtp:\s*/, ''), 'warning');
+        }
+    }
     void _flushTerceirosPendingDocumentoComLimiteTempo(documentoId, 3000).catch(function(eBg) {
         console.error(eBg);
     });

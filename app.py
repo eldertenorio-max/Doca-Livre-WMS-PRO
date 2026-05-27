@@ -7730,7 +7730,7 @@ def _terceiros_eh_area_carreta(doc):
 
 
 def _terceiros_eh_consumivel_sp(doc):
-    return _valor_bool_texto((doc or {}).get('consumivel_sp') or '') == 'sim'
+    return _terceiros_bool_sim_db((doc or {}).get('consumivel_sp'))
 
 
 def _terceiros_usa_fluxo_mg(doc):
@@ -7760,17 +7760,26 @@ def _terceiros_nf_texto_email(doc):
     ])) or '-'
 
 
+def _terceiros_smtp_configurado():
+    return bool((os.environ.get('SMTP_HOST') or '').strip())
+
+
 def _terceiros_enviar_email(destinatarios, assunto, corpo_texto, corpo_html=None):
+    """Retorna (ok: bool, motivo: str). motivo vazio se enviado com sucesso."""
     destinatarios = [d.strip() for d in (destinatarios or []) if d and '@' in str(d)]
     if not destinatarios:
-        return False
+        print('[terceiros-email] Nenhum destinatário válido.')
+        return False, 'sem_destinatarios'
     smtp_host = (os.environ.get('SMTP_HOST') or '').strip()
     if not smtp_host:
         print('[terceiros-email] SMTP_HOST não configurado; e-mail não enviado.')
-        return False
+        return False, 'smtp_nao_configurado'
     smtp_port = int(os.environ.get('SMTP_PORT') or '587')
     smtp_user = (os.environ.get('SMTP_USER') or '').strip()
-    smtp_pass = (os.environ.get('SMTP_PASSWORD') or '').strip()
+    smtp_pass = (os.environ.get('SMTP_PASSWORD') or '').strip().replace(' ', '')
+    if smtp_host and not smtp_pass:
+        print('[terceiros-email] SMTP_PASSWORD vazio; e-mail não enviado.')
+        return False, 'smtp_sem_senha'
     smtp_from = (os.environ.get('SMTP_FROM') or smtp_user or 'noreply@ultrapao.com.br').strip()
     use_tls = str(os.environ.get('SMTP_USE_TLS', '1')).strip().lower() not in ('0', 'false', 'no')
     msg = MIMEMultipart('alternative')
@@ -7781,17 +7790,17 @@ def _terceiros_enviar_email(destinatarios, assunto, corpo_texto, corpo_html=None
     if corpo_html:
         msg.attach(MIMEText(corpo_html, 'html', 'utf-8'))
     try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
             if use_tls:
                 server.starttls()
             if smtp_user and smtp_pass:
                 server.login(smtp_user, smtp_pass)
             server.sendmail(smtp_from, destinatarios, msg.as_string())
         print('[terceiros-email] Enviado para %s — %s' % (', '.join(destinatarios), assunto))
-        return True
+        return True, ''
     except Exception as e:
         print('[terceiros-email] Falha ao enviar: %s' % e)
-        return False
+        return False, 'erro_smtp: %s' % e
 
 
 def _terceiros_notificar_consumivel_sp_pronto_lancamento(doc, usuario):
@@ -7832,7 +7841,29 @@ def _terceiros_notificar_consumivel_sp_pronto_lancamento(doc, usuario):
         '</ul>'
         '<p><strong>Próximo passo:</strong> Terceiros → <em>NFs pendentes de lançamento</em>.</p>'
     ) % (nf, pedido, recebedor, remetente, concluido_por, concluido_em)
-    _terceiros_enviar_email(dest, assunto, corpo, html)
+    return _terceiros_enviar_email(dest, assunto, corpo, html)
+
+
+def _terceiros_email_consumivel_sp_apos_recebimento(doc, usuario, primeira_conclusao):
+    """
+    Dispara e-mail de consumível SP na primeira conclusão de recebimento.
+    Envio síncrono (thread em background no Render/Gunicorn costuma ser interrompida).
+    """
+    info = {'enviado': False, 'motivo': 'nao_aplicavel'}
+    if not primeira_conclusao:
+        info['motivo'] = 'recebimento_ja_estava_concluido'
+        return info
+    if not _terceiros_eh_consumivel_sp(doc):
+        info['motivo'] = 'nao_eh_consumivel_sp'
+        return info
+    try:
+        ok, motivo = _terceiros_notificar_consumivel_sp_pronto_lancamento(doc, usuario)
+        info['enviado'] = bool(ok)
+        info['motivo'] = motivo or ('enviado' if ok else 'falha_desconhecida')
+    except Exception as e:
+        print('[terceiros-email] Exceção ao notificar consumível SP: %s' % e)
+        info['motivo'] = 'erro: %s' % e
+    return info
 
 
 def _motorista_obrigatorio_terceiros(doc):
@@ -10109,22 +10140,54 @@ def api_terceiros_status(documento_id):
             doc_resp['recebimento_concluido_por'] = usuario
             doc_resp['atualizado_em'] = _fmt_datahora_br(agora)
             doc_resp['atualizado_por'] = usuario
-            if novo_bool and not ja_concluido and _terceiros_eh_consumivel_sp(doc):
-                try:
-                    threading.Thread(
-                        target=_terceiros_notificar_consumivel_sp_pronto_lancamento,
-                        args=(doc_resp, usuario),
-                        daemon=True,
-                    ).start()
-                except Exception as e_mail:
-                    print('[terceiros-email] Thread não iniciada: %s' % e_mail)
-            return jsonify({'ok': True, 'documento': doc_resp})
+            email_info = {'enviado': False, 'motivo': 'nao_aplicavel'}
+            if novo_bool:
+                email_info = _terceiros_email_consumivel_sp_apos_recebimento(
+                    doc_resp, usuario, primeira_conclusao=not ja_concluido
+                )
+            return jsonify({
+                'ok': True,
+                'documento': doc_resp,
+                'email_consumivel_sp': email_info,
+            })
         return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
     except Exception as e:
         conn.rollback()
         return jsonify({'ok': False, 'erro': str(e)}), 500
     finally:
         conn.close()
+
+
+@app.route('/api/terceiros/email/diagnostico', methods=['GET'])
+def api_terceiros_email_diagnostico():
+    """Verifica se SMTP está configurado no servidor (Render). Não expõe senhas."""
+    dest = _terceiros_emails_consumivel_sp_destino()
+    return jsonify({
+        'ok': True,
+        'smtp_configurado': _terceiros_smtp_configurado(),
+        'smtp_host': (os.environ.get('SMTP_HOST') or '').strip() or None,
+        'smtp_user_definido': bool((os.environ.get('SMTP_USER') or '').strip()),
+        'smtp_senha_definida': bool((os.environ.get('SMTP_PASSWORD') or '').strip()),
+        'destinatarios_consumivel_sp': dest,
+        'dica': 'No Render: SMTP_HOST, SMTP_PORT=587, SMTP_USER, SMTP_PASSWORD (senha de app Gmail), SMTP_FROM, SMTP_USE_TLS=1',
+    })
+
+
+@app.route('/api/terceiros/email/teste', methods=['POST'])
+def api_terceiros_email_teste():
+    """Envia e-mail de teste para SMTP_USER (ou primeiro destinatário consumível SP)."""
+    usuario = session.get('usuario', '') or 'sistema'
+    dest = [(os.environ.get('SMTP_USER') or '').strip()]
+    if not dest[0] or '@' not in dest[0]:
+        dest = _terceiros_emails_consumivel_sp_destino()[:1]
+    if not dest:
+        return jsonify({'ok': False, 'erro': 'Nenhum destinatário para teste.'}), 400
+    assunto = 'Teste — Controle de Carregamento / Terceiros'
+    corpo = 'E-mail de teste enviado por %s em %s.' % (usuario, _fmt_datahora_br(_agora_iso()))
+    ok, motivo = _terceiros_enviar_email(dest, assunto, corpo)
+    if ok:
+        return jsonify({'ok': True, 'enviado_para': dest[0]})
+    return jsonify({'ok': False, 'erro': motivo or 'Falha ao enviar'}), 500
 
 
 @app.route('/api/terceiros/documentos/<int:documento_id>/motorista', methods=['POST'])
