@@ -15,7 +15,10 @@ import json
 import importlib.util
 import re
 import base64
+import smtplib
 import xml.etree.ElementTree as ET
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import openpyxl
 from openpyxl.styles import Font
 from io import BytesIO
@@ -7734,6 +7737,104 @@ def _terceiros_usa_fluxo_mg(doc):
     return not _terceiros_eh_area_carreta(doc) and not _terceiros_eh_consumivel_sp(doc)
 
 
+_TERCEIROS_CONSUMIVEL_SP_EMAILS_PADRAO = [
+    'elder.tenorio@ultrapao.com.br',
+    'jackeline.silva@ultrapao.com.br',
+    'suellen.oliveira@ultrapao.com.br',
+    'mariana.teixeira@ultrapao.com.br',
+    'astro.santos@ultrapao.com.br',
+]
+
+
+def _terceiros_emails_consumivel_sp_destino():
+    raw = (os.environ.get('TERCEIROS_CONSUMIVEL_SP_EMAILS') or '').strip()
+    if raw:
+        return [e.strip() for e in raw.split(',') if e.strip() and '@' in e.strip()]
+    return list(_TERCEIROS_CONSUMIVEL_SP_EMAILS_PADRAO)
+
+
+def _terceiros_nf_texto_email(doc):
+    return '/'.join(filter(None, [
+        str((doc or {}).get('numero_nf') or '').strip(),
+        str((doc or {}).get('serie_nf') or '').strip(),
+    ])) or '-'
+
+
+def _terceiros_enviar_email(destinatarios, assunto, corpo_texto, corpo_html=None):
+    destinatarios = [d.strip() for d in (destinatarios or []) if d and '@' in str(d)]
+    if not destinatarios:
+        return False
+    smtp_host = (os.environ.get('SMTP_HOST') or '').strip()
+    if not smtp_host:
+        print('[terceiros-email] SMTP_HOST não configurado; e-mail não enviado.')
+        return False
+    smtp_port = int(os.environ.get('SMTP_PORT') or '587')
+    smtp_user = (os.environ.get('SMTP_USER') or '').strip()
+    smtp_pass = (os.environ.get('SMTP_PASSWORD') or '').strip()
+    smtp_from = (os.environ.get('SMTP_FROM') or smtp_user or 'noreply@ultrapao.com.br').strip()
+    use_tls = str(os.environ.get('SMTP_USE_TLS', '1')).strip().lower() not in ('0', 'false', 'no')
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = assunto
+    msg['From'] = smtp_from
+    msg['To'] = ', '.join(destinatarios)
+    msg.attach(MIMEText(corpo_texto or '', 'plain', 'utf-8'))
+    if corpo_html:
+        msg.attach(MIMEText(corpo_html, 'html', 'utf-8'))
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+            if use_tls:
+                server.starttls()
+            if smtp_user and smtp_pass:
+                server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, destinatarios, msg.as_string())
+        print('[terceiros-email] Enviado para %s — %s' % (', '.join(destinatarios), assunto))
+        return True
+    except Exception as e:
+        print('[terceiros-email] Falha ao enviar: %s' % e)
+        return False
+
+
+def _terceiros_notificar_consumivel_sp_pronto_lancamento(doc, usuario):
+    """E-mail quando consumível SP conclui recebimento e segue para lançamento fiscal."""
+    doc = doc or {}
+    dest = _terceiros_emails_consumivel_sp_destino()
+    nf = _terceiros_nf_texto_email(doc)
+    pedido = (doc.get('numero_pedido') or '').strip() or '-'
+    recebedor = (doc.get('recebedor_consumivel_sp') or '').strip() or '-'
+    remetente = (doc.get('remetente_nome') or '').strip() or '-'
+    concluido_por = (doc.get('recebimento_concluido_por') or usuario or '').strip() or '-'
+    concluido_em = doc.get('recebimento_concluido_em') or _fmt_datahora_br(_agora_iso())
+    assunto = 'Consumível SP — produto chegou (NF %s) — pronto para lançamento' % nf
+    linhas = [
+        'O produto (consumível SP) chegou e o recebimento foi concluído.',
+        'A nota fiscal está pronta para lançamento.',
+        '',
+        'NF: %s' % nf,
+        'Pedido: %s' % pedido,
+        'Quem solicitou/irá receber: %s' % recebedor,
+        'Remetente: %s' % remetente,
+        'Recebimento registrado por: %s' % concluido_por,
+        'Recebimento em: %s' % concluido_em,
+        '',
+        'Próximo passo: acesse Terceiros → NFs pendentes de lançamento e registre o lançamento fiscal.',
+    ]
+    corpo = '\n'.join(linhas)
+    html = (
+        '<p><strong>O produto chegou.</strong> Consumível SP com recebimento concluído — '
+        '<strong>pronto para lançamento fiscal</strong>.</p>'
+        '<ul>'
+        '<li><strong>NF:</strong> %s</li>'
+        '<li><strong>Pedido:</strong> %s</li>'
+        '<li><strong>Quem solicitou/irá receber:</strong> %s</li>'
+        '<li><strong>Remetente:</strong> %s</li>'
+        '<li><strong>Recebimento registrado por:</strong> %s</li>'
+        '<li><strong>Recebimento em:</strong> %s</li>'
+        '</ul>'
+        '<p><strong>Próximo passo:</strong> Terceiros → <em>NFs pendentes de lançamento</em>.</p>'
+    ) % (nf, pedido, recebedor, remetente, concluido_por, concluido_em)
+    _terceiros_enviar_email(dest, assunto, corpo, html)
+
+
 def _motorista_obrigatorio_terceiros(doc):
     remetente = _normalizar_texto_regra_terceiros((doc or {}).get('remetente_nome') or '')
     destinatario = _normalizar_texto_regra_terceiros((doc or {}).get('destinatario_nome') or '')
@@ -9924,6 +10025,7 @@ def api_terceiros_status(documento_id):
             }), 400
         agora = _agora_iso()
         if campo == 'recebimento_concluido':
+            ja_concluido = _terceiros_bool_sim_db(doc.get('recebimento_concluido'))
             novo_bool = str(valor).strip().lower() in ('1', 'true', 'sim', 's', 'yes')
             _pg_auditoria_sync_desligar(conn)
             conn.execute(
@@ -10007,6 +10109,15 @@ def api_terceiros_status(documento_id):
             doc_resp['recebimento_concluido_por'] = usuario
             doc_resp['atualizado_em'] = _fmt_datahora_br(agora)
             doc_resp['atualizado_por'] = usuario
+            if novo_bool and not ja_concluido and _terceiros_eh_consumivel_sp(doc):
+                try:
+                    threading.Thread(
+                        target=_terceiros_notificar_consumivel_sp_pronto_lancamento,
+                        args=(doc_resp, usuario),
+                        daemon=True,
+                    ).start()
+                except Exception as e_mail:
+                    print('[terceiros-email] Thread não iniciada: %s' % e_mail)
             return jsonify({'ok': True, 'documento': doc_resp})
         return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
     except Exception as e:
