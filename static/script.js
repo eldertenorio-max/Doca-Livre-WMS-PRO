@@ -2017,27 +2017,83 @@ function getTerceirosAreaApi(area) {
     return 'recebimento';
 }
 
-function abrirModalRecebimentoConcluidoTerceiros() {
+function _terceirosTabDestinoAposRecebimentoConcluido(rowLike) {
+    rowLike = rowLike || _terceirosDocAtual || {};
+    if (isTerceirosConsumivelSp(rowLike)) return 'pendentes-lancamento';
+    if (_terceirosUsaFluxoMg(rowLike)) return 'pendencias-mg';
+    return 'fornecedores-recebidos';
+}
+
+function _terceirosFecharModalRecebimentoConcluidoUi() {
     var modal = document.getElementById('modal-terceiros-recebimento-concluido');
     if (!modal) return;
+    modal.style.display = 'none';
+    modal.style.alignItems = '';
+    modal.style.justifyContent = '';
+}
+
+function abrirModalRecebimentoConcluidoTerceiros(tabDestinoOpt) {
+    var modal = document.getElementById('modal-terceiros-recebimento-concluido');
+    if (!modal) return;
+    var tabDestino = tabDestinoOpt || window._terceirosRecebimentoConcluidoTabDestino || 'fornecedores-recebidos';
+    window._terceirosRecebimentoConcluidoTabDestino = tabDestino;
+    var titulo = document.getElementById('ter-rec-concluido-aviso-titulo');
+    var textoPrincipal = document.getElementById('ter-rec-concluido-aviso-texto');
+    var textoFluxo = document.getElementById('ter-rec-concluido-aviso-fluxo');
+    var textoRodape = document.getElementById('ter-rec-concluido-aviso-rodape');
+    var btnProx = document.getElementById('btn-ter-proxima-etapa-lancamento');
+    if (tabDestino === 'pendentes-lancamento') {
+        if (titulo) titulo.textContent = 'Recebimento concluído — Consumível SP';
+        if (textoPrincipal) {
+            textoPrincipal.innerHTML = 'O produto <strong>chegou</strong>. Esta NF é <strong>consumível SP</strong> e '
+                + '<strong>não passa por Minas Gerais (MG)</strong>.';
+        }
+        if (textoFluxo) {
+            textoFluxo.innerHTML = 'Ela segue direto para a <strong>4ª aba — NFs pendentes de lançamento</strong> '
+                + '(separada por UF do destinatário, ex.: SP). Marque <strong>Nota lançada</strong> quando o fiscal concluir.';
+        }
+        if (textoRodape) textoRodape.textContent = 'Use Fechar ou o botão abaixo para abrir a lista de pendentes de lançamento.';
+        if (btnProx) btnProx.textContent = 'Ir para pendentes de lançamento';
+    } else if (tabDestino === 'pendencias-mg') {
+        if (titulo) titulo.textContent = 'Recebimento concluído';
+        if (textoPrincipal) {
+            textoPrincipal.innerHTML = 'A NF saiu da 2ª aba (Pendência). No <strong>fluxo MG</strong>, ela segue para '
+                + '<strong>Pendências envio MG</strong> (6ª aba).';
+        }
+        if (textoFluxo) {
+            textoFluxo.innerHTML = 'Só entra em <strong>NFs pendentes de lançamento</strong> (4ª aba) depois de '
+                + '<strong>Recebida MG = Sim</strong> na 8ª aba. Depois marque <strong>Nota lançada</strong>.';
+        }
+        if (textoRodape) textoRodape.textContent = 'Use Fechar para continuar, ou avance para a próxima etapa do fluxo MG.';
+        if (btnProx) btnProx.textContent = 'Ir para pendências envio MG';
+    } else {
+        if (titulo) titulo.textContent = 'Recebimento concluído';
+        if (textoPrincipal) {
+            textoPrincipal.innerHTML = 'A NF saiu da 2ª aba (Pendência) e está em '
+                + '<strong>Fornecedores recebidos</strong> (3ª aba).';
+        }
+        if (textoFluxo) {
+            textoFluxo.innerHTML = 'Quando estiver pronta, marque <strong>Nota lançada</strong> na 4ª aba '
+                + '(NFs pendentes de lançamento).';
+        }
+        if (textoRodape) textoRodape.textContent = 'Use Fechar para continuar, ou avance para a próxima etapa do fluxo.';
+        if (btnProx) btnProx.textContent = 'Ir para fornecedores recebidos';
+    }
     modal.style.display = 'flex';
     modal.style.alignItems = 'center';
     modal.style.justifyContent = 'center';
     modal.style.zIndex = '10050';
     var btnFechar = document.getElementById('btn-ter-fechar-recebimento-concluido');
     window.setTimeout(function() {
-        if (btnFechar) btnFechar.focus();
+        if (btnProx && tabDestino === 'pendentes-lancamento') btnProx.focus();
+        else if (btnFechar) btnFechar.focus();
     }, 50);
 }
 
 function fecharModalRecebimentoConcluidoTerceiros() {
-    var modal = document.getElementById('modal-terceiros-recebimento-concluido');
-    if (modal) {
-        modal.style.display = 'none';
-        modal.style.alignItems = '';
-        modal.style.justifyContent = '';
-    }
-    abrirAbaTerceirosSeDiferente('fornecedores-recebidos');
+    _terceirosFecharModalRecebimentoConcluidoUi();
+    var tab = window._terceirosRecebimentoConcluidoTabDestino || 'fornecedores-recebidos';
+    abrirAbaTerceirosSeDiferente(tab, true);
 }
 
 function _terceirosLabelAreaUpload(areaChave) {
@@ -2136,15 +2192,11 @@ function terceirosIrParaPendenciaAposUpload() {
     if (window.terceirosMostrarAba) window.terceirosMostrarAba('pendencia-recebimento');
 }
 
-/** Fecha o modal e leva à próxima aba do fluxo (NFs pendentes de lançamento). */
+/** Fecha o modal e leva à aba correta do fluxo (consumível SP → 4ª; MG → 6ª; demais → 3ª). */
 function terceirosIrParaProximaEtapaLancamento() {
-    var modal = document.getElementById('modal-terceiros-recebimento-concluido');
-    if (modal) {
-        modal.style.display = 'none';
-        modal.style.alignItems = '';
-        modal.style.justifyContent = '';
-    }
-    if (window.terceirosMostrarAba) window.terceirosMostrarAba('pendencias-mg');
+    _terceirosFecharModalRecebimentoConcluidoUi();
+    var tab = window._terceirosRecebimentoConcluidoTabDestino || 'pendencias-mg';
+    if (window.terceirosMostrarAba) window.terceirosMostrarAba(tab);
 }
 window.terceirosIrParaProximaEtapaLancamento = terceirosIrParaProximaEtapaLancamento;
 
@@ -2472,9 +2524,8 @@ async function _terceirosAplicarUiAposRecebimentoConcluido(documentoId, document
     aplicarMovimentoRecebimentoConcluidoLocal(documentoId, documentoAtualizado);
     void atualizarAlertasTerceirosHeaderAposMudancaRecebimento();
     if (irParaFornecedores) {
-        var tabDestinoReceb = _terceirosUsaFluxoMg(documentoAtualizado)
-            ? 'pendencias-mg'
-            : (isTerceirosConsumivelSp(documentoAtualizado) ? 'pendentes-lancamento' : 'fornecedores-recebidos');
+        var tabDestinoReceb = _terceirosTabDestinoAposRecebimentoConcluido(documentoAtualizado);
+        window._terceirosRecebimentoConcluidoTabDestino = tabDestinoReceb;
         resetTerceirosDetalhe();
         terceirosAplicarPainelAbaSomenteUi(tabDestinoReceb);
         _terceirosRestaurarBotaoRecebimentoConcluido();
@@ -2488,7 +2539,7 @@ async function _terceirosAplicarUiAposRecebimentoConcluido(documentoId, document
         }
         animarConclusaoTerceiros(prefixoConcl);
         window.setTimeout(function() {
-            abrirModalRecebimentoConcluidoTerceiros();
+            abrirModalRecebimentoConcluidoTerceiros(tabDestinoReceb);
         }, 0);
         showMessage(
             tabDestinoReceb === 'pendencias-mg'

@@ -1790,7 +1790,7 @@
                     <div class="painel-titulo">
                         <span class="painel-titulo-icon">📋</span>
                         <h2 class="painel-titulo-texto">Notas fiscais pendentes de lançamento</h2>
-                        <p class="painel-titulo-sub">Recebimento concluído (ou bipagem em andamento) com <strong>Nota lançada</strong> ainda sem <strong>Sim</strong>. As notas ficam separadas por <strong>UF do destinatário</strong> (MG e SP) até o lançamento ser confirmado.</p>
+                        <p class="painel-titulo-sub">Recebimento concluído com <strong>Nota lançada</strong> ainda pendente. <strong>Consumível SP</strong> entra aqui direto (sem fluxo MG). Demais rotas MG só após <strong>Recebida MG = Sim</strong>. Listas por <strong>UF do destinatário</strong> (MG, SP, outras).</p>
                     </div>
 
                     <div class="ter-pend-lanc-por-uf">
@@ -2556,11 +2556,9 @@
         <div class="modal-content modal-terceiros-recebimento-concluido-box" style="max-width: 420px; border-top: 4px solid #366092;">
             <span class="close" id="modal-terceiros-recebimento-concluido-close" title="Fechar">&times;</span>
             <h3 id="ter-rec-concluido-aviso-titulo" style="margin-top: 0; color: #1a237e;">Recebimento concluído</h3>
-            <p id="ter-rec-concluido-aviso-texto" class="ter-rec-concluido-aviso-principal">A NF saiu da 2ª aba (Pendência). No fluxo MG, ela segue para <strong>Pendências envio MG</strong> e só entra em <strong>NFs pendentes de lançamento</strong> depois de <strong>Recebida MG = Sim</strong>.</p>
-            <p style="margin: 0 0 12px 0; color: #455a64; font-size: 14px; line-height: 1.5;">
-                <strong>Novo fluxo:</strong> confirme o envio e o recebimento em MG antes do lançamento fiscal. Depois de <strong>Recebida MG = Sim</strong>, a NF entra na 4ª aba para marcar <strong>Nota lançada</strong>.
-            </p>
-            <p style="margin: 0 0 20px 0; color: #455a64; font-size: 14px; line-height: 1.45;">
+            <p id="ter-rec-concluido-aviso-texto" class="ter-rec-concluido-aviso-principal">A NF saiu da 2ª aba (Pendência).</p>
+            <p id="ter-rec-concluido-aviso-fluxo" style="margin: 0 0 12px 0; color: #455a64; font-size: 14px; line-height: 1.5;"></p>
+            <p id="ter-rec-concluido-aviso-rodape" style="margin: 0 0 20px 0; color: #455a64; font-size: 14px; line-height: 1.45;">
                 Use <strong>Fechar</strong> para continuar, ou avance para a próxima etapa do fluxo.
             </p>
             <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
