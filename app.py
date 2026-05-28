@@ -1658,6 +1658,145 @@ def _base_item_payload_to_columns(payload):
     return (codigo_interno, ean, dun, descricao, unidade, peso), data
 
 
+@app.route('/api/base-item/vincular-codigo', methods=['POST'])
+def api_base_item_vincular_codigo():
+    """Vincula código bipado (EAN/DUN) a um código interno do romaneio e atualiza base_codigo_barras."""
+    if not _usa_banco_para_dados():
+        return jsonify({'erro': 'Configure DATABASE_URL.'}), 400
+    payload = request.get_json() or {}
+    codigo_interno = (payload.get('codigo_interno') or payload.get('codigo_produto') or '').strip()
+    codigo_barras = _normalizar_codigo_barras(payload.get('codigo_barras') or payload.get('ean') or '')
+    dun_in = re.sub(r'\D', '', str(payload.get('dun') or '').strip()) or None
+    if dun_in == '':
+        dun_in = None
+    descricao = (payload.get('descricao') or payload.get('produto') or '').strip() or None
+    unidade = (payload.get('unidade') or '').strip() or None
+    peso = (payload.get('peso') or '').strip() or None
+    tipo = (payload.get('tipo_codigo') or '').strip().upper()
+    if not codigo_interno:
+        return jsonify({'erro': 'Informe o código interno (item da lista).'}), 400
+    if not codigo_barras and not dun_in:
+        return jsonify({'erro': 'Informe o código de barras bipado (EAN ou DUN).'}), 400
+    if not tipo:
+        tipo = 'DUN' if len(codigo_barras or '') >= 14 else 'EAN'
+    if tipo == 'EAN':
+        ean_val = codigo_barras or None
+        dun_val = dun_in
+    else:
+        ean_val = None
+        dun_val = dun_in or codigo_barras or None
+    conn = get_db()
+    try:
+        if getattr(conn, 'kind', None) != 'pg':
+            conn.close()
+            return jsonify({'erro': 'Vincular código só disponível com Postgres (DATABASE_URL).'}), 400
+        ds = _get_latest_dataset_id(conn)
+        if not ds:
+            conn.close()
+            return jsonify({'erro': 'Nenhum dataset ativo. Importe a base primeiro.'}), 400
+        rows = conn.execute(
+            """SELECT id, ean, dun, descricao, unidade, peso, data
+               FROM base_codigo_barras
+               WHERE dataset_id = ? AND TRIM(COALESCE(codigo_interno, '')) = ?
+               ORDER BY id""",
+            (str(ds), codigo_interno),
+        ).fetchall()
+        item_id = None
+        if rows:
+            alvo = None
+            for r in rows:
+                rid = r.get('id') if hasattr(r, 'get') else r[0]
+                ean_at = (r.get('ean') or '') if hasattr(r, 'get') else (r[1] if len(r) > 1 else '')
+                dun_at = (r.get('dun') or '') if hasattr(r, 'get') else (r[2] if len(r) > 2 else '')
+                if tipo == 'EAN' and (not ean_at or str(ean_at).strip() == ''):
+                    alvo = r
+                    break
+                if tipo == 'DUN' and (not dun_at or str(dun_at).strip() == ''):
+                    alvo = r
+                    break
+            if alvo is None:
+                alvo = rows[0]
+            item_id = alvo.get('id') if hasattr(alvo, 'get') else alvo[0]
+            data_old = alvo.get('data') if hasattr(alvo, 'get') else alvo[6]
+            if isinstance(data_old, str):
+                try:
+                    data_old = json.loads(data_old)
+                except Exception:
+                    data_old = {}
+            if not isinstance(data_old, dict):
+                data_old = {}
+            data_old['vinculado_de_conferencia'] = True
+            data_old['vinculado_em'] = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                """UPDATE base_codigo_barras
+                   SET ean = COALESCE(?, ean),
+                       dun = COALESCE(?, dun),
+                       descricao = COALESCE(?, descricao),
+                       unidade = COALESCE(?, unidade),
+                       peso = COALESCE(?, peso),
+                       data = ?::jsonb
+                   WHERE id = ?""",
+                (
+                    ean_val,
+                    dun_val,
+                    descricao,
+                    unidade,
+                    peso,
+                    json.dumps(data_old, ensure_ascii=False, default=str),
+                    item_id,
+                ),
+            )
+        else:
+            data_new = {
+                'Codigo': codigo_interno,
+                'Descricao': descricao or '',
+                'Unidade': unidade or '',
+                'Cod. EAN-13': ean_val or '',
+                'Cod. DUN-14': dun_val or '',
+                'vinculado_de_conferencia': True,
+            }
+            next_row = conn.execute(
+                """SELECT COALESCE(MAX(row_index), 0) + 1 AS next_idx FROM base_codigo_barras WHERE dataset_id = ?""",
+                (str(ds),),
+            ).fetchone()
+            row_index = next_row['next_idx'] if next_row else 1
+            row_ins = conn.execute(
+                """INSERT INTO base_codigo_barras
+                   (dataset_id, row_index, codigo_interno, ean, dun, descricao, unidade, peso, data)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
+                   RETURNING id""",
+                (
+                    str(ds),
+                    row_index,
+                    codigo_interno,
+                    ean_val,
+                    dun_val,
+                    descricao,
+                    unidade,
+                    peso,
+                    json.dumps(data_new, ensure_ascii=False, default=str),
+                ),
+            ).fetchone()
+            item_id = row_ins.get('id') if row_ins and hasattr(row_ins, 'get') else (row_ins[0] if row_ins else None)
+        conn.commit()
+        conn.close()
+        return jsonify({
+            'ok': True,
+            'item_id': item_id,
+            'mensagem': 'Código vinculado na base de produtos.',
+            'tipo_codigo': tipo,
+            'ean': ean_val,
+            'dun': dun_val,
+        })
+    except Exception as e:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
 @app.route('/api/base-item', methods=['POST'])
 def api_base_item_create():
     """Cria um novo registro na base_codigo_barras (dataset ativo)."""
@@ -1901,20 +2040,37 @@ def delete_produto(produto_id):
 @app.route('/api/conferencia/<id_viagem>/zerar', methods=['DELETE', 'POST'])
 def zerar_bipagem_viagem(id_viagem):
     """Remove todos os registros de bipagem da viagem para permitir bipar novamente"""
-    if not id_viagem:
+    id_norm = _normalizar_id_viagem(id_viagem)
+    if not id_norm:
         return jsonify({'erro': 'ID do roteiro não informado'}), 400
     fluxo = (request.args.get('fluxo') or (request.json or {}).get('fluxo') or 'carregamento').strip().lower()
     if fluxo not in ('carregamento', 'devolucao'):
         fluxo = 'carregamento'
     conn = get_db()
-    conn.execute(
-        "DELETE FROM produtos_bipados WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ?",
-        (id_viagem.strip(), fluxo),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        if getattr(conn, 'kind', None) == 'pg':
+            cur = conn.execute(
+                """DELETE FROM produtos_bipados
+                   WHERE TRIM(COALESCE(id_viagem::text, '')) = ?
+                     AND COALESCE(fluxo, 'carregamento') = ?""",
+                (id_norm, fluxo),
+            )
+            removidos = getattr(cur, 'rowcount', None)
+        else:
+            cur = conn.execute(
+                "DELETE FROM produtos_bipados WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ?",
+                (id_norm, fluxo),
+            )
+            removidos = cur.rowcount if cur else None
+        conn.commit()
+    finally:
+        conn.close()
     _broadcast_atualizar()
-    return jsonify({'success': True, 'mensagem': 'Bipagem zerada. Você pode bipar novamente.'})
+    return jsonify({
+        'success': True,
+        'mensagem': 'Bipagem zerada. Você pode bipar novamente.',
+        'removidos': removidos,
+    })
 
 
 @app.route('/api/conferencia/remover', methods=['POST'])

@@ -2583,6 +2583,12 @@ h2 {
     animation: fadeIn 0.3s;
 }
 
+#modal-zerar-itens.modal-zerar-itens {
+    z-index: 10100;
+    align-items: center;
+    justify-content: center;
+}
+
 /* Aviso pós "Recebimento concluído" (terceiros): acima de overlays locais */
 #modal-terceiros-recebimento-concluido.modal-terceiros-recebimento-concluido {
     z-index: 10050;

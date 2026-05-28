@@ -431,7 +431,7 @@
                                 <div class="conferencia-btns-grupo">
                                     <button type="submit" class="btn btn-primary btn-bloco4 btn-bloco4-bipar">✅ Bipar</button>
                                     <button type="button" class="btn btn-secondary btn-bloco4" onclick="limparCamposConferencia()" title="Limpar campos">🧹 Limpar campos</button>
-                                    <button type="button" class="btn btn-danger btn-bloco4 btn-bloco4-zerar" id="btn-voltar-bipar" onclick="abrirModalZerarItens()" style="display: none;" title="Zerar todos os itens bipados">🗑️ Zerar todos os itens</button>
+                                    <button type="button" class="btn btn-danger btn-bloco4 btn-bloco4-zerar" id="btn-voltar-bipar" onclick="event.preventDefault(); event.stopPropagation(); abrirModalZerarItens(); return false;" style="display: none;" title="Zerar todos os itens bipados">🗑️ Zerar todos os itens</button>
                                 </div>
                                 <div class="conferencia-resumo-group">
                                     <div class="conferencia-resumo-rapido">
@@ -2296,10 +2296,10 @@
     <div id="modal-produto-nao-cadastrado" class="modal" style="display: none;">
         <div class="modal-content" style="max-width: 440px;">
             <h3 style="margin-top: 0; color: #e65100;">Produto não cadastrado</h3>
-            <p style="margin: 16px 0;" id="modal-produto-nao-cadastrado-msg">Este produto não está na lista da conferência desta viagem. Deseja adicionar mesmo assim?</p>
+            <p style="margin: 16px 0;" id="modal-produto-nao-cadastrado-msg">Código não reconhecido nesta viagem. Você pode vinculá-lo a um item do romaneio e atualizar a base de códigos de barras.</p>
             <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
                 <button type="button" class="btn btn-secondary" onclick="fecharModalProdutoNaoCadastrado()">Não</button>
-                <button type="button" class="btn btn-primary" id="btn-confirmar-adicionar-nao-cadastrado" onclick="confirmarAdicionarProdutoNaoCadastrado()" style="background: #e65100;">Sim, adicionar na conferência</button>
+                <button type="button" class="btn btn-primary" id="btn-confirmar-adicionar-nao-cadastrado" onclick="void confirmarAdicionarProdutoNaoCadastrado()" style="background: #e65100;">Sim, vincular ao romaneio</button>
             </div>
         </div>
     </div>
@@ -2308,9 +2308,21 @@
     <div id="modal-cadastro-item" class="modal" style="display: none;">
         <div class="modal-content" style="max-width: 480px;">
             <h3 style="margin-top: 0; color: #366092;">Cadastro do item</h3>
-            <p style="margin: 0 0 16px 0; font-size: 14px; color: #666;">Preencha os dados do item para adicioná-lo à conferência.</p>
+            <p style="margin: 0 0 16px 0; font-size: 14px; color: #666;">Vincule o código bipado a um item do romaneio desta viagem e atualize a base de códigos de barras.</p>
             <input type="hidden" id="cadastro-item-id-viagem">
             <input type="hidden" id="cadastro-item-status">
+            <input type="hidden" id="cadastro-item-tipo-codigo" value="EAN">
+            <div class="form-group">
+                <label for="cadastro-item-vinculo-romaneio">Item da lista desta viagem *</label>
+                <select id="cadastro-item-vinculo-romaneio" style="width: 100%; max-width: 100%; padding: 8px;">
+                    <option value="">— Selecione o produto do romaneio —</option>
+                </select>
+                <small style="color: #666;">O código EAN/DUN bipado será gravado na base para o item escolhido.</small>
+            </div>
+            <label style="display: flex; align-items: center; gap: 8px; margin: 12px 0; cursor: pointer;">
+                <input type="checkbox" id="cadastro-item-atualizar-base" checked>
+                <span>Atualizar <strong>base_codigo_barras</strong> com este vínculo</span>
+            </label>
             <div class="form-group">
                 <label for="cadastro-item-descricao">Descrição do produto *</label>
                 <input type="text" id="cadastro-item-descricao" placeholder="Descrição do produto" required>
@@ -2346,7 +2358,7 @@
             </div>
             <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
                 <button type="button" class="btn btn-secondary" onclick="fecharModalCadastroItem()">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="btn-cadastro-item-confirmar" onclick="confirmarCadastroItem()">Confirmar e adicionar na lista</button>
+                <button type="button" class="btn btn-primary" id="btn-cadastro-item-confirmar" onclick="void confirmarCadastroItem()">Confirmar, vincular base e bipar</button>
             </div>
         </div>
     </div>
@@ -2365,7 +2377,7 @@
         </div>
     </div>
 
-    <div id="modal-zerar-itens" class="modal" style="display: none;">
+    <div id="modal-zerar-itens" class="modal modal-zerar-itens" style="display: none;">
         <div class="modal-content" style="max-width: 420px;">
             <h3 style="margin-top: 0; color: #c62828;">Zerar todos os itens</h3>
             <p style="margin: 16px 0;">Isso irá <strong>apagar todos os itens bipados</strong> desta viagem. Você poderá bipar novamente do zero.</p>
@@ -2375,7 +2387,7 @@
             </label>
             <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
                 <button type="button" class="btn btn-secondary" onclick="fecharModalZerarItens()">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="btn-confirmar-zerar" disabled style="background: #c62828;">Confirmar e zerar</button>
+                <button type="button" class="btn btn-primary" id="btn-confirmar-zerar" disabled style="background: #c62828;" onclick="if(!this.disabled) void executarZerarItens()">Confirmar e zerar</button>
             </div>
         </div>
     </div>
