@@ -81,17 +81,66 @@ function _esperarBipagemConferenciaIdle(timeoutMs) {
     });
 }
 
+/** Grava no servidor adds/removes pendentes (antes de tirar tudo, excluir ou zerar). */
+async function _flushTodasPendenciasConferencia() {
+    var p = window._conferenciaPending;
+    if (!p) return;
+    Object.keys(p.addTimers || {}).forEach(function(k) {
+        clearTimeout(p.addTimers[k]);
+        delete p.addTimers[k];
+    });
+    Object.keys(p.removeTimers || {}).forEach(function(k) {
+        clearTimeout(p.removeTimers[k]);
+        delete p.removeTimers[k];
+    });
+    var removes = Object.assign({}, p.removes || {});
+    var adds = Object.assign({}, p.adds || {});
+    p.removes = {};
+    p.adds = {};
+    var idViagem = window._getIdViagemAtivo && window._getIdViagemAtivo();
+    if (!idViagem) return;
+    var fluxo = (window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento';
+    for (var codRem of Object.keys(removes)) {
+        var n = removes[codRem];
+        if (!n || n <= 0) continue;
+        try {
+            await fetchAPI('/conferencia/remover', {
+                method: 'POST',
+                body: JSON.stringify({
+                    id_viagem: idViagem,
+                    codigo_barras: codRem,
+                    quantidade: n,
+                    fluxo: fluxo
+                })
+            });
+        } catch (e) { /* segue */ }
+    }
+    for (var codAdd of Object.keys(adds)) {
+        var entry = adds[codAdd];
+        if (!entry || !entry.qtd || entry.qtd <= 0) continue;
+        try {
+            await buscarProdutoNaPlanilha(codAdd, entry.qtd, true);
+        } catch (e) { /* segue */ }
+    }
+    await (_esperarBipagemConferenciaIdle(15000));
+}
+
 /** Recarrega a tabela só após bipagens pendentes gravarem no servidor (evita “voltar” o contador). */
 function reloadConferenciaAtiva(idViagem, opts) {
     opts = opts || {};
     if (!idViagem) return Promise.resolve();
     var fl = (window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento';
+    var runLoad = function() {
+        return loadConferencia(idViagem, { fluxo: fl, sincronizarServidor: true, forcar: true });
+    };
     if (opts.aguardarBipagem === false) {
-        return loadConferencia(idViagem, { fluxo: fl, sincronizarServidor: true });
+        return runLoad();
     }
-    return _esperarBipagemConferenciaIdle().then(function() {
-        if (_conferenciaTemPendenciasLocais()) return;
-        return loadConferencia(idViagem, { fluxo: fl, sincronizarServidor: true });
+    return _esperarBipagemConferenciaIdle(opts.timeoutMs).then(function() {
+        if (_conferenciaTemPendenciasLocais()) {
+            return _flushTodasPendenciasConferencia().then(runLoad);
+        }
+        return runLoad();
     });
 }
 
@@ -170,6 +219,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initFiltrosBase();
     initBaseItemModal();
     initNavegacaoRapida();
+    initConferenciaTabelaAcoes();
     // Primeira carga após um tick para a tela pintar antes (resposta mais rápida percebida)
     setTimeout(function() {
         loadAllData();
@@ -1101,6 +1151,65 @@ function _prepararSaidaParaEntrada() {
     } catch (e) {}
 }
 
+function _htmlBotoesAcaoConferencia(opts) {
+    opts = opts || {};
+    var codigoBarras = (opts.codigo_barras || '-').toString();
+    if (codigoBarras === '-') {
+        return {
+            bipar: opts.sem_codigo_html || '',
+            tirar: '',
+            excluir: ''
+        };
+    }
+    var cod = escapeHtml(codigoBarras);
+    var prod = escapeHtml(opts.produto || '');
+    var qtdBipada = parseInt(opts.quantidade_bipada, 10) || 0;
+    var qtdFaltaParaBipar = Math.max(1, parseInt(opts.quantidade_falta, 10) || 0);
+    var st = opts.btnStyleSec || 'padding: 4px 8px; font-size: 11px;';
+    var tirar = qtdBipada > 0
+        ? '<button type="button" class="btn btn-secondary" data-conf-acao="tirar-1" data-conf-codigo="' + cod + '" style="' + st + '" title="Remover 1 unidade bipada">➖ Tirar 1</button> '
+          + '<button type="button" class="btn btn-secondary" data-conf-acao="tirar-tudo" data-conf-codigo="' + cod + '" style="' + st + '" title="Remover todas as unidades bipadas deste item">🗑️ Tirar tudo</button> '
+        : '';
+    var excluir = '<button type="button" class="btn btn-secondary" data-conf-acao="excluir" data-conf-codigo="' + cod + '" data-conf-produto="' + prod + '" style="' + st + ' color: #c62828;" title="Excluir item da conferência">🗑️ Excluir</button>';
+    var bipar = '<button type="button" class="btn btn-primary" data-conf-acao="bipar" data-conf-codigo="' + cod + '" data-conf-produto="' + prod + '" data-conf-qtd-falta="' + qtdFaltaParaBipar + '" style="padding: 6px 12px; font-size: 12px;">📱 Bipar</button>';
+    return { bipar: bipar, tirar: tirar, excluir: excluir };
+}
+
+function initConferenciaTabelaAcoes() {
+    function bind(tbodyId) {
+        var tbody = document.getElementById(tbodyId);
+        if (!tbody || tbody._confAcoesBound) return;
+        tbody._confAcoesBound = true;
+        tbody.addEventListener('mousedown', function(e) {
+            if (e.target.closest('[data-conf-acao]')) {
+                window._ignorarBlurBipagemConferencia = true;
+                setTimeout(function() { window._ignorarBlurBipagemConferencia = false; }, 400);
+            }
+        }, { passive: true });
+        tbody.addEventListener('click', function(e) {
+            var btn = e.target.closest('[data-conf-acao]');
+            if (!btn || btn.disabled) return;
+            e.preventDefault();
+            e.stopPropagation();
+            var acao = btn.getAttribute('data-conf-acao');
+            var codigo = btn.getAttribute('data-conf-codigo') || '';
+            var produto = btn.getAttribute('data-conf-produto') || '';
+            var qtdFalta = parseInt(btn.getAttribute('data-conf-qtd-falta'), 10) || 1;
+            if (acao === 'bipar') {
+                biparItem(btn, codigo, produto, qtdFalta);
+            } else if (acao === 'tirar-1') {
+                tirarBipado(btn, codigo, 1);
+            } else if (acao === 'tirar-tudo') {
+                tirarBipado(btn, codigo, 'tudo');
+            } else if (acao === 'excluir') {
+                abrirModalExcluirItem(btn);
+            }
+        });
+    }
+    bind('tbody-conferencia');
+    bind('dev-tbody-conferencia');
+}
+
 function initNavegacaoRapida() {
     var linkInicio = document.querySelector('.header-link-inicio');
     if (!linkInicio) return;
@@ -1391,7 +1500,11 @@ async function loadBaixadosRavex() {
     }
     const rows = Array.isArray(resp.rows) ? resp.rows : [];
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Nenhuma importação registrada ainda.</td></tr>';
+        var msgVazio = 'Nenhuma importação registrada ainda.';
+        if (resp.fonte === 'vazio') {
+            msgVazio += ' Importe pelo menos uma viagem na aba IMPORTAR RAVEX.';
+        }
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">' + escapeHtml(msgVazio) + '</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(r => {
@@ -8473,6 +8586,7 @@ function initForms() {
         if (ravexModalConcluidoMensagem) ravexModalConcluidoMensagem.innerHTML = htmlMessage;
         if (ravexModalConcluido) ravexModalConcluido.style.display = 'flex';
         if (resultadoImportarRavex) resultadoImportarRavex.style.display = 'none';
+        if (typeof loadBaixadosRavex === 'function') void loadBaixadosRavex();
     }
     if (ravexModalConcluidoOk && ravexModalConcluido) {
         ravexModalConcluidoOk.addEventListener('click', function() {
@@ -8704,11 +8818,13 @@ function initForms() {
         
         // Buscar quando perder o foco (blur) — não bipar se o foco foi para um botão (ex.: Tirar 1) para não adicionar de novo
         codigoInput.addEventListener('blur', (e) => {
+            if (window._ignorarBlurBipagemConferencia) return;
             var dest = e.relatedTarget;
-            if (dest && (dest.tagName === 'BUTTON' || dest.type === 'submit' || (dest.getAttribute && dest.getAttribute('onclick')))) return;
+            if (dest && (dest.tagName === 'BUTTON' || dest.type === 'submit' || dest.closest('[data-conf-acao]'))) return;
             setTimeout(function() {
+                if (window._ignorarBlurBipagemConferencia) return;
                 var active = document.activeElement;
-                if (active && (active.tagName === 'BUTTON' || active.type === 'submit' || (active.getAttribute && active.getAttribute('onclick')))) return;
+                if (active && (active.tagName === 'BUTTON' || active.type === 'submit' || active.closest('[data-conf-acao]'))) return;
                 const codigo = (e.target && e.target.value) ? e.target.value.trim() : '';
                 if (codigo.length >= 3 && codigo !== window.ultimoCodigoBuscado) {
                     window.ultimoCodigoBuscado = codigo;
@@ -8830,11 +8946,13 @@ function initForms() {
             }
         });
         codigoInput.addEventListener('blur', function(e) {
+            if (window._ignorarBlurBipagemConferencia) return;
             var dest = e.relatedTarget;
-            if (dest && (dest.tagName === 'BUTTON' || dest.type === 'submit' || (dest.getAttribute && dest.getAttribute('onclick')))) return;
+            if (dest && (dest.tagName === 'BUTTON' || dest.type === 'submit' || dest.closest('[data-conf-acao]'))) return;
             setTimeout(function() {
+                if (window._ignorarBlurBipagemConferencia) return;
                 var active = document.activeElement;
-                if (active && (active.tagName === 'BUTTON' || active.type === 'submit' || (active.getAttribute && active.getAttribute('onclick')))) return;
+                if (active && (active.tagName === 'BUTTON' || active.type === 'submit' || active.closest('[data-conf-acao]'))) return;
                 var codigo = (e.target && e.target.value) ? e.target.value.trim() : '';
                 if (codigo.length >= 3 && codigo !== window.ultimoCodigoBuscado) {
                     window.ultimoCodigoBuscado = codigo;
@@ -10486,12 +10604,14 @@ function atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdu
         if (novaQtdBipada > 0 && codigoBarrasLinha && codigoBarrasLinha !== '-') {
             const cellAcao = row.cells[11];
             if (cellAcao) {
-                const div = cellAcao.querySelector('div');
-                const codigoEsc = (codigoBarrasLinha || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                const btnTirar1 = '<button type="button" class="btn btn-secondary" onclick="tirarBipado(\'' + codigoEsc + '\', 1)" style="padding: 4px 8px; font-size: 11px;" title="Remover 1 unidade bipada">➖ Tirar 1</button>';
-                const btnTirarTudo = '<button type="button" class="btn btn-secondary" onclick="tirarBipado(\'' + codigoEsc + '\', \'tudo\')" style="padding: 4px 8px; font-size: 11px;" title="Remover todas as unidades bipadas deste item">🗑️ Tirar tudo</button>';
-                if (div && !div.querySelector('button[onclick*="tirarBipado"]')) {
-                    div.insertAdjacentHTML('afterbegin', btnTirar1 + ' ' + btnTirarTudo);
+                const div = cellAcao.querySelector('div') || cellAcao;
+                var btnsLinha = _htmlBotoesAcaoConferencia({
+                    codigo_barras: codigoBarrasLinha,
+                    quantidade_bipada: novaQtdBipada,
+                    quantidade_falta: novaQtdFalta
+                });
+                if (!div.querySelector('[data-conf-acao="tirar-1"]')) {
+                    div.insertAdjacentHTML('afterbegin', btnsLinha.tirar);
                 }
             }
         }
@@ -11198,8 +11318,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Modal excluir item da conferência
 window.abrirModalExcluirItem = function(btn) {
-    const codigo = btn.getAttribute('data-codigo') || '';
-    const produto = btn.getAttribute('data-produto') || '';
+    const codigo = btn.getAttribute('data-codigo') || btn.getAttribute('data-conf-codigo') || '';
+    const produto = btn.getAttribute('data-produto') || btn.getAttribute('data-conf-produto') || '';
     document.getElementById('modal-excluir-item-codigo').value = codigo;
     document.getElementById('modal-excluir-item-nome').textContent = produto || codigo || '-';
     document.getElementById('modal-excluir-item').style.display = 'block';
@@ -11218,6 +11338,7 @@ window.confirmarExcluirItem = async function() {
     }
     fecharModalExcluirItem();
     try {
+        await _flushTodasPendenciasConferencia();
         const result = await fetchAPI('/conferencia/remover', {
             method: 'POST',
             body: JSON.stringify({
@@ -11229,7 +11350,7 @@ window.confirmarExcluirItem = async function() {
         });
         if (result && result.success) {
             showMessage(result.mensagem || 'Item excluído da conferência.', 'success');
-            reloadConferenciaAtiva(idViagem);
+            await reloadConferenciaAtiva(idViagem, { aguardarBipagem: false });
             loadPeriodoCarregamento(idViagem);
             loadEstatisticas();
         } else {
@@ -11248,11 +11369,12 @@ async function executarZerarItens() {
     fecharModalZerarItens();
     var fluxoQ = (window._fluxoBipagemAtivo === 'devolucao') ? '?fluxo=devolucao' : '';
     try {
+        await _flushTodasPendenciasConferencia();
+        _limparPendenciasConferenciaTimers();
         const result = await fetchAPI(`/conferencia/${encodeURIComponent(idViagem)}/zerar` + fluxoQ, {
             method: 'DELETE'
         });
         if (result && result.success) {
-            _limparPendenciasConferenciaTimers();
             showMessage(result.mensagem || 'Todos os itens foram zerados. Pode bipar novamente.', 'success');
             await reloadConferenciaAtiva(idViagem, { aguardarBipagem: false });
             await loadPeriodoCarregamento(idViagem);
@@ -11510,23 +11632,23 @@ async function loadConferencia(idViagem = null, opts) {
                                 item.status_bipado === 'EXCEDENTE' ? 'row-excedente' : 
                                 item.status_bipado === 'PENDENTE' ? 'row-pendente' : 'row-parcial';
                 
-                const produtoEscapado = (item.produto || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 const codigoBarras = item.codigo_barras || '-';
-                const codigoBarrasEscapado = (codigoBarras !== '-' ? codigoBarras.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '');
                 const unidade = (item.unidade || '-').toString();
                 const qtdBipada = item.quantidade_bipada || 0;
                 const qtdProdutoItem = item.quantidade_produto || 0;
                 const sobraItem = Math.max(0, (parseInt(qtdBipada, 10) || 0) - (parseInt(qtdProdutoItem, 10) || 0));
                 const avisoSobra = (item.aviso_sobra && item.aviso_sobra.trim()) ? item.aviso_sobra : (sobraItem > 0 ? 'Bipou ' + sobraItem + ' a mais' : '');
                 const qtdProduto = item.quantidade_produto || 0;
-                const qtdFaltaParaBipar = Math.max(1, item.quantidade_falta || 0);
-                const botoesTirar = qtdBipada > 0 && codigoBarras !== '-' ? `
-                            <button type="button" class="btn btn-secondary" onclick="tirarBipado(this, '${codigoBarrasEscapado}', 1)" style="padding: 4px 8px; font-size: 11px;" title="Remover 1 unidade bipada">➖ Tirar 1</button>
-                            <button type="button" class="btn btn-secondary" onclick="tirarBipado(this, '${codigoBarrasEscapado}', 'tudo')" style="padding: 4px 8px; font-size: 11px;" title="Remover todas as unidades bipadas deste item">🗑️ Tirar tudo</button>
-                        ` : '';
-                const produtoAttr = (item.produto || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                const btnExcluir = codigoBarras !== '-' ? `<button type="button" class="btn btn-secondary" onclick="abrirModalExcluirItem(this)" data-codigo="${codigoBarrasEscapado.replace(/"/g, '&quot;')}" data-produto="${produtoAttr}" style="padding: 4px 8px; font-size: 11px; color: #c62828;" title="Excluir item da conferência">🗑️ Excluir</button>` : '';
-                const btnBipar = codigoBarras !== '-' ? `<button type="button" class="btn btn-primary" onclick="biparItem(this, '${codigoBarras}', '${produtoEscapado}', ${qtdFaltaParaBipar})" style="padding: 6px 12px; font-size: 12px;">📱 Bipar</button>` : (item.quantidade_falta > 0 ? '<span style="color: #ff9800;" title="Adicione o código do produto ' + (item.codigo_produto || '') + ' na aba BASE da planilha com o código de barras correspondente.">⚠️ Sem código de barras</span>' : '');
+                const btns = _htmlBotoesAcaoConferencia({
+                    codigo_barras: codigoBarras,
+                    produto: item.produto,
+                    quantidade_bipada: qtdBipada,
+                    quantidade_falta: item.quantidade_falta,
+                    sem_codigo_html: (item.quantidade_falta > 0 ? '<span style="color: #ff9800;" title="Adicione o código do produto ' + escapeHtml(item.codigo_produto || '') + ' na aba BASE com o código de barras correspondente.">⚠️ Sem código de barras</span>' : '')
+                });
+                const btnBipar = btns.bipar;
+                const botoesTirar = btns.tirar;
+                const btnExcluir = codigoBarras !== '-' ? btns.excluir : '';
                 const motivoBruto = motivosEmEdicao[idViagem + '|' + (item.codigo_produto || '')] !== undefined ? motivosEmEdicao[idViagem + '|' + (item.codigo_produto || '')] : (item.motivo_divergencia || '');
                 const motivoVal = (motivoBruto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 const codigoProdutoEsc = (item.codigo_produto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -11629,17 +11751,16 @@ function _flushRemove(codigoBarras) {
         })
     }).then(function(result) {
         if (result && result.success) {
-            showMessage(result.mensagem || n + ' unidade(s) removida(s).', 'success');
-            reloadConferenciaAtiva(idViagem);
+            reloadConferenciaAtiva(idViagem, { aguardarBipagem: false });
             loadPeriodoCarregamento(idViagem);
             loadEstatisticas();
         } else {
             showMessage(result && result.erro ? result.erro : 'Não foi possível remover', 'error');
-            reloadConferenciaAtiva(idViagem);
+            reloadConferenciaAtiva(idViagem, { aguardarBipagem: false });
         }
     }).catch(function() {
         showMessage('Erro ao remover item', 'error');
-        reloadConferenciaAtiva(idViagem);
+        reloadConferenciaAtiva(idViagem, { aguardarBipagem: false });
     });
 }
 function _flushAdd(codigoBarras) {
@@ -11683,13 +11804,20 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
 
     if (qtd === 'tudo') {
         if (!confirm('Remover todas as unidades bipadas deste item?')) return;
-        if (cells) {
-            var qtdProduto = parseInt(cells[5].textContent, 10) || 0;
-            cells[9].textContent = '0';
-            cells[10].textContent = String(qtdProduto);
-            atualizarBoxesComprovante();
-        }
         try {
+            await _flushTodasPendenciasConferencia();
+            if (cells) {
+                var qtdProduto = parseInt(cells[5].textContent, 10) || 0;
+                cells[9].innerHTML = '<strong style="color: #666">0</strong>';
+                cells[10].innerHTML = '<strong style="color: #f44336">' + qtdProduto + '</strong>';
+                if (row && row.classList) {
+                    row.classList.remove('row-completo', 'row-excedente', 'row-parcial');
+                    row.classList.add('row-pendente');
+                    if (row.cells[0]) row.cells[0].innerHTML = '<span class="status-badge status-FALTA">❌ PENDENTE</span>';
+                }
+                atualizarTotaisConferenciaFromDOM();
+                atualizarBoxesComprovante();
+            }
             const result = await fetchAPI('/conferencia/remover', {
                 method: 'POST',
                 body: JSON.stringify({
@@ -11701,16 +11829,16 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
             });
             if (result && result.success) {
                 showMessage(result.mensagem || 'Item(s) removido(s).', 'success');
-                reloadConferenciaAtiva(idViagem);
+                await reloadConferenciaAtiva(idViagem, { aguardarBipagem: false });
                 loadPeriodoCarregamento(idViagem);
                 loadEstatisticas();
             } else {
                 showMessage(result && result.erro ? result.erro : 'Não foi possível remover', 'error');
-                reloadConferenciaAtiva(idViagem);
+                await reloadConferenciaAtiva(idViagem, { aguardarBipagem: false });
             }
         } catch (e) {
             showMessage('Erro ao remover item', 'error');
-            reloadConferenciaAtiva(idViagem);
+            await reloadConferenciaAtiva(idViagem, { aguardarBipagem: false });
         }
         return;
     }
@@ -11719,8 +11847,16 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
         var qtdBipada = parseInt(cells[9].textContent, 10) || 0;
         var qtdFalta = parseInt(cells[10].textContent, 10) || 0;
         if (qtdBipada <= 0) return;
-        cells[9].textContent = String(Math.max(0, qtdBipada - 1));
-        cells[10].textContent = String(qtdFalta + 1);
+        var novaBip = Math.max(0, qtdBipada - 1);
+        var novaFalta = qtdFalta + 1;
+        cells[9].innerHTML = '<strong style="color: ' + (novaBip > 0 ? '#4caf50' : '#666') + '">' + novaBip + '</strong>';
+        cells[10].innerHTML = '<strong style="color: #f44336">' + novaFalta + '</strong>';
+        if (row && row.classList) {
+            row.classList.remove('row-completo', 'row-excedente');
+            row.classList.add('row-parcial');
+            if (row.cells[0]) row.cells[0].innerHTML = '<span class="status-badge status-SOBRA">⚠️ PARCIAL</span>';
+        }
+        atualizarTotaisConferenciaFromDOM();
         atualizarBoxesComprovante();
     }
     window._conferenciaPending.removes[codigoBarras] = (window._conferenciaPending.removes[codigoBarras] || 0) + 1;
@@ -11753,9 +11889,25 @@ window.biparItem = function(btnOrCodigo, codigoBarrasOrProduto, produtoOrQtd, qu
     if (qtdFaltaAtual <= 0) return;
     if (cells) {
         var qtdBipada = parseInt(cells[9].textContent, 10) || 0;
-        cells[9].textContent = String(qtdBipada + 1);
-        cells[10].textContent = String(qtdFaltaAtual - 1);
+        var novaBipAdd = qtdBipada + 1;
+        var novaFaltaAdd = Math.max(0, qtdFaltaAtual - 1);
+        cells[9].innerHTML = '<strong style="color: #4caf50">' + novaBipAdd + '</strong>';
+        cells[10].innerHTML = '<strong style="color: ' + (novaFaltaAdd > 0 ? '#f44336' : '#4caf50') + '">' + novaFaltaAdd + '</strong>';
+        atualizarTotaisConferenciaFromDOM();
         atualizarBoxesComprovante();
+        var btnsAdd = _htmlBotoesAcaoConferencia({
+            codigo_barras: codigoBarras,
+            produto: produto,
+            quantidade_bipada: novaBipAdd,
+            quantidade_falta: novaFaltaAdd
+        });
+        var cellAcaoBip = cells[11] || (row && row.cells[11]);
+        if (cellAcaoBip) {
+            var divBip = cellAcaoBip.querySelector('div') || cellAcaoBip;
+            if (!divBip.querySelector('[data-conf-acao="tirar-1"]')) {
+                divBip.insertAdjacentHTML('afterbegin', btnsAdd.tirar);
+            }
+        }
     }
     if (!window._conferenciaPending.adds[codigoBarras]) window._conferenciaPending.adds[codigoBarras] = { qtd: 0 };
     window._conferenciaPending.adds[codigoBarras].qtd += 1;

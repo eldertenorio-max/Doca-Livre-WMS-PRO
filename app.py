@@ -3494,7 +3494,7 @@ def _registrar_importacao_ravex(conn, *, dataset_id, tipo, status, parametros=No
         usuario = session.get('usuario', '') or None
         agora_utc = datetime.now(timezone.utc)
         conn.execute(
-            """INSERT INTO ravex_importacoes (dataset_id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em)
+            """INSERT INTO public.ravex_importacoes (dataset_id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em)
                VALUES (?, ?, ?, ?::jsonb, ?, ?, ?, ?::jsonb, ?)""",
             (
                 str(dataset_id) if dataset_id else None,
@@ -3508,8 +3508,101 @@ def _registrar_importacao_ravex(conn, *, dataset_id, tipo, status, parametros=No
                 agora_utc,
             ),
         )
+    except Exception as ex:
+        try:
+            app.logger.warning('Falha ao registrar ravex_importacoes: %s', ex)
+        except Exception:
+            pass
+
+
+def _formatar_criado_em_baixados_ravex(criado):
+    if criado is None:
+        return ''
+    if hasattr(criado, 'astimezone'):
+        try:
+            if getattr(criado, 'tzinfo', None) is None:
+                criado = criado.replace(tzinfo=timezone.utc)
+            if ZoneInfo:
+                return criado.astimezone(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
+            return criado.strftime('%d/%m/%Y %H:%M:%S')
+        except Exception:
+            return criado.strftime('%d/%m/%Y %H:%M:%S') if hasattr(criado, 'strftime') else str(criado)
+    s = str(criado).strip()
+    if len(s) >= 19 and s[4] == '-' and 'T' in s:
+        try:
+            dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
+            if ZoneInfo:
+                return dt.astimezone(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
+            return dt.strftime('%d/%m/%Y %H:%M:%S')
+        except Exception:
+            pass
+    return s
+
+
+def _ravex_importacao_dict_from_row(r):
+    def _get(k, idx):
+        return (r.get(k) if hasattr(r, 'get') else (r[idx] if hasattr(r, '__getitem__') and len(r) > idx else None))
+
+    params = _get('parametros', 3)
+    errs = _get('erros', 7)
+    try:
+        if isinstance(params, str):
+            params = json.loads(params)
     except Exception:
         pass
+    try:
+        if isinstance(errs, str):
+            errs = json.loads(errs)
+    except Exception:
+        pass
+    return {
+        'id': _get('id', 0),
+        'tipo': _get('tipo', 1) or '',
+        'status': _get('status', 2) or '',
+        'parametros': params or {},
+        'viagens_processadas': _get('viagens_processadas', 4) or 0,
+        'total_itens': _get('total_itens', 5) or 0,
+        'usuario': _get('usuario', 6) or '',
+        'erros': errs or [],
+        'criado_em': _formatar_criado_em_baixados_ravex(_get('criado_em', 8)),
+    }
+
+
+def _listar_baixados_ravex_de_romaneio(conn, limit=200):
+    """Fallback: agrupa romaneio_por_item por lote de importado_em quando ravex_importacoes está vazio."""
+    try:
+        rows = conn.execute(
+            """SELECT importado_em, dataset_id,
+                      COUNT(DISTINCT id_viagem) AS viagens,
+                      COUNT(*) AS total_itens
+               FROM romaneio_por_item
+               WHERE importado_em IS NOT NULL
+               GROUP BY importado_em, dataset_id
+               ORDER BY importado_em DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    except Exception:
+        return []
+    out = []
+    for r in rows or []:
+        def _g(k, i):
+            return (r.get(k) if hasattr(r, 'get') else (r[i] if hasattr(r, '__getitem__') and len(r) > i else None))
+
+        imp = _g('importado_em', 0)
+        ds = _g('dataset_id', 1)
+        out.append({
+            'id': None,
+            'tipo': 'romaneio',
+            'status': 'OK',
+            'parametros': {'origem': 'romaneio_por_item', 'dataset_id': str(ds) if ds else None},
+            'viagens_processadas': int(_g('viagens', 2) or 0),
+            'total_itens': int(_g('total_itens', 3) or 0),
+            'usuario': '',
+            'erros': [],
+            'criado_em': _formatar_criado_em_baixados_ravex(imp),
+        })
+    return out
 
 
 def _normalizar_data_para_ravex(s):
@@ -4360,75 +4453,45 @@ def api_ravex_listar_importacoes():
         if getattr(conn, 'kind', None) != 'pg':
             conn.close()
             return jsonify({'erro': 'Banco não é Postgres.', 'rows': []}), 400
-        ds = _get_latest_dataset_id(conn)
         limit = request.args.get('limit', '200')
+        dataset_filtro = (request.args.get('dataset_id') or '').strip()
         try:
             limit_i = max(10, min(500, int(limit)))
         except Exception:
             limit_i = 200
-        if ds is not None:
+        if dataset_filtro:
             sql = """SELECT id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em
-                     FROM ravex_importacoes
-                     WHERE dataset_id = ?
-                     ORDER BY criado_em DESC
+                     FROM public.ravex_importacoes
+                     WHERE dataset_id = ?::uuid
+                     ORDER BY criado_em DESC NULLS LAST
                      LIMIT ?"""
-            params = (str(ds), limit_i)
+            params = (dataset_filtro, limit_i)
         else:
             sql = """SELECT id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em
-                     FROM ravex_importacoes
-                     ORDER BY criado_em DESC
+                     FROM public.ravex_importacoes
+                     ORDER BY criado_em DESC NULLS LAST
                      LIMIT ?"""
             params = (limit_i,)
         rows = conn.execute(sql, params).fetchall()
+        out = [_ravex_importacao_dict_from_row(r) for r in (rows or [])]
+        fonte = 'ravex_importacoes'
+        if not out:
+            out = _listar_baixados_ravex_de_romaneio(conn, limit_i)
+            fonte = 'romaneio_por_item' if out else 'vazio'
         conn.close()
-        out = []
-        for r in rows or []:
-            def _get(k, idx):
-                return (r.get(k) if hasattr(r, 'get') else (r[idx] if hasattr(r, '__getitem__') and len(r) > idx else None))
-            params = _get('parametros', 3)
-            errs = _get('erros', 7)
-            try:
-                if isinstance(params, str):
-                    params = json.loads(params)
-            except Exception:
-                pass
-            try:
-                if isinstance(errs, str):
-                    errs = json.loads(errs)
-            except Exception:
-                pass
-            criado = _get('criado_em', 8)
-            if criado is not None and hasattr(criado, 'astimezone'):
-                # Exibir no fuso de São Paulo (horário em que o usuário baixou)
-                try:
-                    if getattr(criado, 'tzinfo', None) is None:
-                        criado = criado.replace(tzinfo=timezone.utc)
-                    if ZoneInfo:
-                        criado = criado.astimezone(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
-                    else:
-                        criado = criado.strftime('%d/%m/%Y %H:%M:%S')
-                except Exception:
-                    criado = criado.strftime('%d/%m/%Y %H:%M:%S') if hasattr(criado, 'strftime') else str(criado or '')
-            elif hasattr(criado, 'strftime'):
-                criado = criado.strftime('%d/%m/%Y %H:%M:%S')
-            out.append({
-                'id': _get('id', 0),
-                'tipo': _get('tipo', 1),
-                'status': _get('status', 2),
-                'parametros': params or {},
-                'viagens_processadas': _get('viagens_processadas', 4) or 0,
-                'total_itens': _get('total_itens', 5) or 0,
-                'usuario': _get('usuario', 6) or '',
-                'erros': errs or [],
-                'criado_em': criado or '',
-            })
-        return jsonify({'ok': True, 'rows': out})
+        return jsonify({'ok': True, 'rows': out, 'fonte': fonte})
     except Exception as e:
         try:
             conn.close()
         except Exception:
             pass
-        return jsonify({'erro': str(e), 'rows': []}), 500
+        err = str(e)
+        if 'ravex_importacoes' in err.lower() and ('does not exist' in err.lower() or 'não existe' in err.lower()):
+            return jsonify({
+                'erro': 'Tabela ravex_importacoes não existe no Supabase. Execute supabase/migrate_ravex_importacoes.sql no SQL Editor.',
+                'rows': [],
+            }), 500
+        return jsonify({'erro': err, 'rows': []}), 500
 
 def _qual_coluna_filtro(header_str, tipo):
     """Retorna True se o cabeçalho corresponde ao tipo de filtro (data, pedido, nota_fiscal, cliente)."""
