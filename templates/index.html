@@ -2599,6 +2599,9 @@
             <div class="ravex-loading-bar-track" id="ravex-loading-bar-track">
                 <div id="ravex-loading-bar" class="ravex-loading-bar"></div>
             </div>
+            <div id="ravex-loading-cancel-wrap" class="ravex-loading-cancel-wrap" style="display: none;">
+                <button type="button" class="btn btn-secondary" id="ravex-loading-cancel">Cancelar</button>
+            </div>
             <div id="ravex-error-actions" style="display: none; margin-top: 24px;">
                 <button type="button" class="btn btn-primary" id="ravex-overlay-ok">OK</button>
             </div>
@@ -2632,6 +2635,12 @@
             font-size: 20px;
             color: #0d47a1;
             font-weight: 700;
+        }
+        .ravex-loading-cancel-wrap {
+            margin-top: 22px;
+        }
+        .ravex-loading-cancel-wrap .btn {
+            min-width: 140px;
         }
         .ravex-loading-bar-track {
             height: 20px;

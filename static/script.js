@@ -28,10 +28,83 @@ window._elBipagem = function(id) {
     return document.getElementById(map[id] || id);
 };
 
-function reloadConferenciaAtiva(idViagem) {
+function _conferenciaTemPendenciasLocais() {
+    var p = window._conferenciaPending;
+    if (!p) return false;
+    var adds = p.adds || {};
+    var removes = p.removes || {};
+    var k;
+    for (k in adds) {
+        if (adds[k] && adds[k].qtd > 0) return true;
+    }
+    for (k in removes) {
+        if ((removes[k] || 0) > 0) return true;
+    }
+    return false;
+}
+
+function _limparPendenciasConferenciaTimers() {
+    var p = window._conferenciaPending;
+    if (!p) return;
+    Object.keys(p.addTimers || {}).forEach(function(chave) {
+        clearTimeout(p.addTimers[chave]);
+        delete p.addTimers[chave];
+    });
+    Object.keys(p.removeTimers || {}).forEach(function(chave) {
+        clearTimeout(p.removeTimers[chave]);
+        delete p.removeTimers[chave];
+    });
+    p.adds = {};
+    p.removes = {};
+}
+
+function _esperarBipagemConferenciaIdle(timeoutMs) {
+    timeoutMs = timeoutMs == null ? 90000 : timeoutMs;
+    var inicio = Date.now();
+    return new Promise(function(resolve) {
+        function passo() {
+            if (Date.now() - inicio > timeoutMs) {
+                resolve();
+                return;
+            }
+            if (_conferenciaTemPendenciasLocais()) {
+                setTimeout(passo, 120);
+                return;
+            }
+            var chain = window.bipagemEmAndamento || Promise.resolve();
+            chain.then(function() {
+                if (_conferenciaTemPendenciasLocais()) setTimeout(passo, 120);
+                else resolve();
+            }).catch(function() { resolve(); });
+        }
+        passo();
+    });
+}
+
+/** Recarrega a tabela só após bipagens pendentes gravarem no servidor (evita “voltar” o contador). */
+function reloadConferenciaAtiva(idViagem, opts) {
+    opts = opts || {};
     if (!idViagem) return Promise.resolve();
     var fl = (window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento';
-    return loadConferencia(idViagem, { fluxo: fl });
+    if (opts.aguardarBipagem === false) {
+        return loadConferencia(idViagem, { fluxo: fl, sincronizarServidor: true });
+    }
+    return _esperarBipagemConferenciaIdle().then(function() {
+        if (_conferenciaTemPendenciasLocais()) return;
+        return loadConferencia(idViagem, { fluxo: fl, sincronizarServidor: true });
+    });
+}
+
+function _conferenciaTabelaJaCarregada(fluxoTab, idViagem) {
+    var isDev = fluxoTab === 'devolucao';
+    var idAtivo = isDev ? (window._devConferenciaIdViagemAtiva || '') : (window._conferenciaIdViagemAtiva || '');
+    if (!idViagem || String(idViagem) !== String(idAtivo)) return false;
+    var tbody = document.getElementById(isDev ? 'dev-tbody-conferencia' : 'tbody-conferencia');
+    if (!tbody) return false;
+    var trs = tbody.querySelectorAll('tr');
+    if (!trs.length) return false;
+    if (trs.length === 1 && tbody.querySelector('td.loading')) return false;
+    return true;
 }
 
 // Atualização em tempo real: stream de eventos (quando alguém bipa em qualquer dispositivo, todos atualizam)
@@ -1268,7 +1341,10 @@ function loadTabData(tab) {
                 showMessage('Digite o ID do roteiro e busque para atualizar a conferência.', 'warning');
                 return Promise.resolve();
             }
-            return loadConferencia(idV).then(function() {
+            if (_conferenciaTabelaJaCarregada('carregamento', idV) && !_conferenciaTemPendenciasLocais()) {
+                return loadEstatisticas();
+            }
+            return loadConferencia(idV, { forcar: true }).then(function() {
                 loadEstatisticas();
             });
         }
@@ -8395,6 +8471,7 @@ function initForms() {
         var box = document.getElementById('ravex-loading-box');
         var barTrack = document.getElementById('ravex-loading-bar-track');
         var errorActions = document.getElementById('ravex-error-actions');
+        _ravexLoadingSetCancelVisible(false);
         if (el && text) {
             text.textContent = msg || 'Puxando roteiro/viagem da API Ravex...';
             if (box) box.classList.remove('ravex-loading-box--error');
@@ -8408,6 +8485,7 @@ function initForms() {
         var box = document.getElementById('ravex-loading-box');
         var barTrack = document.getElementById('ravex-loading-bar-track');
         var errorActions = document.getElementById('ravex-error-actions');
+        _ravexLoadingSetCancelVisible(false);
         if (el) el.style.display = 'none';
         if (box) box.classList.remove('ravex-loading-box--error');
         if (barTrack) barTrack.style.display = '';
@@ -8422,6 +8500,7 @@ function initForms() {
         var barTrack = document.getElementById('ravex-loading-bar-track');
         var errorActions = document.getElementById('ravex-error-actions');
         var okBtn = document.getElementById('ravex-overlay-ok');
+        _ravexLoadingSetCancelVisible(false);
         if (el && text) {
             text.textContent = msg || 'Erro ao processar.';
             if (box) box.classList.add('ravex-loading-box--error');
@@ -9313,11 +9392,32 @@ async function fetchAPI(endpoint, options = {}) {
         };
     } catch (error) {
         if (error && error.name === 'AbortError') {
-            return { ok: false, erro: 'Tempo esgotado ao contactar o servidor.', _timeout: true };
+            var cancelado = !!(options && options.signal && options.signal.aborted);
+            return {
+                ok: false,
+                erro: cancelado ? 'Operação cancelada.' : 'Tempo esgotado ao contactar o servidor.',
+                _cancelado: cancelado,
+                _timeout: !cancelado
+            };
         }
         console.error('Erro na API:', error);
         showMessage('Erro ao conectar com o servidor', 'error');
         return null;
+    }
+}
+
+function _ravexLoadingSetCancelVisible(visivel, onCancel) {
+    var wrap = document.getElementById('ravex-loading-cancel-wrap');
+    var btn = document.getElementById('ravex-loading-cancel');
+    if (!wrap || !btn) return;
+    if (visivel) {
+        wrap.style.display = 'block';
+        btn.onclick = function() {
+            if (typeof onCancel === 'function') onCancel();
+        };
+    } else {
+        wrap.style.display = 'none';
+        btn.onclick = null;
     }
 }
 
@@ -10818,6 +10918,8 @@ window.buscarItensViagem = async function() {
     var overlayBox = document.getElementById('ravex-loading-box');
     var barTrack = document.getElementById('ravex-loading-bar-track');
     var errorActions = document.getElementById('ravex-error-actions');
+    var abortCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var cancelado = false;
     function showOverlay(msg) {
         if (overlayEl && overlayText) {
             overlayText.textContent = msg || 'Carregando conferência... Aguarde.';
@@ -10826,33 +10928,56 @@ window.buscarItensViagem = async function() {
             if (errorActions) errorActions.style.display = 'none';
             overlayEl.style.display = 'flex';
         }
+        _ravexLoadingSetCancelVisible(true, function() {
+            cancelado = true;
+            if (abortCtrl) {
+                try { abortCtrl.abort(); } catch (e) {}
+            }
+            hideOverlay();
+            showMessage('Carregamento cancelado.', 'warning');
+        });
     }
     function hideOverlay() {
+        _ravexLoadingSetCancelVisible(false);
         if (overlayEl) overlayEl.style.display = 'none';
     }
+    var idAnterior = (window._conferenciaIdViagemAtiva || '').trim();
+    if (idAnterior && idAnterior !== idInput) {
+        _limparPendenciasConferenciaTimers();
+    }
+
     showOverlay('Carregando conferência da base de dados (romaneio por item)... Aguarde.');
     showMessage('Buscando itens na base...', 'success');
     
     var idViagem = idInput;
+    var sucesso = false;
     try {
-        await loadConferencia(idInput);
-        hideOverlay();
+        await loadConferencia(idInput, { signal: abortCtrl ? abortCtrl.signal : undefined, forcar: true });
+        if (cancelado) return;
         idViagem = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim()) || document.getElementById('id-viagem').value.trim() || idInput;
         loadPeriodoCarregamento(idViagem);
         loadViagemInfo(idViagem);
+        sucesso = true;
     } catch (e) {
+        if (cancelado || (e && e._cancelado)) return;
         showMessage('Erro ao conectar. Tente novamente.', 'error');
         if (overlayEl && overlayText) {
             overlayText.textContent = 'Erro: ' + (e.message || 'Não foi possível carregar');
             if (overlayBox) overlayBox.classList.add('ravex-loading-box--error');
             if (barTrack) barTrack.style.display = 'none';
             if (errorActions) errorActions.style.display = 'block';
+            _ravexLoadingSetCancelVisible(false);
             var okBtn = document.getElementById('ravex-overlay-ok');
             if (okBtn) okBtn.onclick = function() { hideOverlay(); };
+            overlayEl.style.display = 'flex';
+            return;
         }
     } finally {
-        hideOverlay();
+        if (!cancelado) hideOverlay();
     }
+    if (!sucesso) return;
+
+    window._conferenciaIdViagemAtiva = idViagem;
     
     document.getElementById('id-viagem-hidden').value = idViagem;
     document.getElementById('id-viagem').value = idViagem;
@@ -10899,6 +11024,8 @@ window.buscarItensViagemDevolucao = async function() {
     var overlayBox = document.getElementById('ravex-loading-box');
     var barTrack = document.getElementById('ravex-loading-bar-track');
     var errorActions = document.getElementById('ravex-error-actions');
+    var abortCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var cancelado = false;
     function showOverlay(msg) {
         if (overlayEl && overlayText) {
             overlayText.textContent = msg || 'Carregando devolução... Aguarde.';
@@ -10907,30 +11034,54 @@ window.buscarItensViagemDevolucao = async function() {
             if (errorActions) errorActions.style.display = 'none';
             overlayEl.style.display = 'flex';
         }
+        _ravexLoadingSetCancelVisible(true, function() {
+            cancelado = true;
+            if (abortCtrl) {
+                try { abortCtrl.abort(); } catch (e) {}
+            }
+            hideOverlay();
+            showMessage('Carregamento cancelado.', 'warning');
+        });
     }
     function hideOverlay() {
+        _ravexLoadingSetCancelVisible(false);
         if (overlayEl) overlayEl.style.display = 'none';
     }
+    var idAnteriorDev = (window._devConferenciaIdViagemAtiva || '').trim();
+    if (idAnteriorDev && idAnteriorDev !== idInput) {
+        _limparPendenciasConferenciaTimers();
+    }
+
     showOverlay('Carregando romaneio da viagem (contagem de devolução)... Aguarde.');
     showMessage('Buscando itens na base...', 'success');
     var idViagem = idInput;
+    var sucesso = false;
     try {
-        await loadConferencia(idInput, { fluxo: 'devolucao' });
-        hideOverlay();
+        await loadConferencia(idInput, { fluxo: 'devolucao', signal: abortCtrl ? abortCtrl.signal : undefined, forcar: true });
+        if (cancelado) return;
         idViagem = (document.getElementById('dev-id-viagem-hidden') && document.getElementById('dev-id-viagem-hidden').value.trim()) || (idInputEl && idInputEl.value.trim()) || idInput;
+        sucesso = true;
     } catch (e) {
+        if (cancelado || (e && e._cancelado)) return;
         showMessage('Erro ao conectar. Tente novamente.', 'error');
         if (overlayEl && overlayText) {
             overlayText.textContent = 'Erro: ' + (e.message || 'Não foi possível carregar');
             if (overlayBox) overlayBox.classList.add('ravex-loading-box--error');
             if (barTrack) barTrack.style.display = 'none';
             if (errorActions) errorActions.style.display = 'block';
+            _ravexLoadingSetCancelVisible(false);
             var okBtn = document.getElementById('ravex-overlay-ok');
             if (okBtn) okBtn.onclick = function() { hideOverlay(); };
+            overlayEl.style.display = 'flex';
+            return;
         }
     } finally {
-        hideOverlay();
+        if (!cancelado) hideOverlay();
     }
+    if (!sucesso) return;
+
+    window._devConferenciaIdViagemAtiva = idViagem;
+
     var hid = document.getElementById('dev-id-viagem-hidden');
     if (hid) hid.value = idViagem;
     if (idInputEl) idInputEl.value = idViagem;
@@ -11087,8 +11238,9 @@ async function executarZerarItens() {
             method: 'DELETE'
         });
         if (result && result.success) {
+            _limparPendenciasConferenciaTimers();
             showMessage(result.mensagem || 'Todos os itens foram zerados. Pode bipar novamente.', 'success');
-            await reloadConferenciaAtiva(idViagem);
+            await reloadConferenciaAtiva(idViagem, { aguardarBipagem: false });
             await loadPeriodoCarregamento(idViagem);
             loadEstatisticas();
             var cbZ = window._elBipagem('codigo-barras');
@@ -11223,6 +11375,11 @@ async function loadConferencia(idViagem = null, opts) {
     opts = opts || {};
     const fluxoTab = opts.fluxo || 'carregamento';
     const isDev = fluxoTab === 'devolucao';
+    const forcarRecarga = !!(opts.forcar || opts.sincronizarServidor);
+    if (!forcarRecarga && _conferenciaTemPendenciasLocais()) {
+        return;
+    }
+    var seq = ++(window._conferenciaLoadSeq = (window._conferenciaLoadSeq || 0) + 1);
     function L(id) {
         if (!isDev) return document.getElementById(id);
         const map = {
@@ -11255,7 +11412,15 @@ async function loadConferencia(idViagem = null, opts) {
     try {
         var q = '?_=' + Date.now();
         if (isDev) q += '&fluxo=devolucao';
-        const conferencia = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + q);
+        var fetchOpts = {};
+        if (opts.signal) fetchOpts.signal = opts.signal;
+        const conferencia = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + q, fetchOpts);
+        if (seq !== window._conferenciaLoadSeq) return;
+        if (conferencia && conferencia._cancelado) {
+            var errCancel = new Error('Cancelado');
+            errCancel._cancelado = true;
+            throw errCancel;
+        }
         if (conferencia && !conferencia.erro) {
             const listaParaUI = Array.isArray(conferencia.lista) ? conferencia.lista : (Array.isArray(conferencia) ? conferencia : []);
             if (conferencia.id_roteiro !== undefined || conferencia.id_viagem !== undefined || conferencia.identificador_rota !== undefined || conferencia.placa !== undefined || conferencia.motorista !== undefined || conferencia.data_expedicao !== undefined) {
@@ -11392,6 +11557,8 @@ async function loadConferencia(idViagem = null, opts) {
             var btnZ = isDev ? document.getElementById('dev-btn-zerar-bipados') : document.getElementById('btn-voltar-bipar');
             if (btnZ) btnZ.style.display = 'inline-block';
             atualizarBoxesComprovante(conferenciaUI, fluxoTab);
+            if (isDev) window._devConferenciaIdViagemAtiva = idViagem;
+            else window._conferenciaIdViagemAtiva = idViagem;
             return conferencia;
         } else if (conferencia && conferencia.erro) {
             const tbodyE = L('tbody-conferencia');
@@ -11404,6 +11571,9 @@ async function loadConferencia(idViagem = null, opts) {
             return undefined;
         }
     } catch (error) {
+        if (error && error._cancelado) {
+            throw error;
+        }
         const fluxoTab2 = (opts && opts.fluxo) || 'carregamento';
         const isDev2 = fluxoTab2 === 'devolucao';
         function L2(id) {
@@ -11470,9 +11640,9 @@ function _flushAdd(codigoBarras) {
     }
     window._ultimoBipadoCodigo = (codigoBarras || '').toString().trim();
     buscarProdutoNaPlanilha(codigoBarras, qtd, true).then(function() {
-        setTimeout(function() { reloadConferenciaAtiva(idViagem); }, 400);
+        return reloadConferenciaAtiva(idViagem);
     }).catch(function() {
-        reloadConferenciaAtiva(idViagem);
+        return reloadConferenciaAtiva(idViagem);
     });
 }
 
@@ -12023,6 +12193,33 @@ window.imprimirDivergencias = function() {
     setTimeout(function() { document.body.classList.remove('print-divergencias'); }, 500);
 };
 
+function _htmlStatusExtratoCelula(item) {
+    const st = (item && item.status_bipado) || 'PENDENTE';
+    const statusClass = st === 'COMPLETO' ? 'status-OK' : st === 'EXCEDENTE' ? 'status-EXCEDENTE' : st === 'PARCIAL' ? 'status-SOBRA' : 'status-FALTA';
+    const statusTela = st === 'COMPLETO' ? '✅ COMPLETO' : st === 'EXCEDENTE' ? '📦 EXCEDENTE' : st === 'PARCIAL' ? '⚠️ PARCIAL' : '❌ PENDENTE';
+    const statusPrint = st === 'COMPLETO' ? 'OK' : st === 'EXCEDENTE' ? 'EXC' : st === 'PARCIAL' ? 'PAR' : 'PEND';
+    return '<td><span class="status-badge ' + statusClass + '"><span class="extrato-status-screen">' + statusTela + '</span><span class="extrato-status-print">' + statusPrint + '</span></span></td>';
+}
+
+function _htmlLinhaExtratoTabela(item) {
+    const motivo = (item.motivo_divergencia || '').trim();
+    const qtdBip = parseInt(item.quantidade_bipada, 10) || 0;
+    const qtdFalta = parseInt(item.quantidade_falta, 10) || 0;
+    return '<tr>'
+        + _htmlStatusExtratoCelula(item)
+        + '<td>' + (motivo ? escHtml(motivo) : '-') + '</td>'
+        + '<td><strong>' + escHtml(item.codigo_barras || '-') + '</strong></td>'
+        + '<td><strong style="color: #1976D2;">' + escHtml(item.codigo_produto || '-') + '</strong></td>'
+        + '<td>' + escHtml(item.produto || '-') + '</td>'
+        + '<td><strong>' + escHtml(String(item.quantidade_produto || 0)) + '</strong></td>'
+        + '<td>' + escHtml(item.unidade || '-') + '</td>'
+        + '<td>' + escHtml((item.peso_bruto != null && item.peso_bruto !== '') ? String(item.peso_bruto) : '-') + '</td>'
+        + '<td style="color: #d32f2f; font-weight: bold;">' + escHtml(item.aviso_sobra || '') + '</td>'
+        + '<td><strong style="color: ' + (qtdBip > 0 ? '#4caf50' : '#666') + '">' + qtdBip + '</strong></td>'
+        + '<td><strong style="color: ' + (qtdFalta > 0 ? '#f44336' : '#4caf50') + '">' + qtdFalta + '</strong></td>'
+        + '</tr>';
+}
+
 // Carregar Extrato (mesmas colunas da Conferência: status, código barras, código produto, produto, qtd produto, unidade, aviso, qtd bipada, qtd falta)
 // idViagemOpcional: quando passado (ex.: ao clicar em Gerar comprovante), usa esse ID e atualiza o input
 async function loadExtrato(idViagemOpcional) {
@@ -12141,26 +12338,7 @@ async function loadExtrato(idViagemOpcional) {
         if (fimCarreg) fimCarreg.textContent = (periodo && periodo.fim_carregamento) ? periodo.fim_carregamento : '-';
     }
     if (btnExcluir) btnExcluir.style.display = 'inline-block';
-    tbody.innerHTML = extrato.map(item => {
-        const statusClass = item.status_bipado === 'COMPLETO' ? 'status-OK' : item.status_bipado === 'EXCEDENTE' ? 'status-EXCEDENTE' : item.status_bipado === 'PARCIAL' ? 'status-SOBRA' : 'status-FALTA';
-        const statusText = item.status_bipado === 'COMPLETO' ? '✅ COMPLETO' : item.status_bipado === 'EXCEDENTE' ? '📦 EXCEDENTE' : item.status_bipado === 'PARCIAL' ? '⚠️ PARCIAL' : '❌ PENDENTE';
-        const motivo = (item.motivo_divergencia || '').trim();
-        return `
-        <tr>
-            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-            <td>${motivo ? escHtml(motivo) : '-'}</td>
-            <td><strong>${item.codigo_barras || '-'}</strong></td>
-            <td><strong style="color: #1976D2;">${item.codigo_produto || '-'}</strong></td>
-            <td>${item.produto || '-'}</td>
-            <td><strong>${item.quantidade_produto || 0}</strong></td>
-            <td>${item.unidade || '-'}</td>
-            <td>${(item.peso_bruto != null && item.peso_bruto !== '') ? item.peso_bruto : '-'}</td>
-            <td style="color: #d32f2f; font-weight: bold;">${item.aviso_sobra || ''}</td>
-            <td><strong style="color: ${(item.quantidade_bipada || 0) > 0 ? '#4caf50' : '#666'}">${item.quantidade_bipada || 0}</strong></td>
-            <td><strong style="color: ${(item.quantidade_falta || 0) > 0 ? '#f44336' : '#4caf50'}">${item.quantidade_falta || 0}</strong></td>
-        </tr>
-    `;
-    }).join('');
+    tbody.innerHTML = extrato.map(function(item) { return _htmlLinhaExtratoTabela(item); }).join('');
 
     // Mostrar aviso "Comprovante divergente" quando há itens com falta ou status não completo
     const temDivergencia = extrato.some(item => (item.quantidade_falta || 0) > 0 || (item.status_bipado !== 'COMPLETO'));
@@ -12237,22 +12415,7 @@ async function loadExtratoDevolucao(idViagemOpcional) {
     }
 
     tbody.innerHTML = extrato.map(function(item) {
-        const statusClass = item.status_bipado === 'COMPLETO' ? 'status-OK' : item.status_bipado === 'EXCEDENTE' ? 'status-EXCEDENTE' : item.status_bipado === 'PARCIAL' ? 'status-SOBRA' : 'status-FALTA';
-        const statusText = item.status_bipado === 'COMPLETO' ? '✅ COMPLETO' : item.status_bipado === 'EXCEDENTE' ? '📦 EXCEDENTE' : item.status_bipado === 'PARCIAL' ? '⚠️ PARCIAL' : '❌ PENDENTE';
-        const motivo = (item.motivo_divergencia || '').trim();
-        return '<tr>'
-            + '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>'
-            + '<td>' + (motivo ? escHtml(motivo) : '-') + '</td>'
-            + '<td><strong>' + escHtml(item.codigo_barras || '-') + '</strong></td>'
-            + '<td><strong style="color: #1976D2;">' + escHtml(item.codigo_produto || '-') + '</strong></td>'
-            + '<td>' + escHtml(item.produto || '-') + '</td>'
-            + '<td><strong>' + (item.quantidade_produto || 0) + '</strong></td>'
-            + '<td>' + escHtml(item.unidade || '-') + '</td>'
-            + '<td>' + ((item.peso_bruto != null && item.peso_bruto !== '') ? escHtml(item.peso_bruto) : '-') + '</td>'
-            + '<td style="color: #d32f2f; font-weight: bold;">' + escHtml(item.aviso_sobra || '') + '</td>'
-            + '<td><strong style="color: ' + ((item.quantidade_bipada || 0) > 0 ? '#4caf50' : '#666') + '">' + (item.quantidade_bipada || 0) + '</strong></td>'
-            + '<td><strong style="color: ' + ((item.quantidade_falta || 0) > 0 ? '#f44336' : '#4caf50') + '">' + (item.quantidade_falta || 0) + '</strong></td>'
-            + '</tr>';
+        return _htmlLinhaExtratoTabela(item);
     }).join('');
 }
 
