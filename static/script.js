@@ -1540,10 +1540,15 @@ async function loadBaixadosRavex() {
     tbody.innerHTML = rows.map(r => {
         const params = r.parametros ? JSON.stringify(r.parametros) : '';
         const erros = Array.isArray(r.erros) ? r.erros.length : 0;
+        var st = String(r.status || '');
+        var stHtml = escapeHtml(st);
+        if (st === 'DUPLICADO') {
+            stHtml = '<span style="color:#e65100;font-weight:700;">' + stHtml + '</span>';
+        }
         return '<tr>'
             + '<td>' + escapeHtml(String(r.criado_em || '')) + '</td>'
             + '<td>' + escapeHtml(String(r.tipo || '')) + '</td>'
-            + '<td>' + escapeHtml(String(r.status || '')) + '</td>'
+            + '<td>' + stHtml + '</td>'
             + '<td style="max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="' + escapeHtml(params) + '">' + escapeHtml(params) + '</td>'
             + '<td><strong>' + escapeHtml(String(r.viagens_processadas || 0)) + '</strong></td>'
             + '<td><strong>' + escapeHtml(String(r.total_itens || 0)) + '</strong></td>'
@@ -8675,6 +8680,29 @@ function initForms() {
         if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
         return val.substring(0, 10);
     }
+    function ravexPayloadExtras(base) {
+        var o = base && typeof base === 'object' ? Object.assign({}, base) : {};
+        var chk = document.getElementById('importar-ravex-forcar-reimportar');
+        if (chk && chk.checked) o.forcar_reimportar = true;
+        return o;
+    }
+    function ravexMostrarDuplicado(data, resultadoEl) {
+        var msg = (data && data.erro) ? data.erro : 'Esta viagem já foi baixada anteriormente.';
+        if (resultadoEl) {
+            resultadoEl.style.display = 'block';
+            resultadoEl.style.background = '#fff3cd';
+            resultadoEl.style.border = '1px solid #ffc107';
+            resultadoEl.innerHTML = msg;
+        }
+        if (typeof showMessage === 'function') showMessage(msg, 'warning');
+        if (typeof ravexLoadingHide === 'function') ravexLoadingHide();
+        if (typeof loadBaixadosRavex === 'function') void loadBaixadosRavex();
+    }
+    function ravexResumoPuladosDuplicados(data) {
+        var n = (data && data.total_pulados_duplicados) || 0;
+        if (!n) return '';
+        return ' Viagens já importadas (ignoradas): <strong>' + n + '</strong>.';
+    }
     if (btnImportarRavex && resultadoImportarRavex) {
         btnImportarRavex.addEventListener('click', async function() {
             var rawInicio = (document.getElementById('importar-ravex-data-inicio') || {}).value || '';
@@ -8702,11 +8730,11 @@ function initForms() {
                 const r = await fetch(API_BASE + '/ravex/sincronizar-periodo', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data_inicio: dataInicio, data_fim: dataFim })
+                    body: JSON.stringify(ravexPayloadExtras({ data_inicio: dataInicio, data_fim: dataFim }))
                 });
                 const data = await r.json().catch(function() { return {}; });
                 if (r.ok && data.ok) {
-                    showRavexModalConcluido('Sincronização concluída. Viagens processadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens gravados: <strong>' + (data.total_itens || 0) + '</strong>. Viagens listadas no período: ' + (data.viagens_listadas || 0) + (data.erros && data.erros.length ? '. Erros em algumas viagens: ' + data.erros.length : '') + '.');
+                    showRavexModalConcluido('Sincronização concluída. Viagens processadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens gravados: <strong>' + (data.total_itens || 0) + '</strong>. Viagens listadas no período: ' + (data.viagens_listadas || 0) + ravexResumoPuladosDuplicados(data) + (data.erros && data.erros.length ? '. Erros em algumas viagens: ' + data.erros.length : '') + '.');
                     loadAllData();
                     ravexLoadingHide();
                 } else {
@@ -8748,13 +8776,15 @@ function initForms() {
                 const r = await fetch(API_BASE + '/ravex/importar-romaneio', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: idUnico.trim() })
+                    body: JSON.stringify(ravexPayloadExtras({ id: idUnico.trim() }))
                 });
                 const data = await r.json().catch(function() { return {}; });
                 if (r.ok && data.ok) {
                     showRavexModalConcluido('Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.');
                     loadAllData();
                     ravexLoadingHide();
+                } else if (r.status === 409 || (data && data.duplicado)) {
+                    ravexMostrarDuplicado(data, resultadoImportarRavex);
                 } else {
                     resultadoImportarRavex.style.background = '#ffebee';
                     resultadoImportarRavex.style.border = '1px solid #f44336';
@@ -8797,11 +8827,11 @@ function initForms() {
                 const r = await fetch(API_BASE + '/ravex/importar-lista', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ids: ids })
+                    body: JSON.stringify(ravexPayloadExtras({ ids: ids }))
                 });
                 const data = await r.json().catch(function() { return {}; });
                 if (r.ok && data.ok) {
-                    showRavexModalConcluido('Lista processada. Viagens importadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>. IDs na lista: ' + (data.ids_recebidos || 0) + (data.erros && data.erros.length ? '. Erros: ' + data.erros.length : '') + '.');
+                    showRavexModalConcluido('Lista processada. Viagens importadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>. IDs na lista: ' + (data.ids_recebidos || 0) + ravexResumoPuladosDuplicados(data) + (data.erros && data.erros.length ? '. Erros: ' + data.erros.length : '') + '.');
                     loadAllData();
                     ravexLoadingHide();
                 } else {

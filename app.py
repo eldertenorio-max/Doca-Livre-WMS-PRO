@@ -3644,6 +3644,113 @@ def _romaneio_linha_para_tuple_pg(ds, L):
     )
 
 
+def _ravex_parse_forcar_reimportar(data):
+    """Permite rebaixar viagem já importada (body: forcar_reimportar, forcar ou reimportar)."""
+    if not isinstance(data, dict):
+        return False
+    return bool(data.get('forcar_reimportar') or data.get('forcar') or data.get('reimportar'))
+
+
+def _ravex_viagem_ja_baixada(conn, dataset_id, id_viagem):
+    """Retorna (True, info) se a viagem já consta no romaneio ou em importação Ravex OK anterior."""
+    id_norm = str(_normalizar_id_viagem(id_viagem) or id_viagem or '').strip()
+    if not id_norm or not dataset_id:
+        return False, None
+    info = None
+    try:
+        row = conn.execute(
+            """SELECT COUNT(*)::int AS n, MAX(importado_em) AS ultimo
+               FROM romaneio_por_item
+               WHERE dataset_id = ? AND TRIM(COALESCE(id_viagem::text, '')) = ?""",
+            (str(dataset_id), id_norm),
+        ).fetchone()
+    except Exception:
+        row = conn.execute(
+            """SELECT COUNT(*) AS n, MAX(importado_em) AS ultimo
+               FROM romaneio_por_item
+               WHERE dataset_id = ? AND TRIM(COALESCE(id_viagem::text, '')) = ?""",
+            (str(dataset_id), id_norm),
+        ).fetchone()
+    n = 0
+    ultimo = None
+    if row:
+        n = int((row.get('n') if hasattr(row, 'get') else row[0]) or 0)
+        ultimo = row.get('ultimo') if hasattr(row, 'get') else (row[1] if len(row) > 1 else None)
+    if n > 0:
+        info = {'itens_romaneio': n, 'importado_em': ultimo, 'fonte': 'romaneio'}
+        return True, info
+    try:
+        hist = conn.execute(
+            """SELECT criado_em, total_itens
+               FROM ravex_importacoes
+               WHERE dataset_id = ? AND status IN ('OK', 'OK_COM_ERROS')
+                 AND TRIM(COALESCE(parametros->>'id_viagem', '')) = ?
+               ORDER BY criado_em DESC
+               LIMIT 1""",
+            (str(dataset_id), id_norm),
+        ).fetchone()
+    except Exception:
+        hist = None
+    if hist:
+        criado = hist.get('criado_em') if hasattr(hist, 'get') else (hist[0] if hist else None)
+        total_h = int((hist.get('total_itens') if hasattr(hist, 'get') else (hist[1] if len(hist) > 1 else 0)) or 0)
+        info = {
+            'itens_romaneio': 0,
+            'importado_em': criado,
+            'total_itens_historico': total_h,
+            'fonte': 'historico',
+        }
+        return True, info
+    return False, None
+
+
+def _ravex_resposta_duplicado(conn, dataset_id, tipo, id_viagem, id_roteiro, info, id_input=None):
+    """Registra tentativa duplicada e devolve JSON 409."""
+    parametros = {'id_viagem': str(id_viagem), 'id_roteiro': str(id_roteiro or '')}
+    if id_input:
+        parametros['id_informado'] = str(id_input)
+    if info:
+        if info.get('importado_em'):
+            parametros['importado_em'] = str(info.get('importado_em'))
+        if info.get('itens_romaneio'):
+            parametros['itens_romaneio'] = info.get('itens_romaneio')
+    try:
+        _registrar_importacao_ravex(
+            conn,
+            dataset_id=dataset_id,
+            tipo=tipo,
+            status='DUPLICADO',
+            parametros=parametros,
+            viagens_processadas=0,
+            total_itens=0,
+            erros=[{'mensagem': 'Viagem já importada anteriormente'}],
+        )
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    try:
+        conn.close()
+    except Exception:
+        pass
+    imp_em = info.get('importado_em') if info else None
+    imp_txt = _formatar_criado_em_baixados_ravex(imp_em) if imp_em else ''
+    msg = 'Esta viagem já foi baixada do Ravex (ID viagem %s).' % id_viagem
+    if imp_txt:
+        msg += ' Última importação: %s.' % imp_txt
+    msg += ' Para baixar de novo, marque «Forçar reimportação» ou envie forcar_reimportar: true na API.'
+    return jsonify({
+        'ok': False,
+        'duplicado': True,
+        'erro': msg,
+        'id_viagem': id_viagem,
+        'id_roteiro': id_roteiro,
+        'detalhe': info or {},
+    }), 409
+
+
 def _registrar_importacao_ravex(conn, *, dataset_id, tipo, status, parametros=None, viagens_processadas=0, total_itens=0, erros=None):
     """Registra no banco a execução de importações Ravex (para aba 'Baixados'). Usa horário atual UTC para criado_em."""
     try:
@@ -4249,9 +4356,6 @@ def api_ravex_importar_romaneio():
                 return jsonify({'erro': 'Roteiro ainda não possui viagem faturada.'}), 400
     if not id_viagem:
         return jsonify({'erro': 'Não foi possível obter o ID da viagem.'}), 400
-    id_roteiro, linhas = _ravex_linhas_romaneio_viagem(token, id_viagem)
-    if id_roteiro is None:
-        return jsonify({'erro': 'Viagem não encontrada ou sem itens na API Ravex.'}), 404
     conn = get_db()
     if getattr(conn, 'kind', None) != 'pg':
         conn.close()
@@ -4260,6 +4364,18 @@ def api_ravex_importar_romaneio():
     if not ds:
         conn.close()
         return jsonify({'erro': 'Nenhum dataset ativo. Importe a base (planilha) primeiro.'}), 400
+    forcar = _ravex_parse_forcar_reimportar(data)
+    if not forcar:
+        ja_dup, info_dup = _ravex_viagem_ja_baixada(conn, ds, id_viagem)
+        if ja_dup:
+            return _ravex_resposta_duplicado(
+                conn, ds, 'id_unico', id_viagem, id_roteiro or id_roteiro_in or id_unico, info_dup,
+                id_input=id_unico or id_viagem_in or id_roteiro_in,
+            )
+    id_roteiro, linhas = _ravex_linhas_romaneio_viagem(token, id_viagem)
+    if id_roteiro is None:
+        conn.close()
+        return jsonify({'erro': 'Viagem não encontrada ou sem itens na API Ravex.'}), 404
     importado_em = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     try:
         conn.execute(
@@ -4354,6 +4470,8 @@ def api_ravex_sincronizar_periodo():
     viagens_processadas = 0
     total_itens = 0
     erros = []
+    pulados_duplicados = []
+    forcar = _ravex_parse_forcar_reimportar(data)
     try:
         # Registrar todos os roteiros do período na tabela id_roteiros
         for r in roteiros_romaneio:
@@ -4382,6 +4500,16 @@ def api_ravex_sincronizar_periodo():
             id_roteiro_pre = v.get('id_roteiro') or None
             identificador_rota_pre = v.get('identificador_rota') or None
             try:
+                if not forcar:
+                    ja_dup, info_dup = _ravex_viagem_ja_baixada(conn, ds, id_viagem)
+                    if ja_dup:
+                        pulados_duplicados.append({
+                            'id_viagem': id_viagem,
+                            'id_roteiro': id_roteiro_pre,
+                            'motivo': 'já importada',
+                            'detalhe': info_dup,
+                        })
+                        continue
                 id_roteiro, linhas = _ravex_linhas_romaneio_viagem(
                     token, id_viagem, id_roteiro_pre=id_roteiro_pre, identificador_rota_pre=identificador_rota_pre
                 )
@@ -4415,7 +4543,11 @@ def api_ravex_sincronizar_periodo():
             dataset_id=ds,
             tipo='periodo',
             status='OK' if not erros else 'OK_COM_ERROS',
-            parametros={'data_inicio': data_inicio, 'data_fim': data_fim},
+            parametros={
+                'data_inicio': data_inicio,
+                'data_fim': data_fim,
+                'pulados_duplicados': len(pulados_duplicados),
+            },
             viagens_processadas=viagens_processadas,
             total_itens=total_itens,
             erros=erros,
@@ -4449,6 +4581,8 @@ def api_ravex_sincronizar_periodo():
         'roteiros_no_periodo': len(roteiros_romaneio),
         'roteiros_registrados': len([r for r in roteiros_romaneio if (r.get('id_roteiro') or '').strip() and (r.get('id_viagem') or '').strip()]),
         'viagens_listadas': len(lista_viagens),
+        'pulados_duplicados': pulados_duplicados,
+        'total_pulados_duplicados': len(pulados_duplicados),
         'erros': erros,
     })
 
@@ -4484,7 +4618,9 @@ def api_ravex_importar_lista():
     viagens_processadas = 0
     total_itens = 0
     erros = []
+    pulados_duplicados = []
     ids_vistos = set()
+    forcar = _ravex_parse_forcar_reimportar(data)
     try:
         for id_unico in ids:
             if not id_unico or id_unico in ids_vistos:
@@ -4495,6 +4631,17 @@ def api_ravex_importar_lista():
                 if not id_viagem:
                     erros.append({'id': id_unico, 'erro': 'ID não encontrado ou roteiro sem viagem faturada'})
                     continue
+                if not forcar:
+                    ja_dup, info_dup = _ravex_viagem_ja_baixada(conn, ds, id_viagem)
+                    if ja_dup:
+                        pulados_duplicados.append({
+                            'id': id_unico,
+                            'id_viagem': id_viagem,
+                            'id_roteiro': id_roteiro,
+                            'motivo': 'já importada',
+                            'detalhe': info_dup,
+                        })
+                        continue
                 id_roteiro, linhas = _ravex_linhas_romaneio_viagem(token, id_viagem)
                 if id_roteiro is None or not linhas:
                     erros.append({'id': id_unico, 'erro': 'Sem itens na API'})
@@ -4527,7 +4674,7 @@ def api_ravex_importar_lista():
             dataset_id=ds,
             tipo='lista',
             status='OK' if not erros else 'OK_COM_ERROS',
-            parametros={'ids_recebidos': len(ids)},
+            parametros={'ids_recebidos': len(ids), 'pulados_duplicados': len(pulados_duplicados)},
             viagens_processadas=viagens_processadas,
             total_itens=total_itens,
             erros=erros,
@@ -4559,6 +4706,8 @@ def api_ravex_importar_lista():
         'viagens_processadas': viagens_processadas,
         'total_itens': total_itens,
         'ids_recebidos': len(ids),
+        'pulados_duplicados': pulados_duplicados,
+        'total_pulados_duplicados': len(pulados_duplicados),
         'erros': erros,
     })
 
