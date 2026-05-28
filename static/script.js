@@ -11379,7 +11379,8 @@ async function loadConferencia(idViagem = null, opts) {
     if (!forcarRecarga && _conferenciaTemPendenciasLocais()) {
         return;
     }
-    var seq = ++(window._conferenciaLoadSeq = (window._conferenciaLoadSeq || 0) + 1);
+    window._conferenciaLoadSeq = (window._conferenciaLoadSeq || 0) + 1;
+    var seq = window._conferenciaLoadSeq;
     function L(id) {
         if (!isDev) return document.getElementById(id);
         const map = {
