@@ -1260,16 +1260,34 @@ def _requer_login():
     return 'usuario' not in session
 
 
+_USUARIO_SESSAO_OK_TTL = 120  # segundos — evita ida ao banco a cada clique/navegação
+
+
 def _usuario_ainda_existe(usuario):
     """Verifica se o usuário ainda existe no banco (não foi excluído do config)."""
     if not usuario:
         return False
+    ok_user = session.get('_auth_ok_user')
+    ok_ts = session.get('_auth_ok_ts')
+    if ok_user == usuario and ok_ts is not None:
+        try:
+            if (time.time() - float(ok_ts)) < _USUARIO_SESSAO_OK_TTL:
+                return True
+        except (TypeError, ValueError):
+            pass
     conn = get_db()
     try:
         row = conn.execute('SELECT 1 FROM usuarios WHERE usuario = ?', (usuario,)).fetchone()
-        return row is not None
+        existe = row is not None
     finally:
         conn.close()
+    if existe:
+        session['_auth_ok_user'] = usuario
+        session['_auth_ok_ts'] = time.time()
+    else:
+        session.pop('_auth_ok_user', None)
+        session.pop('_auth_ok_ts', None)
+    return existe
 
 
 @app.before_request
@@ -1285,6 +1303,8 @@ def proteger_rotas():
         if not _usuario_ainda_existe(session.get('usuario')):
             session.pop('usuario', None)
             session.pop('usuario_id', None)
+            session.pop('_auth_ok_user', None)
+            session.pop('_auth_ok_ts', None)
             if request.path.startswith('/api/'):
                 return jsonify({'ok': False, 'erro': 'Sessão encerrada. Usuário foi removido.'}), 401
             return redirect(url_for('login'))
@@ -1316,6 +1336,8 @@ def api_login():
         return jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})
     session['usuario'] = usuario
     session['usuario_id'] = row['id']
+    session['_auth_ok_user'] = usuario
+    session['_auth_ok_ts'] = time.time()
     return jsonify({'ok': True, 'redirect': url_for('entrada_modulos')})
 
 
@@ -1367,6 +1389,8 @@ def api_logout():
     """Encerra a sessão. Resposta mínima para sair rápido."""
     session.pop('usuario', None)
     session.pop('usuario_id', None)
+    session.pop('_auth_ok_user', None)
+    session.pop('_auth_ok_ts', None)
     return '', 204
 
 

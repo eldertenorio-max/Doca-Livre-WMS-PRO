@@ -1086,33 +1086,47 @@ async function moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor)
     return false;
 }
 
+/** Libera SSE e gráficos antes de sair do painel (descarrega a página mais rápido). */
+function _prepararSaidaParaEntrada() {
+    try {
+        if (_eventSource) {
+            _eventSource.close();
+            _eventSource = null;
+        }
+    } catch (e) {}
+    try {
+        if (typeof destroyCharts === 'function') destroyCharts();
+        if (typeof destroyPainelDevolucoesCharts === 'function') destroyPainelDevolucoesCharts();
+        if (typeof destroyPainelTerceirosCharts === 'function') destroyPainelTerceirosCharts();
+    } catch (e) {}
+}
+
 function initNavegacaoRapida() {
     var linkInicio = document.querySelector('.header-link-inicio');
     if (!linkInicio) return;
     var href = linkInicio.getAttribute('href') || '/entrada';
 
-    try {
-        var prefetch = document.createElement('link');
-        prefetch.rel = 'prefetch';
-        prefetch.href = href;
-        prefetch.as = 'document';
-        document.head.appendChild(prefetch);
-    } catch (e) {}
-
-    var navegar = function() {
+    function prefetchEntrada() {
         try {
-            if (_eventSource) {
-                _eventSource.close();
-                _eventSource = null;
-            }
+            if (document.querySelector('link[rel="prefetch"][href="' + href + '"]')) return;
+            var prefetch = document.createElement('link');
+            prefetch.rel = 'prefetch';
+            prefetch.href = href;
+            prefetch.as = 'document';
+            document.head.appendChild(prefetch);
         } catch (e) {}
-        window.location.assign(href);
-    };
+    }
+    prefetchEntrada();
 
-    linkInicio.addEventListener('click', function(e) {
-        e.preventDefault();
-        navegar();
-    });
+    function aoIniciarSaida() {
+        linkInicio.classList.add('header-link-inicio--saindo');
+        _prepararSaidaParaEntrada();
+    }
+
+    linkInicio.addEventListener('mouseenter', prefetchEntrada, { passive: true });
+    linkInicio.addEventListener('mousedown', aoIniciarSaida, { passive: true });
+    linkInicio.addEventListener('touchstart', aoIniciarSaida, { passive: true });
+    // Navegação nativa pelo href (sem preventDefault) — o browser inicia /entrada imediatamente
 }
 
 function initModulos() {
