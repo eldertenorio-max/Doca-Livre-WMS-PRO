@@ -11625,10 +11625,7 @@ function agruparConferenciaPorCodigoProduto(conferencia) {
     conferencia.forEach(function(item, idx) {
         const codigoProduto = (item && item.codigo_produto != null) ? item.codigo_produto.toString().trim() : '';
         const codigoBarras = (item && item.codigo_barras != null) ? item.codigo_barras.toString().trim() : '';
-        const unidadeItem = (item && item.unidade != null) ? item.unidade.toString().trim().toUpperCase() : '';
-        const chave = codigoProduto
-            ? (codigoProduto + '|' + (unidadeItem || '-'))
-            : (codigoBarras || ('__idx__' + idx)).toString();
+        const chave = codigoProduto || codigoBarras || ('__idx__' + idx);
 
         if (!grupos.has(chave)) {
             grupos.set(chave, {
@@ -11659,7 +11656,8 @@ function agruparConferenciaPorCodigoProduto(conferencia) {
         if (cb && cb !== '-') g._codigos_barras.add(cb);
 
         g.quantidade_produto += (parseInt(item.quantidade_produto, 10) || 0);
-        g.quantidade_bipada += (parseInt(item.quantidade_bipada, 10) || 0);
+        var qBip = parseInt(item.quantidade_bipada, 10) || 0;
+        if (qBip > g.quantidade_bipada) g.quantidade_bipada = qBip;
     });
 
     return Array.from(grupos.values()).map(function(g) {

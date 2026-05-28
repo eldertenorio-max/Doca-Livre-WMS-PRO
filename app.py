@@ -3033,6 +3033,60 @@ def conferencia_produto_na_lista(id_viagem):
     return jsonify({'na_lista': na_lista, 'codigo_produto': codigo_produto_resolvido})
 
 
+def _codigo_barras_romaneio_linha(codigo_produto, unidade, mapa_ean, mapa_dun, mapa_codigo_barras):
+    unidade_norm = (unidade or '').strip().upper()
+    if unidade_norm in ('PT', 'UN'):
+        return (mapa_ean.get(codigo_produto) or mapa_codigo_barras.get(codigo_produto, '') or '').strip()
+    if unidade_norm == 'CX':
+        return (mapa_dun.get(codigo_produto) or mapa_codigo_barras.get(codigo_produto, '') or '').strip()
+    return (mapa_codigo_barras.get(codigo_produto, '') or '').strip()
+
+
+def _agrupar_romaneio_rows_por_codigo_produto(romaneio_rows, mapa_ean, mapa_dun, mapa_codigo_barras):
+    """Uma linha por codigo_produto no roteiro (soma quantidades das linhas repetidas)."""
+    agreg = {}
+    for r in romaneio_rows or []:
+        codigo_produto = (r.get('codigo_produto') or '').strip()
+        if not codigo_produto:
+            continue
+        descricao = (r.get('descricao') or '').strip()
+        quantidade_produto = int(r.get('quantidade') or 0)
+        unidade = (r.get('unidade') or '').strip() or '-'
+        peso_bruto = (r.get('peso_bruto') or '').strip() or '-'
+        cb = _codigo_barras_romaneio_linha(codigo_produto, unidade, mapa_ean, mapa_dun, mapa_codigo_barras)
+        if codigo_produto not in agreg:
+            agreg[codigo_produto] = {
+                'codigo_produto': codigo_produto,
+                'descricao': descricao,
+                'quantidade_produto': 0,
+                'unidades': set(),
+                'peso_bruto': peso_bruto,
+                'codigos_barras': set(),
+            }
+        g = agreg[codigo_produto]
+        g['quantidade_produto'] += quantidade_produto
+        if descricao and (not g['descricao'] or len(descricao) > len(g['descricao'])):
+            g['descricao'] = descricao
+        if unidade and unidade != '-':
+            g['unidades'].add(unidade)
+        if cb:
+            g['codigos_barras'].add(cb)
+    linhas = []
+    for cod, g in agreg.items():
+        unidades = sorted(g['unidades'], key=lambda x: str(x).upper())
+        cods = sorted(g['codigos_barras'])
+        linhas.append({
+            'codigo_produto': cod,
+            'descricao': g['descricao'],
+            'quantidade_produto': g['quantidade_produto'],
+            'unidade': ', '.join(unidades) if unidades else '-',
+            'peso_bruto': g['peso_bruto'],
+            'codigo_barras': cods[0] if cods else '',
+            '_todos_codigos_barras': cods,
+        })
+    return linhas
+
+
 @app.route('/api/conferencia', methods=['GET'])
 @app.route('/api/conferencia/<id_viagem>', methods=['GET'])
 def get_conferencia(id_viagem=None):
@@ -3117,22 +3171,25 @@ def get_conferencia(id_viagem=None):
                 cod_prod = mapa_barras_to_codigo.get(cb) or cb
                 bipados_por_codigo[cod_prod] = bipados_por_codigo.get(cod_prod, 0) + qtd
             resultado = []
-            for r in romaneio_rows or []:
-                codigo_produto = (r.get('codigo_produto') or '').strip()
-                if not codigo_produto:
-                    continue
-                descricao = (r.get('descricao') or '').strip()
-                quantidade_produto = int(r.get('quantidade') or 0)
-                unidade = (r.get('unidade') or '').strip() or '-'
-                peso_bruto = (r.get('peso_bruto') or '').strip() or '-'
-                unidade_norm = unidade.upper() if unidade else ''
-                if unidade_norm in ('PT', 'UN'):
-                    codigo_barras = mapa_ean.get(codigo_produto) or mapa_codigo_barras.get(codigo_produto, '')
-                elif unidade_norm == 'CX':
-                    codigo_barras = mapa_dun.get(codigo_produto) or mapa_codigo_barras.get(codigo_produto, '')
-                else:
-                    codigo_barras = mapa_codigo_barras.get(codigo_produto, '')
-                quantidade_bipada = bipados_por_codigo.get(codigo_produto, 0) or bipados_dict.get(codigo_barras, 0)
+            romaneio_agregado = _agrupar_romaneio_rows_por_codigo_produto(
+                romaneio_rows, mapa_ean, mapa_dun, mapa_codigo_barras
+            )
+            for item_rom in romaneio_agregado:
+                codigo_produto = item_rom['codigo_produto']
+                descricao = item_rom['descricao']
+                quantidade_produto = int(item_rom['quantidade_produto'] or 0)
+                unidade = item_rom['unidade']
+                peso_bruto = item_rom['peso_bruto']
+                codigo_barras = item_rom['codigo_barras'] or ''
+                quantidade_bipada = int(bipados_por_codigo.get(codigo_produto, 0) or 0)
+                if not quantidade_bipada and codigo_barras:
+                    quantidade_bipada = int(bipados_dict.get(codigo_barras, 0) or 0)
+                for cb_extra in item_rom.get('_todos_codigos_barras') or []:
+                    if cb_extra and cb_extra != codigo_barras:
+                        quantidade_bipada = max(
+                            quantidade_bipada,
+                            int(bipados_dict.get(cb_extra, 0) or 0),
+                        )
                 quantidade_falta = max(0, quantidade_produto - quantidade_bipada)
                 quantidade_sobra = max(0, quantidade_bipada - quantidade_produto)
                 if quantidade_sobra > 0:
@@ -3143,6 +3200,11 @@ def get_conferencia(id_viagem=None):
                     status_bipado = 'PARCIAL'
                 else:
                     status_bipado = 'PENDENTE'
+                todos_cb = item_rom.get('_todos_codigos_barras') or []
+                aviso_sobra = ('Bipou %s a mais' % quantidade_sobra) if quantidade_sobra > 0 else ''
+                if len(todos_cb) > 1:
+                    aviso_multi = '⚠️ Múltiplos códigos: ' + ', '.join(todos_cb)
+                    aviso_sobra = (aviso_sobra + ' — ' + aviso_multi) if aviso_sobra else aviso_multi
                 resultado.append({
                     'codigo_produto': codigo_produto,
                     'codigo_barras': codigo_barras,
@@ -3153,7 +3215,7 @@ def get_conferencia(id_viagem=None):
                     'quantidade_bipada': quantidade_bipada,
                     'quantidade_falta': quantidade_falta,
                     'quantidade_sobra': quantidade_sobra,
-                    'aviso_sobra': ('Bipou %s a mais' % quantidade_sobra) if quantidade_sobra > 0 else '',
+                    'aviso_sobra': aviso_sobra,
                     'status_bipado': status_bipado,
                     'id_viagem': id_para_bipados,
                 })
