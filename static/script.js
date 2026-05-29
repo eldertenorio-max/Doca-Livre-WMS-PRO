@@ -250,6 +250,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initNavegacaoRapida();
     initConferenciaTabelaAcoes();
     initModalZerarItens();
+    initCadastroRapidoCodigoBarras();
     // Primeira carga após um tick para a tela pintar antes (resposta mais rápida percebida)
     setTimeout(function() {
         loadAllData();
@@ -1203,6 +1204,39 @@ function _htmlBotoesAcaoConferencia(opts) {
     var excluir = '<button type="button" class="btn btn-secondary" data-conf-acao="excluir" data-conf-codigo="' + cod + '" data-conf-produto="' + prod + '" style="' + st + ' color: #c62828;" title="Excluir item da conferência">🗑️ Excluir</button>';
     var bipar = '<button type="button" class="btn btn-primary" data-conf-acao="bipar" data-conf-codigo="' + cod + '" data-conf-produto="' + prod + '" data-conf-qtd-falta="' + qtdFaltaParaBipar + '" style="padding: 6px 12px; font-size: 12px;">📱 Bipar</button>';
     return { bipar: bipar, tirar: tirar, excluir: excluir };
+}
+
+function _abrirModalFlex(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = 'flex';
+}
+
+function initCadastroRapidoCodigoBarras() {
+    function bind(btnId) {
+        var btn = document.getElementById(btnId);
+        if (!btn || btn._cadastroRapidoBound) return;
+        btn._cadastroRapidoBound = true;
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var idV = window._getIdViagemAtivo && window._getIdViagemAtivo();
+            if (!idV) {
+                showMessage('Carregue a viagem (ID do roteiro) antes de cadastrar o código.', 'warning');
+                return;
+            }
+            var cb = window._elBipagem('codigo-barras');
+            if (cb && !(cb.value || '').trim()) {
+                showMessage('Digite ou escaneie o código de barras primeiro.', 'warning');
+                if (cb.focus) cb.focus();
+                return;
+            }
+            document.getElementById('modal-produto-nao-cadastrado').style.display = 'none';
+            void window._abrirModalCadastroItemFromBipagem();
+        });
+    }
+    bind('btn-cadastrar-codigo-bipagem');
+    bind('btn-dev-cadastrar-codigo-bipagem');
 }
 
 function initConferenciaTabelaAcoes() {
@@ -10576,7 +10610,7 @@ async function addProduto(forcarAdicionar, dadosOverride) {
             return;
         }
         document.getElementById('modal-produto-nao-cadastrado-msg').textContent = result.mensagem || 'Este produto não está na lista da conferência desta viagem. Deseja adicionar mesmo assim?';
-        document.getElementById('modal-produto-nao-cadastrado').style.display = 'block';
+        _abrirModalFlex('modal-produto-nao-cadastrado');
         return;
     }
     if (result && !result.success && result.mensagem) {
@@ -10853,10 +10887,29 @@ async function _carregarSelectVinculoRomaneio() {
     if (lista.length === 0) {
         sel.innerHTML = '<option value="">Nenhum item no romaneio desta viagem</option>';
     }
+    var codPref = (window._elBipagem('codigo-produto') && window._elBipagem('codigo-produto').value || '').trim();
+    if (codPref) _selecionarRomaneioNoCadastroPorCodigo(sel, codPref);
+}
+
+function _selecionarRomaneioNoCadastroPorCodigo(sel, codigoProduto) {
+    if (!sel || !codigoProduto) return;
+    var alvo = String(codigoProduto).trim();
+    for (var i = 0; i < sel.options.length; i++) {
+        var opt = sel.options[i];
+        if (!opt.value) continue;
+        try {
+            var item = JSON.parse(opt.value);
+            if (item && String(item.codigo_produto || '').trim() === alvo) {
+                sel.selectedIndex = i;
+                _aplicarItemRomaneioNoCadastro(item);
+                return;
+            }
+        } catch (e) { /* ignore */ }
+    }
 }
 
 window._abrirModalCadastroItemFromBipagem = async function() {
-    var codigoBarras = (window._elBipagem('codigo-barras') && window._elBipagem('codigo-barras').value || '').trim();
+    var codigoBarras = normalizarCodigoBarrasDuplicado((window._elBipagem('codigo-barras') && window._elBipagem('codigo-barras').value || '').trim());
     if (!codigoBarras) {
         showMessage('Digite ou escaneie o código de barras.', 'error');
         var cb0 = window._elBipagem('codigo-barras');
@@ -10878,7 +10931,7 @@ window._abrirModalCadastroItemFromBipagem = async function() {
     document.getElementById('cadastro-item-codigo-interno').value = (window._elBipagem('codigo-produto') && window._elBipagem('codigo-produto').value || '').trim();
     var chkBase = document.getElementById('cadastro-item-atualizar-base');
     if (chkBase) chkBase.checked = true;
-    document.getElementById('modal-cadastro-item').style.display = 'block';
+    _abrirModalFlex('modal-cadastro-item');
     await _carregarSelectVinculoRomaneio();
     var sel = document.getElementById('cadastro-item-vinculo-romaneio');
     if (sel && !sel._vinculoBound) {
@@ -10932,7 +10985,7 @@ window.confirmarCadastroItem = async function() {
     }
     const codigoEan = document.getElementById('cadastro-item-codigo-ean').value.trim();
     const codigoDun = document.getElementById('cadastro-item-codigo-dun').value.trim();
-    const codigoBipado = codigoEan || codigoDun;
+    const codigoBipado = normalizarCodigoBarrasDuplicado(codigoEan || codigoDun);
     if (!codigoBipado) {
         showMessage('Informe o código EAN ou DUN bipado', 'error');
         return;
@@ -10982,8 +11035,11 @@ window.confirmarCadastroItem = async function() {
             id_viagem: idViagem,
             doca: docaEl ? docaEl.value : ''
         };
-        await addProduto(!atualizarBase, dados);
+        await addProduto(true, dados);
         if (idViagem) agendarReloadConferenciaAtiva(idViagem, { debounceMs: 800 });
+        var cbOk = window._elBipagem('codigo-barras');
+        if (cbOk) cbOk.value = '';
+        focarCampoCodigoBarras();
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Confirmar, vincular base e bipar'; }
     }

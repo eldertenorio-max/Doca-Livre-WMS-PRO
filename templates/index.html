@@ -396,8 +396,11 @@
                         <div class="conferencia-bloco conferencia-bloco-4 form-container">
                             <h3 class="conferencia-bloco-4-titulo">4. CONFERÊNCIA</h3>
                             <div class="form-row">
-                                <div class="form-group">
-                                    <label for="codigo-barras">Código de Barras *</label>
+                                <div class="form-group form-group-codigo-barras">
+                                    <label for="codigo-barras" class="label-com-acao-cadastro">
+                                        <span>Código de Barras *</span>
+                                        <button type="button" class="btn-cadastrar-codigo-mini" id="btn-cadastrar-codigo-bipagem" title="Vincular este código a um item do romaneio">cadastrar</button>
+                                    </label>
                                     <input type="text" id="codigo-barras" required autofocus placeholder="Digite ou escaneie">
                                 </div>
                                 <div class="form-group">
@@ -1137,7 +1140,10 @@
                                     <h3 class="conferencia-bloco-4-titulo">4. CONFERÊNCIA DE DEVOLUÇÕES</h3>
                                     <div class="form-row">
                                         <div class="form-group">
-                                            <label for="dev-codigo-barras">Código de Barras *</label>
+                                            <label for="dev-codigo-barras" class="label-com-acao-cadastro">
+                                                <span>Código de Barras *</span>
+                                                <button type="button" class="btn-cadastrar-codigo-mini" id="btn-dev-cadastrar-codigo-bipagem" title="Vincular este código a um item do romaneio">cadastrar</button>
+                                            </label>
                                             <input type="text" id="dev-codigo-barras" placeholder="Digite ou escaneie">
                                         </div>
                                         <div class="form-group">
@@ -2300,7 +2306,7 @@
     </div>
 
     <!-- Modal produto não cadastrado na conferência -->
-    <div id="modal-produto-nao-cadastrado" class="modal" style="display: none;">
+    <div id="modal-produto-nao-cadastrado" class="modal modal-flex" style="display: none;">
         <div class="modal-content" style="max-width: 440px;">
             <h3 style="margin-top: 0; color: #e65100;">Produto não cadastrado</h3>
             <p style="margin: 16px 0;" id="modal-produto-nao-cadastrado-msg">Código não reconhecido nesta viagem. Você pode vinculá-lo a um item do romaneio e atualizar a base de códigos de barras.</p>
@@ -2312,7 +2318,7 @@
     </div>
 
     <!-- Modal cadastro do item (preenchido antes de adicionar à lista) -->
-    <div id="modal-cadastro-item" class="modal" style="display: none;">
+    <div id="modal-cadastro-item" class="modal modal-flex" style="display: none;">
         <div class="modal-content" style="max-width: 480px;">
             <h3 style="margin-top: 0; color: #366092;">Cadastro do item</h3>
             <p style="margin: 0 0 16px 0; font-size: 14px; color: #666;">Vincule o código bipado a um item do romaneio desta viagem e atualize a base de códigos de barras.</p>

@@ -1727,25 +1727,46 @@ def api_base_item_vincular_codigo():
                 data_old = {}
             data_old['vinculado_de_conferencia'] = True
             data_old['vinculado_em'] = datetime.now(timezone.utc).isoformat()
-            conn.execute(
-                """UPDATE base_codigo_barras
-                   SET ean = COALESCE(?, ean),
-                       dun = COALESCE(?, dun),
-                       descricao = COALESCE(?, descricao),
-                       unidade = COALESCE(?, unidade),
-                       peso = COALESCE(?, peso),
-                       data = ?::jsonb
-                   WHERE id = ?""",
-                (
-                    ean_val,
-                    dun_val,
-                    descricao,
-                    unidade,
-                    peso,
-                    json.dumps(data_old, ensure_ascii=False, default=str),
-                    item_id,
-                ),
-            )
+            if tipo == 'EAN':
+                conn.execute(
+                    """UPDATE base_codigo_barras
+                       SET ean = ?,
+                           dun = COALESCE(?, dun),
+                           descricao = COALESCE(?, descricao),
+                           unidade = COALESCE(?, unidade),
+                           peso = COALESCE(?, peso),
+                           data = ?::jsonb
+                       WHERE id = ?""",
+                    (
+                        ean_val,
+                        dun_val,
+                        descricao,
+                        unidade,
+                        peso,
+                        json.dumps(data_old, ensure_ascii=False, default=str),
+                        item_id,
+                    ),
+                )
+            else:
+                conn.execute(
+                    """UPDATE base_codigo_barras
+                       SET dun = ?,
+                           ean = COALESCE(?, ean),
+                           descricao = COALESCE(?, descricao),
+                           unidade = COALESCE(?, unidade),
+                           peso = COALESCE(?, peso),
+                           data = ?::jsonb
+                       WHERE id = ?""",
+                    (
+                        dun_val,
+                        ean_val,
+                        descricao,
+                        unidade,
+                        peso,
+                        json.dumps(data_old, ensure_ascii=False, default=str),
+                        item_id,
+                    ),
+                )
         else:
             data_new = {
                 'Codigo': codigo_interno,
@@ -1942,13 +1963,34 @@ def add_produto():
         body = resp.get_json() if hasattr(resp, 'get_json') else {}
         lista = body.get('lista') if isinstance(body, dict) else body
         if isinstance(lista, list):
-            codigos_conferencia = {str(item.get('codigo_barras') or '').strip() for item in lista}
-            if codigo_barras and codigo_barras not in codigos_conferencia:
+            codigos_barras_conf = {
+                str(item.get('codigo_barras') or '').strip()
+                for item in lista
+                if str(item.get('codigo_barras') or '').strip()
+            }
+            codigos_produto_conf = {
+                str(item.get('codigo_produto') or '').strip()
+                for item in lista
+                if str(item.get('codigo_produto') or '').strip()
+            }
+            codigo_interno_chk = (data.get('codigo_interno') or '').strip()
+            permitido = False
+            if codigo_barras and codigo_barras in codigos_barras_conf:
+                permitido = True
+            elif codigo_interno_chk and codigo_interno_chk in codigos_produto_conf:
+                permitido = True
+            elif codigo_barras:
+                info_conf = buscar_produto_na_planilha(codigo_barras)
+                if info_conf and not info_conf.get('erro'):
+                    cp_conf = str(info_conf.get('codigo_produto') or '').strip()
+                    if cp_conf and cp_conf in codigos_produto_conf:
+                        permitido = True
+            if codigo_barras and not permitido:
                 conn.close()
                 return jsonify({
                     'success': False,
                     'produto_nao_cadastrado': True,
-                    'mensagem': 'Este produto não está cadastrado na conferência desta viagem. Deseja adicionar mesmo assim?'
+                    'mensagem': 'Código não reconhecido nesta viagem. Use «cadastrar» ao lado do campo ou vincule ao romaneio.',
                 })
 
     doca = (data.get('doca') or '').strip()
