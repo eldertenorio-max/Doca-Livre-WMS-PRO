@@ -129,6 +129,39 @@ function _conferenciaEnfileirarRemoveLocal(codigoBarras, qtd) {
     _conferenciaMarcarSessaoRascunho();
 }
 
+window._conferenciaUltimoBip = { codigo: '', em: 0 };
+
+/** Um único ponto para bipar: atualiza tabela/status na hora e enfileira (sem duplicar Enter + leitor). */
+function _conferenciaProcessarBipagemCodigo(codigoBarras, quantidade, codigoProdutoOpcional, opts) {
+    opts = opts || {};
+    var cod = (codigoBarras || '').toString().trim();
+    if (!cod) return false;
+    var qtd = parseInt(quantidade, 10) || 1;
+    if (!opts.permitirRepetir) {
+        var agora = Date.now();
+        if (window._conferenciaUltimoBip && window._conferenciaUltimoBip.codigo === cod && (agora - window._conferenciaUltimoBip.em) < 450) {
+            return false;
+        }
+        window._conferenciaUltimoBip = { codigo: cod, em: agora };
+    }
+    var atualizou = atualizarQuantidadeBipadaNaTabela(cod, qtd, codigoProdutoOpcional || '');
+    if (atualizou) {
+        atualizarEstatisticasOtimista(qtd > 0 ? qtd : 0, qtd < 0);
+        atualizarBoxesComprovante();
+    }
+    if (opts.somenteTabela) return atualizou;
+    if (_conferenciaUsaRascunhoLocal()) {
+        if (qtd > 0) _conferenciaEnfileirarAddLocal(cod, qtd);
+        else if (qtd < 0) _conferenciaEnfileirarRemoveLocal(cod, Math.abs(qtd));
+    } else if (qtd > 0) {
+        if (!window._conferenciaPending.adds[cod]) window._conferenciaPending.adds[cod] = { qtd: 0 };
+        window._conferenciaPending.adds[cod].qtd += qtd;
+        if (window._conferenciaPending.addTimers[cod]) clearTimeout(window._conferenciaPending.addTimers[cod]);
+        window._conferenciaPending.addTimers[cod] = setTimeout(function() { _flushAdd(cod); }, window._conferenciaPending.DEBOUNCE_MS);
+    }
+    return atualizou;
+}
+
 async function _conferenciaDescartarRascunhoLocal(idViagem) {
     _limparPendenciasConferenciaTimers();
     if (idViagem) {
@@ -9243,7 +9276,10 @@ function initForms() {
             if (codigo.length >= 3 && codigo !== window.ultimoCodigoBuscado) {
                 timeoutBusca = setTimeout(() => {
                     window.ultimoCodigoBuscado = codigo;
-                    buscarProdutoNaPlanilha(codigo);
+                    var qtdIn = parseInt(document.getElementById('quantidade') && document.getElementById('quantidade').value, 10);
+                    var qtdScan = (!isNaN(qtdIn) && qtdIn >= 1 && qtdIn <= 99999) ? qtdIn : 1;
+                    _conferenciaProcessarBipagemCodigo(codigo, qtdScan, '');
+                    buscarProdutoNaPlanilha(codigo, qtdScan, true, true);
                 }, 60);
             }
         });
@@ -9260,7 +9296,10 @@ function initForms() {
                 const codigo = (e.target && e.target.value) ? e.target.value.trim() : '';
                 if (codigo.length >= 3 && codigo !== window.ultimoCodigoBuscado) {
                     window.ultimoCodigoBuscado = codigo;
-                    buscarProdutoNaPlanilha(codigo);
+                    var qtdBl = parseInt(document.getElementById('quantidade') && document.getElementById('quantidade').value, 10);
+                    var qtdBlur = (!isNaN(qtdBl) && qtdBl >= 1 && qtdBl <= 99999) ? qtdBl : 1;
+                    _conferenciaProcessarBipagemCodigo(codigo, qtdBlur, '');
+                    buscarProdutoNaPlanilha(codigo, qtdBlur, true, true);
                 }
             }, 0);
         });
@@ -9275,13 +9314,10 @@ function initForms() {
                     window.ultimoCodigoBuscado = codigo;
                     var qtdForm = parseInt(document.getElementById('quantidade') && document.getElementById('quantidade').value, 10);
                     var qtdEnter = (typeof qtdForm === 'number' && !isNaN(qtdForm) && qtdForm >= 1 && qtdForm <= 99999) ? qtdForm : 1;
-                    var atualizouEnter = atualizarQuantidadeBipadaNaTabela(codigo, qtdEnter, '');
-                    if (atualizouEnter) atualizarEstatisticasOtimista(qtdEnter, false);
-                    if (!window._pendingEnterUpdates) window._pendingEnterUpdates = [];
-                    window._pendingEnterUpdates.push({ codigo: codigo, qtd: qtdEnter, updated: !!atualizouEnter });
+                    _conferenciaProcessarBipagemCodigo(codigo, qtdEnter, '');
                     e.target.value = '';
                     focarCampoCodigoBarras();
-                    buscarProdutoNaPlanilha(codigo);
+                    buscarProdutoNaPlanilha(codigo, qtdEnter, true, true);
                 }
             }
         });
@@ -9292,8 +9328,11 @@ function initForms() {
                 const codigo = e.target.value.trim();
                 if (codigo.length >= 3) {
                     window.ultimoCodigoBuscado = codigo;
+                    var qtdPaste = parseInt(document.getElementById('quantidade') && document.getElementById('quantidade').value, 10);
+                    var qtdP = (!isNaN(qtdPaste) && qtdPaste >= 1 && qtdPaste <= 99999) ? qtdPaste : 1;
+                    _conferenciaProcessarBipagemCodigo(codigo, qtdP, '');
                     e.target.value = '';
-                    buscarProdutoNaPlanilha(codigo);
+                    buscarProdutoNaPlanilha(codigo, qtdP, true, true);
                 }
             }, 50);
         });
@@ -9388,7 +9427,11 @@ function initForms() {
                 var codigo = (e.target && e.target.value) ? e.target.value.trim() : '';
                 if (codigo.length >= 3 && codigo !== window.ultimoCodigoBuscado) {
                     window.ultimoCodigoBuscado = codigo;
-                    buscarProdutoNaPlanilha(codigo);
+                    var qElB = window._elBipagem('quantidade');
+                    var qtdB = parseInt(qElB && qElB.value, 10);
+                    var qtdBlurDev = (!isNaN(qtdB) && qtdB >= 1 && qtdB <= 99999) ? qtdB : 1;
+                    _conferenciaProcessarBipagemCodigo(codigo, qtdBlurDev, '');
+                    buscarProdutoNaPlanilha(codigo, qtdBlurDev, true, true);
                 }
             }, 0);
         });
@@ -9402,13 +9445,10 @@ function initForms() {
                     var qEl = window._elBipagem('quantidade');
                     var qtdForm = parseInt(qEl && qEl.value, 10);
                     var qtdEnter = (typeof qtdForm === 'number' && !isNaN(qtdForm) && qtdForm >= 1 && qtdForm <= 99999) ? qtdForm : 1;
-                    var atualizouEnter = atualizarQuantidadeBipadaNaTabela(codigo, qtdEnter, '');
-                    if (atualizouEnter) atualizarEstatisticasOtimista(qtdEnter, false);
-                    if (!window._pendingEnterUpdates) window._pendingEnterUpdates = [];
-                    window._pendingEnterUpdates.push({ codigo: codigo, qtd: qtdEnter, updated: !!atualizouEnter });
+                    _conferenciaProcessarBipagemCodigo(codigo, qtdEnter, '');
                     e.target.value = '';
                     focarCampoCodigoBarras();
-                    buscarProdutoNaPlanilha(codigo);
+                    buscarProdutoNaPlanilha(codigo, qtdEnter, true, true);
                 }
             }
         });
@@ -9417,8 +9457,12 @@ function initForms() {
                 var codigo = e.target.value.trim();
                 if (codigo.length >= 3) {
                     window.ultimoCodigoBuscado = codigo;
+                    var qElP = window._elBipagem('quantidade');
+                    var qtdPv = parseInt(qElP && qElP.value, 10);
+                    var qtdPasteDev = (!isNaN(qtdPv) && qtdPv >= 1 && qtdPv <= 99999) ? qtdPv : 1;
+                    _conferenciaProcessarBipagemCodigo(codigo, qtdPasteDev, '');
                     e.target.value = '';
-                    buscarProdutoNaPlanilha(codigo);
+                    buscarProdutoNaPlanilha(codigo, qtdPasteDev, true, true);
                 }
             }, 50);
         });
@@ -9623,8 +9667,8 @@ function focarCampoCodigoBarras() {
     requestAnimationFrame(function() { requestAnimationFrame(rolarBlocoParaTopo); });
 }
 
-// Buscar produto na planilha Excel. quantidadeParaAdicionarOpcional: se passado, usa essa qtd no add; skipAtualizarTabelaOpcional: true = não chama atualizarQuantidadeBipadaNaTabela (já atualizado na UI).
-async function buscarProdutoNaPlanilha(codigoBarras, quantidadeParaAdicionarOpcional, skipAtualizarTabelaOpcional) {
+// Buscar produto na planilha Excel. quantidadeParaAdicionarOpcional: se passado, usa essa qtd no add; skipAtualizarTabelaOpcional: true = não chama atualizarQuantidadeBipadaNaTabela (já atualizado na UI); skipEnqueueOpcional: true = só preenche nome/código (sem somar de novo).
+async function buscarProdutoNaPlanilha(codigoBarras, quantidadeParaAdicionarOpcional, skipAtualizarTabelaOpcional, skipEnqueueOpcional) {
     codigoBarras = normalizarCodigoBarrasDuplicado((codigoBarras || '').toString().trim());
     if (!codigoBarras || codigoBarras.length < 3) {
         return;
@@ -9738,10 +9782,12 @@ async function buscarProdutoNaPlanilha(codigoBarras, quantidadeParaAdicionarOpci
                     atualizarEstatisticasOtimista(qtd, false);
                 }
                 if (idxPend >= 0) window._pendingEnterUpdates.splice(idxPend, 1);
-                if (_conferenciaUsaRascunhoLocal()) {
-                    _conferenciaEnfileirarAddLocal(override.codigo_barras, qtd);
-                } else {
-                    window.bipagemEmAndamento = window.bipagemEmAndamento.then(function() { return addProduto(true, override); }).catch(function() {});
+                if (!skipEnqueueOpcional) {
+                    if (_conferenciaUsaRascunhoLocal()) {
+                        _conferenciaEnfileirarAddLocal(override.codigo_barras, qtd);
+                    } else {
+                        window.bipagemEmAndamento = window.bipagemEmAndamento.then(function() { return addProduto(true, override); }).catch(function() {});
+                    }
                 }
             }
         } else {
@@ -9782,10 +9828,12 @@ async function buscarProdutoNaPlanilha(codigoBarras, quantidadeParaAdicionarOpci
                     atualizarEstatisticasOtimista(qtdNaoEnc, false);
                 }
                 if (idxPendNao >= 0) window._pendingEnterUpdates.splice(idxPendNao, 1);
-                if (_conferenciaUsaRascunhoLocal()) {
-                    _conferenciaEnfileirarAddLocal(codigoBarras, qtdNaoEnc);
-                } else {
-                    window.bipagemEmAndamento = window.bipagemEmAndamento.then(function() { return addProduto(false, overrideNaoEncontrado); }).catch(function() {});
+                if (!skipEnqueueOpcional) {
+                    if (_conferenciaUsaRascunhoLocal()) {
+                        _conferenciaEnfileirarAddLocal(codigoBarras, qtdNaoEnc);
+                    } else {
+                        window.bipagemEmAndamento = window.bipagemEmAndamento.then(function() { return addProduto(false, overrideNaoEncontrado); }).catch(function() {});
+                    }
                 }
             }
         }
@@ -10880,8 +10928,7 @@ async function addProduto(forcarAdicionar, dadosOverride) {
         ? String(dadosOverride.codigo_interno || dadosOverride.codigo_produto || '').trim()
         : (codigoProdutoEl && codigoProdutoEl.value) ? codigoProdutoEl.value.trim() : '';
     if (!dadosOverride) {
-        atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdutoParaTabela);
-        atualizarEstatisticasOtimista(quantidade, false);
+        _conferenciaProcessarBipagemCodigo(codigoBarras, quantidade, codigoProdutoParaTabela, { permitirRepetir: true });
         var qEl = window._elBipagem('quantidade');
         if (qEl) qEl.value = 1;
     }
@@ -10891,7 +10938,6 @@ async function addProduto(forcarAdicionar, dadosOverride) {
     focarCampoCodigoBarras();
 
     if (_conferenciaUsaRascunhoLocal() && !window._conferenciaSalvandoNoComprovante) {
-        if (!dadosOverride) _conferenciaEnfileirarAddLocal(codigoBarras, quantidade);
         return { success: true, _apenas_local: true };
     }
 
@@ -12485,14 +12531,19 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
         try {
             if (_conferenciaUsaRascunhoLocal()) {
                 var qtdBipTudo = cells ? (parseInt(cells[9].textContent, 10) || 0) : 0;
-                if (qtdBipTudo > 0) _conferenciaEnfileirarRemoveLocal(codigoBarras, qtdBipTudo);
-            } else {
-                await _flushTodasPendenciasConferencia();
+                if (qtdBipTudo > 0) {
+                    var dataCodTudo = (row && row.getAttribute('data-codigo')) || '';
+                    _conferenciaProcessarBipagemCodigo(codigoBarras, -qtdBipTudo, dataCodTudo, { permitirRepetir: true });
+                }
+                atualizarBoxesComprovante();
+                return;
             }
+            await _flushTodasPendenciasConferencia();
             if (cells) {
                 var qtdProduto = parseInt(cells[5].textContent, 10) || 0;
                 cells[9].innerHTML = '<strong style="color: #666">0</strong>';
                 cells[10].innerHTML = '<strong style="color: #f44336">' + qtdProduto + '</strong>';
+                if (row.cells[8]) { row.cells[8].textContent = ''; row.cells[8].style.color = ''; row.cells[8].style.fontWeight = ''; }
                 if (row && row.classList) {
                     row.classList.remove('row-completo', 'row-excedente', 'row-parcial');
                     row.classList.add('row-pendente');
@@ -12501,27 +12552,23 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
                 atualizarTotaisConferenciaFromDOM();
                 atualizarBoxesComprovante();
             }
-            if (!_conferenciaUsaRascunhoLocal()) {
-                const result = await fetchAPI('/conferencia/remover', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        id_viagem: idViagem,
-                        codigo_barras: codigoBarras,
-                        quantidade: 'tudo',
-                        fluxo: (window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento'
-                    })
-                });
-                if (result && result.success) {
-                    showMessage(result.mensagem || 'Item(s) removido(s).', 'success');
-                    await reloadConferenciaAtiva(idViagem, { forcar: true, forcarIgnorarPendencias: true });
-                    loadPeriodoCarregamento(idViagem);
-                    loadEstatisticas();
-                } else {
-                    showMessage(result && result.erro ? result.erro : 'Não foi possível remover', 'error');
-                    await reloadConferenciaAtiva(idViagem, { forcar: true, forcarIgnorarPendencias: true });
-                }
+            const result = await fetchAPI('/conferencia/remover', {
+                method: 'POST',
+                body: JSON.stringify({
+                    id_viagem: idViagem,
+                    codigo_barras: codigoBarras,
+                    quantidade: 'tudo',
+                    fluxo: (window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento'
+                })
+            });
+            if (result && result.success) {
+                showMessage(result.mensagem || 'Item(s) removido(s).', 'success');
+                await reloadConferenciaAtiva(idViagem, { forcar: true, forcarIgnorarPendencias: true });
+                loadPeriodoCarregamento(idViagem);
+                loadEstatisticas();
             } else {
-                atualizarBoxesComprovante();
+                showMessage(result && result.erro ? result.erro : 'Não foi possível remover', 'error');
+                await reloadConferenciaAtiva(idViagem, { forcar: true, forcarIgnorarPendencias: true });
             }
         } catch (e) {
             showMessage('Erro ao remover item', 'error');
@@ -12534,21 +12581,10 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
 
     if (cells) {
         var qtdBipada = parseInt(cells[9].textContent, 10) || 0;
-        var qtdFalta = parseInt(cells[10].textContent, 10) || 0;
         if (qtdBipada <= 0) return;
-        var novaBip = Math.max(0, qtdBipada - 1);
-        var novaFalta = qtdFalta + 1;
-        cells[9].innerHTML = '<strong style="color: ' + (novaBip > 0 ? '#4caf50' : '#666') + '">' + novaBip + '</strong>';
-        cells[10].innerHTML = '<strong style="color: #f44336">' + novaFalta + '</strong>';
-        if (row && row.classList) {
-            row.classList.remove('row-completo', 'row-excedente');
-            row.classList.add('row-parcial');
-            if (row.cells[0]) row.cells[0].innerHTML = '<span class="status-badge status-SOBRA">⚠️ PARCIAL</span>';
-        }
-        atualizarTotaisConferenciaFromDOM();
-        atualizarBoxesComprovante();
-    }
-    if (_conferenciaUsaRascunhoLocal()) {
+        var dataCod = (row && row.getAttribute('data-codigo')) || '';
+        _conferenciaProcessarBipagemCodigo(codigoBarras, -1, dataCod);
+    } else if (_conferenciaUsaRascunhoLocal()) {
         _conferenciaEnfileirarRemoveLocal(codigoBarras, 1);
     } else {
         window._conferenciaPending.removes[codigoBarras] = (window._conferenciaPending.removes[codigoBarras] || 0) + 1;
@@ -12577,38 +12613,8 @@ window.biparItem = function(btnOrCodigo, codigoBarrasOrProduto, produtoOrQtd, qu
     document.getElementById(dev ? 'dev-produto-nome' : 'produto-nome').value = produto;
     document.getElementById(dev ? 'dev-quantidade' : 'quantidade').value = 1;
     var row = btn ? btn.closest('tr') : null;
-    var cells = row && row.cells && row.cells.length >= 11 ? row.cells : null;
-    var qtdFaltaAtual = cells ? (parseInt(cells[10].textContent, 10) || 0) : 0;
-    if (qtdFaltaAtual <= 0) return;
-    if (cells) {
-        var qtdBipada = parseInt(cells[9].textContent, 10) || 0;
-        var novaBipAdd = qtdBipada + 1;
-        var novaFaltaAdd = Math.max(0, qtdFaltaAtual - 1);
-        cells[9].innerHTML = '<strong style="color: #4caf50">' + novaBipAdd + '</strong>';
-        cells[10].innerHTML = '<strong style="color: ' + (novaFaltaAdd > 0 ? '#f44336' : '#4caf50') + '">' + novaFaltaAdd + '</strong>';
-        atualizarTotaisConferenciaFromDOM();
-        atualizarBoxesComprovante();
-        var btnsAdd = _htmlBotoesAcaoConferencia({
-            codigo_barras: codigoBarras,
-            produto: produto,
-            quantidade_bipada: novaBipAdd,
-            quantidade_falta: novaFaltaAdd
-        });
-        var cellAcaoBip = cells[11] || (row && row.cells[11]);
-        if (cellAcaoBip) {
-            var divBip = cellAcaoBip.querySelector('div') || cellAcaoBip;
-            if (!divBip.querySelector('[data-conf-acao="tirar-1"]')) {
-                divBip.insertAdjacentHTML('afterbegin', btnsAdd.tirar);
-            }
-        }
-    }
-    _conferenciaEnfileirarAddLocal(codigoBarras, 1);
-    if (!_conferenciaUsaRascunhoLocal()) {
-        if (window._conferenciaPending.addTimers[codigoBarras]) clearTimeout(window._conferenciaPending.addTimers[codigoBarras]);
-        window._conferenciaPending.addTimers[codigoBarras] = setTimeout(function() {
-            _flushAdd(codigoBarras);
-        }, window._conferenciaPending.DEBOUNCE_MS);
-    }
+    var dataCod = (row && row.getAttribute('data-codigo')) || '';
+    _conferenciaProcessarBipagemCodigo(codigoBarras, 1, dataCod);
     if (cb) cb.focus();
 }
 
