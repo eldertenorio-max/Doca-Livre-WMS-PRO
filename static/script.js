@@ -259,8 +259,10 @@ function _conferenciaConfirmarAcaoModal(titulo, texto, rotuloOk) {
         modal.style.display = 'flex';
         modal.style.alignItems = 'center';
         modal.style.justifyContent = 'center';
+        modal.style.zIndex = '10150';
         function fechar(ok) {
             modal.style.display = 'none';
+            modal.style.zIndex = '';
             btnOk.onclick = null;
             btnCancel.onclick = null;
             resolve(!!ok);
@@ -310,12 +312,16 @@ window._conferenciaAcaoRetornoContinuar = function() {
 };
 
 window._conferenciaAcaoRetornoOutra = async function() {
+    _conferenciaFecharModalRetorno();
     var ok = await _conferenciaConfirmarAcaoModal(
         'Bipar outra viagem',
         'Deseja trocar de viagem? A bipagem não salva desta viagem será descartada da tela (não vai para o comprovante).',
         'Sim, trocar viagem'
     );
-    if (!ok) return;
+    if (!ok) {
+        _conferenciaResolverModalRetorno('continuar');
+        return;
+    }
     var idV = window._getIdViagemAtivo && window._getIdViagemAtivo();
     await _conferenciaDescartarRascunhoLocal(idV);
     _conferenciaLimparSessao();
@@ -338,31 +344,20 @@ window._conferenciaAcaoRetornoZerar = async function() {
     var idV = window._getIdViagemAtivo && window._getIdViagemAtivo();
     if (!idV) {
         showMessage('Nenhuma viagem selecionada.', 'error');
+        _conferenciaResolverModalRetorno('continuar');
         return;
     }
+    _conferenciaFecharModalRetorno();
     var ok = await _conferenciaConfirmarAcaoModal(
         'Zerar bipagem',
         'Confirma zerar TODOS os itens bipados da viagem ' + idV + ' e começar do zero? Esta ação não pode ser desfeita.',
         'Sim, zerar tudo'
     );
-    if (!ok) return;
-    _conferenciaFecharModalRetorno();
-    _limparPendenciasConferenciaTimers();
-    try {
-        var result = await fetchAPI('/conferencia/' + encodeURIComponent(idV) + '/zerar', { method: 'DELETE' });
-        if (result && result.success) {
-            showMessage(result.mensagem || 'Bipagem zerada.', 'success');
-            _conferenciaSalvarSessao({ id_viagem: idV, comprovante_gerado: false, tem_rascunho: false });
-            await reloadConferenciaAtiva(idV, { forcar: true, forcarIgnorarPendencias: true });
-            loadPeriodoCarregamento(idV);
-            loadEstatisticas();
-            if (typeof limparCamposConferencia === 'function') limparCamposConferencia();
-        } else {
-            showMessage((result && result.erro) || 'Não foi possível zerar', 'error');
-        }
-    } catch (e) {
-        showMessage('Erro ao zerar bipagem', 'error');
+    if (!ok) {
+        _conferenciaResolverModalRetorno('continuar');
+        return;
     }
+    await _executarZerarBipagemViagem(idV);
     _conferenciaResolverModalRetorno('zerar');
 };
 
@@ -778,7 +773,11 @@ function reloadConferenciaAtiva(idViagem, opts) {
             return Promise.resolve();
         }
         if (_conferenciaTemPendenciasLocais() && opts.forcarIgnorarPendencias) {
-            return _flushTodasPendenciasConferencia().then(runLoad);
+            if (opts.descartarPendencias) {
+                _limparPendenciasConferenciaTimers();
+            } else {
+                return _flushTodasPendenciasConferencia().then(runLoad);
+            }
         }
         return runLoad();
     });
@@ -874,6 +873,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initConferenciaTabelaAcoes();
     initModalZerarItens();
     initConferenciaSessaoModais();
+    initBaixadosRavexFiltros();
     window._conferenciaSalvarSomenteNoComprovante = true;
     initCadastroRapidoCodigoBarras();
     // Primeira carga após um tick para a tela pintar antes (resposta mais rápida percebida)
@@ -2194,19 +2194,29 @@ function loadTabData(tab) {
 async function loadBaixadosRavex() {
     const tbody = document.getElementById('tbody-baixa-ravex');
     if (!tbody) return;
+    if (typeof initBaixadosRavexFiltros === 'function') initBaixadosRavexFiltros();
     var jaTinhaDados = tbody.querySelector('tr:not(.loading)');
     if (!jaTinhaDados) {
         tbody.innerHTML = '<tr><td colspan="8" class="loading">Carregando...</td></tr>';
     }
-    const resp = await fetchAPI('/ravex/importacoes?limit=200');
+    var qs = (typeof _baixadosRavexQueryFiltros === 'function') ? _baixadosRavexQueryFiltros() : '?limit=500';
+    const resp = await fetchAPI('/ravex/importacoes' + qs);
     if (!resp || resp.erro) {
         tbody.innerHTML = '<tr><td colspan="8" class="loading" style="color:#c62828;">' + (resp && resp.erro ? escapeHtml(resp.erro) : 'Erro ao carregar histórico') + '</td></tr>';
         return;
     }
+    if (typeof _baixadosRavexPreencherUsuarios === 'function') {
+        _baixadosRavexPreencherUsuarios(Array.isArray(resp.usuarios) ? resp.usuarios : []);
+    }
+    if (typeof _baixadosRavexAtualizarResumoFiltro === 'function') {
+        _baixadosRavexAtualizarResumoFiltro(Array.isArray(resp.rows) ? resp.rows.length : 0);
+    }
     const rows = Array.isArray(resp.rows) ? resp.rows : [];
     if (!rows.length) {
-        var msgVazio = 'Nenhuma importação registrada ainda.';
-        if (resp.fonte === 'vazio') {
+        var msgVazio = (typeof _baixadosRavexTemFiltroAtivo === 'function' && _baixadosRavexTemFiltroAtivo())
+            ? 'Nenhum download encontrado com os filtros aplicados.'
+            : 'Nenhuma importação registrada ainda.';
+        if (resp.fonte === 'vazio' && !(typeof _baixadosRavexTemFiltroAtivo === 'function' && _baixadosRavexTemFiltroAtivo())) {
             msgVazio += ' Importe pelo menos uma viagem na aba IMPORTAR RAVEX.';
         }
         tbody.innerHTML = '<tr><td colspan="8" class="loading">' + escapeHtml(msgVazio) + '</td></tr>';
@@ -2231,6 +2241,106 @@ async function loadBaixadosRavex() {
             + '<td>' + (erros ? ('<span style="color:#c62828;font-weight:700;">' + erros + '</span>') : '0') + '</td>'
             + '</tr>';
     }).join('');
+}
+
+function initBaixadosRavexFiltros() {
+    if (window._baixadosRavexFiltrosInit) return;
+    window._baixadosRavexFiltrosInit = true;
+    window._baixadosRavexFiltro = { periodo: 'todos', data_inicio: '', data_fim: '', usuario: '' };
+    document.querySelectorAll('.baixa-ravex-filtro-data-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var p = btn.getAttribute('data-baixa-ravex-filtro-data') || 'todos';
+            window._baixadosRavexFiltro.periodo = p;
+            var di = document.getElementById('baixa-ravex-filtro-data-inicio');
+            var df = document.getElementById('baixa-ravex-filtro-data-fim');
+            if (di) di.value = '';
+            if (df) df.value = '';
+            window._baixadosRavexFiltro.data_inicio = '';
+            window._baixadosRavexFiltro.data_fim = '';
+            _baixadosRavexAtualizarBtnsData();
+            loadBaixadosRavex();
+        });
+    });
+    var di = document.getElementById('baixa-ravex-filtro-data-inicio');
+    var df = document.getElementById('baixa-ravex-filtro-data-fim');
+    function onDataLivreChange() {
+        window._baixadosRavexFiltro.periodo = 'todos';
+        window._baixadosRavexFiltro.data_inicio = di ? di.value : '';
+        window._baixadosRavexFiltro.data_fim = df ? df.value : '';
+        _baixadosRavexAtualizarBtnsData();
+        loadBaixadosRavex();
+    }
+    if (di) di.addEventListener('change', onDataLivreChange);
+    if (df) df.addEventListener('change', onDataLivreChange);
+    var selUser = document.getElementById('baixa-ravex-filtro-usuario');
+    if (selUser) {
+        selUser.addEventListener('change', function() {
+            window._baixadosRavexFiltro.usuario = selUser.value || '';
+            loadBaixadosRavex();
+        });
+    }
+}
+
+function _baixadosRavexAtualizarBtnsData() {
+    var f = window._baixadosRavexFiltro || {};
+    var temDataLivre = !!(f.data_inicio || f.data_fim);
+    document.querySelectorAll('.baixa-ravex-filtro-data-btn').forEach(function(btn) {
+        var t = btn.getAttribute('data-baixa-ravex-filtro-data') || 'todos';
+        btn.classList.toggle('baixa-ravex-filtro-btn--ativo', !temDataLivre && t === (f.periodo || 'todos'));
+    });
+}
+
+function _baixadosRavexQueryFiltros() {
+    var f = window._baixadosRavexFiltro || {};
+    var q = ['limit=500'];
+    if (f.data_inicio) q.push('data_inicio=' + encodeURIComponent(f.data_inicio));
+    if (f.data_fim) q.push('data_fim=' + encodeURIComponent(f.data_fim));
+    if (!f.data_inicio && !f.data_fim && f.periodo && f.periodo !== 'todos') {
+        q.push('periodo=' + encodeURIComponent(f.periodo));
+    }
+    if (f.usuario) q.push('usuario=' + encodeURIComponent(f.usuario));
+    return '?' + q.join('&');
+}
+
+function _baixadosRavexTemFiltroAtivo() {
+    var f = window._baixadosRavexFiltro || {};
+    return !!(f.data_inicio || f.data_fim || (f.periodo && f.periodo !== 'todos') || f.usuario);
+}
+
+function _baixadosRavexPreencherUsuarios(usuarios) {
+    var sel = document.getElementById('baixa-ravex-filtro-usuario');
+    if (!sel) return;
+    var atual = (window._baixadosRavexFiltro && window._baixadosRavexFiltro.usuario) || sel.value || '';
+    var html = '<option value="">Todos</option>';
+    (usuarios || []).forEach(function(u) {
+        if (!u) return;
+        html += '<option value="' + escapeHtml(String(u)) + '">' + escapeHtml(String(u)) + '</option>';
+    });
+    sel.innerHTML = html;
+    sel.value = atual;
+    if (window._baixadosRavexFiltro) window._baixadosRavexFiltro.usuario = sel.value || '';
+}
+
+function _baixadosRavexAtualizarResumoFiltro(total) {
+    var el = document.getElementById('baixa-ravex-filtro-resumo');
+    if (!el) return;
+    if (!_baixadosRavexTemFiltroAtivo()) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+    }
+    var f = window._baixadosRavexFiltro || {};
+    var partes = [];
+    if (f.data_inicio || f.data_fim) {
+        partes.push('período ' + (f.data_inicio || '…') + ' a ' + (f.data_fim || '…'));
+    } else if (f.periodo === 'hoje') {
+        partes.push('hoje');
+    } else if (f.periodo === 'ontem') {
+        partes.push('ontem');
+    }
+    if (f.usuario) partes.push('usuário ' + f.usuario);
+    el.textContent = total + ' registro(s) — filtro: ' + partes.join(', ');
+    el.style.display = 'block';
 }
 
 // Carregar todos os dados
@@ -12242,6 +12352,61 @@ function _zerarTabelaConferenciaNoDOM() {
     atualizarBoxesComprovante();
 }
 
+async function _executarZerarBipagemViagem(idViagem) {
+    if (!idViagem) {
+        showMessage('Nenhuma viagem selecionada.', 'error');
+        return false;
+    }
+    _limparPendenciasConferenciaTimers();
+    window._ultimoBipadoCodigo = '';
+    if (window.ultimoCodigoBuscado) window.ultimoCodigoBuscado = '';
+    await _esperarBipagemConferenciaIdle(8000);
+    _zerarTabelaConferenciaNoDOM();
+    var fluxoQ = (window._fluxoBipagemAtivo === 'devolucao') ? '?fluxo=devolucao' : '';
+    try {
+        var result = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '/zerar' + fluxoQ, {
+            method: 'DELETE'
+        });
+        if (result && result.success) {
+            showMessage(result.mensagem || 'Bipagem zerada. Você pode bipar novamente.', 'success');
+            if (_conferenciaUsaRascunhoLocal()) {
+                _conferenciaSalvarSessao({ id_viagem: idViagem, comprovante_gerado: false, tem_rascunho: false });
+            }
+            await reloadConferenciaAtiva(idViagem, {
+                forcar: true,
+                forcarIgnorarPendencias: true,
+                descartarPendencias: true,
+                aguardarBipagem: false
+            });
+            await loadPeriodoCarregamento(idViagem);
+            loadEstatisticas();
+            if (typeof limparCamposConferencia === 'function' && window._fluxoBipagemAtivo !== 'devolucao') {
+                limparCamposConferencia();
+            } else if (typeof limparCamposDevolucao === 'function') {
+                limparCamposDevolucao();
+            }
+            return true;
+        }
+        showMessage((result && result.erro) || 'Não foi possível zerar', 'error');
+        await reloadConferenciaAtiva(idViagem, {
+            forcar: true,
+            forcarIgnorarPendencias: true,
+            descartarPendencias: true,
+            aguardarBipagem: false
+        });
+        return false;
+    } catch (error) {
+        showMessage('Erro ao zerar bipagem', 'error');
+        await reloadConferenciaAtiva(idViagem, {
+            forcar: true,
+            forcarIgnorarPendencias: true,
+            descartarPendencias: true,
+            aguardarBipagem: false
+        });
+        return false;
+    }
+}
+
 function initModalZerarItens() {
     var aceite = document.getElementById('aceite-zerar-itens');
     var btnConfirmar = document.getElementById('btn-confirmar-zerar');
@@ -12371,36 +12536,8 @@ window.executarZerarItens = async function() {
     const btnConfirmar = document.getElementById('btn-confirmar-zerar');
     if (btnConfirmar) btnConfirmar.disabled = true;
     fecharModalZerarItens();
-    var fluxoQ = (window._fluxoBipagemAtivo === 'devolucao') ? '?fluxo=devolucao' : '';
     try {
-        _limparPendenciasConferenciaTimers();
-        window._ultimoBipadoCodigo = '';
-        if (window.ultimoCodigoBuscado) window.ultimoCodigoBuscado = '';
-        await _esperarBipagemConferenciaIdle(8000);
-        _zerarTabelaConferenciaNoDOM();
-        const result = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '/zerar' + fluxoQ, {
-            method: 'DELETE'
-        });
-        if (result && result.success) {
-            showMessage(result.mensagem || 'Todos os itens foram zerados. Pode bipar novamente.', 'success');
-            if (_conferenciaUsaRascunhoLocal()) {
-                _conferenciaSalvarSessao({ id_viagem: idViagem, comprovante_gerado: false, tem_rascunho: false });
-            }
-            await reloadConferenciaAtiva(idViagem, { forcar: true, forcarIgnorarPendencias: true });
-            await loadPeriodoCarregamento(idViagem);
-            loadEstatisticas();
-            if (typeof limparCamposConferencia === 'function' && window._fluxoBipagemAtivo !== 'devolucao') {
-                limparCamposConferencia();
-            } else if (typeof limparCamposDevolucao === 'function') {
-                limparCamposDevolucao();
-            }
-        } else {
-            showMessage((result && result.erro) || 'Não foi possível zerar os itens', 'error');
-            await reloadConferenciaAtiva(idViagem, { forcar: true, forcarIgnorarPendencias: true });
-        }
-    } catch (error) {
-        showMessage('Erro ao zerar itens', 'error');
-        await reloadConferenciaAtiva(idViagem, { forcar: true, forcarIgnorarPendencias: true });
+        await _executarZerarBipagemViagem(idViagem);
     } finally {
         if (btnConfirmar && aceite) btnConfirmar.disabled = !aceite.checked;
     }

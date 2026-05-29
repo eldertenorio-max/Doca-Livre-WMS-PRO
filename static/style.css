@@ -1760,6 +1760,65 @@ h2 {
     margin-bottom: 30px;
 }
 
+/* Baixados Ravex — filtros */
+#baixa-ravex .baixa-ravex-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+#baixa-ravex .baixa-ravex-filtros {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    flex: 1;
+    min-width: 280px;
+}
+#baixa-ravex .baixa-ravex-filtro-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #366092;
+    margin-right: 2px;
+}
+#baixa-ravex .baixa-ravex-filtro-label-usuario {
+    margin-left: 8px;
+}
+#baixa-ravex .baixa-ravex-filtro-btn--ativo {
+    background: #1976d2 !important;
+    color: #fff !important;
+    border-color: #1565c0 !important;
+}
+#baixa-ravex .baixa-ravex-filtro-data-livre {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #366092;
+}
+#baixa-ravex .baixa-ravex-filtro-data-input {
+    padding: 4px 8px;
+    border: 1px solid #90a4ae;
+    border-radius: 4px;
+    font-size: 13px;
+}
+#baixa-ravex .baixa-ravex-filtro-usuario-select {
+    padding: 4px 8px;
+    border: 1px solid #90a4ae;
+    border-radius: 4px;
+    font-size: 13px;
+    min-width: 120px;
+    max-width: 180px;
+}
+#baixa-ravex .baixa-ravex-filtro-resumo {
+    font-size: 13px;
+    color: #555;
+    margin: 0 0 10px 0;
+}
+
 .relatorios-secao { max-width: 900px; }
 .relatorios-lista { display: flex; flex-direction: column; gap: 14px; }
 .relatorio-item { display: flex; flex-direction: column; gap: 4px; }
@@ -2701,6 +2760,14 @@ h2 {
     justify-content: center;
 }
 
+#modal-conferencia-confirma-acao {
+    z-index: 10150;
+}
+
+#modal-conferencia-retorno {
+    z-index: 10100;
+}
+
 /* Aviso pós "Recebimento concluído" (terceiros): acima de overlays locais */
 #modal-terceiros-recebimento-concluido.modal-terceiros-recebimento-concluido {
     z-index: 10050;
@@ -3299,25 +3366,69 @@ h2 {
     body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr:nth-child(even):not(.row-pendente):not(.row-parcial):not(.row-excedente):not(.row-completo) td {
         background: #f7f9fc !important;
     }
+    /* Destaque P&B: cinzas distintos + faixa lateral (box-shadow não imprime bem) */
+    body.print-extrato #tabela-extrato tbody tr.row-completo td,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-completo td {
+        background: #fff !important;
+        border-color: #ccc !important;
+        box-shadow: none !important;
+        font-weight: 400;
+    }
     body.print-extrato #tabela-extrato tbody tr.row-pendente td,
     body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-pendente td {
-        background: #fff8e1 !important;
-        box-shadow: inset 3px 0 0 #f9a825;
+        background: #e6e6e6 !important;
+        border-color: #888 !important;
+        box-shadow: none !important;
+        font-weight: 600;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    body.print-extrato #tabela-extrato tbody tr.row-pendente td:first-child,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-pendente td:first-child {
+        border-left: 3pt solid #000 !important;
     }
     body.print-extrato #tabela-extrato tbody tr.row-parcial td,
     body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-parcial td {
-        background: #ffe0b2 !important;
-        box-shadow: inset 3px 0 0 #ef6c00;
+        background: #bdbdbd !important;
+        border-color: #555 !important;
+        box-shadow: none !important;
+        font-weight: 700;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    body.print-extrato #tabela-extrato tbody tr.row-parcial td:first-child,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-parcial td:first-child {
+        border-left: 4pt solid #000 !important;
     }
     body.print-extrato #tabela-extrato tbody tr.row-excedente td,
     body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td {
-        background: #ffcdd2 !important;
-        box-shadow: inset 3px 0 0 #c62828;
+        background: #8a8a8a !important;
+        border-color: #222 !important;
+        box-shadow: none !important;
+        color: #fff !important;
+        font-weight: 700;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
-    body.print-extrato #tabela-extrato tbody tr.row-completo td,
-    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-completo td {
-        background: #f1f8e9 !important;
-        box-shadow: none;
+    body.print-extrato #tabela-extrato tbody tr.row-excedente td:first-child,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td:first-child {
+        border-left: 5pt double #000 !important;
+    }
+    body.print-extrato #tabela-extrato tbody tr.row-excedente td strong,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td strong {
+        color: #fff !important;
+    }
+    body.print-extrato #tabela-extrato td:nth-child(10) strong,
+    body.print-extrato #tabela-extrato td:nth-child(11) strong,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(10) strong,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(11) strong {
+        color: #000 !important;
+    }
+    body.print-extrato #tabela-extrato tbody tr.row-excedente td:nth-child(10) strong,
+    body.print-extrato #tabela-extrato tbody tr.row-excedente td:nth-child(11) strong,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td:nth-child(10) strong,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td:nth-child(11) strong {
+        color: #fff !important;
     }
     /* Ocultar colunas pouco usadas na impressão */
     body.print-extrato #tabela-extrato th:nth-child(2),
@@ -3403,13 +3514,37 @@ h2 {
     }
     body.print-extrato #tabela-extrato .status-badge,
     body.print-extrato #dev-extrato-para-imprimir table.data-table .status-badge {
-        padding: 0;
-        border: none;
-        background: transparent !important;
+        padding: 0.4mm 1mm;
+        border: 0.75pt solid #000;
+        background: #fff !important;
         font-size: 7pt;
-        font-weight: 700;
+        font-weight: 800;
         line-height: 1.1;
         white-space: nowrap;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    body.print-extrato #tabela-extrato tbody tr.row-pendente .status-badge,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-pendente .status-badge {
+        background: #d9d9d9 !important;
+        border-width: 1pt;
+    }
+    body.print-extrato #tabela-extrato tbody tr.row-parcial .status-badge,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-parcial .status-badge {
+        background: #fff !important;
+        border-width: 1.25pt;
+    }
+    body.print-extrato #tabela-extrato tbody tr.row-excedente .status-badge,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente .status-badge {
+        background: #000 !important;
+        color: #fff !important;
+        border-color: #000;
+    }
+    body.print-extrato #tabela-extrato tbody tr.row-completo .status-badge,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-completo .status-badge {
+        background: #fff !important;
+        border-color: #666;
+        font-weight: 600;
     }
     body.print-extrato #tabela-extrato td strong,
     body.print-extrato #dev-extrato-para-imprimir table.data-table td strong {

@@ -732,9 +732,26 @@
             <div id="baixa-ravex" class="tab-content">
                 <h2>BAIXADOS (RAVEX)</h2>
                 <p class="info-text">Histórico do que foi baixado/importado do Ravex (por período, por ID único ou por lista). Mostra o status, quantidade de viagens e itens gravados.</p>
-                <p style="margin-bottom: 12px;">
+                <div class="baixa-ravex-toolbar">
+                    <div class="baixa-ravex-filtros">
+                        <span class="baixa-ravex-filtro-label">Data</span>
+                        <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn baixa-ravex-filtro-btn--ativo" data-baixa-ravex-filtro-data="todos">Todos</button>
+                        <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="hoje">Hoje</button>
+                        <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="ontem">Ontem</button>
+                        <label class="baixa-ravex-filtro-data-livre">De
+                            <input type="date" id="baixa-ravex-filtro-data-inicio" class="baixa-ravex-filtro-data-input" title="Data inicial">
+                        </label>
+                        <label class="baixa-ravex-filtro-data-livre">Até
+                            <input type="date" id="baixa-ravex-filtro-data-fim" class="baixa-ravex-filtro-data-input" title="Data final">
+                        </label>
+                        <span class="baixa-ravex-filtro-label baixa-ravex-filtro-label-usuario">Usuário</span>
+                        <select id="baixa-ravex-filtro-usuario" class="baixa-ravex-filtro-usuario-select" title="Filtrar por usuário">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
                     <button type="button" class="btn btn-secondary" id="btn-atualizar-baixados-ravex" onclick="loadBaixadosRavex()">🔄 Atualizar lista</button>
-                </p>
+                </div>
+                <p id="baixa-ravex-filtro-resumo" class="baixa-ravex-filtro-resumo" style="display: none;"></p>
                 <div style="overflow: auto;">
                     <table class="data-table" id="tabela-baixa-ravex">
                         <thead>

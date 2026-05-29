@@ -4101,6 +4101,60 @@ def _formatar_criado_em_baixados_ravex(criado):
     return s
 
 
+def _ravex_tz_baixados():
+    if ZoneInfo:
+        return ZoneInfo('America/Sao_Paulo')
+    return timezone(timedelta(hours=-3))
+
+
+def _ravex_filtro_periodo_datas(periodo, data_inicio, data_fim):
+    """Retorna (inicio, fim_exclusivo) com timezone ou (None, None) se sem filtro de data."""
+    tz = _ravex_tz_baixados()
+    periodo = (periodo or '').strip().lower()
+    di = (data_inicio or '').strip()[:10]
+    df = (data_fim or '').strip()[:10]
+    if di and df:
+        try:
+            inicio = datetime.strptime(di, '%Y-%m-%d').replace(tzinfo=tz)
+            fim = datetime.strptime(df, '%Y-%m-%d').replace(tzinfo=tz) + timedelta(days=1)
+            return inicio, fim
+        except ValueError:
+            pass
+    elif di:
+        try:
+            inicio = datetime.strptime(di, '%Y-%m-%d').replace(tzinfo=tz)
+            return inicio, inicio + timedelta(days=1)
+        except ValueError:
+            pass
+    if periodo == 'hoje':
+        now = datetime.now(tz)
+        inicio = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return inicio, inicio + timedelta(days=1)
+    if periodo == 'ontem':
+        now = datetime.now(tz)
+        fim = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return fim - timedelta(days=1), fim
+    return None, None
+
+
+def _ravex_listar_usuarios_distintos(conn):
+    try:
+        rows = conn.execute(
+            """SELECT DISTINCT TRIM(usuario) AS u
+               FROM public.ravex_importacoes
+               WHERE TRIM(COALESCE(usuario, '')) != ''
+               ORDER BY u"""
+        ).fetchall()
+    except Exception:
+        return []
+    out = []
+    for r in rows or []:
+        u = (r.get('u') if hasattr(r, 'get') else (r[0] if r else None))
+        if u:
+            out.append(str(u).strip())
+    return out
+
+
 def _ravex_importacao_dict_from_row(r):
     def _get(k, idx):
         return (r.get(k) if hasattr(r, 'get') else (r[idx] if hasattr(r, '__getitem__') and len(r) > idx else None))
@@ -5059,31 +5113,43 @@ def api_ravex_listar_importacoes():
             return jsonify({'erro': 'Banco não é Postgres.', 'rows': []}), 400
         limit = request.args.get('limit', '200')
         dataset_filtro = (request.args.get('dataset_id') or '').strip()
+        periodo = (request.args.get('periodo') or '').strip().lower()
+        data_inicio = (request.args.get('data_inicio') or '').strip()
+        data_fim = (request.args.get('data_fim') or '').strip()
+        usuario_filtro = (request.args.get('usuario') or '').strip()
         try:
             limit_i = max(10, min(500, int(limit)))
         except Exception:
             limit_i = 200
+        inicio_dt, fim_dt = _ravex_filtro_periodo_datas(periodo, data_inicio, data_fim)
+        tem_filtros = bool(inicio_dt and fim_dt) or bool(usuario_filtro)
+        where = []
+        params = []
         if dataset_filtro:
-            sql = """SELECT id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em
-                     FROM public.ravex_importacoes
-                     WHERE dataset_id = ?::uuid
-                     ORDER BY criado_em DESC NULLS LAST
-                     LIMIT ?"""
-            params = (dataset_filtro, limit_i)
-        else:
-            sql = """SELECT id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em
-                     FROM public.ravex_importacoes
-                     ORDER BY criado_em DESC NULLS LAST
-                     LIMIT ?"""
-            params = (limit_i,)
-        rows = conn.execute(sql, params).fetchall()
+            where.append('dataset_id = ?::uuid')
+            params.append(dataset_filtro)
+        if inicio_dt and fim_dt:
+            where.append('criado_em >= ? AND criado_em < ?')
+            params.extend([inicio_dt, fim_dt])
+        if usuario_filtro:
+            where.append('LOWER(TRIM(COALESCE(usuario, \'\'))) = LOWER(?)')
+            params.append(usuario_filtro)
+        where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
+        sql = f"""SELECT id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em
+                  FROM public.ravex_importacoes
+                  {where_sql}
+                  ORDER BY criado_em DESC NULLS LAST
+                  LIMIT ?"""
+        params.append(limit_i)
+        rows = conn.execute(sql, tuple(params)).fetchall()
         out = [_ravex_importacao_dict_from_row(r) for r in (rows or [])]
         fonte = 'ravex_importacoes'
-        if not out:
+        if not out and not tem_filtros:
             out = _listar_baixados_ravex_de_romaneio(conn, limit_i)
             fonte = 'romaneio_por_item' if out else 'vazio'
+        usuarios = _ravex_listar_usuarios_distintos(conn)
         conn.close()
-        return jsonify({'ok': True, 'rows': out, 'fonte': fonte})
+        return jsonify({'ok': True, 'rows': out, 'fonte': fonte, 'usuarios': usuarios})
     except Exception as e:
         try:
             conn.close()
