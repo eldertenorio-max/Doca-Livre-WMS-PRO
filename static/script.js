@@ -1257,15 +1257,25 @@ function initNavegacaoRapida() {
     }
     prefetchEntrada();
 
-    function aoIniciarSaida() {
+    function irParaEntrada(e) {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        if (linkInicio._navegandoEntrada) return;
+        linkInicio._navegandoEntrada = true;
         linkInicio.classList.add('header-link-inicio--saindo');
         _prepararSaidaParaEntrada();
+        window.location.assign(href);
     }
 
     linkInicio.addEventListener('mouseenter', prefetchEntrada, { passive: true });
-    linkInicio.addEventListener('mousedown', aoIniciarSaida, { passive: true });
-    linkInicio.addEventListener('touchstart', aoIniciarSaida, { passive: true });
-    // Navegação nativa pelo href (sem preventDefault) — o browser inicia /entrada imediatamente
+    linkInicio.addEventListener('click', irParaEntrada);
+    linkInicio.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            irParaEntrada(e);
+        }
+    });
 }
 
 function initModulos() {
