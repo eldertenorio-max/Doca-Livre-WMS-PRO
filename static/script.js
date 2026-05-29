@@ -414,6 +414,17 @@ function _conferenciaTalvezModalRetorno(idViagem) {
     });
 }
 
+function _conferenciaCancelarGravacaoComprovante() {
+    window._conferenciaGravarCancelado = true;
+    if (window._conferenciaGravarAbort && typeof window._conferenciaGravarAbort.abort === 'function') {
+        try { window._conferenciaGravarAbort.abort(); } catch (e) { /* ignore */ }
+    }
+    window._conferenciaSalvandoNoComprovante = false;
+    _ravexLoadingSetCancelVisible(false);
+    if (window.ravexLoadingHide) window.ravexLoadingHide();
+    showMessage('Gravação cancelada. A bipagem permanece neste aparelho; você pode tentar gerar o comprovante de novo.', 'warning');
+}
+
 async function _conferenciaSalvarBipagemEGerarExtrato() {
     var idViagem = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value || '').trim();
     if (!idViagem) {
@@ -427,9 +438,16 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
     var salvou = false;
     try {
         window._conferenciaSalvandoNoComprovante = true;
+        window._conferenciaGravarCancelado = false;
+        window._conferenciaGravarAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
         if (window.ravexLoadingShow) window.ravexLoadingShow('Gravando bipagem no servidor… Aguarde.');
+        _ravexLoadingSetCancelVisible(true, _conferenciaCancelarGravacaoComprovante);
         var flushOk = await _flushTodasPendenciasConferencia();
+        _ravexLoadingSetCancelVisible(false);
         if (window.ravexLoadingHide) window.ravexLoadingHide();
+        if (window._conferenciaGravarCancelado || (flushOk && flushOk.cancelado)) {
+            return false;
+        }
         if (!flushOk || flushOk.ok === false || flushOk.falhas > 0) {
             if (flushOk && flushOk.erro === 'doca') {
                 showMessage('Selecione a doca (1, 2, 3 ou 4) na conferência antes de gerar o comprovante.', 'error');
@@ -469,6 +487,8 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
         return false;
     } finally {
         window._conferenciaSalvandoNoComprovante = false;
+        window._conferenciaGravarAbort = null;
+        _ravexLoadingSetCancelVisible(false);
         if (window.ravexLoadingHide) window.ravexLoadingHide();
         if (btnC) btnC.disabled = false;
         if (btnD) btnD.disabled = false;
@@ -606,10 +626,13 @@ async function _conferenciaGravarBipagemCompletaNoServidor() {
     if (!doca || docasValidas.indexOf(doca) < 0) {
         return { ok: false, falhas: 1, erro: 'doca' };
     }
+    if (window._conferenciaGravarCancelado) {
+        return { ok: false, falhas: 0, cancelado: true };
+    }
     var itens = _conferenciaColetarItensTabelaParaGravar();
     var veiculoInput = window._elBipagem('veiculo');
     var statusSelect = window._elBipagem('status');
-    var result = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '/gravar-bipagem', {
+    var fetchOpts = {
         method: 'POST',
         body: JSON.stringify({
             fluxo: 'carregamento',
@@ -618,7 +641,14 @@ async function _conferenciaGravarBipagemCompletaNoServidor() {
             status: (statusSelect && statusSelect.value) ? statusSelect.value : 'PENDENTE',
             itens: itens
         })
-    });
+    };
+    if (window._conferenciaGravarAbort && window._conferenciaGravarAbort.signal) {
+        fetchOpts.signal = window._conferenciaGravarAbort.signal;
+    }
+    var result = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '/gravar-bipagem', fetchOpts);
+    if (window._conferenciaGravarCancelado || (result && result._cancelado)) {
+        return { ok: false, falhas: 0, cancelado: true };
+    }
     if (result && result.success) {
         var p = window._conferenciaPending;
         if (p) {
@@ -10296,14 +10326,26 @@ function _ravexLoadingSetCancelVisible(visivel, onCancel) {
     if (!wrap || !btn) return;
     if (visivel) {
         wrap.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Cancelar';
         btn.onclick = function() {
+            btn.disabled = true;
+            btn.textContent = 'Cancelando…';
             if (typeof onCancel === 'function') onCancel();
         };
     } else {
         wrap.style.display = 'none';
+        btn.disabled = false;
+        btn.textContent = 'Cancelar';
         btn.onclick = null;
     }
 }
+
+/** Exibe overlay de carregamento com botão Cancelar (ex.: gravar bipagem ao gerar comprovante). */
+window.ravexLoadingShowCancelavel = function(msg, onCancel) {
+    if (window.ravexLoadingShow) window.ravexLoadingShow(msg);
+    _ravexLoadingSetCancelVisible(true, onCancel);
+};
 
 // Carregar Estatísticas (usado após bip, etc.)
 async function loadEstatisticas() {
