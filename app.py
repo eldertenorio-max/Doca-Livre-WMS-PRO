@@ -3075,6 +3075,126 @@ def conferencia_produto_na_lista(id_viagem):
     return jsonify({'na_lista': na_lista, 'codigo_produto': codigo_produto_resolvido})
 
 
+def _conferencia_sets_codigos(resultado):
+    """Conjuntos de código de barras e código produto já presentes na lista da conferência."""
+    codigos_romaneio = set()
+    codigos_prod = set()
+    for it in resultado or []:
+        cb = str(it.get('codigo_barras') or '').strip()
+        if cb:
+            codigos_romaneio.add(cb)
+        cp = str(it.get('codigo_produto') or '').strip()
+        if cp:
+            codigos_prod.add(cp)
+        for x in it.get('_todos_codigos_barras') or []:
+            xc = str(x or '').strip()
+            if xc:
+                codigos_romaneio.add(xc)
+    return codigos_romaneio, codigos_prod
+
+
+def _conferencia_calc_status_item(quantidade_produto, quantidade_bipada):
+    quantidade_falta = max(0, int(quantidade_produto or 0) - int(quantidade_bipada or 0))
+    quantidade_sobra = max(0, int(quantidade_bipada or 0) - int(quantidade_produto or 0))
+    if quantidade_sobra > 0:
+        status_bipado = 'EXCEDENTE'
+    elif quantidade_bipada >= quantidade_produto and quantidade_produto > 0:
+        status_bipado = 'COMPLETO'
+    elif quantidade_bipada > 0:
+        status_bipado = 'PARCIAL'
+    else:
+        status_bipado = 'PENDENTE'
+    aviso_sobra = ('Bipou %s a mais' % quantidade_sobra) if quantidade_sobra > 0 else ''
+    return quantidade_falta, quantidade_sobra, status_bipado, aviso_sobra
+
+
+def _conferencia_aviso_multiplos_codigos(todos_cb, aviso_atual=''):
+    cods = sorted({str(x).strip() for x in (todos_cb or []) if str(x).strip()})
+    if len(cods) <= 1:
+        return aviso_atual or ''
+    aviso_multi = '⚠️ Múltiplos códigos: ' + ', '.join(cods)
+    if aviso_atual and 'Múltiplos códigos' not in aviso_atual:
+        return (aviso_atual + ' — ' + aviso_multi) if aviso_atual else aviso_multi
+    return aviso_multi
+
+
+def _conferencia_incluir_extras_bipados(resultado, extras_rows, mapa_barras_to_codigo, id_viagem):
+    """Itens bipados fora do romaneio (manual). Um registro por codigo_produto; meta não sobe ao bipar outro EAN/DUN."""
+    codigos_romaneio, codigos_prod = _conferencia_sets_codigos(resultado)
+    for row in extras_rows or []:
+        cb = ((row.get('codigo_barras') or '') if hasattr(row, 'get') else (row[0] if len(row) > 0 else '')).strip()
+        if not cb:
+            continue
+        cod_prod = (
+            mapa_barras_to_codigo.get(cb)
+            or ((row.get('codigo_interno') or '') if hasattr(row, 'get') else (row[1] if len(row) > 1 else '')).strip()
+            or cb
+        )
+        qtd_bip = int((row.get('quantidade_bipada') or 0) if hasattr(row, 'get') else (row[3] if len(row) > 3 else 0))
+
+        if cod_prod in codigos_prod:
+            existente = None
+            for it in resultado:
+                if str(it.get('codigo_produto') or '').strip() == cod_prod:
+                    existente = it
+                    break
+            if existente and existente.get('origem_romaneio'):
+                continue
+            if existente:
+                existente['quantidade_bipada'] = max(int(existente.get('quantidade_bipada') or 0), qtd_bip)
+                todos = list(existente.get('_todos_codigos_barras') or [])
+                cb0 = str(existente.get('codigo_barras') or '').strip()
+                if cb0 and cb0 not in todos:
+                    todos.append(cb0)
+                if cb not in todos:
+                    todos.append(cb)
+                existente['_todos_codigos_barras'] = todos
+                existente['aviso_sobra'] = _conferencia_aviso_multiplos_codigos(todos, existente.get('aviso_sobra') or '')
+                codigos_romaneio.add(cb)
+                qp = int(existente.get('quantidade_produto') or 0)
+                qb = int(existente.get('quantidade_bipada') or 0)
+                falta, sobra, st, aviso = _conferencia_calc_status_item(qp, qb)
+                existente['quantidade_falta'] = falta
+                existente['quantidade_sobra'] = sobra
+                existente['status_bipado'] = st
+                if aviso and not existente.get('aviso_sobra'):
+                    existente['aviso_sobra'] = aviso
+                elif aviso and 'Bipou' in aviso and 'Bipou' not in (existente.get('aviso_sobra') or ''):
+                    existente['aviso_sobra'] = (existente.get('aviso_sobra') or '') + ' — ' + aviso
+            continue
+
+        if cb in codigos_romaneio:
+            continue
+
+        descricao = (row.get('produto') or '').strip() if hasattr(row, 'get') else ''
+        if not descricao and hasattr(row, '__getitem__'):
+            try:
+                descricao = (row['produto'] or '').strip()
+            except Exception:
+                descricao = ''
+        unidade = (row.get('unidade') or '').strip() if hasattr(row, 'get') else '-'
+        peso = (row.get('peso') or '').strip() if hasattr(row, 'get') else '-'
+        falta, sobra, st, aviso = _conferencia_calc_status_item(qtd_bip, qtd_bip)
+        resultado.append({
+            'codigo_produto': cod_prod,
+            'codigo_barras': cb,
+            'produto': descricao or 'Item adicionado manualmente',
+            'quantidade_produto': qtd_bip,
+            'unidade': unidade or '-',
+            'peso_bruto': peso or '-',
+            'quantidade_bipada': qtd_bip,
+            'quantidade_falta': falta,
+            'quantidade_sobra': sobra,
+            'aviso_sobra': aviso,
+            'status_bipado': st,
+            'id_viagem': id_viagem,
+            'origem_romaneio': False,
+            '_todos_codigos_barras': [cb],
+        })
+        codigos_romaneio.add(cb)
+        codigos_prod.add(cod_prod)
+
+
 def _codigo_barras_romaneio_linha(codigo_produto, unidade, mapa_ean, mapa_dun, mapa_codigo_barras):
     unidade_norm = (unidade or '').strip().upper()
     if unidade_norm in ('PT', 'UN'):
@@ -3211,7 +3331,8 @@ def get_conferencia(id_viagem=None):
             bipados_por_codigo = {}
             for cb, qtd in bipados_dict.items():
                 cod_prod = mapa_barras_to_codigo.get(cb) or cb
-                bipados_por_codigo[cod_prod] = bipados_por_codigo.get(cod_prod, 0) + qtd
+                # Mesmo produto com EAN/DUN: usa o maior total por código de barras, não soma (evita dobrar bipagem)
+                bipados_por_codigo[cod_prod] = max(bipados_por_codigo.get(cod_prod, 0), qtd)
             resultado = []
             romaneio_agregado = _agrupar_romaneio_rows_por_codigo_produto(
                 romaneio_rows, mapa_ean, mapa_dun, mapa_codigo_barras
@@ -3260,6 +3381,8 @@ def get_conferencia(id_viagem=None):
                     'aviso_sobra': aviso_sobra,
                     'status_bipado': status_bipado,
                     'id_viagem': id_para_bipados,
+                    'origem_romaneio': True,
+                    '_todos_codigos_barras': list(todos_cb),
                 })
             extras = conn.execute(
                 """SELECT codigo_barras, MAX(codigo_interno) as codigo_interno, MAX(produto) as produto,
@@ -3269,27 +3392,7 @@ def get_conferencia(id_viagem=None):
                    GROUP BY codigo_barras""",
                 (id_para_bipados, fluxo_req),
             ).fetchall()
-            codigos_romaneio = {str(it.get('codigo_barras') or '').strip() for it in resultado}
-            codigos_prod_romaneio = {str(it.get('codigo_produto') or '').strip() for it in resultado}
-            for row in extras or []:
-                cb = ((row.get('codigo_barras') or '') if hasattr(row, 'get') else (row[0] if len(row) > 0 else '')).strip()
-                cod_prod = mapa_barras_to_codigo.get(cb) or ((row.get('codigo_interno') or '') if hasattr(row, 'get') else (row[1] if len(row) > 1 else '')).strip() or cb
-                if cb and cb not in codigos_romaneio and cod_prod not in codigos_prod_romaneio:
-                    qtd = int((row.get('quantidade_bipada') or 0) if hasattr(row, 'get') else (row[3] if len(row) > 3 else 0))
-                    resultado.append({
-                        'codigo_produto': cod_prod or cb,
-                        'codigo_barras': cb,
-                        'produto': (row.get('produto') or '').strip() or 'Item adicionado manualmente',
-                        'quantidade_produto': qtd,
-                        'unidade': (row.get('unidade') or '').strip() or '-',
-                        'peso_bruto': (row.get('peso') or '').strip() or '-',
-                        'quantidade_bipada': qtd,
-                        'quantidade_falta': 0,
-                        'quantidade_sobra': 0,
-                        'aviso_sobra': '',
-                        'status_bipado': 'COMPLETO',
-                        'id_viagem': id_para_bipados,
-                    })
+            _conferencia_incluir_extras_bipados(resultado, extras, mapa_barras_to_codigo, id_para_bipados)
             meta = {'id_roteiro': '', 'identificador_rota': '', 'placa': '', 'motorista': '', 'data_expedicao': ''}
             id_para_lookup = id_viagem_norm or id_viagem
             if romaneio_rows and len(romaneio_rows) > 0:
@@ -3506,7 +3609,7 @@ def get_conferencia(id_viagem=None):
             bipados_por_codigo_produto = {}
             for cb, qtd in bipados_dict.items():
                 codigo_prod = mapa_barras_to_codigo_produto.get(cb) or cb
-                bipados_por_codigo_produto[codigo_prod] = bipados_por_codigo_produto.get(codigo_prod, 0) + qtd
+                bipados_por_codigo_produto[codigo_prod] = max(bipados_por_codigo_produto.get(codigo_prod, 0), qtd)
             conn.close()
             
             # Ler itens do romaneio filtrando por ID do roteiro (coluna B)
@@ -3604,14 +3707,13 @@ def get_conferencia(id_viagem=None):
                         'quantidade_falta': quantidade_falta,
                         'quantidade_sobra': quantidade_sobra,
                         'aviso_sobra': aviso_sobra,
-                        'status_bipado': status_bipado
+                        'status_bipado': status_bipado,
+                        'origem_romaneio': True,
                     })
                 except Exception as e:
                     continue
         
         # Incluir itens bipados que NÃO estão no romaneio (adicionados via "adicionar na conferência")
-        codigos_no_romaneio = { str(item.get('codigo_barras') or '').strip() for item in resultado }
-        codigos_produto_romaneio = { str(item.get('codigo_produto') or '').strip() for item in resultado }
         conn = get_db()
         conn.row_factory = sqlite3.Row
         extras = conn.execute('''
@@ -3621,27 +3723,10 @@ def get_conferencia(id_viagem=None):
             GROUP BY codigo_barras
         ''', (id_viagem,)).fetchall()
         conn.close()
-        for row in extras:
-            cb = (row['codigo_barras'] or '').strip()
-            codigo_prod_resolvido = mapa_barras_to_codigo_produto.get(cb, '') or (row['codigo_interno'] or '').strip() or cb
-            if cb and cb not in codigos_no_romaneio and codigo_prod_resolvido not in codigos_produto_romaneio:
-                qtd = int(row['quantidade_bipada'] or 0)
-                codigo_produto_extra = (row['codigo_interno'] or '').strip() if row['codigo_interno'] else cb
-                unidade_extra = (row['unidade'] or '').strip() if row['unidade'] else '-'
-                peso_extra = (row['peso'] or '').strip() if row['peso'] else '-'
-                resultado.append({
-                    'codigo_produto': codigo_produto_extra or cb,
-                    'codigo_barras': cb,
-                    'produto': (row['produto'] or '').strip() or 'Item adicionado manualmente',
-                    'quantidade_produto': qtd,
-                    'unidade': unidade_extra or '-',
-                    'peso_bruto': peso_extra or '-',
-                    'quantidade_bipada': qtd,
-                    'quantidade_falta': 0,
-                    'quantidade_sobra': 0,
-                    'aviso_sobra': '',
-                    'status_bipado': 'COMPLETO'
-                })
+        for item in resultado:
+            if item.get('codigo_produto') and not item.get('origem_romaneio'):
+                item['origem_romaneio'] = True
+        _conferencia_incluir_extras_bipados(resultado, extras, mapa_barras_to_codigo_produto, id_viagem)
         
         for item in resultado:
             item['id_viagem'] = id_viagem

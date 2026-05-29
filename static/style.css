@@ -2094,17 +2094,25 @@ h2 {
 #conferencia #tabela-conferencia-container {
     margin-top: 0;
 }
-/* Itens da viagem: todas as linhas com a mesma altura da primeira */
+/* Itens da viagem: cabeçalho compacto; células com leitura confortável */
 #tabela-conferencia-container .data-table th,
-#tabela-conferencia-container .data-table td {
-    padding: 6px 10px;
-    font-size: 15px;
-    line-height: 1.25;
+#dev-tabela-conferencia-container .data-table th {
+    padding: 4px 5px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.15;
+    white-space: nowrap;
+    letter-spacing: 0;
     box-sizing: border-box;
     vertical-align: middle;
 }
-#tabela-conferencia-container .data-table th {
-    font-weight: 600;
+#tabela-conferencia-container .data-table td,
+#dev-tabela-conferencia-container .data-table td {
+    padding: 5px 6px;
+    font-size: 14px;
+    line-height: 1.25;
+    box-sizing: border-box;
+    vertical-align: middle;
 }
 /* Campo Motivo: mesma linguagem visual do cabeçalho (#366092) e dos botões (.btn-primary) */
 #tabela-conferencia-container .data-table input.input-motivo-divergencia,
@@ -3040,20 +3048,28 @@ h2 {
     display: none;
 }
 
+/* Extrato: rótulos curtos só na impressão */
+.extrato-th-print,
+.extrato-status-print {
+    display: none;
+}
+
 /* Impressão: Extrato ou Divergências conforme classe no body */
 @media print {
     @page {
-        margin: 0.35cm;
-        size: A4 landscape;
+        size: A4 portrait;
+        margin: 8mm 10mm 12mm 10mm;
     }
     body * {
         visibility: hidden;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
     .container,
     .container * {
         visibility: hidden;
     }
-    /* ========== EXTRATO: uma folha, grades lado a lado ========== */
+    /* ========== EXTRATO — retrato, compacto, economia de folha ========== */
     body.print-extrato #extrato-para-imprimir,
     body.print-extrato #extrato-para-imprimir *,
     body.print-extrato #dev-extrato-para-imprimir,
@@ -3066,76 +3082,89 @@ h2 {
         left: 0;
         top: 0;
         width: 100%;
+        max-width: 100%;
         padding: 0;
         margin: 0;
-        background: white;
-        color: #000;
-        font-size: 7px;
-        line-height: 1.15;
+        background: #fff !important;
+        color: #111;
+        font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+        font-size: 8pt;
+        line-height: 1.25;
     }
     .extrato-titulo-impressao {
         display: none;
     }
     body.print-extrato .extrato-titulo-impressao {
         display: block !important;
-        font-size: 11px;
+        font-size: 12pt;
         font-weight: 700;
         text-align: center;
-        margin: 0 0 0.2rem 0;
-        padding-bottom: 0.15rem;
-        border-bottom: 1px solid #333;
+        letter-spacing: 0.02em;
+        margin: 0 0 3mm 0;
+        padding-bottom: 1.5mm;
+        border-bottom: 1.5pt solid #366092;
         color: #000;
     }
-    /* Resumo: 5 grupos numa única linha (lado a lado) */
     body.print-extrato #extrato-resumo,
     body.print-extrato #dev-extrato-resumo {
         display: block !important;
-        margin-bottom: 0.25rem;
-        padding: 0.2rem 0.35rem;
-        background: #f5f5f5 !important;
-        border: 1px solid #ccc;
-        border-radius: 2px;
+        margin: 0 0 3mm 0;
+        padding: 2mm 2.5mm;
+        background: #f4f6f8 !important;
+        border: 0.5pt solid #bbb;
+        border-radius: 1mm;
         page-break-inside: avoid;
     }
-    body.print-extrato #extrato-resumo h3 {
+    body.print-extrato #extrato-resumo h3,
+    body.print-extrato #dev-extrato-resumo h3 {
         display: none;
     }
     body.print-extrato .extrato-resumo-grid {
         display: grid !important;
-        grid-template-columns: repeat(5, 1fr);
-        gap: 0.2rem 0.35rem;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2mm 3mm;
     }
     body.print-extrato #dev-extrato-resumo .extrato-resumo-grid {
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(3, 1fr);
     }
     body.print-extrato .extrato-resumo-grupo {
-        padding: 0.35rem 0.5rem;
-        border-left-width: 2px;
+        padding: 1.5mm 2mm;
+        border-left: 2pt solid #366092;
         box-shadow: none;
+        background: #fff !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
     }
     body.print-extrato .extrato-resumo-grupo-titulo {
-        font-size: 8px;
-        margin-bottom: 0.2rem;
-        padding-bottom: 0.15rem;
+        font-size: 7pt;
+        font-weight: 700;
+        margin: 0 0 1mm 0;
+        padding-bottom: 0.5mm;
+        border-bottom: 0.5pt solid #ccc;
+        color: #366092;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
     }
     body.print-extrato .extrato-resumo-linha {
-        font-size: 8px;
-        padding: 0.1rem 0;
+        font-size: 7.5pt;
+        padding: 0.4mm 0;
+        line-height: 1.2;
     }
     body.print-extrato .extrato-resumo-label {
-        color: #333;
+        color: #444;
+        font-weight: 600;
     }
     body.print-extrato .table-container {
-        margin: 0 0 0.25rem 0;
+        margin: 0 0 2mm 0;
         overflow: visible;
-        page-break-inside: auto;
+        box-shadow: none !important;
     }
     body.print-extrato #tabela-extrato,
     body.print-extrato #dev-extrato-para-imprimir table.data-table {
         width: 100%;
-        font-size: 6.5px;
         border-collapse: collapse;
         table-layout: fixed;
+        font-size: 7pt;
     }
     body.print-extrato #tabela-extrato thead,
     body.print-extrato #dev-extrato-para-imprimir table.data-table thead {
@@ -3143,113 +3172,195 @@ h2 {
     }
     body.print-extrato #tabela-extrato th,
     body.print-extrato #dev-extrato-para-imprimir table.data-table th {
-        background: #e0e0e0 !important;
-        color: #000 !important;
-        padding: 0.12rem 0.15rem;
-        border: 1px solid #999;
-        font-size: 6px;
+        background: #366092 !important;
+        color: #fff !important;
+        padding: 1mm 1.2mm;
+        border: 0.5pt solid #2a4d6f;
+        font-size: 6.5pt;
         font-weight: 700;
-        line-height: 1.1;
-        vertical-align: bottom;
+        line-height: 1.15;
+        vertical-align: middle;
         word-wrap: break-word;
+        hyphens: auto;
     }
     body.print-extrato #tabela-extrato td,
     body.print-extrato #dev-extrato-para-imprimir table.data-table td {
-        padding: 0.1rem 0.15rem;
-        border: 1px solid #ccc;
+        padding: 0.8mm 1.2mm;
+        border: 0.5pt solid #ddd;
         vertical-align: top;
-        line-height: 1.12;
+        line-height: 1.2;
         word-wrap: break-word;
-        overflow: hidden;
+        overflow: visible;
+        font-size: 7pt;
+        color: #111 !important;
     }
-    /* Colunas vazias na maioria dos casos — economiza largura */
+    body.print-extrato #tabela-extrato tbody tr:nth-child(even) td,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr:nth-child(even) td {
+        background: #f7f9fc !important;
+    }
+    /* Ocultar colunas pouco usadas na impressão */
     body.print-extrato #tabela-extrato th:nth-child(2),
     body.print-extrato #tabela-extrato td:nth-child(2),
+    body.print-extrato #tabela-extrato th:nth-child(3),
+    body.print-extrato #tabela-extrato td:nth-child(3),
     body.print-extrato #tabela-extrato th:nth-child(9),
     body.print-extrato #tabela-extrato td:nth-child(9),
     body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(2),
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(2),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(3),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(3),
     body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(9),
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(9) {
         display: none !important;
+    }
+    /* Larguras (após ocultar motivo, código barras e aviso) */
+    body.print-extrato #tabela-extrato th:nth-child(1),
+    body.print-extrato #tabela-extrato td:nth-child(1),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(1),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(1) {
+        width: 7%;
+    }
+    body.print-extrato #tabela-extrato th:nth-child(4),
+    body.print-extrato #tabela-extrato td:nth-child(4),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(4),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(4) {
+        width: 11%;
+    }
+    body.print-extrato #tabela-extrato th:nth-child(5),
+    body.print-extrato #tabela-extrato td:nth-child(5),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(5),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(5) {
+        width: auto;
+    }
+    body.print-extrato #tabela-extrato th:nth-child(6),
+    body.print-extrato #tabela-extrato td:nth-child(6),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(6),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(6) {
+        width: 7%;
+        text-align: center;
+    }
+    body.print-extrato #tabela-extrato th:nth-child(7),
+    body.print-extrato #tabela-extrato td:nth-child(7),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(7),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(7) {
+        width: 6%;
+        text-align: center;
+    }
+    body.print-extrato #tabela-extrato th:nth-child(8),
+    body.print-extrato #tabela-extrato td:nth-child(8),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(8),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(8) {
+        width: 8%;
+        text-align: right;
+    }
+    body.print-extrato #tabela-extrato th:nth-child(10),
+    body.print-extrato #tabela-extrato td:nth-child(10),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(10),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(10) {
+        width: 8%;
+        text-align: center;
+    }
+    body.print-extrato #tabela-extrato th:nth-child(11),
+    body.print-extrato #tabela-extrato td:nth-child(11),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(11),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(11) {
+        width: 8%;
+        text-align: center;
     }
     body.print-extrato #tabela-extrato tbody tr,
     body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr {
         page-break-inside: auto;
         break-inside: auto;
     }
-    body.print-extrato #tabela-extrato .status-badge,
-    body.print-extrato #dev-extrato-para-imprimir table.data-table .status-badge {
-        padding: 0 2px;
-        border-radius: 2px;
-        font-size: 6px;
-        font-weight: 600;
-        line-height: 1.1;
-        white-space: nowrap;
-    }
+    body.print-extrato .extrato-th-screen,
     body.print-extrato .extrato-status-screen {
         display: none !important;
     }
+    body.print-extrato .extrato-th-print,
     body.print-extrato .extrato-status-print {
         display: inline !important;
     }
-    body.print-extrato #tabela-extrato td:nth-child(5),
-    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(5) {
-        font-size: 6px;
+    body.print-extrato #tabela-extrato .status-badge,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table .status-badge {
+        padding: 0;
+        border: none;
+        background: transparent !important;
+        font-size: 7pt;
+        font-weight: 700;
+        line-height: 1.1;
+        white-space: nowrap;
     }
     body.print-extrato #tabela-extrato td strong,
     body.print-extrato #dev-extrato-para-imprimir table.data-table td strong {
-        font-weight: 600;
+        font-weight: 700;
         color: #000 !important;
     }
-    /* Rodapé: aviso e assinaturas lado a lado */
+    body.print-extrato #tabela-extrato td:nth-child(4) strong,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(4) strong {
+        color: #111 !important;
+        font-weight: 600;
+    }
+    /* Rodapé compacto */
     body.print-extrato .extrato-rodape-impressao {
         display: flex !important;
         flex-direction: row;
         flex-wrap: nowrap;
-        align-items: flex-start;
-        gap: 0.4rem;
-        margin-top: 0.25rem;
+        align-items: flex-end;
+        gap: 3mm;
+        margin-top: 3mm;
         page-break-inside: avoid;
     }
-    body.print-extrato .extrato-rodape-impressao #extrato-aviso-divergente {
-        flex: 0 0 auto;
-        width: 38%;
+    body.print-extrato .extrato-rodape-impressao #extrato-aviso-divergente,
+    body.print-extrato .extrato-rodape-impressao #dev-extrato-aviso-divergente {
+        flex: 0 0 42%;
         margin: 0 !important;
-        padding: 0.35rem 0.5rem !important;
-        font-size: 8px;
-        border-width: 1px !important;
+        padding: 2mm 2.5mm !important;
+        font-size: 7pt !important;
+        border: 0.75pt solid #c62828 !important;
+        border-radius: 1mm;
+        background: #fff5f5 !important;
     }
-    body.print-extrato .extrato-rodape-impressao #extrato-aviso-divergente p {
-        margin: 0.1rem 0 !important;
-        font-size: 8px !important;
+    body.print-extrato .extrato-rodape-impressao #extrato-aviso-divergente p,
+    body.print-extrato .extrato-rodape-impressao #dev-extrato-aviso-divergente p {
+        margin: 0.5mm 0 !important;
+        font-size: 7pt !important;
+        line-height: 1.25 !important;
+        color: #333 !important;
     }
     body.print-extrato .extrato-rodape-impressao .assinaturas-extrato {
         flex: 1 1 auto;
-        margin-top: 0 !important;
-        padding-top: 0.4rem !important;
-        border-top: 1px solid #333 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border-top: none !important;
     }
     body.print-extrato .extrato-rodape-impressao .assinaturas-extrato > p {
-        font-size: 8px;
-        margin-bottom: 0.35rem !important;
+        display: none !important;
     }
     body.print-extrato .extrato-rodape-impressao .assinaturas-grid {
         display: grid !important;
         grid-template-columns: repeat(4, 1fr);
-        gap: 0.4rem;
+        gap: 2mm;
     }
     body.print-extrato .extrato-rodape-impressao .assinaturas-extrato label {
-        font-size: 7px !important;
+        font-size: 6.5pt !important;
+        font-weight: 700 !important;
+        margin-bottom: 0.5mm !important;
+        color: #333 !important;
     }
     body.print-extrato .extrato-rodape-impressao .assinaturas-extrato [id^="assinatura-nome-"] {
-        font-size: 8px !important;
-        min-height: 14px !important;
-        padding: 0.2rem 0 !important;
+        font-size: 7.5pt !important;
+        min-height: auto !important;
+        padding: 0 0 0.5mm 0 !important;
+        border-bottom: 0.5pt solid #999 !important;
     }
     body.print-extrato .assinaturas-extrato .linha-assinatura {
-        margin-top: 0.2rem !important;
-        height: 14px !important;
+        margin-top: 1.5mm !important;
+        height: 5mm !important;
+        border-bottom: 0.75pt solid #000 !important;
+    }
+    body.print-extrato .assinaturas-extrato small {
+        font-size: 6pt !important;
+        color: #666 !important;
     }
     body.print-extrato .assinaturas-extrato input {
         border-bottom-color: #000 !important;

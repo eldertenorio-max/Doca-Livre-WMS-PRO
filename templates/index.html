@@ -462,15 +462,15 @@
                             <tr>
                                 <th>Status</th>
                                 <th>Motivo</th>
-                                <th>Código de Barras</th>
-                                <th>Código do Produto</th>
+                                <th title="Código de Barras">Cód. barras</th>
+                                <th title="Código do Produto">Cód. produto</th>
                                 <th>Produto</th>
-                                <th>Quantidade do Produto</th>
-                                <th>Unidade</th>
-                                <th>Peso Bruto</th>
+                                <th title="Quantidade do Produto">Qtd. prod.</th>
+                                <th title="Unidade">Un.</th>
+                                <th title="Peso Bruto">Peso</th>
                                 <th>Aviso</th>
-                                <th>Qtd. Bipada</th>
-                                <th>Qtd. Falta</th>
+                                <th title="Quantidade Bipada">Bipado</th>
+                                <th title="Quantidade Falta">Falta</th>
                                 <th>Ação</th>
                             </tr>
                         </thead>
@@ -480,11 +480,15 @@
                     </table>
                 </div>
                 
+                <div id="conferencia-rascunho-aviso" style="display: none; margin-top: 16px; padding: 12px 16px; background: #e3f2fd; border: 1px solid #64b5f6; border-radius: 8px; font-size: 14px; color: #1565c0;">
+                    <strong>ℹ️ Bipagem em andamento:</strong> os itens bipados só serão gravados no sistema ao clicar em <strong>Gerar comprovante completo</strong> ou <strong>Gerar comprovante divergente</strong>.
+                </div>
+
                 <!-- Caixa verde: aparece somente quando TODOS os itens estão bipados corretamente (COMPLETO) -->
                 <div id="conferencia-completa-box" style="display: none; margin-top: 24px; padding: 20px; background: #e8f5e9; border: 2px solid #4caf50; border-radius: 8px;">
                     <p style="margin: 0 0 12px 0; font-size: 16px;"><strong>✅ Todos os itens desta viagem foram conferidos!</strong></p>
-                    <p style="margin: 0 0 16px 0; font-size: 14px; color: #2e7d32;">Gere o comprovante completo da carga.</p>
-                    <button type="button" class="btn btn-primary" id="btn-comprovante-completo" onclick="gerarComprovanteCarregamento()" style="font-size: 16px; background: #4caf50; border-color: #4caf50;">
+                    <p style="margin: 0 0 16px 0; font-size: 14px; color: #2e7d32;">Gere o comprovante completo da carga para salvar a bipagem.</p>
+                    <button type="button" class="btn btn-primary" id="btn-comprovante-completo" onclick="abrirModalComprovanteCompleto()" style="font-size: 16px; background: #4caf50; border-color: #4caf50;">
                         📄 Gerar comprovante completo
                     </button>
                 </div>
@@ -536,7 +540,7 @@
                         <section class="extrato-resumo-grupo">
                             <h4 class="extrato-resumo-grupo-titulo">Totais</h4>
                             <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Total de itens:</span> <span id="extrato-total-itens">0</span></div>
-                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Total quantidade:</span> <span id="extrato-total-qtd">0</span></div>
+                            <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Bipado / Romaneio:</span> <span id="extrato-total-qtd">0 / 0</span></div>
                             <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Peso total:</span> <span id="extrato-peso-total">-</span></div>
                         </section>
                         <section class="extrato-resumo-grupo">
@@ -558,17 +562,17 @@
                     <table id="tabela-extrato" class="data-table">
                         <thead>
                             <tr>
-                                <th>Status</th>
-                                <th>Motivo</th>
-                                <th>Código de Barras</th>
-                                <th>Código do Produto</th>
-                                <th>Produto</th>
-                                <th>Quantidade do Produto</th>
-                                <th>Unidade</th>
-                                <th>Peso Bruto</th>
-                                <th>Aviso</th>
-                                <th>Qtd. Bipada</th>
-                                <th>Qtd. Falta</th>
+                                <th><span class="extrato-th-screen">Status</span><span class="extrato-th-print">St.</span></th>
+                                <th><span class="extrato-th-screen">Motivo</span><span class="extrato-th-print">Mot.</span></th>
+                                <th><span class="extrato-th-screen">Código de Barras</span><span class="extrato-th-print">Cód. barras</span></th>
+                                <th><span class="extrato-th-screen">Código do Produto</span><span class="extrato-th-print">Cód.</span></th>
+                                <th><span class="extrato-th-screen">Produto</span><span class="extrato-th-print">Produto</span></th>
+                                <th><span class="extrato-th-screen">Quantidade do Produto</span><span class="extrato-th-print">Qtd.</span></th>
+                                <th><span class="extrato-th-screen">Unidade</span><span class="extrato-th-print">Un.</span></th>
+                                <th><span class="extrato-th-screen">Peso Bruto</span><span class="extrato-th-print">Peso</span></th>
+                                <th><span class="extrato-th-screen">Aviso</span><span class="extrato-th-print">Aviso</span></th>
+                                <th><span class="extrato-th-screen">Qtd. Bipada</span><span class="extrato-th-print">Bip.</span></th>
+                                <th><span class="extrato-th-screen">Qtd. Falta</span><span class="extrato-th-print">Falta</span></th>
                             </tr>
                         </thead>
                         <tbody id="tbody-extrato">
@@ -1204,15 +1208,15 @@
                                 <tr>
                                     <th>Status</th>
                                     <th>Motivo</th>
-                                    <th>Código de Barras</th>
-                                    <th>Código do Produto</th>
+                                    <th title="Código de Barras">Cód. barras</th>
+                                    <th title="Código do Produto">Cód. produto</th>
                                     <th>Produto</th>
-                                    <th>Quantidade do Produto</th>
-                                    <th>Unidade</th>
-                                    <th>Peso Bruto</th>
+                                    <th title="Quantidade do Produto">Qtd. prod.</th>
+                                    <th title="Unidade">Un.</th>
+                                    <th title="Peso Bruto">Peso</th>
                                     <th>Aviso</th>
-                                    <th>Qtd. Bipada</th>
-                                    <th>Qtd. Falta</th>
+                                    <th title="Quantidade Bipada">Bipado</th>
+                                    <th title="Quantidade Falta">Falta</th>
                                     <th>Ação</th>
                                 </tr>
                             </thead>
@@ -1253,7 +1257,7 @@
                                 <section class="extrato-resumo-grupo">
                                     <h4 class="extrato-resumo-grupo-titulo">Totais</h4>
                                     <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Total de itens:</span> <span id="dev-extrato-total-itens">0</span></div>
-                                    <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Total quantidade:</span> <span id="dev-extrato-total-qtd">0</span></div>
+                                    <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Bipado / Romaneio:</span> <span id="dev-extrato-total-qtd">0 / 0</span></div>
                                     <div class="extrato-resumo-linha"><span class="extrato-resumo-label">Peso total:</span> <span id="dev-extrato-peso-total">-</span></div>
                                 </section>
                                 <section class="extrato-resumo-grupo">
@@ -1268,17 +1272,17 @@
                             <table class="data-table">
                                 <thead>
                                     <tr>
-                                        <th>Status</th>
-                                        <th>Motivo</th>
-                                        <th>Código de Barras</th>
-                                        <th>Código do Produto</th>
-                                        <th>Produto</th>
-                                        <th>Quantidade do Produto</th>
-                                        <th>Unidade</th>
-                                        <th>Peso Bruto</th>
-                                        <th>Aviso</th>
-                                        <th>Qtd. Bipada</th>
-                                        <th>Qtd. Falta</th>
+                                        <th><span class="extrato-th-screen">Status</span><span class="extrato-th-print">St.</span></th>
+                                        <th><span class="extrato-th-screen">Motivo</span><span class="extrato-th-print">Mot.</span></th>
+                                        <th><span class="extrato-th-screen">Código de Barras</span><span class="extrato-th-print">Cód. barras</span></th>
+                                        <th><span class="extrato-th-screen">Código do Produto</span><span class="extrato-th-print">Cód.</span></th>
+                                        <th><span class="extrato-th-screen">Produto</span><span class="extrato-th-print">Produto</span></th>
+                                        <th><span class="extrato-th-screen">Quantidade do Produto</span><span class="extrato-th-print">Qtd.</span></th>
+                                        <th><span class="extrato-th-screen">Unidade</span><span class="extrato-th-print">Un.</span></th>
+                                        <th><span class="extrato-th-screen">Peso Bruto</span><span class="extrato-th-print">Peso</span></th>
+                                        <th><span class="extrato-th-screen">Aviso</span><span class="extrato-th-print">Aviso</span></th>
+                                        <th><span class="extrato-th-screen">Qtd. Bipada</span><span class="extrato-th-print">Bip.</span></th>
+                                        <th><span class="extrato-th-screen">Qtd. Falta</span><span class="extrato-th-print">Falta</span></th>
                                     </tr>
                                 </thead>
                                 <tbody id="dev-tbody-extrato">
@@ -2257,15 +2261,56 @@
     </div>
 
     <!-- Modal de aceite para zerar todos os itens -->
+    <!-- Modal confirmar comprovante completo -->
+    <div id="modal-comprovante-completo" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 440px;">
+            <h3 style="margin-top: 0; color: #2e7d32;">Gerar comprovante completo</h3>
+            <p style="margin: 16px 0;">Confirma gerar o <strong>comprovante completo</strong> desta viagem?</p>
+            <p style="margin: 8px 0 20px 0; font-size: 14px; color: #666;">A bipagem será <strong>gravada no sistema</strong> e o extrato será aberto.</p>
+            <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalComprovanteCompleto()">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-confirmar-comprovante-completo" onclick="confirmarGerarComprovanteCompleto()" style="background: #4caf50;">Sim, gerar e salvar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal confirmar comprovante divergente -->
     <div id="modal-comprovante-divergente" class="modal" style="display: none;">
         <div class="modal-content" style="max-width: 440px;">
             <h3 style="margin-top: 0; color: #e65100;">Gerar comprovante divergente</h3>
             <p style="margin: 16px 0;">Você <strong>não bipou todos os itens</strong> desta viagem. Deseja mesmo gerar o comprovante divergente?</p>
-            <p style="margin: 8px 0 20px 0; font-size: 14px; color: #666;">O extrato será gerado com aviso de comprovante divergente.</p>
+            <p style="margin: 8px 0 20px 0; font-size: 14px; color: #666;">A bipagem será <strong>gravada no sistema</strong> e o extrato abrirá com aviso de divergência.</p>
             <div style="display: flex; gap: 12px; justify-content: flex-end;">
                 <button type="button" class="btn btn-secondary" onclick="fecharModalComprovanteDivergente()">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="btn-confirmar-comprovante-divergente" onclick="confirmarGerarComprovanteDivergente()" style="background: #e65100;">Sim, gerar comprovante divergente</button>
+                <button type="button" class="btn btn-primary" id="btn-confirmar-comprovante-divergente" onclick="confirmarGerarComprovanteDivergente()" style="background: #e65100;">Sim, gerar e salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal ao voltar à aba Conferência -->
+    <div id="modal-conferencia-retorno" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 480px;">
+            <h3 style="margin-top: 0; color: #1565c0;">Conferência — viagem <span id="modal-conferencia-retorno-id">-</span></h3>
+            <p id="modal-conferencia-retorno-msg" style="margin: 16px 0; font-size: 14px; line-height: 1.45;">O que deseja fazer?</p>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button type="button" class="btn btn-primary" id="btn-conferencia-retorno-continuar" style="width: 100%;">Continuar bipando esta viagem</button>
+                <button type="button" class="btn btn-secondary" id="btn-conferencia-retorno-outra" style="width: 100%;">Bipar outra viagem</button>
+                <button type="button" class="btn btn-danger" id="btn-conferencia-retorno-zerar" style="width: 100%;">Zerar bipagem e começar do zero</button>
+            </div>
+            <div style="margin-top: 16px; text-align: right;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-conferencia-retorno-fechar">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmações auxiliares (outra viagem / zerar ao voltar) -->
+    <div id="modal-conferencia-confirma-acao" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 440px;">
+            <h3 id="modal-conferencia-confirma-titulo" style="margin-top: 0;">Confirmar</h3>
+            <p id="modal-conferencia-confirma-texto" style="margin: 16px 0; font-size: 14px; line-height: 1.45;"></p>
+            <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" id="btn-conferencia-confirma-cancelar">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-conferencia-confirma-ok">Confirmar</button>
             </div>
         </div>
     </div>
