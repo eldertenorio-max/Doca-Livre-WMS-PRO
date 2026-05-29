@@ -3149,18 +3149,18 @@ def _conferencia_incluir_extras_bipados(resultado, extras_rows, mapa_barras_to_c
                 if cb not in todos:
                     todos.append(cb)
                 existente['_todos_codigos_barras'] = todos
-                existente['aviso_sobra'] = _conferencia_aviso_multiplos_codigos(todos, existente.get('aviso_sobra') or '')
                 codigos_romaneio.add(cb)
                 qp = int(existente.get('quantidade_produto') or 0)
                 qb = int(existente.get('quantidade_bipada') or 0)
-                falta, sobra, st, aviso = _conferencia_calc_status_item(qp, qb)
+                falta, sobra, st, aviso_bipou = _conferencia_calc_status_item(qp, qb)
                 existente['quantidade_falta'] = falta
                 existente['quantidade_sobra'] = sobra
                 existente['status_bipado'] = st
-                if aviso and not existente.get('aviso_sobra'):
-                    existente['aviso_sobra'] = aviso
-                elif aviso and 'Bipou' in aviso and 'Bipou' not in (existente.get('aviso_sobra') or ''):
-                    existente['aviso_sobra'] = (existente.get('aviso_sobra') or '') + ' — ' + aviso
+                aviso_multi = _conferencia_aviso_multiplos_codigos(todos, '')
+                if aviso_bipou:
+                    existente['aviso_sobra'] = (aviso_multi + ' — ' + aviso_bipou) if aviso_multi else aviso_bipou
+                else:
+                    existente['aviso_sobra'] = aviso_multi or ''
             continue
 
         if cb in codigos_romaneio:

@@ -7225,6 +7225,18 @@ function _statusBipagemConferencia(qtdProduto, qtdBipada) {
     return 'PARCIAL';
 }
 
+/** Coluna Aviso: recalcula “Bipou N a mais” a partir de bipado × romaneio (evita texto antigo). */
+function _avisoConferenciaBipagem(avisoExistente, qtdProduto, qtdBipada) {
+    var prod = parseInt(qtdProduto, 10) || 0;
+    var bip = parseInt(qtdBipada, 10) || 0;
+    var sobra = Math.max(0, bip - prod);
+    var aviso = (avisoExistente || '').trim();
+    var partes = aviso ? aviso.split(' — ').map(function(p) { return p.trim(); }).filter(Boolean) : [];
+    partes = partes.filter(function(p) { return p.indexOf('Bipou') < 0; });
+    if (sobra > 0) partes.push('Bipou ' + sobra + ' a mais');
+    return partes.join(' — ');
+}
+
 /** Alinhado a app._status_bipagem_terceiros: excedente antes de completo. */
 function _statusBipagemTerLocais(qtdXml, qtdBipada) {
     var xml = parseFloat(qtdXml) || 0;
@@ -11067,14 +11079,13 @@ function atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdu
         const novaQtdFalta = Math.max(0, qtdProduto - novaQtdBipada);
         cellQtdBipada.innerHTML = '<strong style="color: ' + (novaQtdBipada > 0 ? '#4caf50' : '#666') + '">' + novaQtdBipada + '</strong>';
         cellQtdFalta.innerHTML = '<strong style="color: ' + (novaQtdFalta > 0 ? '#f44336' : '#4caf50') + '">' + novaQtdFalta + '</strong>';
-        if (cellAviso && qtdProduto > 0) {
-            const sobra = novaQtdBipada - qtdProduto;
-            if (sobra > 0) {
-                cellAviso.textContent = 'Bipou ' + sobra + ' a mais';
+        if (cellAviso) {
+            var textoAviso = _avisoConferenciaBipagem(cellAviso.textContent, qtdProduto, novaQtdBipada);
+            cellAviso.textContent = textoAviso;
+            if (textoAviso) {
                 cellAviso.style.color = '#d32f2f';
                 cellAviso.style.fontWeight = 'bold';
             } else {
-                cellAviso.textContent = '';
                 cellAviso.style.color = '';
                 cellAviso.style.fontWeight = '';
             }
@@ -12147,11 +12158,8 @@ function agruparConferenciaPorCodigoProduto(conferencia) {
         if (cb && cb !== '-') g._codigos_barras.add(cb);
 
         var qProd = parseInt(item.quantidade_produto, 10) || 0;
-        // Menor quantidade do romaneio vence (evita meta inflada por linhas duplicadas / EAN+DUN)
-        if (qProd > 0) {
-            if (g.quantidade_produto === 0) g.quantidade_produto = qProd;
-            else if (qProd < g.quantidade_produto) g.quantidade_produto = qProd;
-        }
+        // Soma linhas do romaneio (igual ao backend); bipado usa o maior entre EAN/DUN
+        if (qProd > 0) g.quantidade_produto += qProd;
         var qBip = parseInt(item.quantidade_bipada, 10) || 0;
         if (qBip > g.quantidade_bipada) g.quantidade_bipada = qBip;
     });
@@ -12177,11 +12185,7 @@ function agruparConferenciaPorCodigoProduto(conferencia) {
 
         g.quantidade_falta = falta;
         g.status_bipado = _statusBipagemConferencia(totalProduto, totalBipada);
-        if (g.status_bipado === 'EXCEDENTE') {
-            var msgSobra = 'Bipou ' + sobra + ' a mais';
-            if (!g.aviso_sobra) g.aviso_sobra = msgSobra;
-            else if (g.aviso_sobra.indexOf('Bipou') < 0) g.aviso_sobra = g.aviso_sobra + ' — ' + msgSobra;
-        }
+        g.aviso_sobra = _avisoConferenciaBipagem(g.aviso_sobra, totalProduto, totalBipada);
 
         delete g._codigos_barras;
         return g;
@@ -12351,8 +12355,7 @@ async function loadConferencia(idViagem = null, opts) {
                 const unidade = (item.unidade || '-').toString();
                 const qtdBipada = item.quantidade_bipada || 0;
                 const qtdProdutoItem = item.quantidade_produto || 0;
-                const sobraItem = Math.max(0, (parseInt(qtdBipada, 10) || 0) - (parseInt(qtdProdutoItem, 10) || 0));
-                const avisoSobra = (item.aviso_sobra && item.aviso_sobra.trim()) ? item.aviso_sobra : (sobraItem > 0 ? 'Bipou ' + sobraItem + ' a mais' : '');
+                const avisoSobra = _avisoConferenciaBipagem(item.aviso_sobra, qtdProdutoItem, qtdBipada);
                 const qtdProduto = item.quantidade_produto || 0;
                 const btns = _htmlBotoesAcaoConferencia({
                     codigo_barras: codigoBarras,
