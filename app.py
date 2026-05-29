@@ -2177,6 +2177,116 @@ def remover_itens_bipados():
     return jsonify({'success': True, 'mensagem': f'{removidos} unidade(s) removida(s).', 'removidos': removidos})
 
 
+@app.route('/api/conferencia/<id_viagem>/gravar-bipagem', methods=['POST'])
+def gravar_bipagem_viagem(id_viagem):
+    """Grava de uma vez a bipagem exibida na tela (ao gerar comprovante, após rascunho local)."""
+    id_norm = _normalizar_id_viagem(id_viagem)
+    if not id_norm:
+        return jsonify({'success': False, 'erro': 'ID do roteiro não informado'}), 400
+    data = request.json or {}
+    fluxo = (data.get('fluxo') or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
+    doca = (data.get('doca') or '').strip()
+    if doca not in ('1', '2', '3', '4'):
+        return jsonify({'success': False, 'erro': 'Selecione a doca (1, 2, 3 ou 4) antes de gerar o comprovante.'}), 400
+    veiculo = (data.get('veiculo') or '').strip()
+    status = (data.get('status') or 'PENDENTE').strip() or 'PENDENTE'
+    usuario_logado = session.get('usuario', '') or ''
+    itens = data.get('itens')
+    if not isinstance(itens, list):
+        itens = []
+    conn = get_db()
+    if getattr(conn, 'kind', None) == 'pg':
+        _ensure_pg_produtos_bipados_fluxo(conn)
+    gravados = 0
+    pulados = 0
+    agora = datetime.now(timezone.utc)
+    try:
+        if getattr(conn, 'kind', None) == 'pg':
+            conn.execute(
+                """DELETE FROM produtos_bipados
+                   WHERE TRIM(COALESCE(id_viagem::text, '')) = ?
+                     AND COALESCE(fluxo, 'carregamento') = ?""",
+                (id_norm, fluxo),
+            )
+        else:
+            conn.execute(
+                "DELETE FROM produtos_bipados WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ?",
+                (id_norm, fluxo),
+            )
+        insert_sql = (
+            '''INSERT INTO produtos_bipados
+               (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca,
+                codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+        )
+        for it in itens:
+            if not isinstance(it, dict):
+                pulados += 1
+                continue
+            try:
+                qtd = int(it.get('quantidade') or 0)
+            except (TypeError, ValueError):
+                qtd = 0
+            if qtd <= 0:
+                continue
+            qtd = max(1, min(99999, qtd))
+            cb = _normalizar_codigo_barras(str(it.get('codigo_barras') or '').strip())
+            codigo_interno = str(it.get('codigo_interno') or it.get('codigo_produto') or '').strip()
+            if (not cb or cb == '-') and codigo_interno:
+                cb = codigo_interno
+            if not cb or cb == '-':
+                pulados += 1
+                continue
+            produto = str(it.get('produto') or '').strip()
+            codigo_dun = str(it.get('codigo_dun') or '').strip()
+            unidade = str(it.get('unidade') or '').strip()
+            peso = str(it.get('peso') or '').strip()
+            if not codigo_interno:
+                info = buscar_produto_na_planilha(cb)
+                if info and not info.get('erro') and info.get('codigo_produto'):
+                    codigo_interno = str(info.get('codigo_produto') or '').strip()
+            if not unidade and codigo_interno and id_norm:
+                unidade = get_unidade_romaneio(id_norm, codigo_interno) or ''
+            conn.execute(
+                insert_sql,
+                (
+                    cb,
+                    produto,
+                    qtd,
+                    agora,
+                    veiculo,
+                    status,
+                    id_norm,
+                    doca,
+                    codigo_interno,
+                    codigo_dun,
+                    unidade,
+                    peso,
+                    usuario_logado,
+                    fluxo,
+                ),
+            )
+            gravados += 1
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'erro': 'Erro ao gravar bipagem: %s' % str(e)}), 500
+    finally:
+        conn.close()
+    _broadcast_atualizar()
+    return jsonify({
+        'success': True,
+        'gravados': gravados,
+        'pulados': pulados,
+        'mensagem': 'Bipagem gravada (%s item(ns)).' % gravados if gravados else 'Nenhum item bipado para gravar.',
+    })
+
+
 @app.route('/api/viagem/<id_viagem>/periodo', methods=['GET'])
 def get_periodo_viagem(id_viagem):
     """Retorna início e fim da bipagem/carregamento (data e hora) para a viagem."""

@@ -369,9 +369,17 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
     var salvou = false;
     try {
         window._conferenciaSalvandoNoComprovante = true;
+        if (window.ravexLoadingShow) window.ravexLoadingShow('Gravando bipagem no servidor… Aguarde.');
         var flushOk = await _flushTodasPendenciasConferencia();
-        if (!flushOk || flushOk.falhas > 0) {
-            showMessage('Não foi possível gravar toda a bipagem. Verifique a doca e a conexão e tente de novo.', 'error');
+        if (window.ravexLoadingHide) window.ravexLoadingHide();
+        if (!flushOk || flushOk.ok === false || flushOk.falhas > 0) {
+            if (flushOk && flushOk.erro === 'doca') {
+                showMessage('Selecione a doca (1, 2, 3 ou 4) na conferência antes de gerar o comprovante.', 'error');
+            } else if (flushOk && flushOk.erro) {
+                showMessage(flushOk.erro, 'error');
+            } else {
+                showMessage('Não foi possível gravar toda a bipagem. Verifique a doca e tente de novo.', 'error');
+            }
             return false;
         }
         _conferenciaSalvarSessao({ id_viagem: idViagem, comprovante_gerado: true, tem_rascunho: false });
@@ -396,12 +404,14 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
         _conferenciaAtualizarAvisoRascunho();
         return true;
     } catch (e) {
+        if (window.ravexLoadingHide) window.ravexLoadingHide();
         if (!salvou) {
             showMessage('Erro ao salvar bipagem. Tente novamente.', 'error');
         }
         return false;
     } finally {
         window._conferenciaSalvandoNoComprovante = false;
+        if (window.ravexLoadingHide) window.ravexLoadingHide();
         if (btnC) btnC.disabled = false;
         if (btnD) btnD.disabled = false;
     }
@@ -467,7 +477,10 @@ async function _conferenciaPersistirAddNoServidor(codigoBarras, quantidade) {
         unidade: ''
     };
     try {
-        var response = await fetch('/api/buscar-produto/' + encodeURIComponent(codigoBarras));
+        var response = await fetch(API_BASE + '/buscar-produto/' + encodeURIComponent(codigoBarras), {
+            credentials: 'same-origin',
+            cache: 'no-store'
+        });
         var resultado = await response.json();
         if (resultado.encontrado && resultado.produto) {
             var produto = resultado.produto;
@@ -498,6 +511,71 @@ async function _conferenciaPersistirAddNoServidor(codigoBarras, quantidade) {
     }
 }
 
+/** Coleta itens bipados visíveis na tabela da conferência (fonte da verdade ao gerar comprovante). */
+function _conferenciaColetarItensTabelaParaGravar() {
+    var tbody = document.getElementById('tbody-conferencia');
+    if (!tbody) return [];
+    var itens = [];
+    var rows = tbody.querySelectorAll('tr');
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row.cells || row.cells.length < 12 || row.querySelector('td[colspan]')) continue;
+        var qtdBip = parseInt(row.cells[9].textContent, 10) || 0;
+        if (qtdBip <= 0) continue;
+        var codigoBarras = (row.cells[2].textContent || '').trim();
+        var codigoInterno = (row.getAttribute('data-codigo') || row.cells[3].textContent || '').trim();
+        if ((!codigoBarras || codigoBarras === '-') && !codigoInterno) continue;
+        itens.push({
+            codigo_barras: codigoBarras,
+            codigo_interno: codigoInterno,
+            codigo_produto: codigoInterno,
+            produto: (row.cells[4].textContent || '').trim(),
+            quantidade: qtdBip,
+            unidade: (row.cells[6].textContent || '').trim(),
+            peso: (row.cells[7].textContent || '').trim()
+        });
+    }
+    return itens;
+}
+
+/** Grava toda a bipagem da tela em uma única requisição (rápido e confiável). */
+async function _conferenciaGravarBipagemCompletaNoServidor() {
+    var idViagem = window._getIdViagemAtivo && window._getIdViagemAtivo();
+    if (!idViagem) return { ok: false, falhas: 1, erro: 'Nenhuma viagem selecionada.' };
+    var docaEl = window._elBipagem('doca');
+    var doca = docaEl && docaEl.value ? docaEl.value.trim() : '';
+    var docasValidas = ['1', '2', '3', '4'];
+    if (!doca || docasValidas.indexOf(doca) < 0) {
+        return { ok: false, falhas: 1, erro: 'doca' };
+    }
+    var itens = _conferenciaColetarItensTabelaParaGravar();
+    var veiculoInput = window._elBipagem('veiculo');
+    var statusSelect = window._elBipagem('status');
+    var result = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '/gravar-bipagem', {
+        method: 'POST',
+        body: JSON.stringify({
+            fluxo: 'carregamento',
+            doca: doca,
+            veiculo: (veiculoInput && veiculoInput.value) ? veiculoInput.value.trim() : '',
+            status: (statusSelect && statusSelect.value) ? statusSelect.value : 'PENDENTE',
+            itens: itens
+        })
+    });
+    if (result && result.success) {
+        var p = window._conferenciaPending;
+        if (p) {
+            p.removes = {};
+            p.adds = {};
+        }
+        return { ok: true, falhas: 0, gravados: result.gravados || itens.length };
+    }
+    return {
+        ok: false,
+        falhas: 1,
+        erro: (result && result.erro) ? result.erro : 'Falha ao gravar bipagem no servidor.'
+    };
+}
+
 /** Se não há fila pendente mas a tabela mostra bipado, grava a partir do DOM (servidor ainda vazio). */
 async function _conferenciaPersistirBipagemVisivelNaTabela() {
     var tbody = document.getElementById('tbody-conferencia');
@@ -521,8 +599,11 @@ async function _conferenciaPersistirBipagemVisivelNaTabela() {
 
 /** Grava no servidor adds/removes pendentes (antes de tirar tudo, excluir ou gerar comprovante). */
 async function _flushTodasPendenciasConferencia() {
+    if (_conferenciaUsaRascunhoLocal() && window._conferenciaSalvandoNoComprovante) {
+        return _conferenciaGravarBipagemCompletaNoServidor();
+    }
     var p = window._conferenciaPending;
-    if (!p) return { ok: 0, falhas: 0 };
+    if (!p) return { ok: true, falhas: 0 };
     Object.keys(p.addTimers || {}).forEach(function(k) {
         clearTimeout(p.addTimers[k]);
         delete p.addTimers[k];
