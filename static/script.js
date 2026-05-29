@@ -366,11 +366,17 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
     var btnD = document.getElementById('btn-confirmar-comprovante-divergente');
     if (btnC) btnC.disabled = true;
     if (btnD) btnD.disabled = true;
+    var salvou = false;
     try {
         window._conferenciaSalvandoNoComprovante = true;
-        await _flushTodasPendenciasConferencia();
+        var flushOk = await _flushTodasPendenciasConferencia();
+        if (!flushOk || flushOk.falhas > 0) {
+            showMessage('Não foi possível gravar toda a bipagem. Verifique a doca e a conexão e tente de novo.', 'error');
+            return false;
+        }
         _conferenciaSalvarSessao({ id_viagem: idViagem, comprovante_gerado: true, tem_rascunho: false });
         _limparPendenciasConferenciaTimers();
+        salvou = true;
         var inputExtrato = document.getElementById('extrato-id-viagem');
         var inputRelatorio = document.getElementById('relatorio-extrato-id-viagem');
         if (inputExtrato) inputExtrato.value = idViagem;
@@ -383,12 +389,16 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
         var contentExtrato = document.getElementById('extrato');
         if (btnExtrato) btnExtrato.classList.add('active');
         if (contentExtrato) contentExtrato.classList.add('active');
+        await reloadConferenciaAtiva(idViagem, { forcar: true, forcarIgnorarPendencias: true, aguardarBipagem: false });
         await loadExtrato(idViagem);
+        loadEstatisticas();
         showMessage('Bipagem salva. Extrato atualizado.', 'success');
         _conferenciaAtualizarAvisoRascunho();
         return true;
     } catch (e) {
-        showMessage('Erro ao salvar bipagem. Tente novamente.', 'error');
+        if (!salvou) {
+            showMessage('Erro ao salvar bipagem. Tente novamente.', 'error');
+        }
         return false;
     } finally {
         window._conferenciaSalvandoNoComprovante = false;
@@ -420,10 +430,99 @@ function _esperarBipagemConferenciaIdle(timeoutMs) {
     });
 }
 
-/** Grava no servidor adds/removes pendentes (antes de tirar tudo, excluir ou zerar). */
+function _conferenciaTabelaTemBipagemNoDOM() {
+    var tbody = document.getElementById('tbody-conferencia');
+    if (!tbody) return false;
+    var rows = tbody.querySelectorAll('tr');
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row.cells || row.cells.length < 11 || row.querySelector('td[colspan]')) continue;
+        if ((parseInt(row.cells[9].textContent, 10) || 0) > 0) return true;
+    }
+    return false;
+}
+
+/** Grava um add pendente direto no servidor (não volta para o rascunho local). */
+async function _conferenciaPersistirAddNoServidor(codigoBarras, quantidade) {
+    codigoBarras = normalizarCodigoBarrasDuplicado((codigoBarras || '').toString().trim());
+    var qtd = parseInt(quantidade, 10) || 0;
+    if (!codigoBarras || qtd <= 0) return { ok: false };
+    var idViagem = window._getIdViagemAtivo && window._getIdViagemAtivo();
+    if (!idViagem) return { ok: false };
+    var docaEl = window._elBipagem('doca');
+    var doca = docaEl && docaEl.value ? docaEl.value.trim() : '';
+    var veiculoInput = window._elBipagem('veiculo');
+    var statusSelect = window._elBipagem('status');
+    var override = {
+        codigo_barras: codigoBarras,
+        produto: '',
+        quantidade: qtd,
+        veiculo: (veiculoInput && veiculoInput.value) ? veiculoInput.value.trim() : '',
+        status: (statusSelect && statusSelect.value) ? statusSelect.value : 'PENDENTE',
+        id_viagem: idViagem,
+        doca: doca,
+        codigo_interno: '',
+        codigo_dun: '',
+        peso: '',
+        unidade: ''
+    };
+    try {
+        var response = await fetch('/api/buscar-produto/' + encodeURIComponent(codigoBarras));
+        var resultado = await response.json();
+        if (resultado.encontrado && resultado.produto) {
+            var produto = resultado.produto;
+            override.codigo_barras = (produto.codigo_barras || codigoBarras).toString().trim();
+            override.produto = (produto.produto || '').trim();
+            override.codigo_interno = (produto.codigo_produto || '').toString().trim();
+            override.codigo_dun = (produto.codigo_dun != null) ? String(produto.codigo_dun).trim() : '';
+            override.peso = (produto.peso != null) ? String(produto.peso).trim() : '';
+            override.unidade = (produto.unidade != null) ? String(produto.unidade).trim() : '';
+        } else {
+            var tbody = document.getElementById('tbody-conferencia');
+            if (tbody) {
+                tbody.querySelectorAll('tr').forEach(function(row) {
+                    if (!row.cells || row.cells.length < 12) return;
+                    var cb = (row.cells[2].textContent || '').trim();
+                    if (cb !== codigoBarras) return;
+                    if (!override.produto) override.produto = (row.cells[4].textContent || '').trim();
+                    if (!override.codigo_interno) override.codigo_interno = (row.getAttribute('data-codigo') || row.cells[3].textContent || '').trim();
+                });
+            }
+        }
+        var result = await addProduto(true, override);
+        if (result && result.success) return { ok: true };
+        if (result && result.produto_nao_cadastrado) return { ok: false, motivo: 'nao_cadastrado' };
+        return { ok: false };
+    } catch (e) {
+        return { ok: false };
+    }
+}
+
+/** Se não há fila pendente mas a tabela mostra bipado, grava a partir do DOM (servidor ainda vazio). */
+async function _conferenciaPersistirBipagemVisivelNaTabela() {
+    var tbody = document.getElementById('tbody-conferencia');
+    if (!tbody) return { ok: 0, falhas: 0 };
+    var ok = 0;
+    var falhas = 0;
+    var rows = tbody.querySelectorAll('tr');
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row.cells || row.cells.length < 12 || row.querySelector('td[colspan]')) continue;
+        var qtdBip = parseInt(row.cells[9].textContent, 10) || 0;
+        if (qtdBip <= 0) continue;
+        var cod = (row.cells[2].textContent || '').trim();
+        if (!cod || cod === '-') continue;
+        var res = await _conferenciaPersistirAddNoServidor(cod, qtdBip);
+        if (res && res.ok) ok++;
+        else falhas++;
+    }
+    return { ok: ok, falhas: falhas };
+}
+
+/** Grava no servidor adds/removes pendentes (antes de tirar tudo, excluir ou gerar comprovante). */
 async function _flushTodasPendenciasConferencia() {
     var p = window._conferenciaPending;
-    if (!p) return;
+    if (!p) return { ok: 0, falhas: 0 };
     Object.keys(p.addTimers || {}).forEach(function(k) {
         clearTimeout(p.addTimers[k]);
         delete p.addTimers[k];
@@ -434,16 +533,16 @@ async function _flushTodasPendenciasConferencia() {
     });
     var removes = Object.assign({}, p.removes || {});
     var adds = Object.assign({}, p.adds || {});
-    p.removes = {};
-    p.adds = {};
     var idViagem = window._getIdViagemAtivo && window._getIdViagemAtivo();
-    if (!idViagem) return;
+    if (!idViagem) return { ok: 0, falhas: 1 };
     var fluxo = (window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento';
+    var falhas = 0;
+    var ok = 0;
     for (var codRem of Object.keys(removes)) {
         var n = removes[codRem];
         if (!n || n <= 0) continue;
         try {
-            await fetchAPI('/conferencia/remover', {
+            var resRem = await fetchAPI('/conferencia/remover', {
                 method: 'POST',
                 body: JSON.stringify({
                     id_viagem: idViagem,
@@ -452,16 +551,32 @@ async function _flushTodasPendenciasConferencia() {
                     fluxo: fluxo
                 })
             });
-        } catch (e) { /* segue */ }
+            if (resRem && resRem.success) ok++;
+            else falhas++;
+        } catch (e) {
+            falhas++;
+        }
     }
-    for (var codAdd of Object.keys(adds)) {
-        var entry = adds[codAdd];
-        if (!entry || !entry.qtd || entry.qtd <= 0) continue;
-        try {
-            await buscarProdutoNaPlanilha(codAdd, entry.qtd, true);
-        } catch (e) { /* segue */ }
+    var codigosAdd = Object.keys(adds);
+    if (codigosAdd.length > 0) {
+        for (var i = 0; i < codigosAdd.length; i++) {
+            var codAdd = codigosAdd[i];
+            var entry = adds[codAdd];
+            if (!entry || !entry.qtd || entry.qtd <= 0) continue;
+            var resAdd = await _conferenciaPersistirAddNoServidor(codAdd, entry.qtd);
+            if (resAdd && resAdd.ok) ok++;
+            else falhas++;
+        }
+    } else if (_conferenciaUsaRascunhoLocal() && _conferenciaTabelaTemBipagemNoDOM()) {
+        var domRes = await _conferenciaPersistirBipagemVisivelNaTabela();
+        ok += domRes.ok || 0;
+        falhas += domRes.falhas || 0;
     }
-    await (_esperarBipagemConferenciaIdle(15000));
+    if (falhas === 0) {
+        p.removes = {};
+        p.adds = {};
+    }
+    return { ok: ok, falhas: falhas };
 }
 
 var _timerReloadConferenciaAtiva = null;
@@ -9795,7 +9910,7 @@ async function buscarProdutoNaPlanilha(codigoBarras, quantidadeParaAdicionarOpci
                 }
                 if (idxPend >= 0) window._pendingEnterUpdates.splice(idxPend, 1);
                 if (!skipEnqueueOpcional) {
-                    if (_conferenciaUsaRascunhoLocal()) {
+                    if (_conferenciaUsaRascunhoLocal() && !window._conferenciaSalvandoNoComprovante) {
                         _conferenciaEnfileirarAddLocal(override.codigo_barras, qtd);
                     } else {
                         window.bipagemEmAndamento = window.bipagemEmAndamento.then(function() { return addProduto(true, override); }).catch(function() {});
@@ -9841,7 +9956,7 @@ async function buscarProdutoNaPlanilha(codigoBarras, quantidadeParaAdicionarOpci
                 }
                 if (idxPendNao >= 0) window._pendingEnterUpdates.splice(idxPendNao, 1);
                 if (!skipEnqueueOpcional) {
-                    if (_conferenciaUsaRascunhoLocal()) {
+                    if (_conferenciaUsaRascunhoLocal() && !window._conferenciaSalvandoNoComprovante) {
                         _conferenciaEnfileirarAddLocal(codigoBarras, qtdNaoEnc);
                     } else {
                         window.bipagemEmAndamento = window.bipagemEmAndamento.then(function() { return addProduto(false, overrideNaoEncontrado); }).catch(function() {});
