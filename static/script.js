@@ -131,20 +131,78 @@ function _conferenciaEnfileirarRemoveLocal(codigoBarras, qtd) {
 
 window._conferenciaUltimoBip = { codigo: '', em: 0 };
 
+function _conferenciaObterEstadoLinhaBipagem(codigoBarrasStr, codigoProdutoStr) {
+    var tbody = document.getElementById(window._fluxoBipagemAtivo === 'devolucao' ? 'dev-tbody-conferencia' : 'tbody-conferencia');
+    if (!tbody) return null;
+    codigoBarrasStr = (codigoBarrasStr || '').toString().trim();
+    codigoProdutoStr = (codigoProdutoStr || '').toString().trim();
+    var rows = tbody.querySelectorAll('tr');
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row.cells || row.cells.length < 12) continue;
+        var dataCodigo = (row.getAttribute && row.getAttribute('data-codigo')) || '';
+        var cbLinha = (row.cells[2].textContent || '').trim();
+        var cpLinha = (row.cells[3].textContent || '').trim();
+        var match = (codigoProdutoStr && (cpLinha === codigoProdutoStr || dataCodigo === codigoProdutoStr))
+            || (codigoBarrasStr && cbLinha === codigoBarrasStr);
+        if (!match) continue;
+        var prod = parseInt(row.cells[5].textContent, 10) || 0;
+        var bip = parseInt(row.cells[9].textContent, 10) || 0;
+        return {
+            row: row,
+            prod: prod,
+            bip: bip,
+            codigo_barras: cbLinha,
+            produto: (row.cells[4].textContent || '').trim()
+        };
+    }
+    return null;
+}
+
+function _conferenciaAtualizarCelulaAcaoLinha(row, stLinha, novaQtdBipada, novaQtdFalta) {
+    if (!row || !row.cells || row.cells.length < 12) return;
+    var cellAcao = row.cells[11];
+    if (!cellAcao) return;
+    var codigoBarrasLinha = (row.cells[2].textContent || '').trim();
+    var produtoNome = (row.cells[4].textContent || '').trim();
+    var btns = _htmlBotoesAcaoConferencia({
+        codigo_barras: codigoBarrasLinha,
+        produto: produtoNome,
+        quantidade_bipada: novaQtdBipada,
+        quantidade_falta: novaQtdFalta
+    });
+    var hint = '';
+    if (stLinha === 'EXCEDENTE') {
+        hint = '<span class="conf-hint-excedente" style="color: #e65100; font-weight: bold;">Bipado a mais</span>';
+    } else if (stLinha === 'COMPLETO') {
+        hint = '<span class="conf-hint-completo" style="color: #4caf50; font-weight: bold;">✓ Completo</span>';
+    }
+    cellAcao.innerHTML = '<div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">'
+        + btns.bipar + (btns.tirar || '') + (btns.excluir || '') + hint + '</div>';
+}
+
 /** Um único ponto para bipar: atualiza tabela/status na hora e enfileira (sem duplicar Enter + leitor). */
 function _conferenciaProcessarBipagemCodigo(codigoBarras, quantidade, codigoProdutoOpcional, opts) {
     opts = opts || {};
     var cod = (codigoBarras || '').toString().trim();
     if (!cod) return false;
     var qtd = parseInt(quantidade, 10) || 1;
+    var estLinha = _conferenciaObterEstadoLinhaBipagem(cod, codigoProdutoOpcional || '');
+    if (!opts.permitirExcedente && qtd > 0 && estLinha && estLinha.prod > 0 && estLinha.bip >= estLinha.prod) {
+        if (!opts.silencioso) {
+            showMessage('Item já completo (' + estLinha.bip + '/' + estLinha.prod + '). Use o botão «Bipar» na linha apenas se houver sobra.', 'warning');
+        }
+        return false;
+    }
     if (!opts.permitirRepetir) {
         var agora = Date.now();
-        if (window._conferenciaUltimoBip && window._conferenciaUltimoBip.codigo === cod && (agora - window._conferenciaUltimoBip.em) < 450) {
+        var janelaMs = (estLinha && estLinha.prod > 0 && estLinha.bip >= estLinha.prod) ? 800 : 450;
+        if (window._conferenciaUltimoBip && window._conferenciaUltimoBip.codigo === cod && (agora - window._conferenciaUltimoBip.em) < janelaMs) {
             return false;
         }
         window._conferenciaUltimoBip = { codigo: cod, em: agora };
     }
-    var atualizou = atualizarQuantidadeBipadaNaTabela(cod, qtd, codigoProdutoOpcional || '');
+    var atualizou = atualizarQuantidadeBipadaNaTabela(cod, qtd, codigoProdutoOpcional || '', opts);
     if (atualizou) {
         atualizarEstatisticasOtimista(qtd > 0 ? qtd : 0, qtd < 0);
         atualizarBoxesComprovante();
@@ -11243,7 +11301,8 @@ async function addProduto(forcarAdicionar, dadosOverride) {
 }
 
 // codigoProdutoOpcional: quando bipamos EAN ou DUN, a linha na tabela pode mostrar outro código; usar código do produto para achar a linha
-function atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdutoOpcional) {
+function atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdutoOpcional, opts) {
+    opts = opts || {};
     const tbody = document.getElementById(window._fluxoBipagemAtivo === 'devolucao' ? 'dev-tbody-conferencia' : 'tbody-conferencia');
     if (!tbody || (!codigoBarras && !codigoProdutoOpcional)) return false;
     const rows = tbody.querySelectorAll('tr');
@@ -11303,27 +11362,17 @@ function atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdu
                 cellStatus.innerHTML = '<span class="status-badge status-FALTA">❌ PENDENTE</span>';
             }
         }
-        if (novaQtdBipada > 0 && codigoBarrasLinha && codigoBarrasLinha !== '-') {
-            const cellAcao = row.cells[11];
-            if (cellAcao) {
-                const div = cellAcao.querySelector('div') || cellAcao;
-                var btnsLinha = _htmlBotoesAcaoConferencia({
-                    codigo_barras: codigoBarrasLinha,
-                    quantidade_bipada: novaQtdBipada,
-                    quantidade_falta: novaQtdFalta
-                });
-                if (!div.querySelector('[data-conf-acao="tirar-1"]')) {
-                    div.insertAdjacentHTML('afterbegin', btnsLinha.tirar);
-                }
-            }
+        var stLinhaAcao = _statusBipagemConferencia(qtdProduto, novaQtdBipada);
+        if (codigoBarrasLinha && codigoBarrasLinha !== '-') {
+            _conferenciaAtualizarCelulaAcaoLinha(row, stLinhaAcao, novaQtdBipada, novaQtdFalta);
         }
-        // Item bipado: sempre vai para o primeiro lugar; só status COMPLETO vai para o último
+        // Item bipado: vai para o topo; só COMPLETO (não excedente) vai para o final
         if (delta > 0) {
             var primeiro = tbody.querySelector('tr');
             if (primeiro && row !== primeiro) {
                 tbody.insertBefore(row, primeiro);
             }
-            if (row.classList.contains('row-completo')) {
+            if (stLinhaAcao === 'COMPLETO') {
                 tbody.appendChild(row);
             }
         }
@@ -12813,7 +12862,7 @@ window.biparItem = function(btnOrCodigo, codigoBarrasOrProduto, produtoOrQtd, qu
     document.getElementById(dev ? 'dev-quantidade' : 'quantidade').value = 1;
     var row = btn ? btn.closest('tr') : null;
     var dataCod = (row && row.getAttribute('data-codigo')) || '';
-    _conferenciaProcessarBipagemCodigo(codigoBarras, 1, dataCod);
+    _conferenciaProcessarBipagemCodigo(codigoBarras, 1, dataCod, { permitirExcedente: true, permitirRepetir: true });
     if (cb) cb.focus();
 }
 
