@@ -2219,6 +2219,44 @@ h2 {
     background-color: #e8f5e9 !important;
 }
 
+/* Extrato: destaque pendente / parcial / excedente */
+#tabela-extrato tbody tr.row-pendente td,
+#dev-extrato-para-imprimir table.data-table tbody tr.row-pendente td {
+    background-color: #fff8e1 !important;
+    box-shadow: inset 4px 0 0 #f9a825;
+}
+#tabela-extrato tbody tr.row-parcial td,
+#dev-extrato-para-imprimir table.data-table tbody tr.row-parcial td {
+    background-color: #ffe0b2 !important;
+    box-shadow: inset 4px 0 0 #ef6c00;
+}
+#tabela-extrato tbody tr.row-excedente td,
+#dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td {
+    background-color: #ffcdd2 !important;
+    box-shadow: inset 4px 0 0 #c62828;
+}
+#tabela-extrato tbody tr.row-completo td,
+#dev-extrato-para-imprimir table.data-table tbody tr.row-completo td {
+    background-color: #f1f8e9 !important;
+    box-shadow: none;
+}
+#tabela-extrato tbody tr.row-pendente:hover td,
+#dev-extrato-para-imprimir table.data-table tbody tr.row-pendente:hover td {
+    background-color: #ffecb3 !important;
+}
+#tabela-extrato tbody tr.row-parcial:hover td,
+#dev-extrato-para-imprimir table.data-table tbody tr.row-parcial:hover td {
+    background-color: #ffcc80 !important;
+}
+#tabela-extrato tbody tr.row-excedente:hover td,
+#dev-extrato-para-imprimir table.data-table tbody tr.row-excedente:hover td {
+    background-color: #ef9a9a !important;
+}
+#tabela-extrato tbody tr.row-completo:hover td,
+#dev-extrato-para-imprimir table.data-table tbody tr.row-completo:hover td {
+    background-color: #e8f5e9 !important;
+}
+
 .conferencia-bloco-4-wrapper.conferencia-blocos-bloqueado {
     pointer-events: none;
     opacity: 0.82;
@@ -3257,9 +3295,29 @@ h2 {
         font-size: 7pt;
         color: #111 !important;
     }
-    body.print-extrato #tabela-extrato tbody tr:nth-child(even) td,
-    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr:nth-child(even) td {
+    body.print-extrato #tabela-extrato tbody tr:nth-child(even):not(.row-pendente):not(.row-parcial):not(.row-excedente):not(.row-completo) td,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr:nth-child(even):not(.row-pendente):not(.row-parcial):not(.row-excedente):not(.row-completo) td {
         background: #f7f9fc !important;
+    }
+    body.print-extrato #tabela-extrato tbody tr.row-pendente td,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-pendente td {
+        background: #fff8e1 !important;
+        box-shadow: inset 3px 0 0 #f9a825;
+    }
+    body.print-extrato #tabela-extrato tbody tr.row-parcial td,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-parcial td {
+        background: #ffe0b2 !important;
+        box-shadow: inset 3px 0 0 #ef6c00;
+    }
+    body.print-extrato #tabela-extrato tbody tr.row-excedente td,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td {
+        background: #ffcdd2 !important;
+        box-shadow: inset 3px 0 0 #c62828;
+    }
+    body.print-extrato #tabela-extrato tbody tr.row-completo td,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-completo td {
+        background: #f1f8e9 !important;
+        box-shadow: none;
     }
     /* Ocultar colunas pouco usadas na impressão */
     body.print-extrato #tabela-extrato th:nth-child(2),

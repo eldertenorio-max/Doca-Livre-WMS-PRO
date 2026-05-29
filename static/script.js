@@ -13366,7 +13366,8 @@ function _htmlLinhaExtratoTabela(item) {
     const motivo = (item.motivo_divergencia || '').trim();
     const qtdBip = parseInt(item.quantidade_bipada, 10) || 0;
     const qtdFalta = parseInt(item.quantidade_falta, 10) || 0;
-    return '<tr>'
+    const pack = _terConferenciaBadgeEClasseLinha((item && item.status_bipado) || 'PENDENTE');
+    return '<tr class="' + pack.rowClass + '">'
         + _htmlStatusExtratoCelula(item)
         + '<td>' + (motivo ? escHtml(motivo) : '-') + '</td>'
         + '<td><strong>' + escHtml(item.codigo_barras || '-') + '</strong></td>'
