@@ -7784,13 +7784,13 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None):
     for vb in viagens_base:
         vid = _normalizar_id_viagem(vb['id_viagem'])
         placa = placa_override.get(vid) or vb.get('placa') or ''
-        if not placa:
-            info = _get_viagem_info_planilha(vid)
-            placa = (info.get('placa') or '').strip()
         id_roteiro = vb.get('id_roteiro') or ''
-        if not id_roteiro:
+        if not placa or not id_roteiro:
             info = _get_viagem_info_planilha(vid)
-            id_roteiro = (info.get('id_roteiro') or '').strip()
+            if not placa:
+                placa = (info.get('placa') or '').strip()
+            if not id_roteiro:
+                id_roteiro = (info.get('id_roteiro') or '').strip()
 
         inicio_raw, fim_raw = periodo_map.get(vid, (None, None))
         bip = bip_map.get(vid)
@@ -7986,7 +7986,14 @@ def get_painel_completo():
                 wb.close()
             except Exception:
                 pass
-        placas_dia = _coletar_placas_baixadas_dia(conn, data_painel)
+        placas_dia = {'data': '', 'data_iso': '', 'rows': [], 'resumo': {'total': 0, 'carregados': 0, 'nao_carregados': 0, 'em_andamento': 0, 'peso_total_kg': 0}}
+        try:
+            placas_dia = _coletar_placas_baixadas_dia(conn, data_painel)
+        except Exception as ex_placas:
+            try:
+                app.logger.warning('painel placas_baixadas_dia: %s', ex_placas)
+            except Exception:
+                pass
         conn.close()
         romaneio_resp = {k: v for k, v in romaneio_stats.items() if k != 'id_viagem_to_placa'}
         return jsonify({

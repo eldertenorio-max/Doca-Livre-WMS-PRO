@@ -10719,28 +10719,6 @@ function initPainelPlacasFiltroData() {
         dataInput.addEventListener('change', function() { loadPainelCompleto(); });
     }
 }
-    if (!stats) return;
-    const el = (id) => document.getElementById(id);
-    if (el('stat-bipados')) el('stat-bipados').textContent = stats.total_bipados ?? 0;
-    if (el('stat-soma-quantidades')) el('stat-soma-quantidades').textContent = stats.soma_quantidades ?? 0;
-    if (el('stat-carregados')) el('stat-carregados').textContent = stats.total_carregados ?? 0;
-    if (el('stat-unicos')) el('stat-unicos').textContent = stats.total_unicos ?? 0;
-    if (el('stat-viagens')) el('stat-viagens').textContent = stats.total_viagens ?? 0;
-    if (el('stat-divergencias')) el('stat-divergencias').textContent = stats.total_divergencias ?? 0;
-    const veiculosContainer = document.getElementById('veiculos-stats');
-    if (veiculosContainer) {
-        if (stats.veiculos && stats.veiculos.length > 0) {
-            veiculosContainer.innerHTML = stats.veiculos.map(v => `
-                <div class="veiculo-card">
-                    <h4>${(v.veiculo || 'Sem veículo').replace(/</g, '&lt;')}</h4>
-                    <p>${v.total} itens</p>
-                </div>
-            `).join('');
-        } else {
-            veiculosContainer.innerHTML = '<p class="info-text">Nenhum veículo com itens carregados ainda.</p>';
-        }
-    }
-}
 
 // Um único request: painel inteiro (estatísticas + viagens + gráficos) = carregamento instantâneo na rede
 async function loadPainelCompleto() {
@@ -10750,8 +10728,12 @@ async function loadPainelCompleto() {
     if (dataInput && dataInput.value) {
         qs = '?data=' + encodeURIComponent(dataInput.value);
     }
+    try {
     const data = await fetchAPI('/painel-completo' + qs);
-    if (!data) return;
+    if (!data) {
+        showMessage('Não foi possível carregar o painel.', 'error');
+        return;
+    }
     if (data.estatisticas) paintEstatisticas(data.estatisticas);
     if (data.erro) showMessage('Painel: ' + data.erro, 'error');
     paintPlacasBaixadasDia(data.placas_baixadas_dia || {});
@@ -10861,6 +10843,10 @@ async function loadPainelCompleto() {
             });
         }
         paintRomaneioCharts(data.romaneio || {});
+    }
+    } catch (e) {
+        console.error('loadPainelCompleto', e);
+        showMessage('Erro ao carregar o painel: ' + (e && e.message ? e.message : 'tente recarregar a página'), 'error');
     }
 }
 
