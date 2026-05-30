@@ -1,13 +1,6 @@
--- Período real de bipagem (início/fim), independente de data_hora dos itens gravados em lote.
-CREATE TABLE IF NOT EXISTS public.viagem_periodo_bipagem (
-    id_viagem TEXT NOT NULL,
-    fluxo TEXT NOT NULL DEFAULT 'carregamento',
-    inicio_em TIMESTAMPTZ NOT NULL,
-    fim_em TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (id_viagem, fluxo)
-);
+-- Habilita RLS em viagem_periodo_bipagem (remove UNRESTRICTED no Supabase).
+-- Execute no SQL Editor se a tabela já existir sem RLS.
 
--- RLS (remove selo UNRESTRICTED no painel Supabase)
 ALTER TABLE public.viagem_periodo_bipagem ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Permitir SELECT em viagem_periodo_bipagem" ON public.viagem_periodo_bipagem;
