@@ -3141,6 +3141,26 @@ h2 {
     margin-bottom: 16px;
 }
 
+#divergencias-conteudo .tabela-divergencias-roteiro tbody tr.row-pendente td,
+#dev-divergencias-conteudo .tabela-divergencias-roteiro tbody tr.row-pendente td {
+    background-color: #fff8e1 !important;
+    box-shadow: inset 4px 0 0 #f9a825;
+}
+#divergencias-conteudo .tabela-divergencias-roteiro tbody tr.row-parcial td,
+#dev-divergencias-conteudo .tabela-divergencias-roteiro tbody tr.row-parcial td {
+    background-color: #ffe0b2 !important;
+    box-shadow: inset 4px 0 0 #ef6c00;
+}
+#divergencias-conteudo .tabela-divergencias-roteiro tbody tr.row-excedente td,
+#dev-divergencias-conteudo .tabela-divergencias-roteiro tbody tr.row-excedente td {
+    background-color: #ffcdd2 !important;
+    box-shadow: inset 4px 0 0 #c62828;
+}
+#divergencias-conteudo .tabela-divergencias-roteiro tbody tr.row-completo td,
+#dev-divergencias-conteudo .tabela-divergencias-roteiro tbody tr.row-completo td {
+    background-color: #f1f8e9 !important;
+}
+
 /* Extrato - Assinaturas (tela e impressão) */
 .assinaturas-extrato {
     margin-top: 48px;

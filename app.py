@@ -5423,6 +5423,19 @@ def _carregar_motivos_divergencia(lista):
     return lista
 
 
+def _conferencia_lista_de_resposta(data):
+    """Extrai itens da resposta JSON de get_conferencia (array legado ou objeto com lista)."""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        if data.get('erro'):
+            return None
+        lista = data.get('lista')
+        if isinstance(lista, list):
+            return lista
+    return []
+
+
 @app.route('/api/divergencias', methods=['GET'])
 def get_divergencias():
     """Retorna itens com divergência na conferência: falta (faltar item) ou sobra (passar).
@@ -5443,7 +5456,9 @@ def get_divergencias():
             data = resp.get_json()
             if isinstance(data, dict) and data.get('erro'):
                 return jsonify(data), status_code if status_code != 200 else 400
-            lista = data if isinstance(data, list) else []
+            lista = _conferencia_lista_de_resposta(data)
+            if lista is None:
+                return jsonify(data), status_code if status_code != 200 else 400
             divergencias = [
                 dict(item, id_viagem=id_viagem) for item in lista
                 if (item.get('quantidade_falta') or 0) > 0 or (item.get('quantidade_sobra') or 0) > 0
@@ -5467,7 +5482,9 @@ def get_divergencias():
             data = resp.get_json() if hasattr(resp, 'get_json') else None
             if isinstance(data, dict) and data.get('erro'):
                 continue
-            lista = data if isinstance(data, list) else []
+            lista = _conferencia_lista_de_resposta(data)
+            if lista is None:
+                continue
             for item in lista:
                 if (item.get('quantidade_falta') or 0) > 0 or (item.get('quantidade_sobra') or 0) > 0:
                     todas.append(dict(item, id_viagem=vid))
@@ -5527,7 +5544,9 @@ def _get_lista_divergencias_todas(fluxo='carregamento'):
             data = resp.get_json() if hasattr(resp, 'get_json') else None
             if isinstance(data, dict) and data.get('erro'):
                 continue
-            lista = data if isinstance(data, list) else []
+            lista = _conferencia_lista_de_resposta(data)
+            if lista is None:
+                continue
             for item in lista:
                 if (item.get('quantidade_falta') or 0) > 0 or (item.get('quantidade_sobra') or 0) > 0:
                     todas.append(dict(item, id_viagem=vid))
@@ -11031,8 +11050,11 @@ def get_estatisticas():
     # Soma total de quantidades bipadas (não só contagem de linhas)
     soma_quantidades = conn.execute('SELECT COALESCE(SUM(quantidade), 0) as total FROM produtos_bipados').fetchone()['total']
     
-    # Contar divergências (por viagem; sem id_viagem retorna 0)
-    total_divergencias = 0
+    # Contar divergências (itens com falta ou sobra em todos os roteiros)
+    try:
+        total_divergencias = len(_get_lista_divergencias_todas('carregamento'))
+    except Exception:
+        total_divergencias = 0
     
     # Estatísticas por veículo
     veiculos = conn.execute('''

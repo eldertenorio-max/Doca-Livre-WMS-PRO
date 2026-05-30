@@ -2371,6 +2371,11 @@ function loadAllData() {
         loadEstatisticas();
         return;
     }
+    if (activeId === 'divergencias') {
+        loadEstatisticas();
+        loadDivergencias(true);
+        return;
+    }
     loadEstatisticas();
     loadTabData(activeId);
 }
@@ -13844,7 +13849,13 @@ async function loadDivergencias(force) {
         conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">Erro ao carregar. Clique em Atualizar para tentar novamente.</p>';
         return;
     }
-    if (!divergencias || divergencias.length === 0) {
+    if (divergencias && divergencias.erro) {
+        divergenciasJaCarregado = false;
+        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">' + escapeHtml(divergencias.erro) + '</p>';
+        return;
+    }
+    if (!Array.isArray(divergencias)) divergencias = [];
+    if (divergencias.length === 0) {
         const contagemEl = document.getElementById('divergencias-contagem');
         if (contagemEl) contagemEl.textContent = '';
         conteudoEl.innerHTML = '<p class="loading">Nenhuma divergência em nenhum roteiro. Tudo conferido!</p>';
@@ -13927,15 +13938,14 @@ async function loadDivergencias(force) {
                     </thead>
                     <tbody>
                         ${itens.map(item => {
-                            const statusClass = item.status_bipado === 'COMPLETO' ? 'status-OK' : item.status_bipado === 'EXCEDENTE' ? 'status-EXCEDENTE' : item.status_bipado === 'PARCIAL' ? 'status-SOBRA' : 'status-FALTA';
-                            const statusText = item.status_bipado === 'COMPLETO' ? '✅ COMPLETO' : item.status_bipado === 'EXCEDENTE' ? '📦 EXCEDENTE' : item.status_bipado === 'PARCIAL' ? '⚠️ PARCIAL' : '❌ PENDENTE';
+                            const pack = _terConferenciaBadgeEClasseLinha(item.status_bipado);
                             const qtdSobra = item.quantidade_sobra != null ? item.quantidade_sobra : 0;
                             const motivoBrutoDiv = motivosEmEdicaoDiv[idViagem + '|' + (item.codigo_produto || '')] !== undefined ? motivosEmEdicaoDiv[idViagem + '|' + (item.codigo_produto || '')] : (item.motivo_divergencia || '');
                             const motivoVal = (motivoBrutoDiv || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                             const codigoProdutoEsc = (item.codigo_produto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                            return `<tr>
+                            return `<tr class="${pack.rowClass}">
                                 <td><input type="text" class="input-motivo-divergencia" data-id-viagem="${escHtml(idViagem)}" data-codigo-produto="${codigoProdutoEsc}" value="${motivoVal}" placeholder="Escreva o motivo" onblur="salvarMotivoDivergencia(this)" title="Escreva o motivo da divergência e saia do campo para salvar"></td>
-                                <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                                <td><span class="status-badge ${pack.badgeClass}">${pack.badgeText}</span></td>
                                 <td><strong>${escHtml(item.codigo_barras || '-')}</strong></td>
                                 <td><strong style="color: #1976D2;">${escHtml(item.codigo_produto || '-')}</strong></td>
                                 <td>${escHtml(item.produto || '-')}</td>
@@ -13972,7 +13982,13 @@ async function loadDivergenciasDevolucao(force) {
         conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">Erro ao carregar. Clique em Atualizar para tentar novamente.</p>';
         return;
     }
-    if (!divergencias || divergencias.length === 0) {
+    if (divergencias && divergencias.erro) {
+        divergenciasDevolucaoJaCarregado = false;
+        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">' + escapeHtml(divergencias.erro) + '</p>';
+        return;
+    }
+    if (!Array.isArray(divergencias)) divergencias = [];
+    if (divergencias.length === 0) {
         const contagemEl = document.getElementById('dev-divergencias-contagem');
         if (contagemEl) contagemEl.textContent = '';
         conteudoEl.innerHTML = '<p class="loading">Nenhuma divergência em devoluções.</p>';
@@ -14014,11 +14030,10 @@ async function loadDivergenciasDevolucao(force) {
             + '</div></div>'
             + '<div class="table-container"><table class="data-table tabela-divergencias-roteiro"><thead><tr><th>Status</th><th>Código de Barras</th><th>Código do Produto</th><th>Produto</th><th>Qtd. Romaneio</th><th>Qtd. Bipada</th><th>Qtd. Falta</th><th>Qtd. Sobra</th><th>Aviso</th></tr></thead><tbody>'
             + itens.map(function(item) {
-                const statusClass = item.status_bipado === 'COMPLETO' ? 'status-OK' : item.status_bipado === 'EXCEDENTE' ? 'status-EXCEDENTE' : item.status_bipado === 'PARCIAL' ? 'status-SOBRA' : 'status-FALTA';
-                const statusText = item.status_bipado === 'COMPLETO' ? '✅ COMPLETO' : item.status_bipado === 'EXCEDENTE' ? '📦 EXCEDENTE' : item.status_bipado === 'PARCIAL' ? '⚠️ PARCIAL' : '❌ PENDENTE';
+                const pack = _terConferenciaBadgeEClasseLinha(item.status_bipado);
                 const qtdSobra = item.quantidade_sobra != null ? item.quantidade_sobra : 0;
-                return '<tr>'
-                    + '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>'
+                return '<tr class="' + pack.rowClass + '">'
+                    + '<td><span class="status-badge ' + pack.badgeClass + '">' + pack.badgeText + '</span></td>'
                     + '<td><strong>' + escHtml(item.codigo_barras || '-') + '</strong></td>'
                     + '<td><strong style="color: #1976D2;">' + escHtml(item.codigo_produto || '-') + '</strong></td>'
                     + '<td>' + escHtml(item.produto || '-') + '</td>'
