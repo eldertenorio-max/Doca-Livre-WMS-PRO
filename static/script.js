@@ -106,6 +106,62 @@ function _conferenciaMarcarSessaoRascunho() {
     _conferenciaSalvarSessao({ id_viagem: idV, comprovante_gerado: false, tem_rascunho: true });
 }
 
+function _conferenciaPeriodoBipagemKey(idV) {
+    var fluxo = (window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento';
+    return 'conf_periodo_' + fluxo + '_' + String(idV || '').trim();
+}
+
+function _formatarPeriodoBipagemLocal(iso) {
+    if (!iso) return '';
+    try {
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        var pad = function(n) { return (n < 10 ? '0' : '') + n; };
+        return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear() + ' '
+            + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    } catch (e) {
+        return '';
+    }
+}
+
+function _conferenciaRegistrarMomentoBipagemLocal() {
+    var idV = window._getIdViagemAtivo && window._getIdViagemAtivo();
+    if (!idV) return;
+    var agora = new Date().toISOString();
+    try {
+        var key = _conferenciaPeriodoBipagemKey(idV);
+        var raw = sessionStorage.getItem(key);
+        var obj = raw ? JSON.parse(raw) : null;
+        if (!obj || !obj.inicio) {
+            obj = { inicio: agora, fim: agora };
+        } else {
+            obj.fim = agora;
+        }
+        sessionStorage.setItem(key, JSON.stringify(obj));
+    } catch (e) { /* ignore */ }
+    loadPeriodoCarregamento(idV);
+}
+
+function _conferenciaObterPeriodoBipagemLocal(idV) {
+    idV = idV || ((window._getIdViagemAtivo && window._getIdViagemAtivo()) || '');
+    if (!idV) return null;
+    try {
+        var raw = sessionStorage.getItem(_conferenciaPeriodoBipagemKey(idV));
+        return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function _conferenciaLimparPeriodoBipagemLocal(idV) {
+    if (!idV) return;
+    try {
+        sessionStorage.removeItem(_conferenciaPeriodoBipagemKey(idV));
+        sessionStorage.removeItem('conf_periodo_carregamento_' + String(idV).trim());
+        sessionStorage.removeItem('conf_periodo_devolucao_' + String(idV).trim());
+    } catch (e) { /* ignore */ }
+}
+
 function _conferenciaEnfileirarAddLocal(codigoBarras, qtd) {
     if (!codigoBarras) return;
     if (!window._conferenciaPending) window._conferenciaPending = { removes: {}, removeTimers: {}, adds: {}, addTimers: {}, DEBOUNCE_MS: 700 };
@@ -113,6 +169,7 @@ function _conferenciaEnfileirarAddLocal(codigoBarras, qtd) {
     if (!window._conferenciaPending.adds[codigoBarras]) window._conferenciaPending.adds[codigoBarras] = { qtd: 0 };
     window._conferenciaPending.adds[codigoBarras].qtd += n;
     window._ultimoBipadoCodigo = String(codigoBarras).trim();
+    _conferenciaRegistrarMomentoBipagemLocal();
     _conferenciaMarcarSessaoRascunho();
 }
 
@@ -627,6 +684,8 @@ async function _conferenciaGravarBipagemCompletaNoServidor() {
     var itens = _conferenciaColetarItensTabelaParaGravar();
     var veiculoInput = window._elBipagem('veiculo');
     var statusSelect = window._elBipagem('status');
+    _conferenciaRegistrarMomentoBipagemLocal();
+    var periodoLocal = _conferenciaObterPeriodoBipagemLocal(idViagem);
     var fetchOpts = {
         method: 'POST',
         body: JSON.stringify({
@@ -634,7 +693,9 @@ async function _conferenciaGravarBipagemCompletaNoServidor() {
             doca: doca,
             veiculo: (veiculoInput && veiculoInput.value) ? veiculoInput.value.trim() : '',
             status: (statusSelect && statusSelect.value) ? statusSelect.value : 'PENDENTE',
-            itens: itens
+            itens: itens,
+            inicio_carregamento: periodoLocal && periodoLocal.inicio,
+            fim_carregamento: periodoLocal && periodoLocal.fim
         })
     };
     if (window._conferenciaGravarAbort && window._conferenciaGravarAbort.signal) {
@@ -650,6 +711,7 @@ async function _conferenciaGravarBipagemCompletaNoServidor() {
             p.removes = {};
             p.adds = {};
         }
+        _conferenciaLimparPeriodoBipagemLocal(idViagem);
         return { ok: true, falhas: 0, gravados: result.gravados || itens.length };
     }
     return {
@@ -2153,6 +2215,7 @@ function initTabs() {
 function loadTabData(tab) {
     switch(tab) {
         case 'painel':
+            initPainelPlacasFiltroData();
             return loadPainelCompleto();
         case 'base':
             return loadBasePlanilha();
@@ -10492,12 +10555,206 @@ function paintEstatisticas(stats) {
     }
 }
 
+function _painelPlacasStatusClass(status) {
+    var s = (status || '').toLowerCase();
+    if (s.indexOf('carregado') >= 0 && s.indexOf('não') < 0 && s.indexOf('nao') < 0) return 'painel-status-carregado';
+    if (s.indexOf('andamento') >= 0) return 'painel-status-andamento';
+    return 'painel-status-pendente';
+}
+
+function paintPlacasBaixadasDia(placasDia) {
+    placasDia = placasDia || {};
+    var rows = placasDia.rows || [];
+    var resumo = placasDia.resumo || {};
+    var set = function(id, val) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = val != null && val !== '' ? val : '0';
+    };
+    set('stat-placas-total', resumo.total);
+    set('stat-placas-carregadas', resumo.carregados);
+    set('stat-placas-andamento', resumo.em_andamento);
+    set('stat-placas-nao-carregadas', resumo.nao_carregados);
+    set('stat-placas-peso-total', resumo.peso_total_kg != null ? Number(resumo.peso_total_kg).toLocaleString('pt-BR') : '0');
+    var labelEl = document.getElementById('painel-placas-data-label');
+    if (labelEl) labelEl.textContent = placasDia.data ? ('Referência: ' + placasDia.data) : '';
+    var dataInput = document.getElementById('painel-placas-data');
+    if (dataInput && placasDia.data_iso && !dataInput.value) dataInput.value = placasDia.data_iso;
+    var tbody = document.getElementById('tbody-painel-placas-dia');
+    if (tbody) {
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="loading">Nenhuma placa baixada nesta data.</td></tr>';
+        } else {
+            tbody.innerHTML = rows.map(function(r) {
+                var stCls = _painelPlacasStatusClass(r.status);
+                return '<tr>'
+                    + '<td><strong>' + escapeHtml(r.placa || '—') + '</strong></td>'
+                    + '<td>' + escapeHtml(r.id_roteiro || '—') + '</td>'
+                    + '<td><strong>' + escapeHtml(r.id_viagem || '—') + '</strong></td>'
+                    + '<td><span class="painel-status-badge ' + stCls + '">' + escapeHtml(r.status || '—') + '</span></td>'
+                    + '<td>' + escapeHtml(r.inicio_carregamento || '—') + '</td>'
+                    + '<td>' + escapeHtml(r.fim_carregamento || '—') + '</td>'
+                    + '<td>' + escapeHtml(r.duracao_legivel || (r.duracao_minutos != null ? r.duracao_minutos + ' min' : '—')) + '</td>'
+                    + '<td><strong>' + (r.peso_kg != null ? Number(r.peso_kg).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—') + '</strong></td>'
+                    + '</tr>';
+            }).join('');
+        }
+    }
+    paintPlacasBaixadasCharts(placasDia);
+}
+
+function paintPlacasBaixadasCharts(placasDia) {
+    if (typeof Chart === 'undefined') return;
+    if (chartPlacasStatus) { chartPlacasStatus.destroy(); chartPlacasStatus = null; }
+    if (chartPlacasTempo) { chartPlacasTempo.destroy(); chartPlacasTempo = null; }
+    if (chartPlacasPeso) { chartPlacasPeso.destroy(); chartPlacasPeso = null; }
+    if (chartPlacasResumo) { chartPlacasResumo.destroy(); chartPlacasResumo = null; }
+    var rows = (placasDia && placasDia.rows) || [];
+    var resumo = (placasDia && placasDia.resumo) || {};
+    var opts = { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } } };
+    var cores = ['#366092', '#4a7ba7', '#5a8bb5', '#6a9bc3', '#7aabd1', '#8bbce0', '#9bccee', '#5c6bc0'];
+
+    var ctxStatus = document.getElementById('chart-placas-status');
+    if (ctxStatus) {
+        var car = resumo.carregados || 0;
+        var and = resumo.em_andamento || 0;
+        var nao = resumo.nao_carregados || 0;
+        if (car + and + nao === 0) {
+            chartPlacasStatus = new Chart(ctxStatus, {
+                type: 'doughnut',
+                data: { labels: ['Sem dados'], datasets: [{ data: [1], backgroundColor: ['#e0e0e0'] }] },
+                options: { ...opts, plugins: { legend: { display: true } } }
+            });
+        } else {
+            chartPlacasStatus = new Chart(ctxStatus, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Carregado', 'Em andamento', 'Não carregado'],
+                    datasets: [{
+                        data: [car, and, nao],
+                        backgroundColor: ['#2e7d32', '#e65100', '#c62828'],
+                        borderWidth: 2
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+    }
+
+    var comTempo = rows.filter(function(r) { return r.duracao_minutos != null && r.duracao_minutos > 0; })
+        .sort(function(a, b) { return (b.duracao_minutos || 0) - (a.duracao_minutos || 0); })
+        .slice(0, 15);
+    var ctxTempo = document.getElementById('chart-placas-tempo');
+    if (ctxTempo && comTempo.length > 0) {
+        chartPlacasTempo = new Chart(ctxTempo, {
+            type: 'bar',
+            data: {
+                labels: comTempo.map(function(r) { return r.placa || r.id_viagem || '—'; }),
+                datasets: [{
+                    label: 'Minutos',
+                    data: comTempo.map(function(r) { return r.duracao_minutos || 0; }),
+                    backgroundColor: cores.slice(0, comTempo.length),
+                    borderColor: '#1a4d7a',
+                    borderWidth: 1
+                }]
+            },
+            options: { ...opts, scales: { y: { beginAtZero: true, title: { display: true, text: 'Minutos' } } } }
+        });
+    }
+
+    var comPeso = rows.filter(function(r) { return (r.peso_kg || 0) > 0; })
+        .sort(function(a, b) { return (b.peso_kg || 0) - (a.peso_kg || 0); })
+        .slice(0, 15);
+    var ctxPeso = document.getElementById('chart-placas-peso');
+    if (ctxPeso && comPeso.length > 0) {
+        chartPlacasPeso = new Chart(ctxPeso, {
+            type: 'bar',
+            data: {
+                labels: comPeso.map(function(r) { return r.placa || r.id_viagem || '—'; }),
+                datasets: [{
+                    label: 'Peso (kg)',
+                    data: comPeso.map(function(r) { return r.peso_kg || 0; }),
+                    backgroundColor: '#e65100',
+                    borderColor: '#bf360c',
+                    borderWidth: 1
+                }]
+            },
+            options: { ...opts, scales: { y: { beginAtZero: true, title: { display: true, text: 'kg' } } } }
+        });
+    }
+
+    var ctxResumo = document.getElementById('chart-placas-resumo');
+    if (ctxResumo) {
+        var total = resumo.total || 0;
+        var carreg = resumo.carregados || 0;
+        chartPlacasResumo = new Chart(ctxResumo, {
+            type: 'bar',
+            data: {
+                labels: ['Baixadas', 'Carregadas', 'Em andamento', 'Não carregadas'],
+                datasets: [{
+                    label: 'Quantidade',
+                    data: [total, resumo.carregados || 0, resumo.em_andamento || 0, resumo.nao_carregados || 0],
+                    backgroundColor: ['#366092', '#2e7d32', '#e65100', '#c62828'],
+                    borderWidth: 1
+                }]
+            },
+            options: { ...opts, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        });
+    }
+}
+
+function initPainelPlacasFiltroData() {
+    if (window._painelPlacasFiltroInit) return;
+    window._painelPlacasFiltroInit = true;
+    var dataInput = document.getElementById('painel-placas-data');
+    var btn = document.getElementById('btn-painel-placas-atualizar');
+    if (dataInput && !dataInput.value) {
+        var hoje = new Date();
+        var pad = function(n) { return (n < 10 ? '0' : '') + n; };
+        dataInput.value = hoje.getFullYear() + '-' + pad(hoje.getMonth() + 1) + '-' + pad(hoje.getDate());
+    }
+    if (btn) {
+        btn.addEventListener('click', function() { loadPainelCompleto(); });
+    }
+    if (dataInput) {
+        dataInput.addEventListener('change', function() { loadPainelCompleto(); });
+    }
+}
+    if (!stats) return;
+    const el = (id) => document.getElementById(id);
+    if (el('stat-bipados')) el('stat-bipados').textContent = stats.total_bipados ?? 0;
+    if (el('stat-soma-quantidades')) el('stat-soma-quantidades').textContent = stats.soma_quantidades ?? 0;
+    if (el('stat-carregados')) el('stat-carregados').textContent = stats.total_carregados ?? 0;
+    if (el('stat-unicos')) el('stat-unicos').textContent = stats.total_unicos ?? 0;
+    if (el('stat-viagens')) el('stat-viagens').textContent = stats.total_viagens ?? 0;
+    if (el('stat-divergencias')) el('stat-divergencias').textContent = stats.total_divergencias ?? 0;
+    const veiculosContainer = document.getElementById('veiculos-stats');
+    if (veiculosContainer) {
+        if (stats.veiculos && stats.veiculos.length > 0) {
+            veiculosContainer.innerHTML = stats.veiculos.map(v => `
+                <div class="veiculo-card">
+                    <h4>${(v.veiculo || 'Sem veículo').replace(/</g, '&lt;')}</h4>
+                    <p>${v.total} itens</p>
+                </div>
+            `).join('');
+        } else {
+            veiculosContainer.innerHTML = '<p class="info-text">Nenhum veículo com itens carregados ainda.</p>';
+        }
+    }
+}
+
 // Um único request: painel inteiro (estatísticas + viagens + gráficos) = carregamento instantâneo na rede
 async function loadPainelCompleto() {
-    const data = await fetchAPI('/painel-completo');
+    initPainelPlacasFiltroData();
+    var dataInput = document.getElementById('painel-placas-data');
+    var qs = '';
+    if (dataInput && dataInput.value) {
+        qs = '?data=' + encodeURIComponent(dataInput.value);
+    }
+    const data = await fetchAPI('/painel-completo' + qs);
     if (!data) return;
     if (data.estatisticas) paintEstatisticas(data.estatisticas);
     if (data.erro) showMessage('Painel: ' + data.erro, 'error');
+    paintPlacasBaixadasDia(data.placas_baixadas_dia || {});
     paintRomaneioStats(data.romaneio || {});
     const viagens = data.viagens || [];
     const tbody = document.getElementById('tbody-painel-viagens');
@@ -10777,6 +11034,10 @@ let chartRomaneioRoteirosVeiculos = null;
 let chartRomaneioQtdItens = null;
 let chartRomaneioPesoCarro = null;
 let chartRomaneioPesoTotal = null;
+let chartPlacasStatus = null;
+let chartPlacasTempo = null;
+let chartPlacasPeso = null;
+let chartPlacasResumo = null;
 let devChartItensMaisDevolvidos = null;
 let devChartVeiculosDevolucoes = null;
 let devChartDocasDevolucoes = null;
@@ -10794,6 +11055,10 @@ function destroyCharts() {
     if (chartRomaneioQtdItens) { chartRomaneioQtdItens.destroy(); chartRomaneioQtdItens = null; }
     if (chartRomaneioPesoCarro) { chartRomaneioPesoCarro.destroy(); chartRomaneioPesoCarro = null; }
     if (chartRomaneioPesoTotal) { chartRomaneioPesoTotal.destroy(); chartRomaneioPesoTotal = null; }
+    if (chartPlacasStatus) { chartPlacasStatus.destroy(); chartPlacasStatus = null; }
+    if (chartPlacasTempo) { chartPlacasTempo.destroy(); chartPlacasTempo = null; }
+    if (chartPlacasPeso) { chartPlacasPeso.destroy(); chartPlacasPeso = null; }
+    if (chartPlacasResumo) { chartPlacasResumo.destroy(); chartPlacasResumo = null; }
 }
 
 function destroyPainelDevolucoesCharts() {
@@ -11928,8 +12193,17 @@ async function loadPeriodoCarregamento(idViagem) {
             const el = document.getElementById(id);
             if (el) el.textContent = (val && String(val).trim()) ? val : '-';
         };
-        set('periodo-inicio-carregamento', data && data.inicio_carregamento);
-        set('periodo-fim-carregamento', data && data.fim_carregamento);
+        var inicio = data && data.inicio_carregamento;
+        var fim = data && data.fim_carregamento;
+        if (_conferenciaUsaRascunhoLocal()) {
+            var local = _conferenciaObterPeriodoBipagemLocal(idViagem);
+            if (local && local.inicio) {
+                inicio = _formatarPeriodoBipagemLocal(local.inicio);
+                fim = _formatarPeriodoBipagemLocal(local.fim || local.inicio);
+            }
+        }
+        set('periodo-inicio-carregamento', inicio);
+        set('periodo-fim-carregamento', fim);
     } catch (e) {
         const set = (id) => { const el = document.getElementById(id); if (el) el.textContent = '-'; };
         set('periodo-inicio-carregamento'); set('periodo-fim-carregamento');
@@ -12364,6 +12638,7 @@ async function _executarZerarBipagemViagem(idViagem) {
     }
     _limparPendenciasConferenciaTimers();
     window._ultimoBipadoCodigo = '';
+    _conferenciaLimparPeriodoBipagemLocal(idViagem);
     if (window.ultimoCodigoBuscado) window.ultimoCodigoBuscado = '';
     await _esperarBipagemConferenciaIdle(8000);
     _zerarTabelaConferenciaNoDOM();

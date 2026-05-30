@@ -222,6 +222,15 @@ def init_db():
                 )'''
             )
             conn.execute(
+                '''CREATE TABLE IF NOT EXISTS public.viagem_periodo_bipagem (
+                    id_viagem TEXT NOT NULL,
+                    fluxo TEXT NOT NULL DEFAULT 'carregamento',
+                    inicio_em TIMESTAMPTZ NOT NULL,
+                    fim_em TIMESTAMPTZ NOT NULL,
+                    PRIMARY KEY (id_viagem, fluxo)
+                )'''
+            )
+            conn.execute(
                 '''CREATE TABLE IF NOT EXISTS public.viagem_placa (
                     id_viagem TEXT PRIMARY KEY,
                     placa TEXT NOT NULL,
@@ -500,6 +509,15 @@ def init_db():
         codigo_produto TEXT NOT NULL,
         motivo TEXT,
         PRIMARY KEY (id_viagem, codigo_produto)
+            )'''
+        )
+        conn.execute(
+            '''CREATE TABLE IF NOT EXISTS viagem_periodo_bipagem (
+                id_viagem TEXT NOT NULL,
+                fluxo TEXT NOT NULL DEFAULT 'carregamento',
+                inicio_em TEXT NOT NULL,
+                fim_em TEXT NOT NULL,
+                PRIMARY KEY (id_viagem, fluxo)
             )'''
         )
         conn.execute(
@@ -889,6 +907,204 @@ def _ensure_pg_produtos_bipados_fluxo(conn):
             conn.rollback()
         except Exception:
             pass
+
+
+def _ensure_viagem_periodo_bipagem_table(conn):
+    """Tabela auxiliar: início/fim real da bipagem (independente de data_hora dos itens gravados em lote)."""
+    is_pg = getattr(conn, 'kind', None) == 'pg'
+    tbl = 'public.viagem_periodo_bipagem' if is_pg else 'viagem_periodo_bipagem'
+    if is_pg:
+        conn.execute(
+            f'''CREATE TABLE IF NOT EXISTS {tbl} (
+                id_viagem TEXT NOT NULL,
+                fluxo TEXT NOT NULL DEFAULT 'carregamento',
+                inicio_em TIMESTAMPTZ NOT NULL,
+                fim_em TIMESTAMPTZ NOT NULL,
+                PRIMARY KEY (id_viagem, fluxo)
+            )'''
+        )
+    else:
+        conn.execute(
+            f'''CREATE TABLE IF NOT EXISTS {tbl} (
+                id_viagem TEXT NOT NULL,
+                fluxo TEXT NOT NULL DEFAULT 'carregamento',
+                inicio_em TEXT NOT NULL,
+                fim_em TEXT NOT NULL,
+                PRIMARY KEY (id_viagem, fluxo)
+            )'''
+        )
+    try:
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def _parse_datetime_iso(val):
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        if val.tzinfo is None:
+            return val.replace(tzinfo=timezone.utc)
+        return val
+    s = str(val).strip()
+    if not s:
+        return None
+    s = s.replace('Z', '+00:00')
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def _datetime_para_armazenamento(conn, dt):
+    if dt is None:
+        return None
+    if getattr(conn, 'kind', None) == 'pg':
+        return dt
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+def _formatar_data_hora_periodo(d):
+    if d is None:
+        return ''
+    if hasattr(d, 'strftime'):
+        return d.strftime('%d/%m/%Y %H:%M:%S')
+    s = str(d).strip()
+    if not s:
+        return ''
+    dt = _parse_datetime_iso(s)
+    if dt:
+        return dt.strftime('%d/%m/%Y %H:%M:%S')
+    return s[:19] if len(s) > 19 else s
+
+
+def _registrar_momento_bipagem(conn, id_viagem, fluxo='carregamento', momento=None, commit=False):
+    id_norm = _normalizar_id_viagem(id_viagem)
+    if not id_norm:
+        return
+    fluxo = (fluxo or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
+    _ensure_viagem_periodo_bipagem_table(conn)
+    momento = momento or datetime.now(timezone.utc)
+    arm = _datetime_para_armazenamento(conn, momento)
+    tbl = 'public.viagem_periodo_bipagem' if getattr(conn, 'kind', None) == 'pg' else 'viagem_periodo_bipagem'
+    if getattr(conn, 'kind', None) == 'pg':
+        conn.execute(
+            f'''INSERT INTO {tbl} (id_viagem, fluxo, inicio_em, fim_em)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (id_viagem, fluxo) DO UPDATE SET
+                  inicio_em = LEAST({tbl}.inicio_em, excluded.inicio_em),
+                  fim_em = GREATEST({tbl}.fim_em, excluded.fim_em)''',
+            (id_norm, fluxo, arm, arm),
+        )
+    else:
+        conn.execute(
+            f'''INSERT INTO {tbl} (id_viagem, fluxo, inicio_em, fim_em)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(id_viagem, fluxo) DO UPDATE SET
+                  inicio_em = MIN(inicio_em, excluded.inicio_em),
+                  fim_em = MAX(fim_em, excluded.fim_em)''',
+            (id_norm, fluxo, arm, arm),
+        )
+    if commit:
+        conn.commit()
+
+
+def _definir_periodo_bipagem(conn, id_viagem, fluxo, inicio, fim, commit=False):
+    id_norm = _normalizar_id_viagem(id_viagem)
+    if not id_norm or not inicio or not fim:
+        return
+    fluxo = (fluxo or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
+    if fim < inicio:
+        fim = inicio
+    _ensure_viagem_periodo_bipagem_table(conn)
+    ai = _datetime_para_armazenamento(conn, inicio)
+    af = _datetime_para_armazenamento(conn, fim)
+    tbl = 'public.viagem_periodo_bipagem' if getattr(conn, 'kind', None) == 'pg' else 'viagem_periodo_bipagem'
+    conn.execute(
+        f'''INSERT INTO {tbl} (id_viagem, fluxo, inicio_em, fim_em)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (id_viagem, fluxo) DO UPDATE SET
+              inicio_em = excluded.inicio_em,
+              fim_em = excluded.fim_em''',
+        (id_norm, fluxo, ai, af),
+    )
+    if commit:
+        conn.commit()
+
+
+def _limpar_periodo_bipagem(conn, id_viagem, fluxo='carregamento', commit=False):
+    id_norm = _normalizar_id_viagem(id_viagem)
+    if not id_norm:
+        return
+    fluxo = (fluxo or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
+    _ensure_viagem_periodo_bipagem_table(conn)
+    tbl = 'public.viagem_periodo_bipagem' if getattr(conn, 'kind', None) == 'pg' else 'viagem_periodo_bipagem'
+    conn.execute(f'DELETE FROM {tbl} WHERE id_viagem = ? AND fluxo = ?', (id_norm, fluxo))
+    if commit:
+        conn.commit()
+
+
+def _consultar_periodo_viagem_raw(id_viagem, fluxo='carregamento'):
+    id_norm = _normalizar_id_viagem(id_viagem)
+    if not id_norm:
+        return None, None
+    fluxo = (fluxo or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
+    conn = get_db()
+    try:
+        _ensure_viagem_periodo_bipagem_table(conn)
+        tbl = 'public.viagem_periodo_bipagem' if getattr(conn, 'kind', None) == 'pg' else 'viagem_periodo_bipagem'
+        row_p = conn.execute(
+            f'SELECT inicio_em, fim_em FROM {tbl} WHERE id_viagem = ? AND fluxo = ?',
+            (id_norm, fluxo),
+        ).fetchone()
+        if row_p and row_p['inicio_em'] and row_p['fim_em']:
+            return row_p['inicio_em'], row_p['fim_em']
+        if getattr(conn, 'kind', None) == 'pg':
+            row = conn.execute(
+                "SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados "
+                "WHERE TRIM(COALESCE(id_viagem::text, '')) = ? AND COALESCE(fluxo, 'carregamento') = ?",
+                (id_norm, fluxo),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados "
+                "WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ?",
+                (id_norm, fluxo),
+            ).fetchone()
+        if row and row['inicio'] and row['fim']:
+            return row['inicio'], row['fim']
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return None, None
+
+
+def _periodo_viagem_resposta(id_viagem, fluxo='carregamento'):
+    inicio, fim = _consultar_periodo_viagem_raw(id_viagem, fluxo)
+    inicio_str = _formatar_data_hora_periodo(inicio)
+    fim_str = _formatar_data_hora_periodo(fim)
+    return {
+        'inicio_bipagem': inicio_str,
+        'fim_bipagem': fim_str,
+        'inicio_carregamento': inicio_str,
+        'fim_carregamento': fim_str,
+    }
 
 
 def _tbl_terceiros_documentos(conn):
@@ -2042,6 +2258,8 @@ def add_produto():
             fluxo,
         )
     )
+    if id_viagem:
+        _registrar_momento_bipagem(conn, id_viagem, fluxo, datetime.now(timezone.utc))
     conn.commit()
     conn.close()
     _broadcast_atualizar()
@@ -2104,6 +2322,7 @@ def zerar_bipagem_viagem(id_viagem):
                 (id_norm, fluxo),
             )
             removidos = cur.rowcount if cur else None
+        _limpar_periodo_bipagem(conn, id_norm, fluxo)
         conn.commit()
     finally:
         conn.close()
@@ -2269,6 +2488,12 @@ def gravar_bipagem_viagem(id_viagem):
                 ),
             )
             gravados += 1
+        inicio_p = _parse_datetime_iso(data.get('inicio_carregamento'))
+        fim_p = _parse_datetime_iso(data.get('fim_carregamento'))
+        if inicio_p and fim_p:
+            _definir_periodo_bipagem(conn, id_norm, fluxo, inicio_p, fim_p)
+        elif gravados > 0:
+            _definir_periodo_bipagem(conn, id_norm, fluxo, agora, datetime.now(timezone.utc))
         conn.commit()
     except Exception as e:
         try:
@@ -2292,45 +2517,10 @@ def get_periodo_viagem(id_viagem):
     """Retorna início e fim da bipagem/carregamento (data e hora) para a viagem."""
     if not id_viagem:
         return jsonify({'erro': 'ID do roteiro não informado'}), 400
-    id_norm = _normalizar_id_viagem(id_viagem)
     fluxo = (request.args.get('fluxo') or 'carregamento').strip().lower()
     if fluxo not in ('carregamento', 'devolucao'):
         fluxo = 'carregamento'
-    row = None
-    conn = get_db()
-    try:
-        if getattr(conn, 'kind', None) == 'pg':
-            row = conn.execute(
-                "SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE TRIM(COALESCE(id_viagem::text, '')) = ? AND COALESCE(fluxo, 'carregamento') = ?",
-                (id_norm, fluxo)
-            ).fetchone()
-        else:
-            row = conn.execute(
-                "SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ?",
-                (id_norm, fluxo)
-            ).fetchone()
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    inicio = row['inicio'] if row and row['inicio'] else ''
-    fim = row['fim'] if row and row['fim'] else ''
-    def _fmt(d):
-        if d is None:
-            return ''
-        if hasattr(d, 'strftime'):
-            return d.strftime('%d/%m/%Y %H:%M')
-        s = str(d).strip()
-        return s[:16] if len(s) > 16 else s
-    inicio_str = _fmt(inicio)
-    fim_str = _fmt(fim)
-    return jsonify({
-        'inicio_bipagem': inicio_str,
-        'fim_bipagem': fim_str,
-        'inicio_carregamento': inicio_str,
-        'fim_carregamento': fim_str
-    })
+    return jsonify(_periodo_viagem_resposta(id_viagem, fluxo))
 
 
 def _normalizar_id_viagem(val):
@@ -5589,20 +5779,11 @@ def _get_viagem_info_dict(id_viagem):
 
 def _get_periodo_dict(id_viagem, fluxo='carregamento'):
     """Retorna dict com início e fim do carregamento."""
-    if not id_viagem:
-        return {'inicio_carregamento': '', 'fim_carregamento': ''}
-    fluxo = (fluxo or 'carregamento').strip().lower()
-    if fluxo not in ('carregamento', 'devolucao'):
-        fluxo = 'carregamento'
-    conn = get_db()
-    row = conn.execute(
-        "SELECT MIN(data_hora) as inicio, MAX(data_hora) as fim FROM produtos_bipados WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ?",
-        (id_viagem.strip(), fluxo)
-    ).fetchone()
-    conn.close()
-    inicio = row['inicio'] if row and row['inicio'] else ''
-    fim = row['fim'] if row and row['fim'] else ''
-    return {'inicio_carregamento': inicio, 'fim_carregamento': fim}
+    resp = _periodo_viagem_resposta(id_viagem, fluxo)
+    return {
+        'inicio_carregamento': resp.get('inicio_carregamento') or '',
+        'fim_carregamento': resp.get('fim_carregamento') or '',
+    }
 
 
 @app.route('/api/divergencias/excel', methods=['GET'])
@@ -7352,9 +7533,326 @@ def get_painel_graficos_extras():
     })
 
 
+def _calcular_duracao_minutos(inicio, fim):
+    """Retorna duração em minutos entre dois timestamps (ou None)."""
+    if not inicio or not fim:
+        return None
+    t0, t1 = _parse_datetime_iso(inicio), _parse_datetime_iso(fim)
+    if not t0 and hasattr(inicio, 'strftime'):
+        t0 = inicio
+    if not t1 and hasattr(fim, 'strftime'):
+        t1 = fim
+    if not t0:
+        t0 = _parse_datetime(inicio)
+    if not t1:
+        t1 = _parse_datetime(fim)
+    if t0 and t1:
+        return max(0, int((t1 - t0).total_seconds() / 60))
+    return None
+
+
+def _formatar_duracao_legivel(minutos):
+    if minutos is None:
+        return ''
+    m = int(minutos)
+    if m < 60:
+        return '%s min' % m
+    h, r = divmod(m, 60)
+    return '%sh %smin' % (h, r) if r else '%sh' % h
+
+
+def _build_mapas_peso_para_bipagem(conn):
+    """Mapas código→peso e barras→código para cálculo de peso bipado."""
+    mapa_peso = {}
+    mapa_barras_codigo = {}
+    if _usa_banco_para_dados() and getattr(conn, 'kind', None) == 'pg':
+        try:
+            ds = _get_latest_dataset_id(conn)
+            if ds:
+                base_rows = conn.execute(
+                    "SELECT codigo_interno, ean, dun, peso FROM base_codigo_barras WHERE dataset_id = ?",
+                    (str(ds),),
+                ).fetchall()
+                for r in base_rows:
+                    ci = (r.get('codigo_interno') or r[0] or '').strip()
+                    ean = (r.get('ean') or r[1] or '').strip()
+                    dun = (r.get('dun') or r[2] or '').strip()
+                    try:
+                        p = float(r.get('peso') or r[3] or 0)
+                    except (TypeError, ValueError):
+                        p = 0
+                    if ci:
+                        mapa_peso[ci] = p
+                    if ean:
+                        mapa_barras_codigo[ean] = ci
+                    if dun:
+                        mapa_barras_codigo[dun] = ci
+        except Exception:
+            pass
+    if not mapa_peso:
+        caminho_planilha = encontrar_planilha()
+        if caminho_planilha:
+            try:
+                wb_plan = openpyxl.load_workbook(caminho_planilha, data_only=True)
+                mapa_peso = _build_mapa_peso_romaneio(wb_plan)
+                mapa_barras_codigo = _build_mapa_barras_to_codigo_produto(wb_plan)
+                wb_plan.close()
+            except Exception:
+                pass
+    return mapa_peso, mapa_barras_codigo
+
+
+def _coletar_placas_baixadas_dia(conn, data_ref=None):
+    """
+    Lista viagens/placas baixadas do Ravex no dia (America/Sao_Paulo) com status de carregamento,
+    período, duração e peso.
+    """
+    tz = _ravex_tz_baixados()
+    if data_ref:
+        try:
+            dia = datetime.strptime(str(data_ref).strip()[:10], '%Y-%m-%d').replace(tzinfo=tz)
+        except ValueError:
+            dia = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        dia = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    fim_dia = dia + timedelta(days=1)
+    data_label = dia.strftime('%d/%m/%Y')
+
+    viagens_base = []
+    if getattr(conn, 'kind', None) == 'pg' and _usa_banco_para_dados():
+        ds = _get_latest_dataset_id(conn)
+        if ds:
+            try:
+                rows = conn.execute(
+                    """SELECT TRIM(COALESCE(id_viagem::text, '')) AS id_viagem,
+                              MAX(TRIM(COALESCE(id_roteiro::text, ''))) AS id_roteiro,
+                              MAX(TRIM(COALESCE(placa::text, ''))) AS placa,
+                              MAX(importado_em) AS baixado_em,
+                              COALESCE(SUM(
+                                  CASE WHEN peso_bruto IS NOT NULL AND TRIM(COALESCE(peso_bruto::text, '')) != ''
+                                  THEN (REPLACE(TRIM(peso_bruto::text), ',', '.')::numeric)
+                                       * GREATEST(1, COALESCE(quantidade, 1))
+                                  ELSE 0 END
+                              ), 0) AS peso_romaneio
+                       FROM romaneio_por_item
+                       WHERE dataset_id = ?
+                         AND importado_em >= ? AND importado_em < ?
+                         AND TRIM(COALESCE(id_viagem::text, '')) != ''
+                       GROUP BY TRIM(COALESCE(id_viagem::text, ''))
+                       ORDER BY MAX(importado_em) DESC""",
+                    (str(ds), dia, fim_dia),
+                ).fetchall()
+                for r in rows or []:
+                    vid = (r.get('id_viagem') if hasattr(r, 'get') else r[0]) or ''
+                    vid = str(vid).strip()
+                    if not vid:
+                        continue
+                    try:
+                        pr = float(r.get('peso_romaneio') if hasattr(r, 'get') else (r[4] if len(r) > 4 else 0) or 0)
+                    except (TypeError, ValueError):
+                        pr = 0.0
+                    viagens_base.append({
+                        'id_viagem': vid,
+                        'id_roteiro': str((r.get('id_roteiro') if hasattr(r, 'get') else (r[1] if len(r) > 1 else '')) or '').strip(),
+                        'placa': str((r.get('placa') if hasattr(r, 'get') else (r[2] if len(r) > 2 else '')) or '').strip(),
+                        'baixado_em': r.get('baixado_em') if hasattr(r, 'get') else (r[3] if len(r) > 3 else None),
+                        'peso_romaneio_kg': round(pr, 2),
+                    })
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
+    ids = [v['id_viagem'] for v in viagens_base]
+    if not ids and getattr(conn, 'kind', None) != 'pg':
+        try:
+            rows = conn.execute(
+                """SELECT id_viagem, MAX(veiculo) AS placa,
+                          MIN(data_hora) AS inicio, MAX(data_hora) AS fim,
+                          SUM(quantidade) AS total_bipados
+                   FROM produtos_bipados
+                   WHERE id_viagem IS NOT NULL AND id_viagem != ''
+                     AND COALESCE(fluxo, 'carregamento') = 'carregamento'
+                   GROUP BY id_viagem
+                   ORDER BY MAX(data_hora) DESC
+                   LIMIT 100"""
+            ).fetchall()
+            for r in rows or []:
+                vid = (r['id_viagem'] or '').strip()
+                if not vid:
+                    continue
+                viagens_base.append({
+                    'id_viagem': vid,
+                    'id_roteiro': '',
+                    'placa': (r['placa'] or r.get('veiculo') or '').strip() if hasattr(r, 'get') else '',
+                    'baixado_em': None,
+                    'peso_romaneio_kg': 0.0,
+                })
+                ids.append(vid)
+        except Exception:
+            pass
+
+    if not viagens_base:
+        return {
+            'data': data_label,
+            'data_iso': dia.strftime('%Y-%m-%d'),
+            'rows': [],
+            'resumo': {'total': 0, 'carregados': 0, 'nao_carregados': 0, 'em_andamento': 0, 'peso_total_kg': 0},
+        }
+
+    ids_norm = [_normalizar_id_viagem(i) for i in ids]
+    periodo_map = {}
+    bip_map = {}
+    placa_override = {}
+
+    _ensure_viagem_periodo_bipagem_table(conn)
+    tbl_per = 'public.viagem_periodo_bipagem' if getattr(conn, 'kind', None) == 'pg' else 'viagem_periodo_bipagem'
+    ph = ','.join('?' * len(ids_norm))
+    try:
+        rows_per = conn.execute(
+            f"SELECT id_viagem, inicio_em, fim_em FROM {tbl_per} WHERE fluxo = 'carregamento' AND id_viagem IN ({ph})",
+            tuple(ids_norm),
+        ).fetchall()
+        for r in rows_per or []:
+            vid = _normalizar_id_viagem(r.get('id_viagem') if hasattr(r, 'get') else r[0])
+            periodo_map[vid] = (
+                r.get('inicio_em') if hasattr(r, 'get') else r[1],
+                r.get('fim_em') if hasattr(r, 'get') else r[2],
+            )
+    except Exception:
+        pass
+
+    try:
+        if getattr(conn, 'kind', None) == 'pg':
+            sql_bip = f"""SELECT TRIM(COALESCE(id_viagem::text, '')) AS id_viagem,
+                                 SUM(quantidade) AS total_bipados,
+                                 MIN(data_hora) AS inicio, MAX(data_hora) AS fim
+                          FROM produtos_bipados
+                          WHERE COALESCE(fluxo, 'carregamento') = 'carregamento'
+                            AND TRIM(COALESCE(id_viagem::text, '')) IN ({ph})
+                          GROUP BY TRIM(COALESCE(id_viagem::text, ''))"""
+        else:
+            sql_bip = f"""SELECT id_viagem, SUM(quantidade) AS total_bipados,
+                                 MIN(data_hora) AS inicio, MAX(data_hora) AS fim
+                          FROM produtos_bipados
+                          WHERE COALESCE(fluxo, 'carregamento') = 'carregamento'
+                            AND id_viagem IN ({ph})
+                          GROUP BY id_viagem"""
+        for r in conn.execute(sql_bip, tuple(ids_norm)).fetchall() or []:
+            vid = _normalizar_id_viagem(r.get('id_viagem') if hasattr(r, 'get') else r['id_viagem'])
+            bip_map[vid] = r
+    except Exception:
+        pass
+
+    try:
+        rows_placa = conn.execute(
+            f"SELECT id_viagem, placa FROM viagem_placa WHERE id_viagem IN ({ph})",
+            tuple(ids_norm),
+        ).fetchall()
+        for r in rows_placa or []:
+            vid = _normalizar_id_viagem(r.get('id_viagem') if hasattr(r, 'get') else r[0])
+            pl = (r.get('placa') if hasattr(r, 'get') else r[1]) or ''
+            if str(pl).strip():
+                placa_override[vid] = str(pl).strip()
+    except Exception:
+        pass
+
+    mapa_peso, mapa_barras = _build_mapas_peso_para_bipagem(conn)
+    peso_bipado_map = {}
+    try:
+        if getattr(conn, 'kind', None) == 'pg':
+            sql_p = f"""SELECT TRIM(COALESCE(id_viagem::text, '')) AS id_viagem, codigo_barras, quantidade
+                        FROM produtos_bipados
+                        WHERE COALESCE(fluxo, 'carregamento') = 'carregamento'
+                          AND TRIM(COALESCE(id_viagem::text, '')) IN ({ph})"""
+        else:
+            sql_p = f"""SELECT id_viagem, codigo_barras, quantidade FROM produtos_bipados
+                        WHERE COALESCE(fluxo, 'carregamento') = 'carregamento' AND id_viagem IN ({ph})"""
+        for r in conn.execute(sql_p, tuple(ids_norm)).fetchall() or []:
+            vid = _normalizar_id_viagem(r.get('id_viagem') if hasattr(r, 'get') else r['id_viagem'])
+            cb = (r.get('codigo_barras') if hasattr(r, 'get') else r[1]) or ''
+            qtd = int((r.get('quantidade') if hasattr(r, 'get') else r[2]) or 0)
+            cp = mapa_barras.get(str(cb).strip()) or str(cb).strip()
+            pu = mapa_peso.get(cp, 0) or mapa_peso.get(str(cb).strip(), 0)
+            peso_bipado_map[vid] = peso_bipado_map.get(vid, 0.0) + qtd * float(pu or 0)
+    except Exception:
+        pass
+
+    rows_out = []
+    resumo = {'total': 0, 'carregados': 0, 'nao_carregados': 0, 'em_andamento': 0, 'peso_total_kg': 0.0}
+    for vb in viagens_base:
+        vid = _normalizar_id_viagem(vb['id_viagem'])
+        placa = placa_override.get(vid) or vb.get('placa') or ''
+        if not placa:
+            info = _get_viagem_info_planilha(vid)
+            placa = (info.get('placa') or '').strip()
+        id_roteiro = vb.get('id_roteiro') or ''
+        if not id_roteiro:
+            info = _get_viagem_info_planilha(vid)
+            id_roteiro = (info.get('id_roteiro') or '').strip()
+
+        inicio_raw, fim_raw = periodo_map.get(vid, (None, None))
+        bip = bip_map.get(vid)
+        if not inicio_raw and bip:
+            inicio_raw = bip.get('inicio') if hasattr(bip, 'get') else bip['inicio']
+        if not fim_raw and bip:
+            fim_raw = bip.get('fim') if hasattr(bip, 'get') else bip['fim']
+        total_bip = 0
+        if bip:
+            total_bip = int((bip.get('total_bipados') if hasattr(bip, 'get') else bip['total_bipados']) or 0)
+
+        dur_min = _calcular_duracao_minutos(inicio_raw, fim_raw)
+        inicio_fmt = _formatar_data_hora_periodo(inicio_raw)
+        fim_fmt = _formatar_data_hora_periodo(fim_raw)
+
+        if total_bip <= 0:
+            status = 'Não carregado'
+            resumo['nao_carregados'] += 1
+        elif dur_min is not None and dur_min > 0 and inicio_fmt and fim_fmt and inicio_fmt != fim_fmt:
+            status = 'Carregado'
+            resumo['carregados'] += 1
+        elif total_bip > 0:
+            status = 'Em andamento'
+            resumo['em_andamento'] += 1
+        else:
+            status = 'Carregado'
+            resumo['carregados'] += 1
+
+        peso_bip = round(peso_bipado_map.get(vid, 0.0), 2)
+        peso_rom = vb.get('peso_romaneio_kg') or 0.0
+        peso_exibir = peso_bip if peso_bip > 0 else peso_rom
+
+        rows_out.append({
+            'placa': placa or '—',
+            'id_roteiro': id_roteiro or '—',
+            'id_viagem': vid,
+            'status': status,
+            'inicio_carregamento': inicio_fmt or '—',
+            'fim_carregamento': fim_fmt or '—',
+            'duracao_minutos': dur_min,
+            'duracao_legivel': _formatar_duracao_legivel(dur_min) or '—',
+            'peso_kg': peso_exibir,
+            'peso_bipado_kg': peso_bip,
+            'peso_romaneio_kg': peso_rom,
+            'total_bipados': total_bip,
+            'baixado_em': _formatar_criado_em_baixados_ravex(vb.get('baixado_em')) if vb.get('baixado_em') else '',
+        })
+        resumo['total'] += 1
+        resumo['peso_total_kg'] = round(resumo['peso_total_kg'] + float(peso_exibir or 0), 2)
+
+    return {
+        'data': data_label,
+        'data_iso': dia.strftime('%Y-%m-%d'),
+        'rows': rows_out,
+        'resumo': resumo,
+    }
+
+
 @app.route('/api/painel-completo', methods=['GET'])
 def get_painel_completo():
     """Um único request: estatísticas + viagens + gráficos. Estatísticas em 1 query para carregar mais rápido."""
+    data_painel = (request.args.get('data') or '').strip()[:10] or None
     conn = get_db()
     if getattr(conn, 'kind', None) != 'pg':
         conn.row_factory = sqlite3.Row
@@ -7488,6 +7986,7 @@ def get_painel_completo():
                 wb.close()
             except Exception:
                 pass
+        placas_dia = _coletar_placas_baixadas_dia(conn, data_painel)
         conn.close()
         romaneio_resp = {k: v for k, v in romaneio_stats.items() if k != 'id_viagem_to_placa'}
         return jsonify({
@@ -7497,7 +7996,8 @@ def get_painel_completo():
             'top_itens_bipados': top_itens,
             'carros_mais_itens': carros_itens,
             'carros_mais_peso': carros_peso,
-            'romaneio': romaneio_resp
+            'romaneio': romaneio_resp,
+            'placas_baixadas_dia': placas_dia,
         })
     except Exception as e:
         try:
@@ -7518,6 +8018,7 @@ def get_painel_completo():
             'carros_mais_itens': [],
             'carros_mais_peso': [],
             'romaneio': {},
+            'placas_baixadas_dia': {'data': '', 'data_iso': '', 'rows': [], 'resumo': {'total': 0, 'carregados': 0, 'nao_carregados': 0, 'em_andamento': 0, 'peso_total_kg': 0}},
             'erro': str(e)
         }), 200
 

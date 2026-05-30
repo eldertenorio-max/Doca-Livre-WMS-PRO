@@ -2641,6 +2641,34 @@ h2 {
     margin: 0;
 }
 
+.painel-status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.painel-status-carregado {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #a5d6a7;
+}
+.painel-status-andamento {
+    background: #fff3e0;
+    color: #e65100;
+    border: 1px solid #ffcc80;
+}
+.painel-status-pendente {
+    background: #ffebee;
+    color: #c62828;
+    border: 1px solid #ef9a9a;
+}
+
+#painel-placas-resumo-grid .stat-card {
+    background: linear-gradient(135deg, #366092 0%, #4a7ba7 100%);
+}
+
 .veiculos-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
