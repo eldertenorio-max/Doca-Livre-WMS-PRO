@@ -154,6 +154,11 @@ body.hub-entrada-body {
     background: linear-gradient(180deg, #4a7ba7 0%, #2d4a66 100%);
 }
 
+.hub-entrada-btn--4 {
+    animation-delay: 0.78s;
+    background: linear-gradient(180deg, #7b8f3a 0%, #558b2f 100%);
+}
+
 .hub-entrada-btn:hover {
     transform: translateY(-4px) scale(1.02);
     box-shadow: 0 10px 28px rgba(54, 96, 146, 0.4);

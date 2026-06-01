@@ -309,6 +309,16 @@ body {
     min-height: 0;
 }
 
+.dev-nf-ativa-banner {
+    background: #e8f5e9;
+    border: 1px solid #81c784;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    color: #2e7d32;
+    font-size: 14px;
+}
+
 .devolucoes-subtabs {
     margin-bottom: 16px;
 }

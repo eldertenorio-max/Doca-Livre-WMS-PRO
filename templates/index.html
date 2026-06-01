@@ -1196,8 +1196,27 @@
                                 </div>
 
                                 <div class="conferencia-bloco conferencia-bloco-3 form-container" style="background: #fff8e1; border-left: 4px solid #1976D2;">
-                                    <h3 style="margin-top: 0; color: #1976D2;">3. REFERÊNCIA DA DEVOLUÇÃO</h3>
-                                    <div class="form-row">
+                                    <h3 style="margin-top: 0; color: #1976D2;">3. NOTA FISCAL DE DEVOLUÇÃO</h3>
+                                    <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Use o <strong>mesmo ID de roteiro/viagem</strong> da saída. Selecione a NF e o motivo; depois bip o retorno. Ao terminar, marque a NF como concluída.</p>
+                                    <input type="hidden" id="dev-devolucao-nf-id" value="">
+                                    <div id="dev-nf-ativa-banner" class="dev-nf-ativa-banner" style="display: none;">
+                                        <strong>NF em andamento:</strong>
+                                        <span id="dev-nf-ativa-texto">—</span>
+                                    </div>
+                                    <div class="form-row" id="dev-nf-form-nova">
+                                        <div class="form-group">
+                                            <label for="dev-numero-nf">Número da NF *</label>
+                                            <input type="text" id="dev-numero-nf" placeholder="Número da nota fiscal">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="dev-motivo-devolucao">Motivo *</label>
+                                            <select id="dev-motivo-devolucao">
+                                                <option value="">Selecione o motivo</option>
+                                                <option value="parcial">Devolução parcial</option>
+                                                <option value="total">Devolução total</option>
+                                                <option value="reentrega">Reentrega</option>
+                                            </select>
+                                        </div>
                                         <div class="form-group">
                                             <label for="dev-doca">Doca *</label>
                                             <select id="dev-doca">
@@ -1208,6 +1227,12 @@
                                                 <option value="4">Doca 4</option>
                                             </select>
                                         </div>
+                                    </div>
+                                    <div class="form-row" style="gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+                                        <button type="button" class="btn btn-primary" id="dev-btn-iniciar-nf">▶ Iniciar NF</button>
+                                        <button type="button" class="btn btn-success" id="dev-btn-concluir-nf" style="display: none;">✅ NF concluída</button>
+                                    </div>
+                                    <div class="form-row">
                                         <div class="form-group">
                                             <label style="color: #666;">ID Roteiro</label>
                                             <div id="dev-display-id-roteiro" style="font-weight: bold; color: #1565c0;">-</div>
@@ -1220,6 +1245,23 @@
                                             <label style="color: #666;">Data expedição</label>
                                             <div id="dev-data-expedicao" style="font-weight: bold;">-</div>
                                         </div>
+                                    </div>
+                                    <div class="table-container" style="margin-top: 12px;">
+                                        <h4 style="margin: 0 0 8px 0; font-size: 14px;">NFs deste roteiro</h4>
+                                        <table class="data-table" id="dev-tabela-nfs">
+                                            <thead>
+                                                <tr>
+                                                    <th>NF</th>
+                                                    <th>Motivo</th>
+                                                    <th>Status</th>
+                                                    <th>Criada em</th>
+                                                    <th>Ação</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="dev-tbody-nfs">
+                                                <tr><td colspan="5" class="loading">Busque o roteiro para listar as NFs.</td></tr>
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
@@ -1274,8 +1316,8 @@
                                         <div class="conferencia-resumo-group">
                                             <div class="conferencia-resumo-rapido">
                                                 <div id="dev-conferencia-totais-bloco" class="conferencia-totais-bloco">
-                                                    <span id="dev-conferencia-total-itens">Total: 0</span>
-                                                    <span id="dev-conferencia-total-bipado">Bipado: 0</span>
+                                                    <span id="dev-conferencia-total-itens">Saída: 0</span>
+                                                    <span id="dev-conferencia-total-bipado">Retorno: 0</span>
                                                 </div>
                                                 <span id="dev-conferencia-resumo-status" class="conferencia-resumo-status status-sem-itens">Sem itens</span>
                                             </div>
@@ -2344,6 +2386,68 @@
                     </div>
                 </div>
 
+            </div>
+        </div>
+
+        <div id="modulo-estoque-sp" class="modulo-area modulo-devolucoes" hidden aria-label="Estoque SP">
+            <div class="devolucoes-conteudo">
+                <div class="painel-titulo">
+                    <span class="painel-titulo-icon">📦</span>
+                    <h2 class="painel-titulo-texto">Estoque SP</h2>
+                    <p class="painel-titulo-sub">Saída (expedição), entrada (devoluções) e entrada de recebimento terceiros sem MG e sem consumível SP</p>
+                </div>
+                <div class="form-row" style="margin-bottom: 16px; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
+                    <div class="form-group">
+                        <label for="estoque-sp-data-inicio">Data início (saída/dev.)</label>
+                        <input type="date" id="estoque-sp-data-inicio">
+                    </div>
+                    <div class="form-group">
+                        <label for="estoque-sp-data-fim">Data fim (saída/dev.)</label>
+                        <input type="date" id="estoque-sp-data-fim">
+                    </div>
+                    <button type="button" class="btn btn-primary" id="btn-estoque-sp-atualizar">🔄 Atualizar</button>
+                </div>
+                <nav class="tabs devolucoes-subtabs" aria-label="Abas Estoque SP">
+                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab active" data-estoque-tab="saida">SAÍDA</button>
+                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="entrada-devolucao">ENTRADA (DEVOLUÇÕES)</button>
+                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="entrada-terceiros">ENTRADA TERCEIROS</button>
+                </nav>
+                <div id="estoque-sp-panel-saida" class="devolucoes-panel devolucoes-panel-active">
+                    <div class="stats-grid" style="margin-bottom: 16px;">
+                        <div class="stat-card"><h3>Itens (linhas)</h3><p class="stat-number" id="estoque-sp-saida-linhas">0</p></div>
+                        <div class="stat-card"><h3>Quantidade total</h3><p class="stat-number" id="estoque-sp-saida-qtd">0</p></div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Cód. produto</th><th>Produto</th><th>Cód. barras</th><th>Qtd.</th><th>Registros</th></tr></thead>
+                            <tbody id="estoque-sp-tbody-saida"><tr><td colspan="5" class="loading">Clique em Atualizar.</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="estoque-sp-panel-entrada-devolucao" class="devolucoes-panel">
+                    <div class="stats-grid" style="margin-bottom: 16px;">
+                        <div class="stat-card"><h3>Itens (linhas)</h3><p class="stat-number" id="estoque-sp-dev-linhas">0</p></div>
+                        <div class="stat-card"><h3>Quantidade total</h3><p class="stat-number" id="estoque-sp-dev-qtd">0</p></div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Cód. produto</th><th>Produto</th><th>Cód. barras</th><th>Qtd.</th><th>Registros</th></tr></thead>
+                            <tbody id="estoque-sp-tbody-dev"><tr><td colspan="5" class="loading">Clique em Atualizar.</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="estoque-sp-panel-entrada-terceiros" class="devolucoes-panel">
+                    <div class="stats-grid" style="margin-bottom: 16px;">
+                        <div class="stat-card"><h3>Itens (linhas)</h3><p class="stat-number" id="estoque-sp-ter-linhas">0</p></div>
+                        <div class="stat-card"><h3>Quantidade total</h3><p class="stat-number" id="estoque-sp-ter-qtd">0</p></div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Cód. produto</th><th>Produto</th><th>Cód. barras</th><th>Qtd. bipada</th><th>NFs</th></tr></thead>
+                            <tbody id="estoque-sp-tbody-ter"><tr><td colspan="5" class="loading">Clique em Atualizar.</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

@@ -17,13 +17,14 @@
         <h1 class="hub-entrada-titulo">Controle de Carregamento</h1>
 
         <p class="hub-entrada-desc">
-            Escolha <strong>Carregamento (expedição)</strong>, <strong>Devoluções</strong> ou <strong>Recebimento e expedição de terceiros</strong>. O painel abre no módulo selecionado.
+            Escolha o módulo: <strong>Carregamento</strong>, <strong>Devoluções</strong>, <strong>Terceiros</strong> ou <strong>Estoque SP</strong>.
         </p>
 
         <div class="hub-entrada-botoes">
             <a class="hub-entrada-btn hub-entrada-btn--1" href="{{ url_for('painel') }}?modulo=carregamento">Carregamento (expedição)</a>
             <a class="hub-entrada-btn hub-entrada-btn--2" href="{{ url_for('painel') }}?modulo=devolucoes">Devoluções</a>
             <a class="hub-entrada-btn hub-entrada-btn--3" href="{{ url_for('painel') }}?modulo=terceiros">Recebimento e expedição de terceiros</a>
+            <a class="hub-entrada-btn hub-entrada-btn--4" href="{{ url_for('painel') }}?modulo=estoque-sp">Estoque SP</a>
         </div>
 
         <footer class="hub-entrada-rodape">

@@ -909,6 +909,157 @@ def _ensure_pg_produtos_bipados_fluxo(conn):
             pass
 
 
+def _ensure_devolucao_nf_schema(conn):
+    """Tabela de NF de devolução e vínculo em produtos_bipados."""
+    is_pg = getattr(conn, 'kind', None) == 'pg'
+    tbl_nf = 'public.devolucao_nota_fiscal' if is_pg else 'devolucao_nota_fiscal'
+    tbl_pb = 'public.produtos_bipados' if is_pg else 'produtos_bipados'
+    if is_pg:
+        conn.execute(
+            f'''CREATE TABLE IF NOT EXISTS {tbl_nf} (
+                id BIGSERIAL PRIMARY KEY,
+                id_viagem TEXT NOT NULL,
+                numero_nf TEXT NOT NULL,
+                motivo TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'em_andamento',
+                doca TEXT,
+                criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                concluida_em TIMESTAMPTZ,
+                criado_por TEXT,
+                concluida_por TEXT
+            )'''
+        )
+        conn.execute(f'CREATE INDEX IF NOT EXISTS idx_devolucao_nf_viagem ON {tbl_nf} (id_viagem, status)')
+        try:
+            conn.execute(
+                f'ALTER TABLE {tbl_pb} ADD COLUMN IF NOT EXISTS devolucao_nf_id BIGINT REFERENCES {tbl_nf}(id) ON DELETE SET NULL'
+            )
+        except Exception:
+            conn.execute(f'ALTER TABLE {tbl_pb} ADD COLUMN IF NOT EXISTS devolucao_nf_id BIGINT')
+    else:
+        conn.execute(
+            f'''CREATE TABLE IF NOT EXISTS {tbl_nf} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_viagem TEXT NOT NULL,
+                numero_nf TEXT NOT NULL,
+                motivo TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'em_andamento',
+                doca TEXT,
+                criado_em TEXT NOT NULL,
+                concluida_em TEXT,
+                criado_por TEXT,
+                concluida_por TEXT
+            )'''
+        )
+        try:
+            conn.execute(f'ALTER TABLE {tbl_pb} ADD COLUMN devolucao_nf_id INTEGER')
+        except Exception:
+            pass
+    try:
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def _motivo_devolucao_valido(motivo):
+    return (motivo or '').strip().lower() in ('parcial', 'total', 'reentrega')
+
+
+def _motivo_devolucao_label(motivo):
+    m = (motivo or '').strip().lower()
+    return {
+        'parcial': 'Devolução parcial',
+        'total': 'Devolução total',
+        'reentrega': 'Reentrega',
+    }.get(m, motivo or '')
+
+
+def _row_devolucao_nf_dict(row):
+    if not row:
+        return None
+    g = row.get if hasattr(row, 'get') else None
+    rid = g('id') if g else (row[0] if len(row) > 0 else None)
+    return {
+        'id': int(rid) if rid is not None else None,
+        'id_viagem': (g('id_viagem') if g else row[1]) or '',
+        'numero_nf': (g('numero_nf') if g else row[2]) or '',
+        'motivo': (g('motivo') if g else row[3]) or '',
+        'motivo_label': _motivo_devolucao_label((g('motivo') if g else row[3]) or ''),
+        'status': (g('status') if g else row[4]) or 'em_andamento',
+        'doca': (g('doca') if g else (row[5] if len(row) > 5 else '')) or '',
+        'criado_em': _fmt_datahora_br(g('criado_em') if g else (row[6] if len(row) > 6 else '')),
+        'concluida_em': _fmt_datahora_br(g('concluida_em') if g else (row[7] if len(row) > 7 else '')),
+        'criado_por': (g('criado_por') if g else (row[8] if len(row) > 8 else '')) or '',
+        'concluida_por': (g('concluida_por') if g else (row[9] if len(row) > 9 else '')) or '',
+    }
+
+
+def _devolucao_conferencia_lista_nf(conn, id_viagem, devolucao_nf_id):
+    """Itens bipados na NF de devolução ativa (somente retorno desta sessão)."""
+    id_viagem = (id_viagem or '').strip()
+    if not id_viagem or not devolucao_nf_id:
+        return []
+    try:
+        nf_id = int(devolucao_nf_id)
+    except (TypeError, ValueError):
+        return []
+    rows = conn.execute(
+        '''SELECT codigo_barras, codigo_interno, MAX(produto) AS produto,
+                  SUM(quantidade) AS quantidade_bipada, MAX(unidade) AS unidade, MAX(peso) AS peso
+           FROM produtos_bipados
+           WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = 'devolucao' AND devolucao_nf_id = ?
+           GROUP BY codigo_barras, codigo_interno
+           ORDER BY MAX(data_hora) DESC''',
+        (id_viagem, nf_id),
+    ).fetchall()
+    saida_rows = conn.execute(
+        '''SELECT codigo_barras, codigo_interno, SUM(quantidade) AS qtd_saida
+           FROM produtos_bipados
+           WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = 'carregamento'
+           GROUP BY codigo_barras, codigo_interno''',
+        (id_viagem,),
+    ).fetchall()
+    saida_map = {}
+    for sr in saida_rows or []:
+        cb = ((sr.get('codigo_barras') if hasattr(sr, 'get') else sr[0]) or '').strip()
+        ci = ((sr.get('codigo_interno') if hasattr(sr, 'get') else sr[1]) or '').strip()
+        q = int((sr.get('qtd_saida') if hasattr(sr, 'get') else (sr[2] if len(sr) > 2 else 0)) or 0)
+        if cb:
+            saida_map[cb] = saida_map.get(cb, 0) + q
+        if ci:
+            saida_map['ci:' + ci] = saida_map.get('ci:' + ci, 0) + q
+    resultado = []
+    for r in rows or []:
+        cb = ((r.get('codigo_barras') if hasattr(r, 'get') else r[0]) or '').strip()
+        ci = ((r.get('codigo_interno') if hasattr(r, 'get') else r[1]) or '').strip()
+        prod = (r.get('produto') if hasattr(r, 'get') else (r[2] if len(r) > 2 else '')) or ''
+        q_bip = int((r.get('quantidade_bipada') if hasattr(r, 'get') else (r[3] if len(r) > 3 else 0)) or 0)
+        un = (r.get('unidade') if hasattr(r, 'get') else (r[4] if len(r) > 4 else '')) or ''
+        peso = (r.get('peso') if hasattr(r, 'get') else (r[5] if len(r) > 5 else '')) or ''
+        q_saida = saida_map.get(cb, 0) or saida_map.get('ci:' + ci, 0) or 0
+        resultado.append({
+            'codigo_produto': ci,
+            'codigo_barras': cb,
+            'produto': prod,
+            'quantidade_produto': q_saida,
+            'quantidade_bipada': q_bip,
+            'quantidade_falta': max(0, q_saida - q_bip) if q_saida > 0 else 0,
+            'quantidade_sobra': max(0, q_bip - q_saida) if q_saida > 0 else 0,
+            'quantidade_saida': q_saida,
+            'unidade': un,
+            'peso_bruto': peso,
+            'status_bipado': 'COMPLETO' if q_bip > 0 and (q_saida <= 0 or q_bip >= q_saida) else ('PARCIAL' if q_bip > 0 else 'PENDENTE'),
+            'aviso_sobra': ('Bipou %s a mais que a saída' % (q_bip - q_saida)) if q_saida > 0 and q_bip > q_saida else '',
+            'id_viagem': id_viagem,
+            'origem_romaneio': False,
+            'modo_devolucao_nf': True,
+        })
+    return resultado
+
+
 def _ensure_viagem_periodo_bipagem_table(conn):
     """Tabela auxiliar: início/fim real da bipagem (independente de data_hora dos itens gravados em lote)."""
     is_pg = getattr(conn, 'kind', None) == 'pg'
@@ -2205,10 +2356,34 @@ def add_produto():
     conn = get_db()
     if getattr(conn, 'kind', None) == 'pg':
         _ensure_pg_produtos_bipados_fluxo(conn)
+    _ensure_devolucao_nf_schema(conn)
     codigo_barras = _normalizar_codigo_barras(data.get('codigo_barras', '') or '')
     id_viagem = (data.get('id_viagem') or '').strip()
+    devolucao_nf_id = data.get('devolucao_nf_id')
+    if fluxo == 'devolucao':
+        try:
+            devolucao_nf_id = int(devolucao_nf_id) if devolucao_nf_id is not None else None
+        except (TypeError, ValueError):
+            devolucao_nf_id = None
+        if not devolucao_nf_id:
+            conn.close()
+            return jsonify({
+                'success': False,
+                'mensagem': 'Selecione a NF e o motivo da devolução antes de bipar o retorno.',
+            }), 400
+        nf_chk = conn.execute(
+            "SELECT id, status FROM devolucao_nota_fiscal WHERE id = ?",
+            (devolucao_nf_id,),
+        ).fetchone()
+        if not nf_chk:
+            conn.close()
+            return jsonify({'success': False, 'mensagem': 'NF de devolução não encontrada.'}), 400
+        nf_st = (nf_chk.get('status') if hasattr(nf_chk, 'get') else nf_chk[1]) or ''
+        if nf_st != 'em_andamento':
+            conn.close()
+            return jsonify({'success': False, 'mensagem': 'Esta NF já foi concluída. Inicie outra NF para bipar.'}), 400
 
-    if id_viagem and not forcar_adicionar:
+    if id_viagem and not forcar_adicionar and fluxo != 'devolucao':
         g.conferencia_fluxo = fluxo
         try:
             ret = get_conferencia(id_viagem)
@@ -2281,8 +2456,8 @@ def add_produto():
     qtd_bipar = max(1, min(99999, qtd_bipar))
     conn.execute(
         '''INSERT INTO produtos_bipados 
-           (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca, codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+           (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca, codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo, devolucao_nf_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         (
             codigo_barras,
             data.get('produto', ''),
@@ -2298,6 +2473,7 @@ def add_produto():
             peso,
             usuario_logado,
             fluxo,
+            devolucao_nf_id if fluxo == 'devolucao' else None,
         )
     )
     if id_viagem:
@@ -8208,6 +8384,300 @@ def get_painel_completo():
             'placas_baixadas_dia': {'data': '', 'data_iso': '', 'rows': [], 'resumo': {'total': 0, 'carregados': 0, 'nao_carregados': 0, 'em_andamento': 0, 'peso_total_kg': 0}},
             'erro': str(e)
         }), 200
+
+@app.route('/api/devolucoes/notas', methods=['GET'])
+def api_devolucoes_notas_listar():
+    """Lista NFs de devolução de um roteiro/viagem."""
+    id_viagem = (request.args.get('id_viagem') or '').strip()
+    if not id_viagem:
+        return jsonify({'erro': 'Informe id_viagem'}), 400
+    conn = get_db()
+    _ensure_devolucao_nf_schema(conn)
+    _ensure_pg_produtos_bipados_fluxo(conn)
+    id_norm = _normalizar_id_viagem(id_viagem) or id_viagem
+    rows = conn.execute(
+        '''SELECT id, id_viagem, numero_nf, motivo, status, doca, criado_em, concluida_em, criado_por, concluida_por
+           FROM devolucao_nota_fiscal
+           WHERE TRIM(COALESCE(id_viagem, '')) IN (?, ?)
+           ORDER BY CASE WHEN status = 'em_andamento' THEN 0 ELSE 1 END, id DESC''',
+        (id_viagem, id_norm),
+    ).fetchall()
+    conn.close()
+    notas = []
+    for row in rows or []:
+        d = dict(row) if hasattr(row, 'keys') else {}
+        if not d and row:
+            d = {
+                'id': row[0], 'id_viagem': row[1], 'numero_nf': row[2], 'motivo': row[3],
+                'status': row[4], 'doca': row[5], 'criado_em': row[6], 'concluida_em': row[7],
+                'criado_por': row[8], 'concluida_por': row[9],
+            }
+        d['motivo_label'] = _motivo_devolucao_label(d.get('motivo'))
+        d['criado_em'] = _fmt_datahora_br(d.get('criado_em'))
+        d['concluida_em'] = _fmt_datahora_br(d.get('concluida_em'))
+        notas.append(d)
+    return jsonify({'notas': notas, 'id_viagem': id_viagem})
+
+
+@app.route('/api/devolucoes/notas', methods=['POST'])
+def api_devolucoes_notas_criar():
+    """Inicia sessão de bipagem para uma NF de devolução."""
+    data = request.get_json() or {}
+    id_viagem = (data.get('id_viagem') or '').strip()
+    numero_nf = (data.get('numero_nf') or '').strip()
+    motivo = (data.get('motivo') or '').strip().lower()
+    doca = (data.get('doca') or '').strip()
+    if not id_viagem or not numero_nf:
+        return jsonify({'success': False, 'erro': 'Informe o roteiro/viagem e o número da NF.'}), 400
+    if not _motivo_devolucao_valido(motivo):
+        return jsonify({'success': False, 'erro': 'Selecione o motivo: parcial, total ou reentrega.'}), 400
+    if doca not in ('1', '2', '3', '4'):
+        doca = '1'
+    conn = get_db()
+    _ensure_devolucao_nf_schema(conn)
+    id_norm = _normalizar_id_viagem(id_viagem) or id_viagem
+    aberta = conn.execute(
+        '''SELECT id FROM devolucao_nota_fiscal
+           WHERE TRIM(COALESCE(id_viagem, '')) IN (?, ?) AND status = 'em_andamento' LIMIT 1''',
+        (id_viagem, id_norm),
+    ).fetchone()
+    if aberta:
+        conn.close()
+        return jsonify({
+            'success': False,
+            'erro': 'Já existe uma NF em andamento neste roteiro. Conclua-a antes de iniciar outra.',
+            'nota_aberta_id': aberta.get('id') if hasattr(aberta, 'get') else aberta[0],
+        }), 400
+    usuario = session.get('usuario', '') or ''
+    agora = datetime.now(timezone.utc)
+    if getattr(conn, 'kind', None) == 'pg':
+        row = conn.execute(
+            '''INSERT INTO devolucao_nota_fiscal (id_viagem, numero_nf, motivo, status, doca, criado_em, criado_por)
+               VALUES (%s, %s, %s, 'em_andamento', %s, %s, %s) RETURNING id''',
+            (id_norm, numero_nf, motivo, doca, agora, usuario),
+        ).fetchone()
+        nf_id = row.get('id') if hasattr(row, 'get') else row[0]
+    else:
+        conn.execute(
+            '''INSERT INTO devolucao_nota_fiscal (id_viagem, numero_nf, motivo, status, doca, criado_em, criado_por)
+               VALUES (?, ?, ?, 'em_andamento', ?, ?, ?)''',
+            (id_norm, numero_nf, motivo, doca, _agora_iso(), usuario),
+        )
+        nf_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    conn.commit()
+    conn.close()
+    return jsonify({
+        'success': True,
+        'nota': {
+            'id': int(nf_id),
+            'id_viagem': id_norm,
+            'numero_nf': numero_nf,
+            'motivo': motivo,
+            'motivo_label': _motivo_devolucao_label(motivo),
+            'status': 'em_andamento',
+            'doca': doca,
+        },
+    })
+
+
+@app.route('/api/devolucoes/notas/<int:nf_id>/concluir', methods=['POST'])
+def api_devolucoes_notas_concluir(nf_id):
+    """Marca NF de devolução como concluída."""
+    conn = get_db()
+    _ensure_devolucao_nf_schema(conn)
+    row = conn.execute(
+        'SELECT id, id_viagem, numero_nf, motivo, status FROM devolucao_nota_fiscal WHERE id = ?',
+        (nf_id,),
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'success': False, 'erro': 'NF não encontrada.'}), 404
+    st = (row.get('status') if hasattr(row, 'get') else row[4]) or ''
+    if st == 'concluida':
+        conn.close()
+        return jsonify({'success': True, 'mensagem': 'NF já estava concluída.'})
+    usuario = session.get('usuario', '') or ''
+    agora = datetime.now(timezone.utc)
+    if getattr(conn, 'kind', None) == 'pg':
+        conn.execute(
+            '''UPDATE devolucao_nota_fiscal SET status = 'concluida', concluida_em = %s, concluida_por = %s WHERE id = %s''',
+            (agora, usuario, nf_id),
+        )
+    else:
+        conn.execute(
+            '''UPDATE devolucao_nota_fiscal SET status = 'concluida', concluida_em = ?, concluida_por = ? WHERE id = ?''',
+            (_agora_iso(), usuario, nf_id),
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'id': nf_id})
+
+
+@app.route('/api/devolucoes/conferencia/<id_viagem>', methods=['GET'])
+def api_devolucoes_conferencia_nf(id_viagem):
+    """Conferência do retorno apenas da NF ativa (sem carregar romaneio inteiro)."""
+    devolucao_nf_id = request.args.get('devolucao_nf_id', '').strip()
+    if not devolucao_nf_id:
+        return jsonify({'erro': 'Informe devolucao_nf_id'}), 400
+    id_viagem = (id_viagem or '').strip()
+    conn = get_db()
+    _ensure_devolucao_nf_schema(conn)
+    _ensure_pg_produtos_bipados_fluxo(conn)
+    try:
+        nf_row = conn.execute(
+            'SELECT id, numero_nf, motivo, status, doca FROM devolucao_nota_fiscal WHERE id = ?',
+            (int(devolucao_nf_id),),
+        ).fetchone()
+        if not nf_row:
+            conn.close()
+            return jsonify({'erro': 'NF não encontrada.'}), 404
+        lista = _devolucao_conferencia_lista_nf(conn, id_viagem, devolucao_nf_id)
+        id_norm = _normalizar_id_viagem(id_viagem) or id_viagem
+        info = _get_viagem_info_dict(id_norm)
+        meta = {
+            'placa': info.get('placa', ''),
+            'motorista': info.get('motorista', ''),
+            'identificador_rota': info.get('identificador_rota', ''),
+            'data_expedicao': info.get('data_expedicao', ''),
+            'id_roteiro': info.get('id_roteiro', '') if info.get('id_roteiro') else '',
+        }
+        conn.close()
+        nf_d = dict(nf_row) if hasattr(nf_row, 'keys') else {
+            'id': nf_row[0], 'numero_nf': nf_row[1], 'motivo': nf_row[2], 'status': nf_row[3], 'doca': nf_row[4],
+        }
+        return jsonify({
+            'lista': lista,
+            'id_viagem': id_viagem,
+            'devolucao_nf': {
+                'id': nf_d.get('id'),
+                'numero_nf': nf_d.get('numero_nf'),
+                'motivo': nf_d.get('motivo'),
+                'motivo_label': _motivo_devolucao_label(nf_d.get('motivo')),
+                'status': nf_d.get('status'),
+                'doca': nf_d.get('doca'),
+            },
+            'modo_devolucao_nf': True,
+            'placa': meta.get('placa', ''),
+            'motorista': meta.get('motorista', ''),
+            'identificador_rota': meta.get('identificador_rota', ''),
+            'data_expedicao': meta.get('data_expedicao', ''),
+            'id_roteiro': meta.get('id_roteiro', ''),
+        })
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@app.route('/api/estoque-sp/resumo', methods=['GET'])
+def api_estoque_sp_resumo():
+    """Estoque SP: saída (carregamento), entrada devoluções, entrada terceiros (sem MG, sem consumível)."""
+    conn = get_db()
+    _ensure_devolucao_nf_schema(conn)
+    _ensure_pg_produtos_bipados_fluxo(conn)
+    _ensure_terceiros_schema(conn)
+    data_inicio = (request.args.get('data_inicio') or '').strip()
+    data_fim = (request.args.get('data_fim') or '').strip()
+    filtro_data_saida = ''
+    filtro_data_dev = ''
+    params_saida = []
+    params_dev = []
+    if data_inicio:
+        filtro_data_saida += ' AND data_hora >= ?'
+        filtro_data_dev += ' AND data_hora >= ?'
+        params_saida.append(data_inicio)
+        params_dev.append(data_inicio)
+    if data_fim:
+        filtro_data_saida += ' AND data_hora <= ?'
+        filtro_data_dev += ' AND data_hora <= ?'
+        params_saida.append(data_fim + 'T23:59:59')
+        params_dev.append(data_fim + 'T23:59:59')
+
+    saida = conn.execute(
+        f'''SELECT COALESCE(codigo_interno, '') AS codigo_produto, COALESCE(MAX(produto), '') AS produto,
+                   COALESCE(codigo_barras, '') AS codigo_barras, COALESCE(SUM(quantidade), 0) AS quantidade,
+                   COUNT(*) AS registros
+            FROM produtos_bipados
+            WHERE COALESCE(fluxo, 'carregamento') = 'carregamento' {filtro_data_saida}
+            GROUP BY codigo_interno, codigo_barras
+            ORDER BY quantidade DESC
+            LIMIT 500''',
+        tuple(params_saida),
+    ).fetchall()
+
+    entrada_dev = conn.execute(
+        f'''SELECT COALESCE(codigo_interno, '') AS codigo_produto, COALESCE(MAX(produto), '') AS produto,
+                   COALESCE(codigo_barras, '') AS codigo_barras, COALESCE(SUM(quantidade), 0) AS quantidade,
+                   COUNT(*) AS registros
+            FROM produtos_bipados
+            WHERE COALESCE(fluxo, 'carregamento') = 'devolucao' {filtro_data_dev}
+            GROUP BY codigo_interno, codigo_barras
+            ORDER BY quantidade DESC
+            LIMIT 500''',
+        tuple(params_dev),
+    ).fetchall()
+
+    tbl_d = _tbl_terceiros_documentos(conn)
+    tbl_i = _tbl_terceiros_documento_itens(conn)
+    entrada_ter = conn.execute(
+        f'''SELECT COALESCE(i.codigo_ean, '') AS codigo_barras,
+                   COALESCE(i.codigo_produto, '') AS codigo_produto,
+                   COALESCE(MAX(i.descricao), '') AS produto,
+                   COALESCE(SUM(i.quantidade_bipada), 0) AS quantidade,
+                   COUNT(DISTINCT d.id) AS nfs
+            FROM {tbl_i} i
+            INNER JOIN {tbl_d} d ON d.id = i.documento_id
+            WHERE LOWER(TRIM(COALESCE(CAST(d.recebimento_concluido AS TEXT), ''))) IN ('1', 'true', 'sim', 't', 'yes')
+              AND LOWER(TRIM(COALESCE(d.consumivel_sp, ''))) NOT IN ('sim', 's', 'true', '1', 'yes')
+              AND LOWER(TRIM(COALESCE(d.enviar_para_mg, ''))) NOT IN ('sim', 's', 'true', '1', 'yes')
+              AND COALESCE(i.quantidade_bipada, 0) > 0
+            GROUP BY i.codigo_ean, i.codigo_produto
+            ORDER BY quantidade DESC
+            LIMIT 500''',
+    ).fetchall()
+
+    def _rows_to_list(rows):
+        out = []
+        for r in rows or []:
+            d = dict(r) if hasattr(r, 'keys') else {}
+            if not d and r:
+                d = {'codigo_produto': r[0], 'produto': r[1], 'codigo_barras': r[2], 'quantidade': r[3], 'registros': r[4] if len(r) > 4 else 0}
+            out.append({
+                'codigo_produto': (d.get('codigo_produto') or '').strip(),
+                'produto': (d.get('produto') or '').strip(),
+                'codigo_barras': (d.get('codigo_barras') or '').strip(),
+                'quantidade': float(d.get('quantidade') or 0),
+                'registros': int(d.get('registros') or d.get('nfs') or 0),
+            })
+        return out
+
+    saida_l = _rows_to_list(saida)
+    dev_l = _rows_to_list(entrada_dev)
+    ter_l = _rows_to_list(entrada_ter)
+    conn.close()
+    return jsonify({
+        'saida': {
+            'titulo': 'Saída (expedição bipada)',
+            'itens': saida_l,
+            'total_quantidade': sum(x['quantidade'] for x in saida_l),
+            'total_linhas': len(saida_l),
+        },
+        'entrada_devolucao': {
+            'titulo': 'Entrada (devoluções bipadas)',
+            'itens': dev_l,
+            'total_quantidade': sum(x['quantidade'] for x in dev_l),
+            'total_linhas': len(dev_l),
+        },
+        'entrada_terceiros': {
+            'titulo': 'Entrada recebimento terceiros (sem MG, sem consumível SP)',
+            'itens': ter_l,
+            'total_quantidade': sum(x['quantidade'] for x in ter_l),
+            'total_linhas': len(ter_l),
+        },
+    })
+
 
 @app.route('/api/devolucoes/painel', methods=['GET'])
 def get_painel_devolucoes():

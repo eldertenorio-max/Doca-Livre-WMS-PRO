@@ -933,6 +933,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initModulos();
     initTabs();
     initDevolucoesTabs();
+    initDevolucaoNfFlow();
+    initEstoqueSp();
     initTerceirosTabs();
     void _terceirosGarantirPrefetchLista();
     initTerceirosAlertasHeader();
@@ -2017,6 +2019,7 @@ function initModulos() {
     var carreg = document.getElementById('modulo-carregamento');
     var dev = document.getElementById('modulo-devolucoes');
     var ter = document.getElementById('modulo-terceiros');
+    var est = document.getElementById('modulo-estoque-sp');
     if (!carreg) return;
 
     var botoes = document.querySelectorAll('.modulo-button');
@@ -2025,9 +2028,11 @@ function initModulos() {
         carreg.hidden = id !== 'carregamento';
         if (dev) dev.hidden = id !== 'devolucoes';
         if (ter) ter.hidden = id !== 'terceiros';
+        if (est) est.hidden = id !== 'estoque-sp';
         carreg.classList.toggle('modulo-area--ativo', id === 'carregamento');
         if (dev) dev.classList.toggle('modulo-area--ativo', id === 'devolucoes');
         if (ter) ter.classList.toggle('modulo-area--ativo', id === 'terceiros');
+        if (est) est.classList.toggle('modulo-area--ativo', id === 'estoque-sp');
         botoes.forEach(function(b) {
             b.classList.toggle('active', b.getAttribute('data-modulo') === id);
         });
@@ -2044,6 +2049,8 @@ function initModulos() {
             if (painelDev && painelDev.classList.contains('devolucoes-panel-active')) {
                 loadPainelDevolucoes();
             }
+        } else if (id === 'estoque-sp') {
+            loadEstoqueSpResumo();
         } else if (id === 'terceiros') {
             void _terceirosGarantirPrefetchLista();
             var painelTer = document.getElementById('terceiros-panel-painel');
@@ -2072,7 +2079,7 @@ function initModulos() {
 
     var params = new URLSearchParams(window.location.search);
     var modUrl = params.get('modulo');
-    if (modUrl && ['carregamento', 'devolucoes', 'terceiros'].indexOf(modUrl) !== -1) {
+    if (modUrl && ['carregamento', 'devolucoes', 'terceiros', 'estoque-sp'].indexOf(modUrl) !== -1) {
         mostrarModulo(modUrl);
     }
 
@@ -2109,6 +2116,263 @@ function initDevolucoesTabs() {
     });
 
     mostrarDevTab('painel');
+}
+
+window._devolucaoNfAtiva = null;
+window._devConferenciaIdViagemAtiva = '';
+
+function _devolucaoGetIdViagemAtivo() {
+    var h = document.getElementById('dev-id-viagem-hidden');
+    if (h && h.value.trim()) return h.value.trim();
+    var inp = document.getElementById('dev-id-viagem');
+    return inp ? inp.value.trim() : '';
+}
+
+function _devolucaoAplicarBloqueioBipagem(bloquear) {
+    var wrap4 = document.getElementById('dev-conferencia-bloco-4-wrapper');
+    var wrapForm = document.getElementById('dev-form-bipagem-container');
+    [wrap4, wrapForm].forEach(function(el) {
+        if (!el) return;
+        el.classList.toggle('conferencia-blocos-bloqueado', !!bloquear);
+    });
+    var overlay4 = wrap4 && wrap4.querySelector('.conferencia-blocos-overlay');
+    if (overlay4) {
+        overlay4.innerHTML = bloquear
+            ? '<span>Selecione a NF e o motivo, clique em <strong>Iniciar NF</strong> para bipar o retorno.</span>'
+            : '';
+    }
+}
+
+function _devolucaoAtualizarUiNfAtiva() {
+    var nf = window._devolucaoNfAtiva;
+    var hid = document.getElementById('dev-devolucao-nf-id');
+    var banner = document.getElementById('dev-nf-ativa-banner');
+    var txt = document.getElementById('dev-nf-ativa-texto');
+    var btnIni = document.getElementById('dev-btn-iniciar-nf');
+    var btnConc = document.getElementById('dev-btn-concluir-nf');
+    var formNova = document.getElementById('dev-nf-form-nova');
+    if (hid) hid.value = nf && nf.id ? String(nf.id) : '';
+    if (banner) banner.style.display = nf && nf.id ? 'block' : 'none';
+    if (txt && nf) {
+        txt.textContent = 'NF ' + (nf.numero_nf || '-') + ' — ' + (nf.motivo_label || nf.motivo || '') + ' (em andamento)';
+    }
+    var emAndamento = nf && nf.status === 'em_andamento';
+    if (btnIni) btnIni.style.display = emAndamento ? 'none' : '';
+    if (btnConc) btnConc.style.display = emAndamento ? '' : 'none';
+    if (formNova) formNova.style.display = emAndamento ? 'none' : '';
+    _devolucaoAplicarBloqueioBipagem(!emAndamento);
+}
+
+function initDevolucaoNfFlow() {
+    var btnIni = document.getElementById('dev-btn-iniciar-nf');
+    var btnConc = document.getElementById('dev-btn-concluir-nf');
+    if (btnIni) {
+        btnIni.addEventListener('click', async function() {
+            var idV = _devolucaoGetIdViagemAtivo();
+            var numero = (document.getElementById('dev-numero-nf') && document.getElementById('dev-numero-nf').value || '').trim();
+            var motivo = (document.getElementById('dev-motivo-devolucao') && document.getElementById('dev-motivo-devolucao').value || '').trim();
+            var doca = (document.getElementById('dev-doca') && document.getElementById('dev-doca').value || '').trim();
+            if (!idV) {
+                showMessage('Busque o roteiro/viagem primeiro.', 'error');
+                return;
+            }
+            if (!numero || !motivo) {
+                showMessage('Informe o número da NF e o motivo da devolução.', 'error');
+                return;
+            }
+            if (!doca) {
+                showMessage('Selecione a doca.', 'error');
+                return;
+            }
+            var resp = await fetchAPI('/devolucoes/notas', {
+                method: 'POST',
+                body: JSON.stringify({ id_viagem: idV, numero_nf: numero, motivo: motivo, doca: doca }),
+            });
+            if (!resp || !resp.success) {
+                showMessage((resp && resp.erro) || 'Não foi possível iniciar a NF.', 'error');
+                return;
+            }
+            window._devolucaoNfAtiva = resp.nota;
+            _devolucaoAtualizarUiNfAtiva();
+            showMessage('NF iniciada. Bipe os itens do retorno.', 'success');
+            await carregarListaNfsDevolucao(idV);
+            await loadConferenciaDevolucaoNf(resp.nota.id);
+        });
+    }
+    if (btnConc) {
+        btnConc.addEventListener('click', async function() {
+            var nf = window._devolucaoNfAtiva;
+            if (!nf || !nf.id) return;
+            var resp = await fetchAPI('/devolucoes/notas/' + encodeURIComponent(nf.id) + '/concluir', { method: 'POST', body: '{}' });
+            if (!resp || !resp.success) {
+                showMessage((resp && resp.erro) || 'Erro ao concluir NF.', 'error');
+                return;
+            }
+            showMessage('NF concluída com sucesso.', 'success');
+            window._devolucaoNfAtiva = null;
+            _devolucaoAtualizarUiNfAtiva();
+            var idV = _devolucaoGetIdViagemAtivo();
+            var tbody = document.getElementById('dev-tbody-conferencia');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="12" class="loading">Selecione ou inicie outra NF para bipar.</td></tr>';
+            var numInp = document.getElementById('dev-numero-nf');
+            var motSel = document.getElementById('dev-motivo-devolucao');
+            if (numInp) numInp.value = '';
+            if (motSel) motSel.value = '';
+            if (idV) await carregarListaNfsDevolucao(idV);
+        });
+    }
+}
+
+async function carregarListaNfsDevolucao(idViagem) {
+    var tbody = document.getElementById('dev-tbody-nfs');
+    if (!tbody || !idViagem) return;
+    tbody.innerHTML = '<tr><td colspan="5" class="loading">Carregando...</td></tr>';
+    var resp = await fetchAPI('/devolucoes/notas?id_viagem=' + encodeURIComponent(idViagem));
+    if (!resp || resp.erro) {
+        tbody.innerHTML = '<tr><td colspan="5" class="loading">Erro ao carregar NFs.</td></tr>';
+        return;
+    }
+    var notas = resp.notas || [];
+    if (!notas.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="loading">Nenhuma NF registrada ainda.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = notas.map(function(n) {
+        var st = n.status === 'concluida' ? 'Concluída' : 'Em andamento';
+        var btn = n.status === 'em_andamento'
+            ? '<button type="button" class="btn btn-secondary btn-sm" data-dev-abrir-nf="' + n.id + '">Continuar</button>'
+            : '—';
+        return '<tr><td>' + escHtml(n.numero_nf) + '</td><td>' + escHtml(n.motivo_label || n.motivo) + '</td><td>' + escHtml(st) + '</td><td>' + escHtml(n.criado_em || '-') + '</td><td>' + btn + '</td></tr>';
+    }).join('');
+    tbody.querySelectorAll('[data-dev-abrir-nf]').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            var nfId = parseInt(btn.getAttribute('data-dev-abrir-nf'), 10);
+            var nota = notas.find(function(x) { return x.id === nfId; });
+            if (!nota) return;
+            window._devolucaoNfAtiva = nota;
+            _devolucaoAtualizarUiNfAtiva();
+            await loadConferenciaDevolucaoNf(nfId);
+        });
+    });
+    var aberta = notas.find(function(n) { return n.status === 'em_andamento'; });
+    if (aberta && !window._devolucaoNfAtiva) {
+        window._devolucaoNfAtiva = aberta;
+        _devolucaoAtualizarUiNfAtiva();
+        await loadConferenciaDevolucaoNf(aberta.id);
+    }
+}
+
+async function carregarContextoDevolucaoViagem(idViagem) {
+    window._devConferenciaIdViagemAtiva = idViagem;
+    var info = await fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/info');
+    if (info && !info.erro) {
+        var elR = document.getElementById('dev-display-id-roteiro');
+        var elV = document.getElementById('dev-display-id-viagem');
+        var elIdRota = document.getElementById('dev-viagem-identificador-rota');
+        var elP = document.getElementById('dev-viagem-placa');
+        var elM = document.getElementById('dev-viagem-motorista');
+        var elD = document.getElementById('dev-data-expedicao');
+        var hid = document.getElementById('dev-id-viagem-hidden');
+        if (elR) elR.textContent = (info.id_roteiro && String(info.id_roteiro).trim()) || '-';
+        if (elV) elV.textContent = (info.id_viagem && String(info.id_viagem).trim()) || idViagem;
+        if (elIdRota) elIdRota.textContent = (info.identificador_rota && String(info.identificador_rota).trim()) || '-';
+        if (elP) elP.value = (info.placa && String(info.placa).trim()) || '';
+        if (elM) elM.value = (info.motorista && String(info.motorista).trim()) || '';
+        if (elD) elD.textContent = (info.data_expedicao && String(info.data_expedicao).trim()) || '-';
+        if (hid) hid.value = (info.id_viagem && String(info.id_viagem).trim()) || idViagem;
+    }
+    _habilitarBlocosDevolucao(true);
+    await carregarListaNfsDevolucao((document.getElementById('dev-id-viagem-hidden') && document.getElementById('dev-id-viagem-hidden').value.trim()) || idViagem);
+    _devolucaoAtualizarUiNfAtiva();
+}
+
+function _habilitarBlocosDevolucao(sim) {
+    var wrapForm = document.getElementById('dev-form-bipagem-container');
+    var wrap4 = document.getElementById('dev-conferencia-bloco-4-wrapper');
+    [wrapForm, wrap4].forEach(function(el) {
+        if (!el) return;
+        if (sim) {
+            el.classList.remove('conferencia-blocos-bloqueado');
+        }
+    });
+    var titulo = document.getElementById('dev-titulo-lista-wrapper');
+    var tabela = document.getElementById('dev-tabela-conferencia-container');
+    if (titulo) titulo.style.display = sim ? 'flex' : 'none';
+    if (tabela) tabela.style.display = sim ? 'block' : 'none';
+}
+
+async function loadConferenciaDevolucaoNf(nfId) {
+    var idViagem = _devolucaoGetIdViagemAtivo();
+    if (!idViagem || !nfId) return;
+    var conferencia = await fetchAPI('/devolucoes/conferencia/' + encodeURIComponent(idViagem) + '?devolucao_nf_id=' + encodeURIComponent(nfId) + '&_=' + Date.now());
+    if (!conferencia || conferencia.erro) {
+        showMessage((conferencia && conferencia.erro) || 'Erro ao carregar itens da NF.', 'error');
+        return;
+    }
+    if (conferencia.placa !== undefined) {
+        var elP = document.getElementById('dev-viagem-placa');
+        var elM = document.getElementById('dev-viagem-motorista');
+        if (elP && conferencia.placa) elP.value = conferencia.placa;
+        if (elM && conferencia.motorista) elM.value = conferencia.motorista;
+    }
+    var lista = conferencia.lista || [];
+    await loadConferencia(idViagem, { fluxo: 'devolucao', forcar: true, _listaOverride: lista, _modoDevolucaoNf: true });
+}
+
+function initEstoqueSp() {
+    var botoes = document.querySelectorAll('.estoque-sp-subtab[data-estoque-tab]');
+    var pSaida = document.getElementById('estoque-sp-panel-saida');
+    var pDev = document.getElementById('estoque-sp-panel-entrada-devolucao');
+    var pTer = document.getElementById('estoque-sp-panel-entrada-terceiros');
+    if (!botoes.length) return;
+    function mostrar(tab) {
+        botoes.forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-estoque-tab') === tab); });
+        if (pSaida) pSaida.classList.toggle('devolucoes-panel-active', tab === 'saida');
+        if (pDev) pDev.classList.toggle('devolucoes-panel-active', tab === 'entrada-devolucao');
+        if (pTer) pTer.classList.toggle('devolucoes-panel-active', tab === 'entrada-terceiros');
+    }
+    botoes.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            mostrar(btn.getAttribute('data-estoque-tab') || 'saida');
+        });
+    });
+    var btnAt = document.getElementById('btn-estoque-sp-atualizar');
+    if (btnAt) btnAt.addEventListener('click', function() { loadEstoqueSpResumo(); });
+}
+
+async function loadEstoqueSpResumo() {
+    var di = document.getElementById('estoque-sp-data-inicio');
+    var df = document.getElementById('estoque-sp-data-fim');
+    var q = [];
+    if (di && di.value) q.push('data_inicio=' + encodeURIComponent(di.value));
+    if (df && df.value) q.push('data_fim=' + encodeURIComponent(df.value));
+    var url = '/estoque-sp/resumo' + (q.length ? '?' + q.join('&') : '');
+    var data = await fetchAPI(url);
+    if (!data || data.erro) {
+        showMessage((data && data.erro) || 'Erro ao carregar Estoque SP.', 'error');
+        return;
+    }
+    function paint(sec, tbodyId, linhasId, qtdId) {
+        var secData = data[sec];
+        if (!secData) return;
+        var elL = document.getElementById(linhasId);
+        var elQ = document.getElementById(qtdId);
+        if (elL) elL.textContent = String(secData.total_linhas || 0);
+        if (elQ) elQ.textContent = String(secData.total_quantidade || 0);
+        var tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        var itens = secData.itens || [];
+        if (!itens.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="loading">Nenhum registro.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = itens.map(function(it) {
+            return '<tr><td>' + escHtml(it.codigo_produto || '-') + '</td><td>' + escHtml(it.produto || '-') + '</td><td>' + escHtml(it.codigo_barras || '-') + '</td><td>' + escHtml(it.quantidade) + '</td><td>' + escHtml(it.registros || 0) + '</td></tr>';
+        }).join('');
+    }
+    paint('saida', 'estoque-sp-tbody-saida', 'estoque-sp-saida-linhas', 'estoque-sp-saida-qtd');
+    paint('entrada_devolucao', 'estoque-sp-tbody-dev', 'estoque-sp-dev-linhas', 'estoque-sp-dev-qtd');
+    paint('entrada_terceiros', 'estoque-sp-tbody-ter', 'estoque-sp-ter-linhas', 'estoque-sp-ter-qtd');
 }
 
 function initTerceirosTabs() {
@@ -10140,6 +10404,9 @@ function agendarAtualizacoesPosBipagem(idViagem) {
             _timerPosBipagem = null;
             loadEstatisticas();
             if (idViagem) loadPeriodoCarregamento(idViagem);
+            if (window._fluxoBipagemAtivo === 'devolucao' && window._devolucaoNfAtiva && window._devolucaoNfAtiva.id) {
+                loadConferenciaDevolucaoNf(window._devolucaoNfAtiva.id);
+            }
         }, 600);
     } catch (e) {}
 }
@@ -11592,6 +11859,10 @@ async function addProduto(forcarAdicionar, dadosOverride) {
         var docaDev = window._elBipagem('doca');
         if (docaDev) docaDev.value = '1';
     }
+    if (window._fluxoBipagemAtivo === 'devolucao' && (!window._devolucaoNfAtiva || !window._devolucaoNfAtiva.id)) {
+        showMessage('Inicie uma NF (número + motivo) antes de bipar o retorno.', 'error');
+        return;
+    }
     if (!doca || !docasValidas.includes(doca)) {
         showMessage('Selecione a doca antes de bipar', 'error');
         if (!dadosOverride) {
@@ -11613,6 +11884,9 @@ async function addProduto(forcarAdicionar, dadosOverride) {
         doca: doca,
         fluxo: (typeof window._fluxoBipagemAtivo === 'string' && window._fluxoBipagemAtivo === 'devolucao') ? 'devolucao' : 'carregamento'
     };
+    if (window._fluxoBipagemAtivo === 'devolucao' && window._devolucaoNfAtiva && window._devolucaoNfAtiva.id) {
+        payload.devolucao_nf_id = window._devolucaoNfAtiva.id;
+    }
     if (forcarAdicionar) {
         payload.forcar_adicionar = true;
         if (dadosOverride) {
@@ -11837,8 +12111,13 @@ function atualizarTotaisConferenciaFromDOM() {
         totalFalta += qtdFalta;
         if (row.classList && row.classList.contains('row-excedente')) temExcedente = true;
     });
-    elTotal.textContent = 'Total: ' + totalItens;
-    elBipado.textContent = 'Bipado: ' + totalBipado;
+    if (isDev) {
+        elTotal.textContent = 'Saída: ' + totalItens;
+        elBipado.textContent = 'Retorno: ' + totalBipado;
+    } else {
+        elTotal.textContent = 'Total: ' + totalItens;
+        elBipado.textContent = 'Bipado: ' + totalBipado;
+    }
     atualizarStatusResumoConferencia(totalItens, totalBipado, totalFalta, temExcedente, isDev ? 'devolucao' : 'carregamento');
 }
 
@@ -11866,8 +12145,13 @@ function atualizarTotaisConferenciaFromData(conferenciaArray, fluxoTab) {
     });
     let totalBipado = 0;
     for (const k in bipadoPorChave) totalBipado += bipadoPorChave[k];
-    elTotal.textContent = 'Total: ' + totalItens;
-    elBipado.textContent = 'Bipado: ' + totalBipado;
+    if (isDev) {
+        elTotal.textContent = 'Saída: ' + totalItens;
+        elBipado.textContent = 'Retorno: ' + totalBipado;
+    } else {
+        elTotal.textContent = 'Total: ' + totalItens;
+        elBipado.textContent = 'Bipado: ' + totalBipado;
+    }
     atualizarStatusResumoConferencia(totalItens, totalBipado, totalFalta, temExcedente, fluxoTab);
 }
 
@@ -12532,14 +12816,15 @@ window.buscarItensViagemDevolucao = async function() {
         _limparPendenciasConferenciaTimers();
     }
 
-    showOverlay('Carregando romaneio da viagem (contagem de devolução)... Aguarde.');
-    showMessage('Buscando itens na base...', 'success');
+    showOverlay('Carregando roteiro para devolução... Aguarde.');
+    showMessage('Buscando roteiro...', 'success');
     var idViagem = idInput;
+    window._devolucaoNfAtiva = null;
     var sucesso = false;
     try {
-        await loadConferencia(idInput, { fluxo: 'devolucao', signal: abortCtrl ? abortCtrl.signal : undefined, forcar: true });
+        await carregarContextoDevolucaoViagem(idInput);
         if (cancelado) return;
-        idViagem = (document.getElementById('dev-id-viagem-hidden') && document.getElementById('dev-id-viagem-hidden').value.trim()) || (idInputEl && idInputEl.value.trim()) || idInput;
+        idViagem = _devolucaoGetIdViagemAtivo() || idInput;
         sucesso = true;
     } catch (e) {
         if (cancelado || (e && e._cancelado)) return;
@@ -12983,11 +13268,22 @@ async function loadConferencia(idViagem = null, opts) {
     }
 
     try {
+        var conferencia;
+        if (opts._listaOverride && Array.isArray(opts._listaOverride)) {
+            conferencia = { lista: opts._listaOverride, id_viagem: idViagem, modo_devolucao_nf: !!opts._modoDevolucaoNf };
+        } else if (isDev && window._devolucaoNfAtiva && window._devolucaoNfAtiva.id) {
+            var fetchOptsNf = {};
+            if (opts.signal) fetchOptsNf.signal = opts.signal;
+            conferencia = await fetchAPI('/devolucoes/conferencia/' + encodeURIComponent(idViagem) + '?devolucao_nf_id=' + encodeURIComponent(window._devolucaoNfAtiva.id) + '&_=' + Date.now(), fetchOptsNf);
+        } else if (isDev) {
+            conferencia = { lista: [], id_viagem: idViagem };
+        } else {
         var q = '?_=' + Date.now();
         if (isDev) q += '&fluxo=devolucao';
         var fetchOpts = {};
         if (opts.signal) fetchOpts.signal = opts.signal;
-        const conferencia = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + q, fetchOpts);
+        conferencia = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + q, fetchOpts);
+        }
         if (seq !== window._conferenciaLoadSeq) return;
         if (conferencia && conferencia._cancelado) {
             var errCancel = new Error('Cancelado');
@@ -13035,7 +13331,10 @@ async function loadConferencia(idViagem = null, opts) {
                 return undefined;
             }
             if (conferenciaUI.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhum item encontrado para esta viagem no romaneio.</td></tr>';
+                var msgVazio = (isDev && (!window._devolucaoNfAtiva || !window._devolucaoNfAtiva.id))
+                    ? 'Inicie uma NF e bip os itens do retorno.'
+                    : (isDev ? 'Nenhum item bipado nesta NF ainda. Escaneie o retorno.' : 'Nenhum item encontrado para esta viagem no romaneio.');
+                tbody.innerHTML = '<tr><td colspan="12" class="loading">' + msgVazio + '</td></tr>';
                 atualizarTotaisConferenciaFromData([], fluxoTab);
             } else {
             // Ordenar: item bipado por último no topo; itens COMPLETO no final
