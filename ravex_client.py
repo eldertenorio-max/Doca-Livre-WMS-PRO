@@ -192,10 +192,11 @@ def obter_itens_nota_fiscal(token, viagem_id, nota_fiscal_id):
     return raw if isinstance(raw, list) else []
 
 
-def obter_canhotos_viagem(token, viagem_id):
+def obter_canhotos_viagem(token, viagem_id, enriquecer=True):
     """
     GET /api/viagem-faturada/{viagemId}/canhotos-v2.
     Enriquece com canhotos-v3 e canhotos (v1) quando faltar tipoVeiculo ou ajudantes (igual BASE VIAGENS).
+    Com enriquecer=False, usa só canhotos-v2 (mais rápido para importação de romaneio).
     Retorna (entregas, metadata).
     """
     url = f"{RAVEX_BASE_URL}/api/viagem-faturada/{viagem_id}/canhotos-v2"
@@ -214,7 +215,7 @@ def obter_canhotos_viagem(token, viagem_id):
         "segundoAjudante": raw.get("segundoAjudante", raw.get("segundo_ajudante", "")) or "",
     }
     # Enriquecer com canhotos-v3 se v2 não trouxe tipo/ajudantes
-    if not meta.get("tipoVeiculo") or not meta.get("primeiroAjudante") or not meta.get("segundoAjudante"):
+    if enriquecer and (not meta.get("tipoVeiculo") or not meta.get("primeiroAjudante") or not meta.get("segundoAjudante")):
         try:
             import requests
             r3 = requests.get(
@@ -239,7 +240,7 @@ def obter_canhotos_viagem(token, viagem_id):
                             meta["segundoAjudante"] = sa
         except Exception:
             pass
-    if not meta.get("primeiroAjudante") or not meta.get("segundoAjudante"):
+    if enriquecer and (not meta.get("primeiroAjudante") or not meta.get("segundoAjudante")):
         try:
             import requests
             r1 = requests.get(

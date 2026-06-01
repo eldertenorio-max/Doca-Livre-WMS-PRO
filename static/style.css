@@ -1999,6 +1999,75 @@ h2 {
     overflow-x: auto;
 }
 
+/* Painel de itens da viagem — modo tela cheia para bipagem */
+.conferencia-lista-toolbar {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+.btn-conferencia-maximizar {
+    white-space: nowrap;
+    font-weight: 600;
+}
+.conferencia-lista-panel.conferencia-lista-maximizada {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: #eef2f7;
+    display: flex;
+    flex-direction: column;
+    padding: 10px 14px 14px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.conferencia-lista-panel.conferencia-lista-maximizada #titulo-lista-wrapper,
+.conferencia-lista-panel.conferencia-lista-maximizada #dev-titulo-lista-wrapper {
+    display: flex !important;
+    flex-shrink: 0;
+    width: 100%;
+    margin-bottom: 8px !important;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #1976D2;
+    background: #fff;
+    border-radius: 10px 10px 0 0;
+    padding: 10px 14px;
+    box-sizing: border-box;
+}
+.conferencia-lista-panel.conferencia-lista-maximizada #titulo-lista,
+.conferencia-lista-panel.conferencia-lista-maximizada #dev-titulo-lista {
+    font-size: 1.05rem;
+}
+.conferencia-lista-panel.conferencia-lista-maximizada .conferencia-lista-totais-bar {
+    display: inline-flex !important;
+}
+.conferencia-lista-panel.conferencia-lista-maximizada #conferencia-limit-info,
+.conferencia-lista-panel.conferencia-lista-maximizada #dev-conferencia-limit-info {
+    flex-shrink: 0;
+    margin-bottom: 6px !important;
+}
+.conferencia-lista-panel.conferencia-lista-maximizada #tabela-conferencia-container,
+.conferencia-lista-panel.conferencia-lista-maximizada #dev-tabela-conferencia-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none !important;
+    height: auto;
+    overflow: auto;
+    margin-top: 0;
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+}
+.conferencia-lista-panel.conferencia-lista-maximizada #tabela-conferencia-container .data-table thead,
+.conferencia-lista-panel.conferencia-lista-maximizada #dev-tabela-conferencia-container .data-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+body.conferencia-lista-maximizada-aberta {
+    overflow: hidden;
+}
+
 /* BASE: caixa da tabela com altura limitada e rolagem interna (não precisa rolar a página) */
 .table-container-base {
     max-height: 50vh;

@@ -214,8 +214,9 @@ function _conferenciaObterEstadoLinhaBipagem(codigoBarrasStr, codigoProdutoStr) 
         var dataCodigo = (row.getAttribute && row.getAttribute('data-codigo')) || '';
         var cbLinha = (row.cells[2].textContent || '').trim();
         var cpLinha = (row.cells[3].textContent || '').trim();
+        var cbValido = cbLinha && cbLinha !== '-';
         var match = (codigoProdutoStr && (cpLinha === codigoProdutoStr || dataCodigo === codigoProdutoStr))
-            || (codigoBarrasStr && cbLinha === codigoBarrasStr);
+            || (codigoBarrasStr && cbValido && cbLinha === codigoBarrasStr);
         if (!match) continue;
         var prod = parseInt(row.cells[5].textContent, 10) || 0;
         var bip = parseInt(row.cells[9].textContent, 10) || 0;
@@ -228,6 +229,35 @@ function _conferenciaObterEstadoLinhaBipagem(codigoBarrasStr, codigoProdutoStr) 
         };
     }
     return null;
+}
+
+/** Atualiza a coluna de código de barras na linha do romaneio após vincular na base. */
+function _atualizarCodigoBarrasLinhaConferencia(codigoProduto, codigoBarras) {
+    codigoProduto = (codigoProduto || '').toString().trim();
+    codigoBarras = normalizarCodigoBarrasDuplicado((codigoBarras || '').toString().trim());
+    if (!codigoProduto || !codigoBarras) return false;
+    var est = _conferenciaObterEstadoLinhaBipagem('', codigoProduto);
+    if (!est || !est.row) return false;
+    var row = est.row;
+    var cellCb = row.cells[2];
+    if (cellCb) {
+        cellCb.innerHTML = '<strong>' + escapeHtml(codigoBarras) + '</strong>';
+    }
+    var cellAviso = row.cells[8];
+    if (cellAviso) {
+        var avisoTxt = (cellAviso.textContent || '').trim();
+        if (avisoTxt.indexOf('Sem código') >= 0 || avisoTxt.indexOf('⚠️ Sem código') >= 0) {
+            cellAviso.textContent = '';
+            cellAviso.style.color = '';
+            cellAviso.style.fontWeight = '';
+        }
+    }
+    var qtdProd = parseInt(row.cells[5].textContent, 10) || 0;
+    var qtdBip = parseInt(row.cells[9].textContent, 10) || 0;
+    var qtdFalta = Math.max(0, qtdProd - qtdBip);
+    var st = _statusBipagemConferencia(qtdProd, qtdBip);
+    _conferenciaAtualizarCelulaAcaoLinha(row, st, qtdBip, qtdFalta);
+    return true;
 }
 
 function _conferenciaAtualizarCelulaAcaoLinha(row, stLinha, novaQtdBipada, novaQtdFalta) {
@@ -2570,6 +2600,7 @@ function initTabs() {
     tabButtons.forEach(button => {
         button.addEventListener('click', () => {
             const targetTab = button.getAttribute('data-tab');
+            if (typeof sairConferenciaListaMaximizadaSeAtiva === 'function') sairConferenciaListaMaximizadaSeAtiva();
             
             // Remover active de todos
             tabButtons.forEach(btn => btn.classList.remove('active'));
@@ -9927,16 +9958,12 @@ function initForms() {
         var box = document.getElementById('ravex-loading-box');
         var barTrack = document.getElementById('ravex-loading-bar-track');
         var errorActions = document.getElementById('ravex-error-actions');
-        var okBtn = document.getElementById('ravex-overlay-ok');
         _ravexLoadingSetCancelVisible(false);
         if (el && text) {
             text.textContent = msg || 'Puxando roteiro/viagem da API Ravex...';
-            if (box) {
-                box.classList.remove('ravex-loading-box--error', 'ravex-loading-box--warning');
-            }
+            if (box) box.classList.remove('ravex-loading-box--error', 'ravex-loading-box--warning');
             if (barTrack) barTrack.style.display = '';
             if (errorActions) errorActions.style.display = 'none';
-            if (okBtn) okBtn.textContent = 'OK';
             el.style.display = 'flex';
         }
     }
@@ -9945,14 +9972,11 @@ function initForms() {
         var box = document.getElementById('ravex-loading-box');
         var barTrack = document.getElementById('ravex-loading-bar-track');
         var errorActions = document.getElementById('ravex-error-actions');
-        var okBtn = document.getElementById('ravex-overlay-ok');
         _ravexLoadingSetCancelVisible(false);
-        _ravexImportAbortarAtivo();
         if (el) el.style.display = 'none';
         if (box) box.classList.remove('ravex-loading-box--error', 'ravex-loading-box--warning');
         if (barTrack) barTrack.style.display = '';
         if (errorActions) errorActions.style.display = 'none';
-        if (okBtn) okBtn.textContent = 'OK';
     }
     window.ravexLoadingShow = ravexLoadingShow;
     window.ravexLoadingHide = ravexLoadingHide;
@@ -9964,44 +9988,13 @@ function initForms() {
         var errorActions = document.getElementById('ravex-error-actions');
         var okBtn = document.getElementById('ravex-overlay-ok');
         _ravexLoadingSetCancelVisible(false);
-        _ravexImportAbortarAtivo();
         if (el && text) {
             text.textContent = msg || 'Erro ao processar.';
-            if (box) {
-                box.classList.remove('ravex-loading-box--warning');
-                box.classList.add('ravex-loading-box--error');
-            }
+            if (box) box.classList.add('ravex-loading-box--error');
             if (barTrack) barTrack.style.display = 'none';
             if (errorActions) errorActions.style.display = 'block';
             el.style.display = 'flex';
-            if (okBtn) {
-                okBtn.textContent = 'OK';
-                okBtn.onclick = function() { ravexLoadingHide(); };
-            }
-        }
-    }
-    function ravexAvisoShow(msg) {
-        var el = document.getElementById('ravex-loading-overlay');
-        var text = document.getElementById('ravex-loading-text');
-        var box = document.getElementById('ravex-loading-box');
-        var barTrack = document.getElementById('ravex-loading-bar-track');
-        var errorActions = document.getElementById('ravex-error-actions');
-        var okBtn = document.getElementById('ravex-overlay-ok');
-        _ravexLoadingSetCancelVisible(false);
-        _ravexImportAbortarAtivo();
-        if (el && text) {
-            text.textContent = msg || 'Este ID já foi baixado.';
-            if (box) {
-                box.classList.remove('ravex-loading-box--error');
-                box.classList.add('ravex-loading-box--warning');
-            }
-            if (barTrack) barTrack.style.display = 'none';
-            if (errorActions) errorActions.style.display = 'block';
-            el.style.display = 'flex';
-            if (okBtn) {
-                okBtn.textContent = 'Entendi';
-                okBtn.onclick = function() { ravexLoadingHide(); };
-            }
+            if (okBtn) okBtn.onclick = function() { ravexLoadingHide(); };
         }
     }
     function normalizarDataYYYYMMDD(val) {
@@ -10018,7 +10011,8 @@ function initForms() {
         return o;
     }
     function ravexMostrarDuplicado(data, resultadoEl) {
-        var msg = (data && data.erro) ? data.erro : 'Este ID de roteiro ou viagem já foi baixado anteriormente.';
+        var msg = (data && data.erro) ? data.erro : 'Esta viagem já foi baixada anteriormente.';
+        _ravexImportAbortarAtivo();
         if (resultadoEl) {
             resultadoEl.style.display = 'block';
             resultadoEl.style.background = '#fff3cd';
@@ -10026,17 +10020,8 @@ function initForms() {
             resultadoEl.innerHTML = msg;
         }
         if (typeof showMessage === 'function') showMessage(msg, 'warning');
-        if (typeof ravexAvisoShow === 'function') ravexAvisoShow(msg);
-        else if (typeof ravexLoadingHide === 'function') ravexLoadingHide();
+        if (typeof ravexLoadingHide === 'function') ravexLoadingHide();
         if (typeof loadBaixadosRavex === 'function') void loadBaixadosRavex();
-    }
-    async function ravexVerificarIdJaBaixado(id, signal) {
-        var idTrim = String(id || '').trim();
-        if (!idTrim) return { ja_baixado: false };
-        var opts = { credentials: 'same-origin', cache: 'no-store' };
-        if (signal) opts.signal = signal;
-        var r = await fetch(API_BASE + '/ravex/verificar-baixado?id=' + encodeURIComponent(idTrim), opts);
-        return r.json().catch(function() { return {}; });
     }
     function ravexResumoPuladosDuplicados(data) {
         var n = (data && data.total_pulados_duplicados) || 0;
@@ -10094,10 +10079,11 @@ function initForms() {
                     resultadoImportarRavex.innerHTML = errMsg;
                     ravexErrorShow(errMsg);
                 }
+            } finally {
+                _ravexImportAbortarAtivo();
+                resultadoImportarRavex.style.display = 'block';
+                btnImportarRavex.disabled = false;
             }
-            resultadoImportarRavex.style.display = 'block';
-            resultadoImportarRavex.style.display = 'block';
-            btnImportarRavex.disabled = false;
         });
     }
 
@@ -10116,41 +10102,40 @@ function initForms() {
             btnImportarRavexIdUnico.disabled = true;
             resultadoImportarRavex.style.display = 'none';
             var idTrim = idUnico.trim();
-            var forcarReimport = !!(document.getElementById('importar-ravex-forcar-reimportar') && document.getElementById('importar-ravex-forcar-reimportar').checked);
-            var signalUnico = _ravexImportSignalLoading('Verificando se o ID já foi baixado…');
+            var forcarUnico = !!(document.getElementById('importar-ravex-forcar-reimportar') && document.getElementById('importar-ravex-forcar-reimportar').checked);
+            var signalUnico = _ravexImportSignalLoading('Verificando ID…');
             try {
-                var bloquearUnico = false;
-                if (!forcarReimport) {
-                    var ver = await ravexVerificarIdJaBaixado(idTrim, signalUnico);
-                    if (ver.ja_baixado || ver.duplicado) {
-                        ravexMostrarDuplicado(ver, resultadoImportarRavex);
-                        bloquearUnico = true;
+                if (!forcarUnico) {
+                    var verUnico = await ravexVerificarIdJaBaixado(idTrim, signalUnico);
+                    if (signalUnico.aborted) return;
+                    if (verUnico.ja_baixado || verUnico.duplicado) {
+                        ravexMostrarDuplicado(verUnico, resultadoImportarRavex);
+                        return;
                     }
                 }
-                if (!bloquearUnico && !signalUnico.aborted) {
-                    var textEl = document.getElementById('ravex-loading-text');
-                    if (textEl) textEl.textContent = 'Puxando roteiro/viagem da API Ravex...';
-                    const r = await fetch(API_BASE + '/ravex/importar-romaneio', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(ravexPayloadExtras({ id: idTrim })),
-                        signal: signalUnico
-                    });
-                    const data = await r.json().catch(function() { return {}; });
-                    if (r.ok && data.ok) {
-                        showRavexModalConcluido('Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.');
-                        loadAllData();
-                        ravexLoadingHide();
-                    } else if (r.status === 409 || (data && data.duplicado)) {
-                        ravexMostrarDuplicado(data, resultadoImportarRavex);
-                    } else {
-                        resultadoImportarRavex.style.background = '#ffebee';
-                        resultadoImportarRavex.style.border = '1px solid #f44336';
-                        var msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar');
-                        if (data.diagnostico) msg += ' ' + data.diagnostico;
-                        resultadoImportarRavex.innerHTML = msg;
-                        ravexErrorShow(msg);
-                    }
+                if (signalUnico.aborted) return;
+                var textUnico = document.getElementById('ravex-loading-text');
+                if (textUnico) textUnico.textContent = 'Puxando roteiro/viagem da API Ravex...';
+                const r = await fetch(API_BASE + '/ravex/importar-romaneio', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(ravexPayloadExtras({ id: idTrim })),
+                    signal: signalUnico
+                });
+                const data = await r.json().catch(function() { return {}; });
+                if (r.ok && data.ok) {
+                    showRavexModalConcluido('Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.');
+                    loadAllData();
+                    ravexLoadingHide();
+                } else if (r.status === 409 || (data && data.duplicado)) {
+                    ravexMostrarDuplicado(data, resultadoImportarRavex);
+                } else {
+                    resultadoImportarRavex.style.background = '#ffebee';
+                    resultadoImportarRavex.style.border = '1px solid #f44336';
+                    var msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar');
+                    if (data.diagnostico) msg += ' ' + data.diagnostico;
+                    resultadoImportarRavex.innerHTML = msg;
+                    ravexErrorShow(msg);
                 }
             } catch (e) {
                 if (_ravexImportTratarAbort(e, resultadoImportarRavex)) { /* cancelado */ }
@@ -10162,6 +10147,7 @@ function initForms() {
                     ravexErrorShow(msg);
                 }
             } finally {
+                _ravexImportAbortarAtivo();
                 resultadoImportarRavex.style.display = 'block';
                 btnImportarRavexIdUnico.disabled = false;
             }
@@ -10233,11 +10219,12 @@ function initForms() {
                 else {
                     resultadoImportarRavex.style.background = '#ffebee';
                     resultadoImportarRavex.style.border = '1px solid #f44336';
-                    var msgLista = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
-                    resultadoImportarRavex.innerHTML = msgLista;
-                    ravexErrorShow(msgLista);
+                    var msg = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
+                    resultadoImportarRavex.innerHTML = msg;
+                    ravexErrorShow(msg);
                 }
             } finally {
+                _ravexImportAbortarAtivo();
                 resultadoImportarRavex.style.display = 'block';
                 btnImportarRavexLista.disabled = false;
             }
@@ -11066,6 +11053,22 @@ function _ravexImportTratarAbort(e, resultadoEl) {
     }
     if (typeof showMessage === 'function') showMessage('Download cancelado.', 'info');
     return true;
+}
+
+async function ravexVerificarIdJaBaixado(id, signal) {
+    if (!id) return { ja_baixado: false, duplicado: false };
+    try {
+        var url = API_BASE + '/ravex/verificar-baixado?id=' + encodeURIComponent(String(id).trim());
+        var opts = {};
+        if (signal) opts.signal = signal;
+        var r = await fetch(url, opts);
+        var data = await r.json().catch(function() { return {}; });
+        if (!r.ok) return { ja_baixado: false, duplicado: false, erro: data.erro };
+        return data;
+    } catch (e) {
+        if (e && e.name === 'AbortError') throw e;
+        return { ja_baixado: false, duplicado: false };
+    }
 }
 
 /** Exibe overlay de carregamento com botão Cancelar (ex.: gravar bipagem ao gerar comprovante). */
@@ -12048,6 +12051,10 @@ async function submitBaseItem(e) {
     showMessage(resp && resp.mensagem ? resp.mensagem : (editId ? 'Atualizado.' : 'Cadastrado.'), 'success');
     closeModalBaseItem();
     loadBasePlanilha(true);
+    var idVConf = window._getIdViagemAtivo && window._getIdViagemAtivo();
+    if (idVConf && typeof reloadConferenciaAtiva === 'function') {
+        reloadConferenciaAtiva(idVConf, { forcar: true, aguardarBipagem: false });
+    }
 }
 
 function initBaseItemModal() {
@@ -12170,8 +12177,8 @@ async function addProduto(forcarAdicionar, dadosOverride) {
     const codigoProdutoParaTabela = dadosOverride && (dadosOverride.codigo_interno !== undefined || dadosOverride.codigo_produto !== undefined)
         ? String(dadosOverride.codigo_interno || dadosOverride.codigo_produto || '').trim()
         : (codigoProdutoEl && codigoProdutoEl.value) ? codigoProdutoEl.value.trim() : '';
+    _conferenciaProcessarBipagemCodigo(codigoBarras, quantidade, codigoProdutoParaTabela, { permitirRepetir: true });
     if (!dadosOverride) {
-        _conferenciaProcessarBipagemCodigo(codigoBarras, quantidade, codigoProdutoParaTabela, { permitirRepetir: true });
         var qEl = window._elBipagem('quantidade');
         if (qEl) qEl.value = 1;
     }
@@ -12340,9 +12347,7 @@ function atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdu
             }
         }
         var stLinhaAcao = _statusBipagemConferencia(qtdProduto, novaQtdBipada);
-        if (codigoBarrasLinha && codigoBarrasLinha !== '-') {
-            _conferenciaAtualizarCelulaAcaoLinha(row, stLinhaAcao, novaQtdBipada, novaQtdFalta);
-        }
+        _conferenciaAtualizarCelulaAcaoLinha(row, stLinhaAcao, novaQtdBipada, novaQtdFalta);
         // Item bipado: vai para o topo; só COMPLETO (não excedente) vai para o final
         if (delta > 0) {
             var primeiro = tbody.querySelector('tr');
@@ -12358,6 +12363,85 @@ function atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdu
         return true;
     }
     return false;
+}
+
+window._conferenciaListaMaximizada = false;
+window._conferenciaListaMaximizadaFluxo = null;
+
+function toggleConferenciaListaMaximizada(fluxo) {
+    fluxo = fluxo || (window._fluxoBipagemAtivo === 'devolucao' ? 'devolucao' : 'carregamento');
+    var isDev = fluxo === 'devolucao';
+    var panel = document.getElementById(isDev ? 'dev-conferencia-lista-panel' : 'conferencia-lista-panel');
+    var btn = document.getElementById(isDev ? 'btn-dev-conferencia-maximizar' : 'btn-conferencia-maximizar');
+    var tabContainer = document.getElementById(isDev ? 'dev-tabela-conferencia-container' : 'tabela-conferencia-container');
+    if (!panel || !tabContainer || tabContainer.style.display === 'none') {
+        if (typeof showMessage === 'function') showMessage('Carregue os itens da viagem antes de maximizar.', 'warning');
+        return;
+    }
+    var maximizado = !panel.classList.contains('conferencia-lista-maximizada');
+    if (maximizado) {
+        panel.classList.add('conferencia-lista-maximizada');
+    } else {
+        panel.classList.remove('conferencia-lista-maximizada');
+    }
+    window._conferenciaListaMaximizada = maximizado;
+    window._conferenciaListaMaximizadaFluxo = maximizado ? fluxo : null;
+    document.body.classList.toggle('conferencia-lista-maximizada-aberta', maximizado);
+    if (btn) {
+        btn.textContent = maximizado ? '⛶ Restaurar' : '⛶ Maximizar';
+        btn.title = maximizado ? 'Restaurar tamanho normal' : 'Maximizar lista de itens para tela cheia';
+    }
+    var totaisBar = document.getElementById(isDev ? 'dev-conferencia-lista-totais-bar' : 'conferencia-lista-totais-bar');
+    if (totaisBar) totaisBar.style.display = maximizado ? 'inline-flex' : 'none';
+    if (maximizado) atualizarTotaisConferenciaFromDOM();
+}
+
+function sairConferenciaListaMaximizadaSeAtiva() {
+    if (!window._conferenciaListaMaximizada) return;
+    toggleConferenciaListaMaximizada(window._conferenciaListaMaximizadaFluxo || 'carregamento');
+}
+
+function _syncConferenciaListaTotaisBar(fluxoTab, totalItens, totalBipado, totalFalta, temExcedente) {
+    var isDev = fluxoTab === 'devolucao';
+    var elTotal = document.getElementById(isDev ? 'dev-conferencia-lista-total-itens' : 'conferencia-lista-total-itens');
+    var elBipado = document.getElementById(isDev ? 'dev-conferencia-lista-total-bipado' : 'conferencia-lista-total-bipado');
+    if (!elTotal || !elBipado) return;
+    if (isDev) {
+        elTotal.textContent = 'Saída: ' + totalItens;
+        elBipado.textContent = 'Retorno: ' + totalBipado;
+    } else {
+        elTotal.textContent = 'Total: ' + totalItens;
+        elBipado.textContent = 'Bipado: ' + totalBipado;
+    }
+    var elStatusLista = document.getElementById(isDev ? 'dev-conferencia-lista-resumo-status' : 'conferencia-lista-resumo-status');
+    if (!elStatusLista) return;
+    elStatusLista.classList.remove('status-faltando', 'status-completo', 'status-excedente', 'status-sem-itens');
+    if (!totalItens || totalItens <= 0) {
+        elStatusLista.classList.add('status-sem-itens');
+        elStatusLista.textContent = 'Sem itens';
+        return;
+    }
+    var totalB = parseInt(totalBipado, 10) || 0;
+    var totalI = parseInt(totalItens, 10) || 0;
+    if (totalB > totalI || temExcedente) {
+        elStatusLista.classList.add('status-excedente');
+        elStatusLista.textContent = 'Bipou a mais';
+    } else if (totalFalta > 0) {
+        elStatusLista.classList.add('status-faltando');
+        elStatusLista.textContent = 'Faltando itens';
+    } else {
+        elStatusLista.classList.add('status-completo');
+        elStatusLista.textContent = 'Tudo bipado';
+    }
+}
+
+if (!window._conferenciaListaMaximizadaEscBound) {
+    window._conferenciaListaMaximizadaEscBound = true;
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && window._conferenciaListaMaximizada) {
+            sairConferenciaListaMaximizadaSeAtiva();
+        }
+    });
 }
 
 function atualizarTotaisConferenciaFromDOM() {
@@ -12387,6 +12471,7 @@ function atualizarTotaisConferenciaFromDOM() {
         elBipado.textContent = 'Bipado: ' + totalBipado;
     }
     atualizarStatusResumoConferencia(totalItens, totalBipado, totalFalta, temExcedente, isDev ? 'devolucao' : 'carregamento');
+    _syncConferenciaListaTotaisBar(isDev ? 'devolucao' : 'carregamento', totalItens, totalBipado, totalFalta, temExcedente);
 }
 
 function atualizarTotaisConferenciaFromData(conferenciaArray, fluxoTab) {
@@ -12395,9 +12480,10 @@ function atualizarTotaisConferenciaFromData(conferenciaArray, fluxoTab) {
     const elTotal = document.getElementById(isDev ? 'dev-conferencia-total-itens' : 'conferencia-total-itens');
     const elBipado = document.getElementById(isDev ? 'dev-conferencia-total-bipado' : 'conferencia-total-bipado');
     if (!elTotal || !elBipado || !conferenciaArray || !conferenciaArray.length) {
-        if (elTotal) elTotal.textContent = 'Total: 0';
-        if (elBipado) elBipado.textContent = 'Bipado: 0';
+        if (elTotal) elTotal.textContent = isDev ? 'Saída: 0' : 'Total: 0';
+        if (elBipado) elBipado.textContent = isDev ? 'Retorno: 0' : 'Bipado: 0';
         atualizarStatusResumoConferencia(0, 0, 0, false, fluxoTab);
+        _syncConferenciaListaTotaisBar(fluxoTab, 0, 0, 0, false);
         return;
     }
     let totalItens = 0;
@@ -12421,6 +12507,7 @@ function atualizarTotaisConferenciaFromData(conferenciaArray, fluxoTab) {
         elBipado.textContent = 'Bipado: ' + totalBipado;
     }
     atualizarStatusResumoConferencia(totalItens, totalBipado, totalFalta, temExcedente, fluxoTab);
+    _syncConferenciaListaTotaisBar(fluxoTab, totalItens, totalBipado, totalFalta, temExcedente);
 }
 
 function atualizarStatusResumoConferencia(totalItens, totalBipado, totalFalta, temExcedente, fluxoTab) {
@@ -12654,6 +12741,8 @@ window.confirmarCadastroItem = async function() {
                 return;
             }
             showMessage(respV.mensagem || 'Base atualizada com o vínculo do código.', 'success');
+            _atualizarCodigoBarrasLinhaConferencia(codigoInterno, codigoBipado);
+            window.ultimoCodigoBuscado = '';
         }
         document.getElementById('modal-cadastro-item').style.display = 'none';
         const dados = {
@@ -12669,8 +12758,22 @@ window.confirmarCadastroItem = async function() {
             id_viagem: idViagem,
             doca: docaEl ? docaEl.value : ''
         };
+        var cpEl = window._elBipagem('codigo-produto');
+        if (cpEl) cpEl.value = codigoInterno;
+        var pnEl = window._elBipagem('produto-nome');
+        if (pnEl) pnEl.value = descricao;
         await addProduto(true, dados);
-        if (idViagem) agendarReloadConferenciaAtiva(idViagem, { debounceMs: 800 });
+        if (idViagem) {
+            await reloadConferenciaAtiva(idViagem, {
+                forcar: true,
+                forcarIgnorarPendencias: true,
+                aguardarBipagem: false
+            });
+        }
+        var baseTab = document.getElementById('base');
+        if (typeof loadBasePlanilha === 'function' && baseTab && baseTab.classList.contains('active')) {
+            loadBasePlanilha(false);
+        }
         var cbOk = window._elBipagem('codigo-barras');
         if (cbOk) cbOk.value = '';
         focarCampoCodigoBarras();
@@ -12985,8 +13088,10 @@ window.buscarItensViagem = async function() {
         await loadConferencia(idInput, { signal: abortCtrl ? abortCtrl.signal : undefined, forcar: true });
         if (cancelado) return;
         idViagem = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim()) || document.getElementById('id-viagem').value.trim() || idInput;
-        loadPeriodoCarregamento(idViagem);
-        loadViagemInfo(idViagem);
+        await Promise.all([
+            loadPeriodoCarregamento(idViagem),
+            loadViagemInfo(idViagem),
+        ]);
         sucesso = true;
     } catch (e) {
         if (cancelado || (e && e._cancelado)) return;
@@ -13546,7 +13651,7 @@ async function loadConferencia(idViagem = null, opts) {
         } else if (isDev) {
             conferencia = { lista: [], id_viagem: idViagem };
         } else {
-        var q = '?_=' + Date.now();
+        var q = '?limit=2000&_=' + Date.now();
         if (isDev) q += '&fluxo=devolucao';
         var fetchOpts = {};
         if (opts.signal) fetchOpts.signal = opts.signal;
@@ -13679,15 +13784,6 @@ async function loadConferencia(idViagem = null, opts) {
             `;
             }).join('');
             atualizarTotaisConferenciaFromData(conferenciaOrdenada, fluxoTab);
-            // Adicionar animação de atualização
-            const rows = tbody.querySelectorAll('tr');
-            rows.forEach((row, index) => {
-                row.style.opacity = '0';
-                setTimeout(() => {
-                    row.style.transition = 'opacity 0.3s';
-                    row.style.opacity = '1';
-                }, index * 20);
-            });
             }
             var tituloWrap = L('titulo-lista-wrapper');
             var tabContainer = L('tabela-conferencia-container');

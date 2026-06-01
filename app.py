@@ -11,6 +11,7 @@ import sys
 import time
 import threading
 import queue
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import importlib.util
 import re
@@ -2111,22 +2112,9 @@ def api_base_item_vincular_codigo():
             (str(ds), codigo_interno),
         ).fetchall()
         item_id = None
-        if rows:
-            alvo = None
-            for r in rows:
-                rid = r.get('id') if hasattr(r, 'get') else r[0]
-                ean_at = (r.get('ean') or '') if hasattr(r, 'get') else (r[1] if len(r) > 1 else '')
-                dun_at = (r.get('dun') or '') if hasattr(r, 'get') else (r[2] if len(r) > 2 else '')
-                if tipo == 'EAN' and (not ean_at or str(ean_at).strip() == ''):
-                    alvo = r
-                    break
-                if tipo == 'DUN' and (not dun_at or str(dun_at).strip() == ''):
-                    alvo = r
-                    break
-            if alvo is None:
-                alvo = rows[0]
-            item_id = alvo.get('id') if hasattr(alvo, 'get') else alvo[0]
-            data_old = alvo.get('data') if hasattr(alvo, 'get') else alvo[6]
+        agora_iso = datetime.now(timezone.utc).isoformat()
+
+        def _merge_data_vinculo(data_old):
             if isinstance(data_old, str):
                 try:
                     data_old = json.loads(data_old)
@@ -2135,45 +2123,52 @@ def api_base_item_vincular_codigo():
             if not isinstance(data_old, dict):
                 data_old = {}
             data_old['vinculado_de_conferencia'] = True
-            data_old['vinculado_em'] = datetime.now(timezone.utc).isoformat()
-            if tipo == 'EAN':
+            data_old['vinculado_em'] = agora_iso
+            data_old['Codigo'] = codigo_interno
+            if descricao:
+                data_old['Descricao'] = descricao
+            if unidade:
+                data_old['Unidade'] = unidade
+            if ean_val:
+                data_old['Cod. EAN-13'] = ean_val
+            if dun_val:
+                data_old['Cod. DUN-14'] = dun_val
+            if peso:
+                data_old['Peso Bruto'] = peso
+            return data_old
+
+        if rows:
+            for alvo in rows:
+                rid = alvo.get('id') if hasattr(alvo, 'get') else alvo[0]
+                if item_id is None:
+                    item_id = rid
+                ean_at = str((alvo.get('ean') if hasattr(alvo, 'get') else (alvo[1] if len(alvo) > 1 else '')) or '').strip()
+                dun_at = str((alvo.get('dun') if hasattr(alvo, 'get') else (alvo[2] if len(alvo) > 2 else '')) or '').strip()
+                data_old = alvo.get('data') if hasattr(alvo, 'get') else (alvo[6] if len(alvo) > 6 else {})
+                data_merged = _merge_data_vinculo(data_old)
+                if tipo == 'EAN':
+                    new_ean = ean_val or ean_at or None
+                    new_dun = dun_val if dun_val else (dun_at or None)
+                else:
+                    new_dun = dun_val or dun_at or None
+                    new_ean = ean_val if ean_val else (ean_at or None)
                 conn.execute(
                     """UPDATE base_codigo_barras
                        SET ean = ?,
-                           dun = COALESCE(?, dun),
+                           dun = ?,
                            descricao = COALESCE(?, descricao),
                            unidade = COALESCE(?, unidade),
                            peso = COALESCE(?, peso),
                            data = ?::jsonb
                        WHERE id = ?""",
                     (
-                        ean_val,
-                        dun_val,
+                        new_ean,
+                        new_dun,
                         descricao,
                         unidade,
                         peso,
-                        json.dumps(data_old, ensure_ascii=False, default=str),
-                        item_id,
-                    ),
-                )
-            else:
-                conn.execute(
-                    """UPDATE base_codigo_barras
-                       SET dun = ?,
-                           ean = COALESCE(?, ean),
-                           descricao = COALESCE(?, descricao),
-                           unidade = COALESCE(?, unidade),
-                           peso = COALESCE(?, peso),
-                           data = ?::jsonb
-                       WHERE id = ?""",
-                    (
-                        dun_val,
-                        ean_val,
-                        descricao,
-                        unidade,
-                        peso,
-                        json.dumps(data_old, ensure_ascii=False, default=str),
-                        item_id,
+                        json.dumps(data_merged, ensure_ascii=False, default=str),
+                        rid,
                     ),
                 )
         else:
@@ -3968,40 +3963,12 @@ def get_conferencia(id_viagem=None):
                 return jsonify({'erro': err_build}), 400
             ds = _get_latest_dataset_id(conn)
             id_para_lookup = id_para_bipados or id_busca
-            if (not meta.get('id_roteiro') or not meta.get('identificador_rota')) and id_para_bipados and ds:
-                try:
-                    row_ir = conn.execute(
-                        """SELECT id_roteiro, identificador_rota FROM id_roteiros WHERE dataset_id = ? AND TRIM(COALESCE(id_viagem::text, '')) = ? LIMIT 1""",
-                        (str(ds), str(id_para_bipados).strip()),
-                    ).fetchone()
-                    if row_ir:
-                        if not meta.get('id_roteiro'):
-                            meta['id_roteiro'] = str(row_ir.get('id_roteiro') if hasattr(row_ir, 'get') else (row_ir[0] if len(row_ir) > 0 else '') or '').strip()
-                        if not meta.get('identificador_rota'):
-                            meta['identificador_rota'] = str(row_ir.get('identificador_rota') if hasattr(row_ir, 'get') else (row_ir[1] if len(row_ir) > 1 else '') or '').strip()
-                except Exception:
-                    pass
-            for id_tentar in [id_para_lookup, id_busca]:
-                if id_tentar and (not meta.get('placa') or not meta.get('motorista')):
-                    try:
-                        id_t = str(id_tentar).strip()
-                        if not meta.get('placa'):
-                            rp = conn.execute("SELECT placa FROM viagem_placa WHERE TRIM(COALESCE(id_viagem::text, '')) = ?", (id_t,)).fetchone()
-                            if rp:
-                                meta['placa'] = str(rp.get('placa') if hasattr(rp, 'get') else (rp[0] if len(rp) > 0 else '') or '').strip()
-                        if not meta.get('motorista'):
-                            rm = conn.execute("SELECT motorista FROM viagem_motorista WHERE TRIM(COALESCE(id_viagem::text, '')) = ?", (id_t,)).fetchone()
-                            if rm:
-                                meta['motorista'] = str(rm.get('motorista') if hasattr(rm, 'get') else (rm[0] if len(rm) > 0 else '') or '').strip()
-                    except Exception:
-                        pass
-                if meta.get('placa') and meta.get('motorista'):
-                    break
-            conn.close()
+            meta = _conferencia_enriquecer_meta_pg(conn, ds, id_para_lookup, id_busca, meta)
             try:
-                _carregar_motivos_divergencia(resultado)
+                _carregar_motivos_divergencia(resultado, conn=conn)
             except Exception:
                 pass
+            conn.close()
             id_viagem_resposta = str(id_para_bipados).strip() if id_para_bipados else ''
             total_romaneio = len(resultado)
             return jsonify({
@@ -4381,6 +4348,77 @@ def _ravex_parse_forcar_reimportar(data):
     if not isinstance(data, dict):
         return False
     return bool(data.get('forcar_reimportar') or data.get('forcar') or data.get('reimportar'))
+
+
+_RAVEX_IMPORT_WORKERS = max(1, min(8, int(os.environ.get('RAVEX_IMPORT_WORKERS', '4') or 4)))
+
+
+def _ravex_identificador_rota_valido(identificador_rota):
+    ident = (identificador_rota or '').strip()
+    if not ident:
+        return False
+    if len(ident) >= 15 and ' - ' not in ident:
+        return False
+    return True
+
+
+_ROMANEIO_INSERT_SQL = """INSERT INTO romaneio_por_item
+   (dataset_id, row_index, id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
+    codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, importado_em, data)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)"""
+
+
+def _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas):
+    """Remove romaneio anterior da viagem e grava linhas com executemany."""
+    if not linhas:
+        return 0
+    conn.execute(
+        """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
+        (str(ds), id_viagem),
+    )
+    importado_em = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    params = []
+    for L in linhas:
+        try:
+            L['importado_em'] = importado_em
+        except Exception:
+            pass
+        params.append(_romaneio_linha_para_tuple_pg(ds, L))
+    if len(params) == 1:
+        conn.execute(_ROMANEIO_INSERT_SQL, params[0])
+    else:
+        conn.executemany(_ROMANEIO_INSERT_SQL, params)
+    _upsert_viagem_placa_motorista(conn, id_viagem, linhas[0].get('placa'), linhas[0].get('motorista'))
+    return len(params)
+
+
+def _ravex_viagens_ja_baixadas_batch(conn, dataset_id, id_viagens):
+    """Retorna set de id_viagem que já possuem romaneio importado no dataset."""
+    ids_norm = []
+    vistos = set()
+    for id_v in id_viagens or []:
+        id_norm = str(_normalizar_id_viagem(id_v) or id_v or '').strip()
+        if id_norm and id_norm not in vistos:
+            vistos.add(id_norm)
+            ids_norm.append(id_norm)
+    if not ids_norm or not dataset_id:
+        return set()
+    ph = ','.join(['?'] * len(ids_norm))
+    try:
+        rows = conn.execute(
+            """SELECT DISTINCT TRIM(COALESCE(id_viagem::text, '')) AS id_v
+               FROM romaneio_por_item
+               WHERE dataset_id = ? AND TRIM(COALESCE(id_viagem::text, '')) IN (""" + ph + """)""",
+            [str(dataset_id)] + ids_norm,
+        ).fetchall()
+    except Exception:
+        return set()
+    out = set()
+    for r in rows or []:
+        id_v = str((r.get('id_v') if hasattr(r, 'get') else (r[0] if len(r) > 0 else '')) or '').strip()
+        if id_v:
+            out.add(id_v)
+    return out
 
 
 def _ravex_id_input_ja_baixado(conn, dataset_id, id_input):
@@ -4903,6 +4941,7 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem, id_roteiro_pre=None, identif
     if not id_roteiro:
         id_roteiro = str(viagem_full.get('roteiroId') or viagem_full.get('idRoteiro') or viagem_full.get('roteiro_id') or viagem_full.get('id_roteiro') or '')
     # Via pedido da primeira NF quando a viagem não traz roteiro (igual BASE VIAGENS sync_to_excel)
+    nfs_pre = None
     if not id_roteiro and obter_notas_fiscais_viagem and obter_pedido_por_id:
         nfs_pre = obter_notas_fiscais_viagem(token, id_viagem)
         for nf in (nfs_pre or [])[:5]:
@@ -4928,7 +4967,7 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem, id_roteiro_pre=None, identif
     if identificador_rota and len(identificador_rota) >= 12 and ' - ' not in identificador_rota:
         identificador_rota = ''
     # GET /api/roteiro/{id} é a fonte oficial do identificador (ex: .../api/roteiro/660002); usar sempre que tivermos id_roteiro
-    if id_roteiro and obter_roteiro_por_id:
+    if id_roteiro and obter_roteiro_por_id and not _ravex_identificador_rota_valido(identificador_rota):
         try:
             rid = int(id_roteiro)
             roteiro_full = obter_roteiro_por_id(token, rid)
@@ -4999,7 +5038,30 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem, id_roteiro_pre=None, identif
                     break
         except Exception:
             pass
-    entregas, meta_canhotos = obter_canhotos_viagem(token, id_viagem)
+    # Canhotos + NFs em paralelo; itens de cada NF também em paralelo (romaneio import)
+    cache_ref = {}
+
+    def _ref_cached(ref_id):
+        if not ref_id:
+            return None
+        k = str(ref_id)
+        if k not in cache_ref:
+            cache_ref[k] = obter_ponto_referencia(token, ref_id)
+        return cache_ref[k]
+
+    def _fetch_canhotos():
+        return obter_canhotos_viagem(token, id_viagem, enriquecer=False)
+
+    def _fetch_nfs():
+        if nfs_pre is not None:
+            return nfs_pre
+        return obter_notas_fiscais_viagem(token, id_viagem)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fut_canhotos = pool.submit(_fetch_canhotos)
+        fut_nfs = pool.submit(_fetch_nfs)
+        entregas, meta_canhotos = fut_canhotos.result()
+        nfs = fut_nfs.result() or []
     placa = (meta_canhotos.get('veiculo') or meta_canhotos.get('veículo') or '').strip()
     if not placa:
         veiculo_viagem = viagem_full.get('veiculo') or viagem_full.get('veículo')
@@ -5012,14 +5074,33 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem, id_roteiro_pre=None, identif
     motorista = (meta_canhotos.get('motoristaNome') or meta_canhotos.get('motorista_nome') or '').strip()
     data_ini = viagem_full.get('inicioDataHora') or viagem_full.get('dataInicioViagem') or ''
     data_expedicao = data_ini[:10] if isinstance(data_ini, str) and len(data_ini) >= 10 else str(data_ini or '')
-    nfs = obter_notas_fiscais_viagem(token, id_viagem)
+
+    nf_ids = []
+    for nf in nfs:
+        nf_id = nf.get('id') or nf.get('Id')
+        if nf_id:
+            nf_ids.append((nf, nf_id))
+
+    itens_por_nf_id = {}
+    if nf_ids:
+        def _fetch_itens_nf(pair):
+            nf_obj, nf_id = pair
+            try:
+                return nf_id, obter_itens_nota_fiscal(token, id_viagem, nf_id) or []
+            except Exception:
+                return nf_id, []
+
+        workers = min(8, max(2, len(nf_ids)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for nf_id, itens in pool.map(_fetch_itens_nf, nf_ids):
+                itens_por_nf_id[nf_id] = itens
+
     linhas = []
     row_index = 0
     for nf in nfs or []:
         nf_id = nf.get('id') or nf.get('Id')
         numero_nf = str(nf.get('numero') or nf.get('numeroNF') or nf.get('numeroNf') or nf.get('nf') or '')
         pedido = nf.get('pedido') or {}
-        # Para esta NF, achar a entrega correspondente (canhoto que contém esta NF) — igual BASE VIAGENS _linhas_itens_nf_uma_viagem
         info_ent = None
         for ent in (entregas or []):
             dados = ent.get('entrega') or ent.get('canhoto') or ent
@@ -5042,7 +5123,7 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem, id_roteiro_pre=None, identif
             dados_ent = (ent0.get('entrega') or ent0.get('canhoto') or ent0) if isinstance(ent0, dict) else {}
         cliente = (dados_ent.get('cliente') or dados_ent.get('Cliente')) if isinstance(dados_ent, dict) else None
         ref_id = (dados_ent.get('referenciaId') or dados_ent.get('referencia_id')) if isinstance(dados_ent, dict) else None
-        ref = obter_ponto_referencia(token, ref_id) if ref_id else None
+        ref = _ref_cached(ref_id)
         cliente_nome = (cliente.get('nome', '') or cliente.get('razaoSocial', '')) if isinstance(cliente, dict) else ''
         cliente_razao = (cliente.get('razaoSocial', '') or cliente.get('nome', '')) if isinstance(cliente, dict) else ''
         endereco = (cliente.get('endereco') or cliente.get('endereço') or cliente.get('logradouro') or '') if isinstance(cliente, dict) else ''
@@ -5062,7 +5143,7 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem, id_roteiro_pre=None, identif
             codigo_cliente = (pedido.get('cnpj') or pedido.get('Cnpj') or '').strip()
         if not codigo_cliente and ref and isinstance(ref, dict):
             codigo_cliente = (ref.get('cnpj') or ref.get('Cnpj') or '').strip()
-        itens = obter_itens_nota_fiscal(token, id_viagem, nf_id) if nf_id else []
+        itens = itens_por_nf_id.get(nf_id, []) if nf_id else []
         for item in itens or []:
             prod = item.get('produto') or {}
             codigo_produto = str(item.get('codigo') or item.get('referenciaItem') or prod.get('codigo') or '').strip()
@@ -5318,26 +5399,8 @@ def api_ravex_importar_romaneio():
     if id_roteiro is None:
         conn.close()
         return jsonify({'erro': 'Viagem não encontrada ou sem itens na API Ravex.'}), 404
-    importado_em = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     try:
-        conn.execute(
-            """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
-            (str(ds), id_viagem),
-        )
-        for L in linhas:
-            try:
-                L['importado_em'] = importado_em
-            except Exception:
-                pass
-            conn.execute(
-                """INSERT INTO romaneio_por_item
-                   (dataset_id, row_index, id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
-                    codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, importado_em, data)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
-                _romaneio_linha_para_tuple_pg(ds, L),
-            )
-        if linhas:
-            _upsert_viagem_placa_motorista(conn, id_viagem, linhas[0].get('placa'), linhas[0].get('motorista'))
+        n_itens = _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas)
         _registrar_importacao_ravex(
             conn,
             dataset_id=ds,
@@ -5435,49 +5498,57 @@ def api_ravex_sincronizar_periodo():
                      atualizado_em = NOW()""",
                 (str(ds), id_roteiro, id_viagem_r, identificador_rota, data_viagem),
             )
+        ja_baixadas = set()
+        if not forcar:
+            ja_baixadas = _ravex_viagens_ja_baixadas_batch(
+                conn, ds, [v.get('id_viagem') for v in lista_viagens if v.get('id_viagem')]
+            )
+        viagens_a_processar = []
         for v in lista_viagens:
             id_viagem = v.get('id_viagem') or ''
             if not id_viagem:
                 continue
+            id_norm = str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()
+            if not forcar and id_norm in ja_baixadas:
+                pulados_duplicados.append({
+                    'id_viagem': id_viagem,
+                    'id_roteiro': v.get('id_roteiro'),
+                    'motivo': 'já importada',
+                })
+                continue
+            viagens_a_processar.append(v)
+
+        def _fetch_linhas_viagem(v):
+            id_viagem = v.get('id_viagem') or ''
             id_roteiro_pre = v.get('id_roteiro') or None
             identificador_rota_pre = v.get('identificador_rota') or None
             try:
-                if not forcar:
-                    ja_dup, info_dup = _ravex_viagem_ja_baixada(conn, ds, id_viagem)
-                    if ja_dup:
-                        pulados_duplicados.append({
-                            'id_viagem': id_viagem,
-                            'id_roteiro': id_roteiro_pre,
-                            'motivo': 'já importada',
-                            'detalhe': info_dup,
-                        })
-                        continue
                 id_roteiro, linhas = _ravex_linhas_romaneio_viagem(
-                    token, id_viagem, id_roteiro_pre=id_roteiro_pre, identificador_rota_pre=identificador_rota_pre
+                    token, id_viagem,
+                    id_roteiro_pre=id_roteiro_pre,
+                    identificador_rota_pre=identificador_rota_pre,
                 )
-                if id_roteiro is None or not linhas:
-                    continue
-                conn.execute(
-                    """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
-                    (str(ds), id_viagem),
-                )
-                importado_em = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-                for L in linhas:
-                    try:
-                        L['importado_em'] = importado_em
-                    except Exception:
-                        pass
-                    conn.execute(
-                        """INSERT INTO romaneio_por_item
-                           (dataset_id, row_index, id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
-                            codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, importado_em, data)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
-                        _romaneio_linha_para_tuple_pg(ds, L),
-                    )
-                if linhas:
-                    _upsert_viagem_placa_motorista(conn, id_viagem, linhas[0].get('placa'), linhas[0].get('motorista'))
+                return id_viagem, id_roteiro, linhas, None
+            except Exception as e:
+                return id_viagem, None, [], str(e)
+
+        resultados_api = []
+        workers = min(_RAVEX_IMPORT_WORKERS, max(1, len(viagens_a_processar)))
+        if viagens_a_processar:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for res in pool.map(_fetch_linhas_viagem, viagens_a_processar):
+                    resultados_api.append(res)
+
+        for id_viagem, id_roteiro, linhas, err_api in resultados_api:
+            if err_api:
+                erros.append({'id_viagem': id_viagem, 'erro': err_api})
+                continue
+            if id_roteiro is None or not linhas:
+                continue
+            try:
+                n_gravados = _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas)
                 viagens_processadas += 1
-                total_itens += len(linhas)
+                total_itens += n_gravados
             except Exception as e:
                 erros.append({'id_viagem': id_viagem, 'erro': str(e)})
         _registrar_importacao_ravex(
@@ -5564,51 +5635,77 @@ def api_ravex_importar_lista():
     ids_vistos = set()
     forcar = _ravex_parse_forcar_reimportar(data)
     try:
+        ids_unicos = []
         for id_unico in ids:
             if not id_unico or id_unico in ids_vistos:
                 continue
             ids_vistos.add(id_unico)
+            ids_unicos.append(id_unico)
+
+        def _resolver_id(id_unico):
             try:
                 id_viagem, id_roteiro = _ravex_resolver_id_para_viagem(token, id_unico)
-                if not id_viagem:
-                    erros.append({'id': id_unico, 'erro': 'ID não encontrado ou roteiro sem viagem faturada'})
-                    continue
-                if not forcar:
-                    ja_dup, info_dup = _ravex_viagem_ja_baixada(conn, ds, id_viagem)
-                    if ja_dup:
-                        pulados_duplicados.append({
-                            'id': id_unico,
-                            'id_viagem': id_viagem,
-                            'id_roteiro': id_roteiro,
-                            'motivo': 'já importada',
-                            'detalhe': info_dup,
-                        })
-                        continue
-                id_roteiro, linhas = _ravex_linhas_romaneio_viagem(token, id_viagem)
-                if id_roteiro is None or not linhas:
-                    erros.append({'id': id_unico, 'erro': 'Sem itens na API'})
-                    continue
-                conn.execute(
-                    """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
-                    (str(ds), id_viagem),
-                )
-                importado_em = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-                for L in linhas:
-                    try:
-                        L['importado_em'] = importado_em
-                    except Exception:
-                        pass
-                    conn.execute(
-                        """INSERT INTO romaneio_por_item
-                           (dataset_id, row_index, id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
-                            codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, importado_em, data)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)""",
-                        _romaneio_linha_para_tuple_pg(ds, L),
-                    )
-                if linhas:
-                    _upsert_viagem_placa_motorista(conn, id_viagem, linhas[0].get('placa'), linhas[0].get('motorista'))
+                return id_unico, id_viagem, id_roteiro, None
+            except Exception as e:
+                return id_unico, None, None, str(e)
+
+        resolvidos = []
+        workers = min(_RAVEX_IMPORT_WORKERS, max(1, len(ids_unicos)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for res in pool.map(_resolver_id, ids_unicos):
+                resolvidos.append(res)
+
+        ja_baixadas = set()
+        if not forcar:
+            ja_baixadas = _ravex_viagens_ja_baixadas_batch(
+                conn, ds, [r[1] for r in resolvidos if r[1]]
+            )
+
+        tarefas = []
+        for id_unico, id_viagem, id_roteiro, err_res in resolvidos:
+            if err_res:
+                erros.append({'id': id_unico, 'erro': err_res})
+                continue
+            if not id_viagem:
+                erros.append({'id': id_unico, 'erro': 'ID não encontrado ou roteiro sem viagem faturada'})
+                continue
+            id_norm = str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()
+            if not forcar and id_norm in ja_baixadas:
+                pulados_duplicados.append({
+                    'id': id_unico,
+                    'id_viagem': id_viagem,
+                    'id_roteiro': id_roteiro,
+                    'motivo': 'já importada',
+                })
+                continue
+            tarefas.append((id_unico, id_viagem, id_roteiro))
+
+        def _fetch_linhas_id(t):
+            id_unico, id_viagem, id_roteiro = t
+            try:
+                rid, linhas = _ravex_linhas_romaneio_viagem(token, id_viagem)
+                return id_unico, id_viagem, rid, linhas, None
+            except Exception as e:
+                return id_unico, id_viagem, None, [], str(e)
+
+        resultados_api = []
+        workers = min(_RAVEX_IMPORT_WORKERS, max(1, len(tarefas)))
+        if tarefas:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for res in pool.map(_fetch_linhas_id, tarefas):
+                    resultados_api.append(res)
+
+        for id_unico, id_viagem, id_roteiro, linhas, err_api in resultados_api:
+            if err_api:
+                erros.append({'id': id_unico, 'erro': err_api})
+                continue
+            if id_roteiro is None or not linhas:
+                erros.append({'id': id_unico, 'erro': 'Sem itens na API'})
+                continue
+            try:
+                n_gravados = _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas)
                 viagens_processadas += 1
-                total_itens += len(linhas)
+                total_itens += n_gravados
             except Exception as e:
                 erros.append({'id': id_unico, 'erro': str(e)})
         _registrar_importacao_ravex(
@@ -5960,7 +6057,7 @@ def update_romaneio():
     conn.close()
     return jsonify({'success': True})
 
-def _carregar_motivos_divergencia(lista):
+def _carregar_motivos_divergencia(lista, conn=None):
     """Adiciona o campo 'motivo_divergencia' em cada item da lista (id_viagem + codigo_produto)."""
     if not lista:
         return lista
@@ -5977,7 +6074,9 @@ def _carregar_motivos_divergencia(lista):
         for item in lista:
             item['motivo_divergencia'] = ''
         return lista
-    conn = get_db()
+    own_conn = conn is None
+    if own_conn:
+        conn = get_db()
     motivos = {}
     try:
         if ids_viagem:
@@ -5993,32 +6092,57 @@ def _carregar_motivos_divergencia(lista):
                 cod = str(cod).strip()
                 motivo = (r.get('motivo') if hasattr(r, 'get') else (r[2] if len(r) > 2 else '')) or ''
                 motivos[(id_v, cod)] = str(motivo).strip()
-        if not motivos:
-            for (id_norm, cod) in pares:
-                row = conn.execute(
-                    'SELECT motivo FROM divergencia_motivo WHERE id_viagem = ? AND codigo_produto = ?',
-                    (id_norm, cod),
-                ).fetchone()
-                if row:
-                    motivos[(id_norm, cod)] = (
-                        row.get('motivo', '') if hasattr(row, 'get') else (row[0] if len(row) > 0 else '')
-                    ).strip()
     except Exception as ex:
         try:
             app.logger.warning('divergencia_motivo: %s', ex)
         except Exception:
             pass
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        if own_conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
     for item in lista:
         vid = (item.get('id_viagem') or '').strip()
         cod = (item.get('codigo_produto') or '').strip()
         id_norm = _normalizar_id_viagem(vid) if vid else ''
         item['motivo_divergencia'] = motivos.get((id_norm, cod), '') if (vid and cod) else ''
     return lista
+
+
+def _conferencia_enriquecer_meta_pg(conn, ds, id_para_lookup, id_busca, meta):
+    """Preenche meta com id_roteiros, placa e motorista em uma única consulta."""
+    if not conn or not ds:
+        return meta
+    if meta.get('id_roteiro') and meta.get('identificador_rota') and meta.get('placa') and meta.get('motorista'):
+        return meta
+    id_t = str(id_para_lookup or id_busca or '').strip()
+    if not id_t:
+        return meta
+    try:
+        row = conn.execute(
+            """SELECT ir.id_roteiro, ir.identificador_rota, vp.placa, vm.motorista
+               FROM (SELECT ?::text AS id_v) q
+               LEFT JOIN id_roteiros ir
+                 ON ir.dataset_id = ? AND TRIM(COALESCE(ir.id_viagem::text, '')) = q.id_v
+               LEFT JOIN viagem_placa vp ON TRIM(COALESCE(vp.id_viagem::text, '')) = q.id_v
+               LEFT JOIN viagem_motorista vm ON TRIM(COALESCE(vm.id_viagem::text, '')) = q.id_v
+               LIMIT 1""",
+            (id_t, str(ds)),
+        ).fetchone()
+        if row:
+            if not meta.get('id_roteiro'):
+                meta['id_roteiro'] = str((row.get('id_roteiro') if hasattr(row, 'get') else (row[0] if len(row) > 0 else '')) or '').strip()
+            if not meta.get('identificador_rota'):
+                meta['identificador_rota'] = str((row.get('identificador_rota') if hasattr(row, 'get') else (row[1] if len(row) > 1 else '')) or '').strip()
+            if not meta.get('placa'):
+                meta['placa'] = str((row.get('placa') if hasattr(row, 'get') else (row[2] if len(row) > 2 else '')) or '').strip()
+            if not meta.get('motorista'):
+                meta['motorista'] = str((row.get('motorista') if hasattr(row, 'get') else (row[3] if len(row) > 3 else '')) or '').strip()
+    except Exception:
+        pass
+    return meta
 
 
 def _conferencia_lista_de_resposta(data):
@@ -7289,10 +7413,17 @@ def buscar_produto_na_planilha(codigo_barras):
             if not codigo_busca:
                 conn.close()
                 return None
+            codigo_digits = re.sub(r'\D', '', codigo_busca)
             row = conn.execute(
                 """SELECT codigo_interno, ean, dun, descricao, unidade, peso, data FROM base_codigo_barras
-                   WHERE dataset_id = ? AND (ean = ? OR dun = ?) LIMIT 1""",
-                (str(ds), codigo_busca, codigo_busca),
+                   WHERE dataset_id = ?
+                     AND (
+                       TRIM(COALESCE(ean, '')) = ?
+                       OR TRIM(COALESCE(dun, '')) = ?
+                       OR (? != '' AND regexp_replace(TRIM(COALESCE(dun, '')), '[^0-9]', '', 'g') = ?)
+                     )
+                   LIMIT 1""",
+                (str(ds), codigo_busca, codigo_busca, codigo_digits, codigo_digits),
             ).fetchone()
             conn.close()
             if not row:
