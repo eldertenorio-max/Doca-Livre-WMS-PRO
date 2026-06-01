@@ -21,3 +21,22 @@ alter table public.produtos_bipados
 create index if not exists idx_produtos_bipados_devolucao_nf on public.produtos_bipados (devolucao_nf_id);
 
 comment on table public.devolucao_nota_fiscal is 'Sessões de bipagem de retorno por NF e motivo (parcial/total/reentrega)';
+
+alter table public.devolucao_nota_fiscal enable row level security;
+
+drop policy if exists "Permitir SELECT em devolucao_nota_fiscal" on public.devolucao_nota_fiscal;
+drop policy if exists "Permitir INSERT em devolucao_nota_fiscal" on public.devolucao_nota_fiscal;
+drop policy if exists "Permitir UPDATE em devolucao_nota_fiscal" on public.devolucao_nota_fiscal;
+drop policy if exists "Permitir DELETE em devolucao_nota_fiscal" on public.devolucao_nota_fiscal;
+
+create policy "Permitir SELECT em devolucao_nota_fiscal"
+  on public.devolucao_nota_fiscal for select using (true);
+create policy "Permitir INSERT em devolucao_nota_fiscal"
+  on public.devolucao_nota_fiscal for insert
+  with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+create policy "Permitir UPDATE em devolucao_nota_fiscal"
+  on public.devolucao_nota_fiscal for update
+  using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+create policy "Permitir DELETE em devolucao_nota_fiscal"
+  on public.devolucao_nota_fiscal for delete
+  using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));

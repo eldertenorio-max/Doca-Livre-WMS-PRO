@@ -23,6 +23,7 @@ alter table public.base_codigo_barras enable row level security;
 alter table public.excel_romaneio_por_item enable row level security;
 alter table public.id_roteiros enable row level security;
 alter table public.viagem_periodo_bipagem enable row level security;
+alter table public.devolucao_nota_fiscal enable row level security;
 
 -- ============================================================
 -- 2. POLÍTICAS DE ACESSO (system interno - acesso total)
@@ -363,6 +364,19 @@ create policy "Permitir UPDATE em viagem_periodo_bipagem"
   on public.viagem_periodo_bipagem for update using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 create policy "Permitir DELETE em viagem_periodo_bipagem"
   on public.viagem_periodo_bipagem for delete using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+
+-- ============================================================
+-- 2.15. DEVOLUCAO_NOTA_FISCAL
+-- ============================================================
+
+create policy "Permitir SELECT em devolucao_nota_fiscal"
+  on public.devolucao_nota_fiscal for select using (true);
+create policy "Permitir INSERT em devolucao_nota_fiscal"
+  on public.devolucao_nota_fiscal for insert with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+create policy "Permitir UPDATE em devolucao_nota_fiscal"
+  on public.devolucao_nota_fiscal for update using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+create policy "Permitir DELETE em devolucao_nota_fiscal"
+  on public.devolucao_nota_fiscal for delete using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 
 -- ============================================================
 -- PRONTO! RLS habilitado em todas as tabelas
