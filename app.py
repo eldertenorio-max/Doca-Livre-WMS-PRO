@@ -8571,15 +8571,104 @@ def api_devolucoes_conferencia_nf(id_viagem):
         return jsonify({'erro': str(e)}), 500
 
 
-@app.route('/api/estoque-sp/resumo', methods=['GET'])
-def api_estoque_sp_resumo():
-    """Estoque SP: saída (carregamento), entrada devoluções, entrada terceiros (sem MG, sem consumível)."""
-    conn = get_db()
-    _ensure_devolucao_nf_schema(conn)
-    _ensure_pg_produtos_bipados_fluxo(conn)
-    _ensure_terceiros_schema(conn)
-    data_inicio = (request.args.get('data_inicio') or '').strip()
-    data_fim = (request.args.get('data_fim') or '').strip()
+def _estoque_sp_rows_to_list(rows):
+    out = []
+    for r in rows or []:
+        d = dict(r) if hasattr(r, 'keys') else {}
+        if not d and r:
+            d = {
+                'codigo_produto': r[0],
+                'produto': r[1] if len(r) > 1 else '',
+                'codigo_barras': r[2] if len(r) > 2 else '',
+                'quantidade': r[3] if len(r) > 3 else 0,
+                'registros': r[4] if len(r) > 4 else 0,
+            }
+        out.append({
+            'codigo_produto': (d.get('codigo_produto') or '').strip(),
+            'produto': (d.get('produto') or '').strip(),
+            'codigo_barras': (d.get('codigo_barras') or '').strip(),
+            'quantidade': float(d.get('quantidade') or 0),
+            'registros': int(d.get('registros') or d.get('nfs') or 0),
+        })
+    return out
+
+
+def _estoque_sp_chave_item(item):
+    cod = (item.get('codigo_produto') or '').strip()
+    if cod:
+        return 'p:' + cod
+    cb = (item.get('codigo_barras') or '').strip()
+    if cb:
+        return 'b:' + cb
+    return ''
+
+
+def _estoque_sp_calcular_atual(saida_l, dev_l, ter_l):
+    """Saldo = entradas (devolução + terceiros) − saída (expedição), por produto."""
+    mapa = {}
+
+    def _slot(chave):
+        if chave not in mapa:
+            mapa[chave] = {
+                'codigo_produto': '',
+                'produto': '',
+                'codigo_barras': '',
+                'qtd_saida': 0.0,
+                'qtd_entrada_devolucao': 0.0,
+                'qtd_entrada_terceiros': 0.0,
+                'saldo': 0.0,
+            }
+        return mapa[chave]
+
+    for it in saida_l or []:
+        ch = _estoque_sp_chave_item(it)
+        if not ch:
+            continue
+        s = _slot(ch)
+        s['codigo_produto'] = s['codigo_produto'] or it.get('codigo_produto') or ''
+        s['produto'] = s['produto'] or it.get('produto') or ''
+        s['codigo_barras'] = s['codigo_barras'] or it.get('codigo_barras') or ''
+        s['qtd_saida'] += float(it.get('quantidade') or 0)
+
+    for it in dev_l or []:
+        ch = _estoque_sp_chave_item(it)
+        if not ch:
+            continue
+        s = _slot(ch)
+        s['codigo_produto'] = s['codigo_produto'] or it.get('codigo_produto') or ''
+        s['produto'] = s['produto'] or it.get('produto') or ''
+        s['codigo_barras'] = s['codigo_barras'] or it.get('codigo_barras') or ''
+        s['qtd_entrada_devolucao'] += float(it.get('quantidade') or 0)
+
+    for it in ter_l or []:
+        ch = _estoque_sp_chave_item(it)
+        if not ch:
+            continue
+        s = _slot(ch)
+        s['codigo_produto'] = s['codigo_produto'] or it.get('codigo_produto') or ''
+        s['produto'] = s['produto'] or it.get('produto') or ''
+        s['codigo_barras'] = s['codigo_barras'] or it.get('codigo_barras') or ''
+        s['qtd_entrada_terceiros'] += float(it.get('quantidade') or 0)
+
+    itens = []
+    for s in mapa.values():
+        s['saldo'] = s['qtd_entrada_devolucao'] + s['qtd_entrada_terceiros'] - s['qtd_saida']
+        if abs(s['saldo']) < 1e-9 and s['qtd_saida'] <= 0 and s['qtd_entrada_devolucao'] <= 0 and s['qtd_entrada_terceiros'] <= 0:
+            continue
+        itens.append(s)
+    itens.sort(key=lambda x: (-abs(x['saldo']), x.get('produto') or ''))
+    return {
+        'titulo': 'Estoque atual (entradas − saídas)',
+        'itens': itens,
+        'total_linhas': len(itens),
+        'total_saldo': sum(x['saldo'] for x in itens),
+        'total_saida': sum(x['qtd_saida'] for x in itens),
+        'total_entrada_devolucao': sum(x['qtd_entrada_devolucao'] for x in itens),
+        'total_entrada_terceiros': sum(x['qtd_entrada_terceiros'] for x in itens),
+    }
+
+
+def _estoque_sp_coletar_movimentos(conn, data_inicio='', data_fim=''):
     filtro_data_saida = ''
     filtro_data_dev = ''
     params_saida = []
@@ -8603,7 +8692,7 @@ def api_estoque_sp_resumo():
             WHERE COALESCE(fluxo, 'carregamento') = 'carregamento' {filtro_data_saida}
             GROUP BY codigo_interno, codigo_barras
             ORDER BY quantidade DESC
-            LIMIT 500''',
+            LIMIT 2000''',
         tuple(params_saida),
     ).fetchall()
 
@@ -8615,7 +8704,7 @@ def api_estoque_sp_resumo():
             WHERE COALESCE(fluxo, 'carregamento') = 'devolucao' {filtro_data_dev}
             GROUP BY codigo_interno, codigo_barras
             ORDER BY quantidade DESC
-            LIMIT 500''',
+            LIMIT 2000''',
         tuple(params_dev),
     ).fetchall()
 
@@ -8635,48 +8724,77 @@ def api_estoque_sp_resumo():
               AND COALESCE(i.quantidade_bipada, 0) > 0
             GROUP BY i.codigo_ean, i.codigo_produto
             ORDER BY quantidade DESC
-            LIMIT 500''',
+            LIMIT 2000''',
     ).fetchall()
 
-    def _rows_to_list(rows):
-        out = []
-        for r in rows or []:
-            d = dict(r) if hasattr(r, 'keys') else {}
-            if not d and r:
-                d = {'codigo_produto': r[0], 'produto': r[1], 'codigo_barras': r[2], 'quantidade': r[3], 'registros': r[4] if len(r) > 4 else 0}
-            out.append({
-                'codigo_produto': (d.get('codigo_produto') or '').strip(),
-                'produto': (d.get('produto') or '').strip(),
-                'codigo_barras': (d.get('codigo_barras') or '').strip(),
-                'quantidade': float(d.get('quantidade') or 0),
-                'registros': int(d.get('registros') or d.get('nfs') or 0),
-            })
-        return out
+    return (
+        _estoque_sp_rows_to_list(saida),
+        _estoque_sp_rows_to_list(entrada_dev),
+        _estoque_sp_rows_to_list(entrada_ter),
+    )
 
-    saida_l = _rows_to_list(saida)
-    dev_l = _rows_to_list(entrada_dev)
-    ter_l = _rows_to_list(entrada_ter)
-    conn.close()
-    return jsonify({
-        'saida': {
-            'titulo': 'Saída (expedição bipada)',
-            'itens': saida_l,
-            'total_quantidade': sum(x['quantidade'] for x in saida_l),
-            'total_linhas': len(saida_l),
-        },
-        'entrada_devolucao': {
-            'titulo': 'Entrada (devoluções bipadas)',
-            'itens': dev_l,
-            'total_quantidade': sum(x['quantidade'] for x in dev_l),
-            'total_linhas': len(dev_l),
-        },
-        'entrada_terceiros': {
-            'titulo': 'Entrada recebimento terceiros (sem MG, sem consumível SP)',
-            'itens': ter_l,
-            'total_quantidade': sum(x['quantidade'] for x in ter_l),
-            'total_linhas': len(ter_l),
-        },
-    })
+
+@app.route('/api/estoque-sp/tempo-real', methods=['GET'])
+def api_estoque_sp_tempo_real():
+    """Estoque atual em tempo real: saldo por produto (todas as movimentações)."""
+    conn = get_db()
+    _ensure_devolucao_nf_schema(conn)
+    _ensure_pg_produtos_bipados_fluxo(conn)
+    _ensure_terceiros_schema(conn)
+    try:
+        saida_l, dev_l, ter_l = _estoque_sp_coletar_movimentos(conn)
+        atual = _estoque_sp_calcular_atual(saida_l, dev_l, ter_l)
+        conn.close()
+        return jsonify({
+            'atualizado_em': _fmt_datahora_br(datetime.now(timezone.utc)),
+            'estoque_atual': atual,
+        })
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@app.route('/api/estoque-sp/resumo', methods=['GET'])
+def api_estoque_sp_resumo():
+    """Estoque SP: saída (carregamento), entrada devoluções, entrada terceiros (sem MG, sem consumível)."""
+    conn = get_db()
+    _ensure_devolucao_nf_schema(conn)
+    _ensure_pg_produtos_bipados_fluxo(conn)
+    _ensure_terceiros_schema(conn)
+    data_inicio = (request.args.get('data_inicio') or '').strip()
+    data_fim = (request.args.get('data_fim') or '').strip()
+    try:
+        saida_l, dev_l, ter_l = _estoque_sp_coletar_movimentos(conn, data_inicio, data_fim)
+        conn.close()
+        return jsonify({
+            'saida': {
+                'titulo': 'Saída (expedição bipada)',
+                'itens': saida_l,
+                'total_quantidade': sum(x['quantidade'] for x in saida_l),
+                'total_linhas': len(saida_l),
+            },
+            'entrada_devolucao': {
+                'titulo': 'Entrada (devoluções bipadas)',
+                'itens': dev_l,
+                'total_quantidade': sum(x['quantidade'] for x in dev_l),
+                'total_linhas': len(dev_l),
+            },
+            'entrada_terceiros': {
+                'titulo': 'Entrada recebimento terceiros (sem MG, sem consumível SP)',
+                'itens': ter_l,
+                'total_quantidade': sum(x['quantidade'] for x in ter_l),
+                'total_linhas': len(ter_l),
+            },
+        })
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
 
 
 @app.route('/api/devolucoes/painel', methods=['GET'])

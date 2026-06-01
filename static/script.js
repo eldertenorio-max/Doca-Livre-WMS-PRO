@@ -2041,6 +2041,9 @@ function initModulos() {
             btnAtualizar.style.display = id === 'carregamento' ? '' : 'none';
         }
         window._fluxoBipagemAtivo = id === 'devolucoes' ? 'devolucao' : 'carregamento';
+        if (id !== 'estoque-sp') {
+            _estoqueSpPararTimer();
+        }
         if (id === 'carregamento') {
             var activeTab = document.querySelector('.tab-content.active');
             if (activeTab && activeTab.id) loadTabData(activeTab.id);
@@ -2050,7 +2053,7 @@ function initModulos() {
                 loadPainelDevolucoes();
             }
         } else if (id === 'estoque-sp') {
-            loadEstoqueSpResumo();
+            _estoqueSpIniciarTempoReal();
         } else if (id === 'terceiros') {
             void _terceirosGarantirPrefetchLista();
             var painelTer = document.getElementById('terceiros-panel-painel');
@@ -2319,25 +2322,114 @@ async function loadConferenciaDevolucaoNf(nfId) {
     await loadConferencia(idViagem, { fluxo: 'devolucao', forcar: true, _listaOverride: lista, _modoDevolucaoNf: true });
 }
 
+window._estoqueSpTimer = null;
+window._estoqueSpAbaAtiva = 'estoque-atual';
+
+function _estoqueSpPararTimer() {
+    if (window._estoqueSpTimer) {
+        window.clearInterval(window._estoqueSpTimer);
+        window._estoqueSpTimer = null;
+    }
+}
+
+function _estoqueSpIniciarTempoReal() {
+    _estoqueSpPararTimer();
+    window._estoqueSpAbaAtiva = 'estoque-atual';
+    if (typeof _estoqueSpMostrarAba === 'function') {
+        _estoqueSpMostrarAba('estoque-atual');
+    }
+    loadEstoqueSpTempoReal();
+    window._estoqueSpTimer = window.setInterval(function() {
+        if (window._estoqueSpAbaAtiva === 'estoque-atual') {
+            loadEstoqueSpTempoReal(true);
+        }
+    }, 30000);
+}
+
 function initEstoqueSp() {
     var botoes = document.querySelectorAll('.estoque-sp-subtab[data-estoque-tab]');
+    var pAtual = document.getElementById('estoque-sp-panel-estoque-atual');
     var pSaida = document.getElementById('estoque-sp-panel-saida');
     var pDev = document.getElementById('estoque-sp-panel-entrada-devolucao');
     var pTer = document.getElementById('estoque-sp-panel-entrada-terceiros');
+    var filtrosData = document.getElementById('estoque-sp-filtros-data');
+    var lblAtualizado = document.getElementById('estoque-sp-atualizado-em');
     if (!botoes.length) return;
+
     function mostrar(tab) {
+        tab = tab || 'estoque-atual';
+        window._estoqueSpAbaAtiva = tab;
         botoes.forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-estoque-tab') === tab); });
+        if (pAtual) pAtual.classList.toggle('devolucoes-panel-active', tab === 'estoque-atual');
         if (pSaida) pSaida.classList.toggle('devolucoes-panel-active', tab === 'saida');
         if (pDev) pDev.classList.toggle('devolucoes-panel-active', tab === 'entrada-devolucao');
         if (pTer) pTer.classList.toggle('devolucoes-panel-active', tab === 'entrada-terceiros');
+        var ehAtual = tab === 'estoque-atual';
+        if (filtrosData) filtrosData.style.display = ehAtual ? 'none' : 'flex';
+        if (lblAtualizado) lblAtualizado.style.display = ehAtual ? 'block' : 'none';
+        if (ehAtual) {
+            loadEstoqueSpTempoReal();
+        } else {
+            loadEstoqueSpResumo();
+        }
     }
+    window._estoqueSpMostrarAba = mostrar;
+
     botoes.forEach(function(btn) {
         btn.addEventListener('click', function() {
-            mostrar(btn.getAttribute('data-estoque-tab') || 'saida');
+            mostrar(btn.getAttribute('data-estoque-tab') || 'estoque-atual');
         });
     });
     var btnAt = document.getElementById('btn-estoque-sp-atualizar');
     if (btnAt) btnAt.addEventListener('click', function() { loadEstoqueSpResumo(); });
+    mostrar('estoque-atual');
+}
+
+function _estoqueSpFmtNum(n) {
+    var v = Number(n) || 0;
+    if (Math.abs(v - Math.round(v)) < 1e-9) return String(Math.round(v));
+    return v.toFixed(2).replace(/\.?0+$/, '');
+}
+
+async function loadEstoqueSpTempoReal(silencioso) {
+    var tbody = document.getElementById('estoque-sp-tbody-atual');
+    if (!silencioso && tbody) {
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Carregando estoque atual...</td></tr>';
+    }
+    var data = await fetchAPI('/estoque-sp/tempo-real?_=' + Date.now());
+    if (!data || data.erro) {
+        if (!silencioso) {
+            showMessage((data && data.erro) || 'Erro ao carregar estoque em tempo real.', 'error');
+        }
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading">Erro ao carregar.</td></tr>';
+        return;
+    }
+    var ea = data.estoque_atual || {};
+    var elL = document.getElementById('estoque-sp-atual-linhas');
+    var elS = document.getElementById('estoque-sp-atual-saldo');
+    var elSa = document.getElementById('estoque-sp-atual-saida');
+    var elE = document.getElementById('estoque-sp-atual-entradas');
+    var lbl = document.getElementById('estoque-sp-atualizado-em');
+    if (elL) elL.textContent = String(ea.total_linhas || 0);
+    if (elS) elS.textContent = _estoqueSpFmtNum(ea.total_saldo || 0);
+    if (elSa) elSa.textContent = _estoqueSpFmtNum(ea.total_saida || 0);
+    var ent = (ea.total_entrada_devolucao || 0) + (ea.total_entrada_terceiros || 0);
+    if (elE) elE.textContent = _estoqueSpFmtNum(ent);
+    if (lbl) {
+        lbl.textContent = 'Atualizado em: ' + (data.atualizado_em || '—') + ' · próxima atualização em ~30s';
+        lbl.style.display = 'block';
+    }
+    if (!tbody) return;
+    var itens = ea.itens || [];
+    if (!itens.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Nenhum movimento registrado ainda.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = itens.map(function(it) {
+        var saldo = Number(it.saldo) || 0;
+        var cls = saldo < 0 ? ' style="color:#c62828;font-weight:bold;"' : (saldo > 0 ? ' style="color:#2e7d32;font-weight:bold;"' : '');
+        return '<tr><td>' + escHtml(it.codigo_produto || '-') + '</td><td>' + escHtml(it.produto || '-') + '</td><td>' + escHtml(it.codigo_barras || '-') + '</td><td>' + escHtml(_estoqueSpFmtNum(it.qtd_saida)) + '</td><td>' + escHtml(_estoqueSpFmtNum(it.qtd_entrada_devolucao)) + '</td><td>' + escHtml(_estoqueSpFmtNum(it.qtd_entrada_terceiros)) + '</td><td' + cls + '>' + escHtml(_estoqueSpFmtNum(saldo)) + '</td></tr>';
+    }).join('');
 }
 
 async function loadEstoqueSpResumo() {

@@ -2389,14 +2389,14 @@
             </div>
         </div>
 
-        <div id="modulo-estoque-sp" class="modulo-area modulo-devolucoes" hidden aria-label="Estoque SP">
+        <div id="modulo-estoque-sp" class="modulo-area modulo-devolucoes" hidden aria-label="Estoque SP em tempo real">
             <div class="devolucoes-conteudo">
                 <div class="painel-titulo">
                     <span class="painel-titulo-icon">📦</span>
-                    <h2 class="painel-titulo-texto">Estoque SP</h2>
-                    <p class="painel-titulo-sub">Saída (expedição), entrada (devoluções) e entrada de recebimento terceiros sem MG e sem consumível SP</p>
+                    <h2 class="painel-titulo-texto">Estoque SP em tempo real</h2>
+                    <p class="painel-titulo-sub">Saldo atual (entradas − saídas) atualizado automaticamente; demais abas com movimentações detalhadas e filtro por data</p>
                 </div>
-                <div class="form-row" style="margin-bottom: 16px; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
+                <div id="estoque-sp-filtros-data" class="form-row" style="margin-bottom: 16px; flex-wrap: wrap; gap: 12px; align-items: flex-end; display: none;">
                     <div class="form-group">
                         <label for="estoque-sp-data-inicio">Data início (saída/dev.)</label>
                         <input type="date" id="estoque-sp-data-inicio">
@@ -2407,12 +2407,39 @@
                     </div>
                     <button type="button" class="btn btn-primary" id="btn-estoque-sp-atualizar">🔄 Atualizar</button>
                 </div>
-                <nav class="tabs devolucoes-subtabs" aria-label="Abas Estoque SP">
-                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab active" data-estoque-tab="saida">SAÍDA</button>
+                <p id="estoque-sp-atualizado-em" class="info-text estoque-sp-atualizado-em" style="margin: 0 0 12px 0; display: none;"></p>
+                <nav class="tabs devolucoes-subtabs" aria-label="Abas Estoque SP em tempo real">
+                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab active" data-estoque-tab="estoque-atual">ESTOQUE ATUAL</button>
+                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="saida">SAÍDA</button>
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="entrada-devolucao">ENTRADA (DEVOLUÇÕES)</button>
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="entrada-terceiros">ENTRADA TERCEIROS</button>
                 </nav>
-                <div id="estoque-sp-panel-saida" class="devolucoes-panel devolucoes-panel-active">
+                <div id="estoque-sp-panel-estoque-atual" class="devolucoes-panel devolucoes-panel-active">
+                    <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Saldo = devoluções + recebimento terceiros (sem MG/consumível) − expedição bipada. Atualização automática a cada 30 segundos.</p>
+                    <div class="stats-grid" style="margin-bottom: 16px;">
+                        <div class="stat-card"><h3>Itens com saldo</h3><p class="stat-number" id="estoque-sp-atual-linhas">0</p></div>
+                        <div class="stat-card"><h3>Saldo total</h3><p class="stat-number" id="estoque-sp-atual-saldo">0</p></div>
+                        <div class="stat-card"><h3>Total saída</h3><p class="stat-number" id="estoque-sp-atual-saida">0</p></div>
+                        <div class="stat-card"><h3>Total entradas</h3><p class="stat-number" id="estoque-sp-atual-entradas">0</p></div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Cód. produto</th>
+                                    <th>Produto</th>
+                                    <th>Cód. barras</th>
+                                    <th>Saída</th>
+                                    <th>Ent. devolução</th>
+                                    <th>Ent. terceiros</th>
+                                    <th>Saldo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="estoque-sp-tbody-atual"><tr><td colspan="7" class="loading">Carregando estoque atual...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="estoque-sp-panel-saida" class="devolucoes-panel">
                     <div class="stats-grid" style="margin-bottom: 16px;">
                         <div class="stat-card"><h3>Itens (linhas)</h3><p class="stat-number" id="estoque-sp-saida-linhas">0</p></div>
                         <div class="stat-card"><h3>Quantidade total</h3><p class="stat-number" id="estoque-sp-saida-qtd">0</p></div>

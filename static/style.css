@@ -319,6 +319,12 @@ body {
     font-size: 14px;
 }
 
+.estoque-sp-atualizado-em {
+    font-size: 13px;
+    color: #1565c0;
+    font-style: italic;
+}
+
 .devolucoes-subtabs {
     margin-bottom: 16px;
 }
