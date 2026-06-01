@@ -985,6 +985,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initConferenciaSessaoModais();
     initBaixadosRavexFiltros('carregamento');
     initBaixadosRavexFiltros('devolucao');
+    initBaixadosRavexExcluir('carregamento');
+    initBaixadosRavexExcluir('devolucao');
     window._conferenciaSalvarSomenteNoComprovante = true;
     initCadastroRapidoCodigoBarras();
     // Primeira carga após um tick para a tela pintar antes (resposta mais rápida percebida)
@@ -2785,14 +2787,15 @@ async function loadBaixadosRavex(scope) {
     const tbody = _baixadosRavexEl('tbody-baixa-ravex', scope);
     if (!tbody) return;
     if (typeof initBaixadosRavexFiltros === 'function') initBaixadosRavexFiltros(scope);
+    if (typeof initBaixadosRavexExcluir === 'function') initBaixadosRavexExcluir(scope);
     var jaTinhaDados = tbody.querySelector('tr:not(.loading)');
     if (!jaTinhaDados) {
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Carregando...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando...</td></tr>';
     }
     var qs = (typeof _baixadosRavexQueryFiltros === 'function') ? _baixadosRavexQueryFiltros(scope) : '?limit=500';
     const resp = await fetchAPI('/ravex/importacoes' + qs);
     if (!resp || resp.erro) {
-        tbody.innerHTML = '<tr><td colspan="8" class="loading" style="color:#c62828;">' + (resp && resp.erro ? escapeHtml(resp.erro) : 'Erro ao carregar histórico') + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="loading" style="color:#c62828;">' + (resp && resp.erro ? escapeHtml(resp.erro) : 'Erro ao carregar histórico') + '</td></tr>';
         return;
     }
     if (typeof _baixadosRavexPreencherUsuarios === 'function') {
@@ -2802,6 +2805,10 @@ async function loadBaixadosRavex(scope) {
         _baixadosRavexAtualizarResumoFiltro(Array.isArray(resp.rows) ? resp.rows.length : 0, scope);
     }
     const rows = Array.isArray(resp.rows) ? resp.rows : [];
+    if (!window._baixadosRavexRowsById) window._baixadosRavexRowsById = {};
+    rows.forEach(function(r) {
+        if (r && r.id != null && r.id !== '') window._baixadosRavexRowsById[String(r.id)] = r;
+    });
     if (!rows.length) {
         var msgVazio = (typeof _baixadosRavexTemFiltroAtivo === 'function' && _baixadosRavexTemFiltroAtivo(scope))
             ? 'Nenhum download encontrado com os filtros aplicados.'
@@ -2811,7 +2818,7 @@ async function loadBaixadosRavex(scope) {
                 ? ' Os romaneios importados do Ravex alimentam as devoluções.'
                 : ' Importe pelo menos uma viagem na aba IMPORTAR RAVEX.';
         }
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">' + escapeHtml(msgVazio) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(msgVazio) + '</td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(r => {
@@ -2822,6 +2829,10 @@ async function loadBaixadosRavex(scope) {
         if (st === 'DUPLICADO') {
             stHtml = '<span style="color:#e65100;font-weight:700;">' + stHtml + '</span>';
         }
+        var importId = r.id != null && r.id !== '' ? String(r.id) : '';
+        var acaoHtml = importId
+            ? '<button type="button" class="btn btn-secondary btn-sm baixa-ravex-btn-excluir" data-baixa-ravex-import-id="' + escapeHtml(importId) + '" title="Excluir viagem/roteiro e todos os dados relacionados">🗑️ Excluir</button>'
+            : '<span class="baixa-ravex-sem-excluir" title="Registro legado sem ID de importação">—</span>';
         return '<tr>'
             + '<td>' + escapeHtml(String(r.criado_em || '')) + '</td>'
             + '<td>' + escapeHtml(String(r.tipo || '')) + '</td>'
@@ -2831,8 +2842,75 @@ async function loadBaixadosRavex(scope) {
             + '<td><strong>' + escapeHtml(String(r.total_itens || 0)) + '</strong></td>'
             + '<td>' + escapeHtml(String(r.usuario || '')) + '</td>'
             + '<td>' + (erros ? ('<span style="color:#c62828;font-weight:700;">' + erros + '</span>') : '0') + '</td>'
+            + '<td class="baixa-ravex-acoes">' + acaoHtml + '</td>'
             + '</tr>';
     }).join('');
+}
+
+function _baixadosRavexResumoExclusao(row) {
+    var tipo = String(row.tipo || '');
+    var params = row.parametros || {};
+    var viagens = Array.isArray(params.viagens_importadas) ? params.viagens_importadas : [];
+    var idV = params.id_viagem ? String(params.id_viagem) : '';
+    if (idV && viagens.indexOf(idV) < 0) viagens.unshift(idV);
+    var nV = parseInt(row.viagens_processadas, 10) || viagens.length || (idV ? 1 : 0);
+    var linhas = [
+        'Excluir esta importação e TODOS os dados ligados à(s) viagem(ns)?',
+        '',
+        'Serão apagados: romaneio, histórico Ravex, itens bipados, placa/motorista, responsáveis, período de bipagem, divergências e cadastro de roteiro.',
+        '',
+        'Tipo: ' + tipo + ' | Viagens: ' + nV + ' | Itens: ' + (row.total_itens || 0)
+    ];
+    if (viagens.length) {
+        var preview = viagens.slice(0, 8).join(', ');
+        if (viagens.length > 8) preview += '… (+' + (viagens.length - 8) + ')';
+        linhas.push('IDs viagem: ' + preview);
+    } else if (params.id_roteiro || params.id_informado) {
+        linhas.push('ID informado: ' + (params.id_roteiro || params.id_informado));
+    }
+    linhas.push('', 'Esta ação não pode ser desfeita.');
+    return linhas.join('\n');
+}
+
+async function excluirImportacaoRavex(importId, row, scope) {
+    importId = String(importId || '').trim();
+    if (!importId) return;
+    var msg = row ? _baixadosRavexResumoExclusao(row) : ('Excluir importação #' + importId + ' e todos os dados da viagem/roteiro?\n\nEsta ação não pode ser desfeita.');
+    if (!window.confirm(msg)) return;
+    var btn = document.querySelector('.baixa-ravex-btn-excluir[data-baixa-ravex-import-id="' + importId + '"]');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Excluindo…';
+    }
+    var resp = await fetchAPI('/ravex/importacoes/' + encodeURIComponent(importId), { method: 'DELETE' });
+    if (!resp || resp.erro || !resp.ok) {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '🗑️ Excluir';
+        }
+        showMessage((resp && resp.erro) ? resp.erro : 'Erro ao excluir importação.', 'error');
+        return;
+    }
+    var n = resp.total_viagens != null ? resp.total_viagens : (Array.isArray(resp.viagens_excluidas) ? resp.viagens_excluidas.length : 0);
+    showMessage('Importação excluída' + (n ? (' (' + n + ' viagem' + (n === 1 ? '' : 'ns') + ')') : '') + '.', 'success');
+    loadBaixadosRavex(scope || window._baixadosRavexScopeAtivo || 'carregamento');
+}
+
+function initBaixadosRavexExcluir(scope) {
+    scope = _baixadosRavexScope(scope);
+    if (!window._baixadosRavexExcluirInitFlags) window._baixadosRavexExcluirInitFlags = {};
+    if (window._baixadosRavexExcluirInitFlags[scope]) return;
+    var tbody = _baixadosRavexEl('tbody-baixa-ravex', scope);
+    if (!tbody) return;
+    window._baixadosRavexExcluirInitFlags[scope] = true;
+    tbody.addEventListener('click', function(e) {
+        var btn = e.target.closest('.baixa-ravex-btn-excluir');
+        if (!btn || btn.disabled) return;
+        e.preventDefault();
+        var importId = btn.getAttribute('data-baixa-ravex-import-id');
+        var row = (window._baixadosRavexRowsById && importId) ? window._baixadosRavexRowsById[importId] : null;
+        excluirImportacaoRavex(importId, row, scope);
+    });
 }
 
 function initBaixadosRavexFiltros(scope) {

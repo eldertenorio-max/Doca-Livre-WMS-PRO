@@ -1871,6 +1871,25 @@ h2 {
     margin: 0 0 10px 0;
 }
 
+.baixa-ravex-acoes {
+    white-space: nowrap;
+    min-width: 96px;
+}
+
+.baixa-ravex-btn-excluir {
+    color: #c62828 !important;
+    border-color: #ef9a9a !important;
+}
+
+.baixa-ravex-btn-excluir:hover:not(:disabled) {
+    background: #ffebee !important;
+}
+
+.baixa-ravex-sem-excluir {
+    color: #999;
+    font-size: 12px;
+}
+
 .relatorios-secao { max-width: 900px; }
 .relatorios-lista { display: flex; flex-direction: column; gap: 14px; }
 .relatorio-item { display: flex; flex-direction: column; gap: 4px; }

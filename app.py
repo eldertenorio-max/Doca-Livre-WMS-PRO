@@ -4844,6 +4844,230 @@ def _listar_baixados_ravex_de_romaneio(conn, limit=200):
     return out
 
 
+def _ravex_normalizar_id_viagem_lista(ids):
+    out = []
+    vistos = set()
+    for raw in ids or []:
+        id_n = str(_normalizar_id_viagem(raw) or raw or '').strip()
+        if id_n and id_n not in vistos:
+            vistos.add(id_n)
+            out.append(id_n)
+    return out
+
+
+def _ravex_viagens_por_janela_importacao(conn, dataset_id, criado_em, limite=None):
+    """Fallback: viagens cujo romaneio foi gravado na mesma execução da importação."""
+    if not dataset_id or not criado_em:
+        return []
+    ds = str(dataset_id)
+    try:
+        rows = conn.execute(
+            """SELECT DISTINCT TRIM(COALESCE(id_viagem::text, '')) AS id_v
+               FROM romaneio_por_item
+               WHERE dataset_id = ?
+                 AND importado_em IS NOT NULL
+                 AND importado_em >= (?::timestamptz - INTERVAL '3 hours')
+                 AND importado_em <= (?::timestamptz + INTERVAL '3 minutes')
+                 AND TRIM(COALESCE(id_viagem::text, '')) != ''
+               ORDER BY id_v""",
+            (ds, criado_em, criado_em),
+        ).fetchall()
+    except Exception:
+        return []
+    ids = []
+    for r in rows or []:
+        id_v = str((r.get('id_v') if hasattr(r, 'get') else (r[0] if r else '')) or '').strip()
+        if id_v:
+            ids.append(id_v)
+    if limite and len(ids) > int(limite):
+        ids = ids[: int(limite)]
+    return ids
+
+
+def _ravex_resolver_viagens_da_importacao(conn, import_row):
+    """Descobre quais id_viagem serão apagados ao excluir um registro de ravex_importacoes."""
+    def _get(k, idx):
+        return (import_row.get(k) if hasattr(import_row, 'get') else (import_row[idx] if hasattr(import_row, '__getitem__') and len(import_row) > idx else None))
+
+    params = _get('parametros', 3) or {}
+    if isinstance(params, str):
+        try:
+            params = json.loads(params)
+        except Exception:
+            params = {}
+    if not isinstance(params, dict):
+        params = {}
+
+    dataset_id = _get('dataset_id', 1)
+    tipo = str(_get('tipo', 2) or '').strip().lower()
+    criado_em = _get('criado_em', 8)
+    viagens_proc = int(_get('viagens_processadas', 4) or 0)
+
+    viagens = set()
+    for key in ('viagens_importadas', 'id_viagens'):
+        viagens.update(_ravex_normalizar_id_viagem_lista(params.get(key)))
+
+    id_v = str(params.get('id_viagem') or '').strip()
+    if id_v:
+        viagens.add(str(_normalizar_id_viagem(id_v) or id_v).strip())
+
+    if not viagens:
+        id_r = str(params.get('id_roteiro') or params.get('id_informado') or '').strip()
+        if id_r and dataset_id:
+            try:
+                row_ir = conn.execute(
+                    """SELECT TRIM(COALESCE(id_viagem::text, '')) AS id_v
+                       FROM id_roteiros
+                       WHERE dataset_id = ?
+                         AND (TRIM(COALESCE(id_roteiro::text, '')) = ? OR TRIM(COALESCE(id_viagem::text, '')) = ?)
+                       LIMIT 1""",
+                    (str(dataset_id), id_r, id_r),
+                ).fetchone()
+                if row_ir:
+                    id_v2 = str((row_ir.get('id_v') if hasattr(row_ir, 'get') else row_ir[0]) or '').strip()
+                    if id_v2:
+                        viagens.add(id_v2)
+            except Exception:
+                pass
+            if not viagens:
+                try:
+                    row_rm = conn.execute(
+                        """SELECT TRIM(COALESCE(id_viagem::text, '')) AS id_v
+                           FROM romaneio_por_item
+                           WHERE dataset_id = ?
+                             AND (TRIM(COALESCE(id_roteiro::text, '')) = ? OR TRIM(COALESCE(id_viagem::text, '')) = ?)
+                           LIMIT 1""",
+                        (str(dataset_id), id_r, id_r),
+                    ).fetchone()
+                    if row_rm:
+                        id_v3 = str((row_rm.get('id_v') if hasattr(row_rm, 'get') else row_rm[0]) or '').strip()
+                        if id_v3:
+                            viagens.add(id_v3)
+                except Exception:
+                    pass
+
+    if not viagens and tipo in ('periodo', 'lista', 'romaneio') and dataset_id and criado_em:
+        limite = viagens_proc if viagens_proc > 0 else None
+        viagens.update(_ravex_viagens_por_janela_importacao(conn, dataset_id, criado_em, limite))
+
+    return sorted(v for v in viagens if v)
+
+
+def _excluir_dados_viagem_ravex(conn, dataset_id, id_viagem, id_roteiros_extra=None):
+    """Remove romaneio, bipagem, metadados e roteiro ligados a uma viagem importada."""
+    id_norm = str(_normalizar_id_viagem(id_viagem) or id_viagem or '').strip()
+    if not id_norm:
+        return {}
+    ds = str(dataset_id) if dataset_id else None
+    removidos = {}
+
+    def _exec_del(sql, params, chave):
+        try:
+            cur = conn.execute(sql, params)
+            n = getattr(cur, 'rowcount', None)
+            removidos[chave] = int(n) if n is not None and n >= 0 else 0
+        except Exception:
+            removidos[chave] = 0
+
+    if ds:
+        _exec_del(
+            """DELETE FROM romaneio_por_item
+               WHERE dataset_id = ? AND TRIM(COALESCE(id_viagem::text, '')) = ?""",
+            (ds, id_norm),
+            'romaneio_por_item',
+        )
+    else:
+        _exec_del(
+            """DELETE FROM romaneio_por_item
+               WHERE TRIM(COALESCE(id_viagem::text, '')) = ?""",
+            (id_norm,),
+            'romaneio_por_item',
+        )
+
+    _exec_del(
+        """DELETE FROM produtos_bipados
+           WHERE TRIM(COALESCE(id_viagem::text, '')) = ?""",
+        (id_norm,),
+        'produtos_bipados',
+    )
+    _exec_del('DELETE FROM viagem_placa WHERE id_viagem = ?', (id_norm,), 'viagem_placa')
+    _exec_del('DELETE FROM viagem_motorista WHERE id_viagem = ?', (id_norm,), 'viagem_motorista')
+    _exec_del('DELETE FROM viagem_responsaveis WHERE id_viagem = ?', (id_norm,), 'viagem_responsaveis')
+    _exec_del('DELETE FROM divergencia_motivo WHERE id_viagem = ?', (id_norm,), 'divergencia_motivo')
+    try:
+        _ensure_viagem_periodo_bipagem_table(conn)
+        tbl_per = 'public.viagem_periodo_bipagem' if getattr(conn, 'kind', None) == 'pg' else 'viagem_periodo_bipagem'
+        _exec_del(f'DELETE FROM {tbl_per} WHERE id_viagem = ?', (id_norm,), 'viagem_periodo_bipagem')
+    except Exception:
+        removidos['viagem_periodo_bipagem'] = 0
+
+    extras = set(str(x).strip() for x in (id_roteiros_extra or []) if str(x).strip())
+    if ds:
+        if extras:
+            ph = ','.join(['?'] * len(extras))
+            _exec_del(
+                f"""DELETE FROM id_roteiros
+                    WHERE dataset_id = ?
+                      AND (TRIM(COALESCE(id_viagem::text, '')) = ?
+                           OR TRIM(COALESCE(id_roteiro::text, '')) IN ({ph}))""",
+                tuple([ds, id_norm] + sorted(extras)),
+                'id_roteiros',
+            )
+        else:
+            _exec_del(
+                """DELETE FROM id_roteiros
+                   WHERE dataset_id = ? AND TRIM(COALESCE(id_viagem::text, '')) = ?""",
+                (ds, id_norm),
+                'id_roteiros',
+            )
+
+    return removidos
+
+
+def _excluir_importacao_ravex_por_id(conn, import_id):
+    row = conn.execute(
+        """SELECT id, dataset_id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em
+           FROM public.ravex_importacoes
+           WHERE id = ?""",
+        (int(import_id),),
+    ).fetchone()
+    if not row:
+        return None, {'erro': 'Importação não encontrada.'}
+
+    params = row.get('parametros') if hasattr(row, 'get') else None
+    if isinstance(params, str):
+        try:
+            params = json.loads(params)
+        except Exception:
+            params = {}
+    if not isinstance(params, dict):
+        params = {}
+
+    dataset_id = row.get('dataset_id') if hasattr(row, 'get') else None
+    viagens = _ravex_resolver_viagens_da_importacao(conn, row)
+    id_roteiro_extra = str(params.get('id_roteiro') or params.get('id_informado') or '').strip() or None
+
+    detalhes_viagens = []
+    totais = {}
+    for id_v in viagens:
+        extras = [id_roteiro_extra] if id_roteiro_extra else []
+        rem = _excluir_dados_viagem_ravex(conn, dataset_id, id_v, extras)
+        detalhes_viagens.append({'id_viagem': id_v, 'removidos': rem})
+        for k, v in rem.items():
+            totais[k] = totais.get(k, 0) + int(v or 0)
+
+    conn.execute('DELETE FROM public.ravex_importacoes WHERE id = ?', (int(import_id),))
+    totais['ravex_importacoes'] = 1
+    return {
+        'ok': True,
+        'import_id': int(import_id),
+        'viagens_excluidas': viagens,
+        'total_viagens': len(viagens),
+        'removidos': totais,
+        'detalhes': detalhes_viagens,
+    }, None
+
+
 def _normalizar_data_para_ravex(s):
     """Converte data para YYYY-MM-DD. Aceita YYYY-MM-DD, DD/MM/YYYY ou DD-MM-YYYY."""
     s = (s or '').strip()[:10]
@@ -5584,7 +5808,11 @@ def api_ravex_importar_romaneio():
             dataset_id=ds,
             tipo='id_unico',
             status='OK',
-            parametros={'id_viagem': id_viagem, 'id_roteiro': id_roteiro or id_roteiro_in or id_unico},
+            parametros={
+                'id_viagem': id_viagem,
+                'id_roteiro': id_roteiro or id_roteiro_in or id_unico,
+                'viagens_importadas': [str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()],
+            },
             viagens_processadas=1,
             total_itens=len(linhas),
             erros=[],
@@ -5598,7 +5826,11 @@ def api_ravex_importar_romaneio():
                 dataset_id=ds,
                 tipo='id_unico',
                 status='ERRO',
-                parametros={'id_viagem': id_viagem, 'id_roteiro': id_roteiro or id_roteiro_in or id_unico},
+                parametros={
+                'id_viagem': id_viagem,
+                'id_roteiro': id_roteiro or id_roteiro_in or id_unico,
+                'viagens_importadas': [str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()],
+            },
                 viagens_processadas=0,
                 total_itens=0,
                 erros=[{'erro': str(e)}],
@@ -5654,6 +5886,7 @@ def api_ravex_sincronizar_periodo():
     total_itens = 0
     erros = []
     pulados_duplicados = []
+    viagens_importadas = []
     forcar = _ravex_parse_forcar_reimportar(data)
     try:
         # Registrar todos os roteiros do período na tabela id_roteiros
@@ -5727,6 +5960,9 @@ def api_ravex_sincronizar_periodo():
                 n_gravados = _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas)
                 viagens_processadas += 1
                 total_itens += n_gravados
+                id_norm_v = str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()
+                if id_norm_v:
+                    viagens_importadas.append(id_norm_v)
             except Exception as e:
                 erros.append({'id_viagem': id_viagem, 'erro': str(e)})
         _registrar_importacao_ravex(
@@ -5738,6 +5974,7 @@ def api_ravex_sincronizar_periodo():
                 'data_inicio': data_inicio,
                 'data_fim': data_fim,
                 'pulados_duplicados': len(pulados_duplicados),
+                'viagens_importadas': viagens_importadas,
             },
             viagens_processadas=viagens_processadas,
             total_itens=total_itens,
@@ -5810,6 +6047,7 @@ def api_ravex_importar_lista():
     total_itens = 0
     erros = []
     pulados_duplicados = []
+    viagens_importadas = []
     ids_vistos = set()
     forcar = _ravex_parse_forcar_reimportar(data)
     try:
@@ -5884,6 +6122,9 @@ def api_ravex_importar_lista():
                 n_gravados = _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas)
                 viagens_processadas += 1
                 total_itens += n_gravados
+                id_norm_v = str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()
+                if id_norm_v:
+                    viagens_importadas.append(id_norm_v)
             except Exception as e:
                 erros.append({'id': id_unico, 'erro': str(e)})
         _registrar_importacao_ravex(
@@ -5891,7 +6132,11 @@ def api_ravex_importar_lista():
             dataset_id=ds,
             tipo='lista',
             status='OK' if not erros else 'OK_COM_ERROS',
-            parametros={'ids_recebidos': len(ids), 'pulados_duplicados': len(pulados_duplicados)},
+            parametros={
+                'ids_recebidos': len(ids),
+                'pulados_duplicados': len(pulados_duplicados),
+                'viagens_importadas': viagens_importadas,
+            },
             viagens_processadas=viagens_processadas,
             total_itens=total_itens,
             erros=erros,
@@ -6026,6 +6271,34 @@ def api_ravex_listar_importacoes():
                 'rows': [],
             }), 500
         return jsonify({'erro': err, 'rows': []}), 500
+
+
+@app.route('/api/ravex/importacoes/<int:import_id>', methods=['DELETE'])
+def api_ravex_excluir_importacao(import_id):
+    """Exclui importação do histórico e apaga viagem/roteiro com romaneio, bipagem e metadados."""
+    if not _usa_banco_para_dados():
+        return jsonify({'erro': 'Configure DATABASE_URL para excluir importações.'}), 400
+    conn = get_db()
+    try:
+        if getattr(conn, 'kind', None) != 'pg':
+            conn.close()
+            return jsonify({'erro': 'Banco não é Postgres.'}), 400
+        resultado, erro = _excluir_importacao_ravex_por_id(conn, import_id)
+        if erro:
+            conn.close()
+            status = 404 if 'não encontrada' in str(erro.get('erro', '')).lower() else 400
+            return jsonify(erro), status
+        conn.commit()
+        conn.close()
+        return jsonify(resultado)
+    except Exception as e:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
 
 def _qual_coluna_filtro(header_str, tipo):
     """Retorna True se o cabeçalho corresponde ao tipo de filtro (data, pedido, nota_fiscal, cliente)."""
