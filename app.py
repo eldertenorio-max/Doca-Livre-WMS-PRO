@@ -4383,6 +4383,128 @@ def _ravex_parse_forcar_reimportar(data):
     return bool(data.get('forcar_reimportar') or data.get('forcar') or data.get('reimportar'))
 
 
+def _ravex_id_input_ja_baixado(conn, dataset_id, id_input):
+    """Verifica se o ID informado (roteiro ou viagem) já foi baixado no dataset ativo."""
+    id_norm = str(id_input or '').strip()
+    if not id_norm or not dataset_id:
+        return False, None
+    info = None
+    try:
+        row = conn.execute(
+            """SELECT COUNT(*)::int AS n, MAX(importado_em) AS ultimo,
+                      MAX(TRIM(COALESCE(id_viagem::text, ''))) AS id_viagem,
+                      MAX(TRIM(COALESCE(id_roteiro::text, ''))) AS id_roteiro
+               FROM romaneio_por_item
+               WHERE dataset_id = ?
+                 AND (TRIM(COALESCE(id_viagem::text, '')) = ?
+                      OR TRIM(COALESCE(id_roteiro::text, '')) = ?)""",
+            (str(dataset_id), id_norm, id_norm),
+        ).fetchone()
+    except Exception:
+        row = conn.execute(
+            """SELECT COUNT(*) AS n, MAX(importado_em) AS ultimo,
+                      MAX(TRIM(COALESCE(id_viagem::text, ''))) AS id_viagem,
+                      MAX(TRIM(COALESCE(id_roteiro::text, ''))) AS id_roteiro
+               FROM romaneio_por_item
+               WHERE dataset_id = ?
+                 AND (TRIM(COALESCE(id_viagem::text, '')) = ?
+                      OR TRIM(COALESCE(id_roteiro::text, '')) = ?)""",
+            (str(dataset_id), id_norm, id_norm),
+        ).fetchone()
+    n = 0
+    ultimo = None
+    id_viagem = ''
+    id_roteiro = ''
+    if row:
+        n = int((row.get('n') if hasattr(row, 'get') else row[0]) or 0)
+        ultimo = row.get('ultimo') if hasattr(row, 'get') else (row[1] if len(row) > 1 else None)
+        id_viagem = str((row.get('id_viagem') if hasattr(row, 'get') else (row[2] if len(row) > 2 else '')) or '').strip()
+        id_roteiro = str((row.get('id_roteiro') if hasattr(row, 'get') else (row[3] if len(row) > 3 else '')) or '').strip()
+    if n > 0:
+        info = {
+            'itens_romaneio': n,
+            'importado_em': ultimo,
+            'fonte': 'romaneio',
+            'id_viagem': id_viagem,
+            'id_roteiro': id_roteiro,
+            'id_informado': id_norm,
+        }
+        return True, info
+    try:
+        hist = conn.execute(
+            """SELECT criado_em, total_itens, parametros
+               FROM ravex_importacoes
+               WHERE dataset_id = ? AND status IN ('OK', 'OK_COM_ERROS', 'DUPLICADO')
+                 AND (
+                   TRIM(COALESCE(parametros->>'id_viagem', '')) = ?
+                   OR TRIM(COALESCE(parametros->>'id_roteiro', '')) = ?
+                   OR TRIM(COALESCE(parametros->>'id_informado', '')) = ?
+                 )
+               ORDER BY criado_em DESC
+               LIMIT 1""",
+            (str(dataset_id), id_norm, id_norm, id_norm),
+        ).fetchone()
+    except Exception:
+        hist = None
+    if hist:
+        criado = hist.get('criado_em') if hasattr(hist, 'get') else (hist[0] if hist else None)
+        total_h = int((hist.get('total_itens') if hasattr(hist, 'get') else (hist[1] if len(hist) > 1 else 0)) or 0)
+        params = hist.get('parametros') if hasattr(hist, 'get') else (hist[2] if len(hist) > 2 else None)
+        if isinstance(params, str):
+            try:
+                params = json.loads(params)
+            except Exception:
+                params = {}
+        if not isinstance(params, dict):
+            params = {}
+        info = {
+            'itens_romaneio': 0,
+            'importado_em': criado,
+            'total_itens_historico': total_h,
+            'fonte': 'historico',
+            'id_viagem': str(params.get('id_viagem') or '').strip(),
+            'id_roteiro': str(params.get('id_roteiro') or '').strip(),
+            'id_informado': id_norm,
+        }
+        return True, info
+    id_viagem_norm = str(_normalizar_id_viagem(id_norm) or id_norm).strip()
+    if id_viagem_norm and id_viagem_norm != id_norm:
+        ja_v, info_v = _ravex_viagem_ja_baixada(conn, dataset_id, id_viagem_norm)
+        if ja_v:
+            if info_v and isinstance(info_v, dict):
+                info_v = dict(info_v)
+                info_v['id_informado'] = id_norm
+            return True, info_v
+    return False, None
+
+
+def _ravex_mensagem_ja_baixado(id_input, info):
+    """Texto de aviso quando ID de roteiro/viagem já foi importado."""
+    id_inf = str(id_input or '').strip()
+    info = info or {}
+    id_v = str(info.get('id_viagem') or '').strip()
+    id_r = str(info.get('id_roteiro') or '').strip()
+    imp_em = info.get('importado_em')
+    imp_txt = _formatar_criado_em_baixados_ravex(imp_em) if imp_em else ''
+    if id_inf == id_v or not id_r:
+        msg = 'Este ID de viagem (%s) já foi baixado do Ravex.' % (id_v or id_inf)
+    elif id_inf == id_r:
+        msg = 'Este ID de roteiro (%s) já foi baixado do Ravex.' % id_r
+    else:
+        msg = 'Este ID (%s) já foi baixado do Ravex.' % id_inf
+    if id_v and id_r and id_inf not in (id_v, id_r):
+        msg += ' (viagem %s, roteiro %s).' % (id_v, id_r)
+    elif id_v and id_inf != id_v:
+        msg += ' Viagem associada: %s.' % id_v
+    if imp_txt:
+        msg += ' Última importação: %s.' % imp_txt
+    n_it = int(info.get('itens_romaneio') or 0)
+    if n_it:
+        msg += ' Itens no romaneio: %s.' % n_it
+    msg += ' Para baixar de novo, marque «Forçar reimportação» abaixo.'
+    return msg
+
+
 def _ravex_viagem_ja_baixada(conn, dataset_id, id_viagem):
     """Retorna (True, info) se a viagem já consta no romaneio ou em importação Ravex OK anterior."""
     id_norm = str(_normalizar_id_viagem(id_viagem) or id_viagem or '').strip()
@@ -4467,12 +4589,10 @@ def _ravex_resposta_duplicado(conn, dataset_id, tipo, id_viagem, id_roteiro, inf
         conn.close()
     except Exception:
         pass
-    imp_em = info.get('importado_em') if info else None
-    imp_txt = _formatar_criado_em_baixados_ravex(imp_em) if imp_em else ''
-    msg = 'Esta viagem já foi baixada do Ravex (ID viagem %s).' % id_viagem
-    if imp_txt:
-        msg += ' Última importação: %s.' % imp_txt
-    msg += ' Para baixar de novo, marque «Forçar reimportação» ou envie forcar_reimportar: true na API.'
+    msg = _ravex_mensagem_ja_baixado(
+        id_input or id_viagem,
+        dict(info or {}, id_viagem=id_viagem, id_roteiro=id_roteiro),
+    )
     return jsonify({
         'ok': False,
         'duplicado': True,
@@ -5061,6 +5181,42 @@ def _upsert_viagem_placa_motorista(conn, id_viagem, placa, motorista):
             '''INSERT INTO viagem_motorista (id_viagem, motorista) VALUES (?, ?) ON CONFLICT(id_viagem) DO UPDATE SET motorista = excluded.motorista''',
             (id_norm, (motorista or '').strip())
         )
+
+
+@app.route('/api/ravex/verificar-baixado', methods=['GET'])
+def api_ravex_verificar_baixado():
+    """Verifica no banco se o ID (roteiro ou viagem) já foi importado, sem chamar a API Ravex."""
+    if not _usa_banco_para_dados():
+        return jsonify({'erro': 'Configure DATABASE_URL.', 'ja_baixado': False}), 400
+    id_input = (
+        request.args.get('id')
+        or request.args.get('id_viagem')
+        or request.args.get('id_roteiro')
+        or ''
+    ).strip()
+    if not id_input:
+        return jsonify({'erro': 'Informe o parâmetro id (roteiro ou viagem).', 'ja_baixado': False}), 400
+    conn = get_db()
+    if getattr(conn, 'kind', None) != 'pg':
+        conn.close()
+        return jsonify({'erro': 'Banco não é Postgres.', 'ja_baixado': False}), 400
+    ds = _get_latest_dataset_id(conn)
+    if not ds:
+        conn.close()
+        return jsonify({'erro': 'Nenhum dataset ativo.', 'ja_baixado': False}), 400
+    ja, info = _ravex_id_input_ja_baixado(conn, ds, id_input)
+    conn.close()
+    msg = _ravex_mensagem_ja_baixado(id_input, info) if ja else ''
+    return jsonify({
+        'ok': True,
+        'ja_baixado': ja,
+        'duplicado': ja,
+        'id_informado': id_input,
+        'id_viagem': (info or {}).get('id_viagem') or '',
+        'id_roteiro': (info or {}).get('id_roteiro') or '',
+        'erro': msg if ja else None,
+        'detalhe': info or {},
+    })
 
 
 @app.route('/api/ravex/importar-romaneio', methods=['POST'])

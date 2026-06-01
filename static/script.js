@@ -9927,12 +9927,16 @@ function initForms() {
         var box = document.getElementById('ravex-loading-box');
         var barTrack = document.getElementById('ravex-loading-bar-track');
         var errorActions = document.getElementById('ravex-error-actions');
+        var okBtn = document.getElementById('ravex-overlay-ok');
         _ravexLoadingSetCancelVisible(false);
         if (el && text) {
             text.textContent = msg || 'Puxando roteiro/viagem da API Ravex...';
-            if (box) box.classList.remove('ravex-loading-box--error');
+            if (box) {
+                box.classList.remove('ravex-loading-box--error', 'ravex-loading-box--warning');
+            }
             if (barTrack) barTrack.style.display = '';
             if (errorActions) errorActions.style.display = 'none';
+            if (okBtn) okBtn.textContent = 'OK';
             el.style.display = 'flex';
         }
     }
@@ -9941,11 +9945,14 @@ function initForms() {
         var box = document.getElementById('ravex-loading-box');
         var barTrack = document.getElementById('ravex-loading-bar-track');
         var errorActions = document.getElementById('ravex-error-actions');
+        var okBtn = document.getElementById('ravex-overlay-ok');
         _ravexLoadingSetCancelVisible(false);
+        _ravexImportAbortarAtivo();
         if (el) el.style.display = 'none';
-        if (box) box.classList.remove('ravex-loading-box--error');
+        if (box) box.classList.remove('ravex-loading-box--error', 'ravex-loading-box--warning');
         if (barTrack) barTrack.style.display = '';
         if (errorActions) errorActions.style.display = 'none';
+        if (okBtn) okBtn.textContent = 'OK';
     }
     window.ravexLoadingShow = ravexLoadingShow;
     window.ravexLoadingHide = ravexLoadingHide;
@@ -9957,13 +9964,44 @@ function initForms() {
         var errorActions = document.getElementById('ravex-error-actions');
         var okBtn = document.getElementById('ravex-overlay-ok');
         _ravexLoadingSetCancelVisible(false);
+        _ravexImportAbortarAtivo();
         if (el && text) {
             text.textContent = msg || 'Erro ao processar.';
-            if (box) box.classList.add('ravex-loading-box--error');
+            if (box) {
+                box.classList.remove('ravex-loading-box--warning');
+                box.classList.add('ravex-loading-box--error');
+            }
             if (barTrack) barTrack.style.display = 'none';
             if (errorActions) errorActions.style.display = 'block';
             el.style.display = 'flex';
-            if (okBtn) okBtn.onclick = function() { ravexLoadingHide(); };
+            if (okBtn) {
+                okBtn.textContent = 'OK';
+                okBtn.onclick = function() { ravexLoadingHide(); };
+            }
+        }
+    }
+    function ravexAvisoShow(msg) {
+        var el = document.getElementById('ravex-loading-overlay');
+        var text = document.getElementById('ravex-loading-text');
+        var box = document.getElementById('ravex-loading-box');
+        var barTrack = document.getElementById('ravex-loading-bar-track');
+        var errorActions = document.getElementById('ravex-error-actions');
+        var okBtn = document.getElementById('ravex-overlay-ok');
+        _ravexLoadingSetCancelVisible(false);
+        _ravexImportAbortarAtivo();
+        if (el && text) {
+            text.textContent = msg || 'Este ID já foi baixado.';
+            if (box) {
+                box.classList.remove('ravex-loading-box--error');
+                box.classList.add('ravex-loading-box--warning');
+            }
+            if (barTrack) barTrack.style.display = 'none';
+            if (errorActions) errorActions.style.display = 'block';
+            el.style.display = 'flex';
+            if (okBtn) {
+                okBtn.textContent = 'Entendi';
+                okBtn.onclick = function() { ravexLoadingHide(); };
+            }
         }
     }
     function normalizarDataYYYYMMDD(val) {
@@ -9980,7 +10018,7 @@ function initForms() {
         return o;
     }
     function ravexMostrarDuplicado(data, resultadoEl) {
-        var msg = (data && data.erro) ? data.erro : 'Esta viagem já foi baixada anteriormente.';
+        var msg = (data && data.erro) ? data.erro : 'Este ID de roteiro ou viagem já foi baixado anteriormente.';
         if (resultadoEl) {
             resultadoEl.style.display = 'block';
             resultadoEl.style.background = '#fff3cd';
@@ -9988,8 +10026,17 @@ function initForms() {
             resultadoEl.innerHTML = msg;
         }
         if (typeof showMessage === 'function') showMessage(msg, 'warning');
-        if (typeof ravexLoadingHide === 'function') ravexLoadingHide();
+        if (typeof ravexAvisoShow === 'function') ravexAvisoShow(msg);
+        else if (typeof ravexLoadingHide === 'function') ravexLoadingHide();
         if (typeof loadBaixadosRavex === 'function') void loadBaixadosRavex();
+    }
+    async function ravexVerificarIdJaBaixado(id, signal) {
+        var idTrim = String(id || '').trim();
+        if (!idTrim) return { ja_baixado: false };
+        var opts = { credentials: 'same-origin', cache: 'no-store' };
+        if (signal) opts.signal = signal;
+        var r = await fetch(API_BASE + '/ravex/verificar-baixado?id=' + encodeURIComponent(idTrim), opts);
+        return r.json().catch(function() { return {}; });
     }
     function ravexResumoPuladosDuplicados(data) {
         var n = (data && data.total_pulados_duplicados) || 0;
@@ -10018,12 +10065,13 @@ function initForms() {
             }
             btnImportarRavex.disabled = true;
             resultadoImportarRavex.style.display = 'none';
-            ravexLoadingShow('Puxando roteiros da API Ravex... Aguarde.');
+            var signalPeriodo = _ravexImportSignalLoading('Puxando roteiros da API Ravex... Aguarde.');
             try {
                 const r = await fetch(API_BASE + '/ravex/sincronizar-periodo', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(ravexPayloadExtras({ data_inicio: dataInicio, data_fim: dataFim }))
+                    body: JSON.stringify(ravexPayloadExtras({ data_inicio: dataInicio, data_fim: dataFim })),
+                    signal: signalPeriodo
                 });
                 const data = await r.json().catch(function() { return {}; });
                 if (r.ok && data.ok) {
@@ -10038,11 +10086,14 @@ function initForms() {
                     ravexErrorShow(errMsg);
                 }
             } catch (e) {
-                resultadoImportarRavex.style.background = '#ffebee';
-                resultadoImportarRavex.style.border = '1px solid #f44336';
-                var errMsg = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
-                resultadoImportarRavex.innerHTML = errMsg;
-                ravexErrorShow(errMsg);
+                if (_ravexImportTratarAbort(e, resultadoImportarRavex)) { /* cancelado */ }
+                else {
+                    resultadoImportarRavex.style.background = '#ffebee';
+                    resultadoImportarRavex.style.border = '1px solid #f44336';
+                    var errMsg = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
+                    resultadoImportarRavex.innerHTML = errMsg;
+                    ravexErrorShow(errMsg);
+                }
             }
             resultadoImportarRavex.style.display = 'block';
             resultadoImportarRavex.style.display = 'block';
@@ -10064,38 +10115,56 @@ function initForms() {
             }
             btnImportarRavexIdUnico.disabled = true;
             resultadoImportarRavex.style.display = 'none';
-            ravexLoadingShow('Puxando roteiro/viagem da API Ravex...');
+            var idTrim = idUnico.trim();
+            var forcarReimport = !!(document.getElementById('importar-ravex-forcar-reimportar') && document.getElementById('importar-ravex-forcar-reimportar').checked);
+            var signalUnico = _ravexImportSignalLoading('Verificando se o ID já foi baixado…');
             try {
-                const r = await fetch(API_BASE + '/ravex/importar-romaneio', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(ravexPayloadExtras({ id: idUnico.trim() }))
-                });
-                const data = await r.json().catch(function() { return {}; });
-                if (r.ok && data.ok) {
-                    showRavexModalConcluido('Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.');
-                    loadAllData();
-                    ravexLoadingHide();
-                } else if (r.status === 409 || (data && data.duplicado)) {
-                    ravexMostrarDuplicado(data, resultadoImportarRavex);
-                } else {
+                var bloquearUnico = false;
+                if (!forcarReimport) {
+                    var ver = await ravexVerificarIdJaBaixado(idTrim, signalUnico);
+                    if (ver.ja_baixado || ver.duplicado) {
+                        ravexMostrarDuplicado(ver, resultadoImportarRavex);
+                        bloquearUnico = true;
+                    }
+                }
+                if (!bloquearUnico && !signalUnico.aborted) {
+                    var textEl = document.getElementById('ravex-loading-text');
+                    if (textEl) textEl.textContent = 'Puxando roteiro/viagem da API Ravex...';
+                    const r = await fetch(API_BASE + '/ravex/importar-romaneio', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(ravexPayloadExtras({ id: idTrim })),
+                        signal: signalUnico
+                    });
+                    const data = await r.json().catch(function() { return {}; });
+                    if (r.ok && data.ok) {
+                        showRavexModalConcluido('Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.');
+                        loadAllData();
+                        ravexLoadingHide();
+                    } else if (r.status === 409 || (data && data.duplicado)) {
+                        ravexMostrarDuplicado(data, resultadoImportarRavex);
+                    } else {
+                        resultadoImportarRavex.style.background = '#ffebee';
+                        resultadoImportarRavex.style.border = '1px solid #f44336';
+                        var msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar');
+                        if (data.diagnostico) msg += ' ' + data.diagnostico;
+                        resultadoImportarRavex.innerHTML = msg;
+                        ravexErrorShow(msg);
+                    }
+                }
+            } catch (e) {
+                if (_ravexImportTratarAbort(e, resultadoImportarRavex)) { /* cancelado */ }
+                else {
                     resultadoImportarRavex.style.background = '#ffebee';
                     resultadoImportarRavex.style.border = '1px solid #f44336';
-                    var msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar');
-                    if (data.diagnostico) msg += ' ' + data.diagnostico;
+                    var msg = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
                     resultadoImportarRavex.innerHTML = msg;
                     ravexErrorShow(msg);
                 }
-            } catch (e) {
-                resultadoImportarRavex.style.background = '#ffebee';
-                resultadoImportarRavex.style.border = '1px solid #f44336';
-                var msg = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
-                resultadoImportarRavex.innerHTML = msg;
-                ravexErrorShow(msg);
+            } finally {
+                resultadoImportarRavex.style.display = 'block';
+                btnImportarRavexIdUnico.disabled = false;
             }
-            resultadoImportarRavex.style.display = 'block';
-            resultadoImportarRavex.style.display = 'block';
-            btnImportarRavexIdUnico.disabled = false;
         });
     }
 
@@ -10115,35 +10184,63 @@ function initForms() {
             }
             btnImportarRavexLista.disabled = true;
             resultadoImportarRavex.style.display = 'none';
-            ravexLoadingShow('Puxando ' + ids.length + ' roteiro(s)/viagem(ns) da API Ravex... Aguarde.');
+            var forcarLista = !!(document.getElementById('importar-ravex-forcar-reimportar') && document.getElementById('importar-ravex-forcar-reimportar').checked);
+            var signalLista = _ravexImportSignalLoading('Verificando lista de IDs…');
             try {
-                const r = await fetch(API_BASE + '/ravex/importar-lista', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(ravexPayloadExtras({ ids: ids }))
-                });
-                const data = await r.json().catch(function() { return {}; });
-                if (r.ok && data.ok) {
-                    showRavexModalConcluido('Lista processada. Viagens importadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>. IDs na lista: ' + (data.ids_recebidos || 0) + ravexResumoPuladosDuplicados(data) + (data.erros && data.erros.length ? '. Erros: ' + data.erros.length : '') + '.');
-                    loadAllData();
-                    ravexLoadingHide();
-                } else {
-                    resultadoImportarRavex.style.background = '#ffebee';
-                    resultadoImportarRavex.style.border = '1px solid #f44336';
-                    var msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar lista');
-                    if (data.diagnostico) msg += ' ' + data.diagnostico;
-                    resultadoImportarRavex.innerHTML = msg;
-                    ravexErrorShow(msg);
+                var bloquearLista = false;
+                if (!forcarLista) {
+                    var duplicadosLista = [];
+                    for (var li = 0; li < ids.length; li++) {
+                        if (signalLista.aborted) break;
+                        var verL = await ravexVerificarIdJaBaixado(ids[li], signalLista);
+                        if (verL.ja_baixado || verL.duplicado) duplicadosLista.push(ids[li]);
+                    }
+                    if (!signalLista.aborted && duplicadosLista.length === ids.length) {
+                        ravexMostrarDuplicado({
+                            erro: 'Todos os ' + ids.length + ' ID(s) da lista já foram baixados (ex.: ' + duplicadosLista.slice(0, 3).join(', ') + '). Marque «Forçar reimportação» para baixar de novo.'
+                        }, resultadoImportarRavex);
+                        bloquearLista = true;
+                    } else if (!signalLista.aborted && duplicadosLista.length > 0) {
+                        var textLista = document.getElementById('ravex-loading-text');
+                        if (textLista) textLista.textContent = duplicadosLista.length + ' ID(s) já baixados serão ignorados. Puxando da API…';
+                    }
+                }
+                if (!bloquearLista && !signalLista.aborted) {
+                    var textLista2 = document.getElementById('ravex-loading-text');
+                    if (textLista2) textLista2.textContent = 'Puxando ' + ids.length + ' roteiro(s)/viagem(ns) da API Ravex... Aguarde.';
+                    const r = await fetch(API_BASE + '/ravex/importar-lista', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(ravexPayloadExtras({ ids: ids })),
+                        signal: signalLista
+                    });
+                    const data = await r.json().catch(function() { return {}; });
+                    if (r.ok && data.ok) {
+                        showRavexModalConcluido('Lista processada. Viagens importadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>. IDs na lista: ' + (data.ids_recebidos || 0) + ravexResumoPuladosDuplicados(data) + (data.erros && data.erros.length ? '. Erros: ' + data.erros.length : '') + '.');
+                        loadAllData();
+                        ravexLoadingHide();
+                    } else {
+                        resultadoImportarRavex.style.background = '#ffebee';
+                        resultadoImportarRavex.style.border = '1px solid #f44336';
+                        var msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar lista');
+                        if (data.diagnostico) msg += ' ' + data.diagnostico;
+                        resultadoImportarRavex.innerHTML = msg;
+                        ravexErrorShow(msg);
+                    }
                 }
             } catch (e) {
-                resultadoImportarRavex.style.background = '#ffebee';
-                resultadoImportarRavex.style.border = '1px solid #f44336';
-                var msg = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
-                resultadoImportarRavex.innerHTML = msg;
-                ravexErrorShow(msg);
+                if (_ravexImportTratarAbort(e, resultadoImportarRavex)) { /* cancelado */ }
+                else {
+                    resultadoImportarRavex.style.background = '#ffebee';
+                    resultadoImportarRavex.style.border = '1px solid #f44336';
+                    var msgLista = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
+                    resultadoImportarRavex.innerHTML = msgLista;
+                    ravexErrorShow(msgLista);
+                }
+            } finally {
+                resultadoImportarRavex.style.display = 'block';
+                btnImportarRavexLista.disabled = false;
             }
-            resultadoImportarRavex.style.display = 'block';
-            btnImportarRavexLista.disabled = false;
         });
     }
 
@@ -10934,6 +11031,41 @@ function _ravexLoadingSetCancelVisible(visivel, onCancel) {
         btn.textContent = 'Cancelar';
         btn.onclick = null;
     }
+}
+
+window._ravexImportAbortController = null;
+
+function _ravexImportAbortarAtivo() {
+    if (window._ravexImportAbortController) {
+        try { window._ravexImportAbortController.abort(); } catch (e) {}
+        window._ravexImportAbortController = null;
+    }
+}
+
+/** Overlay de carregamento com botão Cancelar (AbortController). */
+function _ravexImportSignalLoading(msg) {
+    _ravexImportAbortarAtivo();
+    var ac = new AbortController();
+    window._ravexImportAbortController = ac;
+    if (window.ravexLoadingShow) window.ravexLoadingShow(msg || 'Puxando roteiro/viagem da API Ravex...');
+    _ravexLoadingSetCancelVisible(true, function() {
+        try { ac.abort(); } catch (e) {}
+    });
+    return ac.signal;
+}
+
+function _ravexImportTratarAbort(e, resultadoEl) {
+    if (!e || e.name !== 'AbortError') return false;
+    _ravexImportAbortarAtivo();
+    if (typeof ravexLoadingHide === 'function') ravexLoadingHide();
+    if (resultadoEl) {
+        resultadoEl.style.display = 'block';
+        resultadoEl.style.background = '#eceff1';
+        resultadoEl.style.border = '1px solid #90a4ae';
+        resultadoEl.innerHTML = 'Download cancelado.';
+    }
+    if (typeof showMessage === 'function') showMessage('Download cancelado.', 'info');
+    return true;
 }
 
 /** Exibe overlay de carregamento com botão Cancelar (ex.: gravar bipagem ao gerar comprovante). */
