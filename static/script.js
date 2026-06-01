@@ -112,16 +112,30 @@ function _conferenciaPeriodoBipagemKey(idV) {
 }
 
 function _formatarPeriodoBipagemLocal(iso) {
-    if (!iso) return '';
+    return formatarDataHoraPtBR(iso);
+}
+
+/** Formata data/hora para exibição em português (dd/mm/aaaa hh:mm:ss). */
+function formatarDataHoraPtBR(val) {
+    if (val == null || val === '') return '-';
+    var s = String(val).trim();
+    if (!s || s === '-') return '-';
+    if (/^\d{2}\/\d{2}\/\d{4}(\s+\d{2}:\d{2}(:\d{2})?)?$/.test(s)) return s;
     try {
-        var d = new Date(iso);
-        if (isNaN(d.getTime())) return '';
-        var pad = function(n) { return (n < 10 ? '0' : '') + n; };
-        return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear() + ' '
-            + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-    } catch (e) {
-        return '';
-    }
+        var d = new Date(s);
+        if (!isNaN(d.getTime())) {
+            return d.toLocaleString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+        }
+    } catch (e) { /* ignore */ }
+    return s;
 }
 
 function _conferenciaRegistrarMomentoBipagemLocal() {
@@ -2490,8 +2504,8 @@ async function loadPainelDevolucoes() {
     preencherTabela('dev-tbody-painel-viagens', data.viagens || [], 'Nenhuma viagem com devolução ainda.', function(v) {
         return '<tr>'
             + '<td><strong>' + escapeHtml(v.id_viagem || '-') + '</strong></td>'
-            + '<td>' + escapeHtml(v.inicio || '-') + '</td>'
-            + '<td>' + escapeHtml(v.fim || '-') + '</td>'
+            + '<td>' + escapeHtml(formatarDataHoraPtBR(v.inicio)) + '</td>'
+            + '<td>' + escapeHtml(formatarDataHoraPtBR(v.fim)) + '</td>'
             + '<td>' + (v.duracao_minutos != null ? v.duracao_minutos : '-') + '</td>'
             + '<td>' + (v.registros ?? 0) + '</td>'
             + '<td><strong>' + (v.qtd_devolvida ?? 0) + '</strong></td>'
@@ -10747,8 +10761,8 @@ async function loadPainelCompleto() {
             tbody.innerHTML = viagens.map(v => `
                 <tr>
                     <td><strong>${escapeHtml(v.id_viagem || '-')}</strong></td>
-                    <td>${escapeHtml(v.inicio || '-')}</td>
-                    <td>${escapeHtml(v.fim || '-')}</td>
+                    <td>${escapeHtml(formatarDataHoraPtBR(v.inicio))}</td>
+                    <td>${escapeHtml(formatarDataHoraPtBR(v.fim))}</td>
                     <td>${v.duracao_minutos != null ? v.duracao_minutos : '-'}</td>
                     <td><strong>${v.total_bipados ?? 0}</strong></td>
                     <td style="color: ${(v.total_faltas || 0) > 0 ? '#c62828' : '#2e7d32'}">${v.total_faltas ?? 0}</td>
@@ -11184,8 +11198,8 @@ async function loadPainelGraficos() {
             tbody.innerHTML = viagens.map(v => `
                 <tr>
                     <td><strong>${escapeHtml(v.id_viagem || '-')}</strong></td>
-                    <td>${escapeHtml(v.inicio || '-')}</td>
-                    <td>${escapeHtml(v.fim || '-')}</td>
+                    <td>${escapeHtml(formatarDataHoraPtBR(v.inicio))}</td>
+                    <td>${escapeHtml(formatarDataHoraPtBR(v.fim))}</td>
                     <td>${v.duracao_minutos != null ? v.duracao_minutos : '-'}</td>
                     <td><strong>${v.total_bipados ?? 0}</strong></td>
                     <td style="color: ${(v.total_faltas || 0) > 0 ? '#c62828' : '#2e7d32'}">${v.total_faltas ?? 0}</td>
@@ -11322,6 +11336,19 @@ async function loadPainelGraficos() {
 
 // Carregar BASE da Planilha (todas as colunas, com filtros)
 // Não usa overlay full-screen para permitir trocar de aba enquanto carrega; loading só na área da tabela.
+var BASE_COLUNA_LABELS = {
+    'Codigo': 'Cód. interno',
+    'Descricao': 'Descrição',
+    'Cod. EAN-13': 'EAN',
+    'Cod. DUN-14': 'DUN',
+    'Unidade': 'Unidade',
+    'Peso Bruto': 'Peso (kg)'
+};
+
+function _labelColunaBase(h) {
+    return BASE_COLUNA_LABELS[h] || h;
+}
+
 async function loadBasePlanilha(showLoadingState) {
     const thead = document.getElementById('thead-base');
     const tbody = document.getElementById('tbody-base');
@@ -11351,7 +11378,7 @@ async function loadBasePlanilha(showLoadingState) {
 
         if (data && data.headers && Array.isArray(data.headers)) {
             var dataHeaders = data.headers.filter(function(h) { return h !== '_id'; });
-            thead.innerHTML = '<tr>' + dataHeaders.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '<th>Ações</th></tr>';
+            thead.innerHTML = '<tr>' + dataHeaders.map(h => `<th>${escapeHtml(_labelColunaBase(h))}</th>`).join('') + '<th>Ações</th></tr>';
             const cols = dataHeaders.length + 1;
             if (!data.rows || data.rows.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="' + cols + '" class="loading">Nenhum dado encontrado na base de produtos.</td></tr>';
@@ -11428,7 +11455,7 @@ function openModalBaseItem(row, headers) {
     campos.innerHTML = (headers || []).map(function(h) {
         var val = row && row[h] != null ? String(row[h]) : '';
         var id = 'base-item-' + h.replace(/\s+/g, '_').replace(/\./g, '_');
-        return '<div class="form-group" style="margin-bottom: 0.5rem;"><label for="' + id + '">' + escapeHtml(h) + '</label><input type="text" id="' + id + '" name="' + escapeHtml(h) + '" value="' + escapeHtml(val) + '" style="width: 100%; max-width: 100%;"></div>';
+        return '<div class="form-group" style="margin-bottom: 0.5rem;"><label for="' + id + '">' + escapeHtml(_labelColunaBase(h)) + '</label><input type="text" id="' + id + '" name="' + escapeHtml(h) + '" value="' + escapeHtml(val) + '" style="width: 100%; max-width: 100%;"></div>';
     }).join('');
     modal.style.display = 'block';
 }
@@ -14101,13 +14128,18 @@ async function loadDivergencias(force) {
         var cod = unescapeHtml(inp.getAttribute('data-codigo-produto') || '');
         motivosEmEdicaoDiv[idV + '|' + cod] = inp.value;
     });
-    conteudoEl.innerHTML = '<p class="loading">Carregando divergências de todos os roteiros...</p>';
+    conteudoEl.innerHTML = '<p class="loading">Carregando divergências dos roteiros mais recentes (pode levar até 1 minuto)...</p>';
     let divergencias;
     try {
-        divergencias = await fetchAPI('/divergencias');
+        divergencias = await fetchAPIComTimeout('/divergencias?limit_viagens=50', {}, 120000);
     } catch (e) {
         divergenciasJaCarregado = false;
         conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">Erro ao carregar. Clique em Atualizar para tentar novamente.</p>';
+        return;
+    }
+    if (!divergencias) {
+        divergenciasJaCarregado = false;
+        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">Não foi possível contactar o servidor. Verifique a conexão e clique em Atualizar.</p>';
         return;
     }
     if (divergencias && divergencias.erro) {
@@ -14237,10 +14269,15 @@ async function loadDivergenciasDevolucao(force) {
     conteudoEl.innerHTML = '<p class="loading">Carregando divergências de devoluções...</p>';
     let divergencias;
     try {
-        divergencias = await fetchAPI('/divergencias?fluxo=devolucao');
+        divergencias = await fetchAPIComTimeout('/divergencias?fluxo=devolucao&limit_viagens=50', {}, 120000);
     } catch (e) {
         divergenciasDevolucaoJaCarregado = false;
         conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">Erro ao carregar. Clique em Atualizar para tentar novamente.</p>';
+        return;
+    }
+    if (!divergencias) {
+        divergenciasDevolucaoJaCarregado = false;
+        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">Não foi possível contactar o servidor.</p>';
         return;
     }
     if (divergencias && divergencias.erro) {
