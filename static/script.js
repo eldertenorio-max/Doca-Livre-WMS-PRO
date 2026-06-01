@@ -951,7 +951,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initConferenciaTabelaAcoes();
     initModalZerarItens();
     initConferenciaSessaoModais();
-    initBaixadosRavexFiltros();
+    initBaixadosRavexFiltros('carregamento');
+    initBaixadosRavexFiltros('devolucao');
     window._conferenciaSalvarSomenteNoComprovante = true;
     initCadastroRapidoCodigoBarras();
     // Primeira carga após um tick para a tela pintar antes (resposta mais rápida percebida)
@@ -2094,6 +2095,7 @@ function initDevolucoesTabs() {
     var painel = document.getElementById('devolucoes-panel-painel');
     var conferencia = document.getElementById('devolucoes-panel-bipar');
     var extrato = document.getElementById('devolucoes-panel-extrato');
+    var baixaRavex = document.getElementById('devolucoes-panel-baixa-ravex');
     var relatorios = document.getElementById('devolucoes-panel-relatorios');
     var divergencias = document.getElementById('devolucoes-panel-divergencias');
     if (!botoes.length || !painel || !conferencia || !extrato || !relatorios || !divergencias) return;
@@ -2105,10 +2107,12 @@ function initDevolucoesTabs() {
         painel.classList.toggle('devolucoes-panel-active', tab === 'painel');
         conferencia.classList.toggle('devolucoes-panel-active', tab === 'conferencia');
         extrato.classList.toggle('devolucoes-panel-active', tab === 'extrato');
+        if (baixaRavex) baixaRavex.classList.toggle('devolucoes-panel-active', tab === 'baixa-ravex');
         relatorios.classList.toggle('devolucoes-panel-active', tab === 'relatorios');
         divergencias.classList.toggle('devolucoes-panel-active', tab === 'divergencias');
         if (tab === 'painel') loadPainelDevolucoes();
         if (tab === 'extrato') loadExtratoDevolucao();
+        if (tab === 'baixa-ravex') loadBaixadosRavex('devolucao');
         if (tab === 'divergencias') loadDivergenciasDevolucao(false);
     }
 
@@ -2616,7 +2620,7 @@ function loadTabData(tab) {
         case 'importar-ravex':
             return Promise.resolve();
         case 'baixa-ravex':
-            return loadBaixadosRavex();
+            return loadBaixadosRavex('carregamento');
         case 'divergencias':
             return loadDivergencias(false);
         default:
@@ -2624,33 +2628,60 @@ function loadTabData(tab) {
     }
 }
 
-async function loadBaixadosRavex() {
-    const tbody = document.getElementById('tbody-baixa-ravex');
+function _baixadosRavexScope(scope) {
+    return (scope === 'devolucao' || scope === 'dev') ? 'devolucao' : 'carregamento';
+}
+
+function _baixadosRavexPrefix(scope) {
+    return _baixadosRavexScope(scope) === 'devolucao' ? 'dev-' : '';
+}
+
+function _baixadosRavexEl(suffix, scope) {
+    return document.getElementById(_baixadosRavexPrefix(scope) + suffix);
+}
+
+function _baixadosRavexFiltroState(scope) {
+    scope = _baixadosRavexScope(scope);
+    if (!window._baixadosRavexFiltrosPorScope) {
+        window._baixadosRavexFiltrosPorScope = {};
+    }
+    if (!window._baixadosRavexFiltrosPorScope[scope]) {
+        window._baixadosRavexFiltrosPorScope[scope] = { periodo: 'todos', data_inicio: '', data_fim: '', usuario: '' };
+    }
+    return window._baixadosRavexFiltrosPorScope[scope];
+}
+
+async function loadBaixadosRavex(scope) {
+    scope = _baixadosRavexScope(scope);
+    window._baixadosRavexScopeAtivo = scope;
+    const tbody = _baixadosRavexEl('tbody-baixa-ravex', scope);
     if (!tbody) return;
-    if (typeof initBaixadosRavexFiltros === 'function') initBaixadosRavexFiltros();
+    if (typeof initBaixadosRavexFiltros === 'function') initBaixadosRavexFiltros(scope);
     var jaTinhaDados = tbody.querySelector('tr:not(.loading)');
     if (!jaTinhaDados) {
         tbody.innerHTML = '<tr><td colspan="8" class="loading">Carregando...</td></tr>';
     }
-    var qs = (typeof _baixadosRavexQueryFiltros === 'function') ? _baixadosRavexQueryFiltros() : '?limit=500';
+    var qs = (typeof _baixadosRavexQueryFiltros === 'function') ? _baixadosRavexQueryFiltros(scope) : '?limit=500';
     const resp = await fetchAPI('/ravex/importacoes' + qs);
     if (!resp || resp.erro) {
         tbody.innerHTML = '<tr><td colspan="8" class="loading" style="color:#c62828;">' + (resp && resp.erro ? escapeHtml(resp.erro) : 'Erro ao carregar histórico') + '</td></tr>';
         return;
     }
     if (typeof _baixadosRavexPreencherUsuarios === 'function') {
-        _baixadosRavexPreencherUsuarios(Array.isArray(resp.usuarios) ? resp.usuarios : []);
+        _baixadosRavexPreencherUsuarios(Array.isArray(resp.usuarios) ? resp.usuarios : [], scope);
     }
     if (typeof _baixadosRavexAtualizarResumoFiltro === 'function') {
-        _baixadosRavexAtualizarResumoFiltro(Array.isArray(resp.rows) ? resp.rows.length : 0);
+        _baixadosRavexAtualizarResumoFiltro(Array.isArray(resp.rows) ? resp.rows.length : 0, scope);
     }
     const rows = Array.isArray(resp.rows) ? resp.rows : [];
     if (!rows.length) {
-        var msgVazio = (typeof _baixadosRavexTemFiltroAtivo === 'function' && _baixadosRavexTemFiltroAtivo())
+        var msgVazio = (typeof _baixadosRavexTemFiltroAtivo === 'function' && _baixadosRavexTemFiltroAtivo(scope))
             ? 'Nenhum download encontrado com os filtros aplicados.'
             : 'Nenhuma importação registrada ainda.';
-        if (resp.fonte === 'vazio' && !(typeof _baixadosRavexTemFiltroAtivo === 'function' && _baixadosRavexTemFiltroAtivo())) {
-            msgVazio += ' Importe pelo menos uma viagem na aba IMPORTAR RAVEX.';
+        if (resp.fonte === 'vazio' && !(typeof _baixadosRavexTemFiltroAtivo === 'function' && _baixadosRavexTemFiltroAtivo(scope))) {
+            msgVazio += scope === 'devolucao'
+                ? ' Os romaneios importados do Ravex alimentam as devoluções.'
+                : ' Importe pelo menos uma viagem na aba IMPORTAR RAVEX.';
         }
         tbody.innerHTML = '<tr><td colspan="8" class="loading">' + escapeHtml(msgVazio) + '</td></tr>';
         return;
@@ -2676,55 +2707,65 @@ async function loadBaixadosRavex() {
     }).join('');
 }
 
-function initBaixadosRavexFiltros() {
-    if (window._baixadosRavexFiltrosInit) return;
-    window._baixadosRavexFiltrosInit = true;
-    window._baixadosRavexFiltro = { periodo: 'todos', data_inicio: '', data_fim: '', usuario: '' };
-    document.querySelectorAll('.baixa-ravex-filtro-data-btn').forEach(function(btn) {
+function initBaixadosRavexFiltros(scope) {
+    scope = _baixadosRavexScope(scope);
+    if (!window._baixadosRavexFiltrosInitFlags) window._baixadosRavexFiltrosInitFlags = {};
+    if (window._baixadosRavexFiltrosInitFlags[scope]) return;
+    window._baixadosRavexFiltrosInitFlags[scope] = true;
+    _baixadosRavexFiltroState(scope);
+    var panelId = scope === 'devolucao' ? 'devolucoes-panel-baixa-ravex' : 'baixa-ravex';
+    var panel = document.getElementById(panelId);
+    if (!panel) return;
+    panel.querySelectorAll('.baixa-ravex-filtro-data-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
             var p = btn.getAttribute('data-baixa-ravex-filtro-data') || 'todos';
-            window._baixadosRavexFiltro.periodo = p;
-            var di = document.getElementById('baixa-ravex-filtro-data-inicio');
-            var df = document.getElementById('baixa-ravex-filtro-data-fim');
+            var f = _baixadosRavexFiltroState(scope);
+            f.periodo = p;
+            var di = _baixadosRavexEl('baixa-ravex-filtro-data-inicio', scope);
+            var df = _baixadosRavexEl('baixa-ravex-filtro-data-fim', scope);
             if (di) di.value = '';
             if (df) df.value = '';
-            window._baixadosRavexFiltro.data_inicio = '';
-            window._baixadosRavexFiltro.data_fim = '';
-            _baixadosRavexAtualizarBtnsData();
-            loadBaixadosRavex();
+            f.data_inicio = '';
+            f.data_fim = '';
+            _baixadosRavexAtualizarBtnsData(scope);
+            loadBaixadosRavex(scope);
         });
     });
-    var di = document.getElementById('baixa-ravex-filtro-data-inicio');
-    var df = document.getElementById('baixa-ravex-filtro-data-fim');
+    var di = _baixadosRavexEl('baixa-ravex-filtro-data-inicio', scope);
+    var df = _baixadosRavexEl('baixa-ravex-filtro-data-fim', scope);
     function onDataLivreChange() {
-        window._baixadosRavexFiltro.periodo = 'todos';
-        window._baixadosRavexFiltro.data_inicio = di ? di.value : '';
-        window._baixadosRavexFiltro.data_fim = df ? df.value : '';
-        _baixadosRavexAtualizarBtnsData();
-        loadBaixadosRavex();
+        var f = _baixadosRavexFiltroState(scope);
+        f.periodo = 'todos';
+        f.data_inicio = di ? di.value : '';
+        f.data_fim = df ? df.value : '';
+        _baixadosRavexAtualizarBtnsData(scope);
+        loadBaixadosRavex(scope);
     }
     if (di) di.addEventListener('change', onDataLivreChange);
     if (df) df.addEventListener('change', onDataLivreChange);
-    var selUser = document.getElementById('baixa-ravex-filtro-usuario');
+    var selUser = _baixadosRavexEl('baixa-ravex-filtro-usuario', scope);
     if (selUser) {
         selUser.addEventListener('change', function() {
-            window._baixadosRavexFiltro.usuario = selUser.value || '';
-            loadBaixadosRavex();
+            _baixadosRavexFiltroState(scope).usuario = selUser.value || '';
+            loadBaixadosRavex(scope);
         });
     }
 }
 
-function _baixadosRavexAtualizarBtnsData() {
-    var f = window._baixadosRavexFiltro || {};
+function _baixadosRavexAtualizarBtnsData(scope) {
+    var f = _baixadosRavexFiltroState(scope);
     var temDataLivre = !!(f.data_inicio || f.data_fim);
-    document.querySelectorAll('.baixa-ravex-filtro-data-btn').forEach(function(btn) {
+    var panelId = _baixadosRavexScope(scope) === 'devolucao' ? 'devolucoes-panel-baixa-ravex' : 'baixa-ravex';
+    var panel = document.getElementById(panelId);
+    if (!panel) return;
+    panel.querySelectorAll('.baixa-ravex-filtro-data-btn').forEach(function(btn) {
         var t = btn.getAttribute('data-baixa-ravex-filtro-data') || 'todos';
         btn.classList.toggle('baixa-ravex-filtro-btn--ativo', !temDataLivre && t === (f.periodo || 'todos'));
     });
 }
 
-function _baixadosRavexQueryFiltros() {
-    var f = window._baixadosRavexFiltro || {};
+function _baixadosRavexQueryFiltros(scope) {
+    var f = _baixadosRavexFiltroState(scope);
     var q = ['limit=500'];
     if (f.data_inicio) q.push('data_inicio=' + encodeURIComponent(f.data_inicio));
     if (f.data_fim) q.push('data_fim=' + encodeURIComponent(f.data_fim));
@@ -2735,15 +2776,17 @@ function _baixadosRavexQueryFiltros() {
     return '?' + q.join('&');
 }
 
-function _baixadosRavexTemFiltroAtivo() {
-    var f = window._baixadosRavexFiltro || {};
+function _baixadosRavexTemFiltroAtivo(scope) {
+    var f = _baixadosRavexFiltroState(scope);
     return !!(f.data_inicio || f.data_fim || (f.periodo && f.periodo !== 'todos') || f.usuario);
 }
 
-function _baixadosRavexPreencherUsuarios(usuarios) {
-    var sel = document.getElementById('baixa-ravex-filtro-usuario');
+function _baixadosRavexPreencherUsuarios(usuarios, scope) {
+    scope = _baixadosRavexScope(scope);
+    var sel = _baixadosRavexEl('baixa-ravex-filtro-usuario', scope);
     if (!sel) return;
-    var atual = (window._baixadosRavexFiltro && window._baixadosRavexFiltro.usuario) || sel.value || '';
+    var f = _baixadosRavexFiltroState(scope);
+    var atual = f.usuario || sel.value || '';
     var html = '<option value="">Todos</option>';
     (usuarios || []).forEach(function(u) {
         if (!u) return;
@@ -2751,18 +2794,19 @@ function _baixadosRavexPreencherUsuarios(usuarios) {
     });
     sel.innerHTML = html;
     sel.value = atual;
-    if (window._baixadosRavexFiltro) window._baixadosRavexFiltro.usuario = sel.value || '';
+    f.usuario = sel.value || '';
 }
 
-function _baixadosRavexAtualizarResumoFiltro(total) {
-    var el = document.getElementById('baixa-ravex-filtro-resumo');
+function _baixadosRavexAtualizarResumoFiltro(total, scope) {
+    scope = _baixadosRavexScope(scope);
+    var el = _baixadosRavexEl('baixa-ravex-filtro-resumo', scope);
     if (!el) return;
-    if (!_baixadosRavexTemFiltroAtivo()) {
+    if (!_baixadosRavexTemFiltroAtivo(scope)) {
         el.style.display = 'none';
         el.textContent = '';
         return;
     }
-    var f = window._baixadosRavexFiltro || {};
+    var f = _baixadosRavexFiltroState(scope);
     var partes = [];
     if (f.data_inicio || f.data_fim) {
         partes.push('período ' + (f.data_inicio || '…') + ' a ' + (f.data_fim || '…'));

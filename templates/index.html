@@ -806,9 +806,9 @@
                 <div class="baixa-ravex-toolbar">
                     <div class="baixa-ravex-filtros">
                         <span class="baixa-ravex-filtro-label">Data</span>
-                        <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn baixa-ravex-filtro-btn--ativo" data-baixa-ravex-filtro-data="todos">Todos</button>
-                        <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="hoje">Hoje</button>
-                        <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="ontem">Ontem</button>
+                        <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn baixa-ravex-filtro-btn--ativo" data-baixa-ravex-filtro-data="todos" data-baixa-ravex-scope="carregamento">Todos</button>
+                        <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="hoje" data-baixa-ravex-scope="carregamento">Hoje</button>
+                        <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="ontem" data-baixa-ravex-scope="carregamento">Ontem</button>
                         <label class="baixa-ravex-filtro-data-livre">De
                             <input type="date" id="baixa-ravex-filtro-data-inicio" class="baixa-ravex-filtro-data-input" title="Data inicial">
                         </label>
@@ -820,7 +820,7 @@
                             <option value="">Todos</option>
                         </select>
                     </div>
-                    <button type="button" class="btn btn-secondary" id="btn-atualizar-baixados-ravex" onclick="loadBaixadosRavex()">🔄 Atualizar lista</button>
+                    <button type="button" class="btn btn-secondary" id="btn-atualizar-baixados-ravex" onclick="loadBaixadosRavex('carregamento')">🔄 Atualizar lista</button>
                 </div>
                 <p id="baixa-ravex-filtro-resumo" class="baixa-ravex-filtro-resumo" style="display: none;"></p>
                 <div style="overflow: auto;">
@@ -1004,6 +1004,7 @@
                     <button type="button" class="tab-button devolucoes-subtab active" data-dev-tab="painel">PAINEL</button>
                     <button type="button" class="tab-button devolucoes-subtab" data-dev-tab="conferencia">CONFERÊNCIA</button>
                     <button type="button" class="tab-button devolucoes-subtab" data-dev-tab="extrato">EXTRATO</button>
+                    <button type="button" class="tab-button devolucoes-subtab" data-dev-tab="baixa-ravex">BAIXADOS (RAVEX)</button>
                     <button type="button" class="tab-button devolucoes-subtab" data-dev-tab="relatorios">RELATÓRIOS</button>
                     <button type="button" class="tab-button devolucoes-subtab" data-dev-tab="divergencias">DIVERGÊNCIAS</button>
                 </nav>
@@ -1420,6 +1421,50 @@
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+
+                <div id="devolucoes-panel-baixa-ravex" class="devolucoes-panel">
+                    <h2 class="devolucoes-titulo-principal">BAIXADOS (RAVEX)</h2>
+                    <p class="info-text">Histórico do que foi baixado/importado do Ravex (por período, por ID único ou por lista). Mostra o status, quantidade de viagens e itens gravados.</p>
+                    <div class="baixa-ravex-toolbar">
+                        <div class="baixa-ravex-filtros">
+                            <span class="baixa-ravex-filtro-label">Data</span>
+                            <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn baixa-ravex-filtro-btn--ativo" data-baixa-ravex-filtro-data="todos" data-baixa-ravex-scope="devolucao">Todos</button>
+                            <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="hoje" data-baixa-ravex-scope="devolucao">Hoje</button>
+                            <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="ontem" data-baixa-ravex-scope="devolucao">Ontem</button>
+                            <label class="baixa-ravex-filtro-data-livre">De
+                                <input type="date" id="dev-baixa-ravex-filtro-data-inicio" class="baixa-ravex-filtro-data-input" title="Data inicial">
+                            </label>
+                            <label class="baixa-ravex-filtro-data-livre">Até
+                                <input type="date" id="dev-baixa-ravex-filtro-data-fim" class="baixa-ravex-filtro-data-input" title="Data final">
+                            </label>
+                            <span class="baixa-ravex-filtro-label baixa-ravex-filtro-label-usuario">Usuário</span>
+                            <select id="dev-baixa-ravex-filtro-usuario" class="baixa-ravex-filtro-usuario-select" title="Filtrar por usuário">
+                                <option value="">Todos</option>
+                            </select>
+                        </div>
+                        <button type="button" class="btn btn-secondary" onclick="loadBaixadosRavex('devolucao')">🔄 Atualizar lista</button>
+                    </div>
+                    <p id="dev-baixa-ravex-filtro-resumo" class="baixa-ravex-filtro-resumo" style="display: none;"></p>
+                    <div style="overflow: auto;">
+                        <table class="data-table" id="dev-tabela-baixa-ravex">
+                            <thead>
+                                <tr>
+                                    <th>Data/Hora</th>
+                                    <th>Tipo</th>
+                                    <th>Status</th>
+                                    <th>Parâmetros</th>
+                                    <th>Viagens</th>
+                                    <th>Itens</th>
+                                    <th>Usuário</th>
+                                    <th>Erros</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dev-tbody-baixa-ravex">
+                                <tr><td colspan="8" class="loading">Carregando...</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
