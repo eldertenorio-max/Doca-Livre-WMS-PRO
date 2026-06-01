@@ -276,6 +276,7 @@ def init_db():
                     PRIMARY KEY (id_viagem, codigo_produto)
                 )'''
             )
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_divergencia_motivo_id_viagem ON public.divergencia_motivo (id_viagem)')
             conn.execute(
                 '''CREATE TABLE IF NOT EXISTS public.terceiros_documentos (
                     id BIGSERIAL PRIMARY KEY,
@@ -361,6 +362,7 @@ def init_db():
             conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_id_viagem ON public.produtos_bipados(id_viagem)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_codigo ON public.produtos_bipados(codigo_barras)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_viagem_codigo ON public.produtos_bipados(id_viagem, codigo_barras)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_produtos_bipados_viagem_fluxo ON public.produtos_bipados(id_viagem, fluxo)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documentos_area ON public.terceiros_documentos(area, criado_em DESC)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documentos_chave ON public.terceiros_documentos(chave_nfe)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_terceiros_documento_itens_documento ON public.terceiros_documento_itens(documento_id)')
@@ -1217,14 +1219,14 @@ def _limpar_periodo_bipagem(conn, id_viagem, fluxo='carregamento', commit=False)
         conn.commit()
 
 
-def _consultar_periodo_viagem_raw(id_viagem, fluxo='carregamento'):
+def _consultar_periodo_viagem_raw_conn(conn, id_viagem, fluxo='carregamento'):
+    """Consulta início/fim da bipagem reutilizando conexão aberta (evita round-trip extra)."""
     id_norm = _normalizar_id_viagem(id_viagem)
-    if not id_norm:
+    if not id_norm or not conn:
         return None, None
     fluxo = (fluxo or 'carregamento').strip().lower()
     if fluxo not in ('carregamento', 'devolucao'):
         fluxo = 'carregamento'
-    conn = get_db()
     try:
         _ensure_viagem_periodo_bipagem_table(conn)
         tbl = 'public.viagem_periodo_bipagem' if getattr(conn, 'kind', None) == 'pg' else 'viagem_periodo_bipagem'
@@ -1248,12 +1250,23 @@ def _consultar_periodo_viagem_raw(id_viagem, fluxo='carregamento'):
             ).fetchone()
         if row and row['inicio'] and row['fim']:
             return row['inicio'], row['fim']
+    except Exception:
+        pass
+    return None, None
+
+
+def _consultar_periodo_viagem_raw(id_viagem, fluxo='carregamento'):
+    id_norm = _normalizar_id_viagem(id_viagem)
+    if not id_norm:
+        return None, None
+    conn = get_db()
+    try:
+        return _consultar_periodo_viagem_raw_conn(conn, id_viagem, fluxo)
     finally:
         try:
             conn.close()
         except Exception:
             pass
-    return None, None
 
 
 def _periodo_viagem_resposta(id_viagem, fluxo='carregamento'):
@@ -1618,12 +1631,18 @@ def _get_latest_dataset_id(conn):
     """Retorna o dataset_id ativo (base_codigo_barras) ou None."""
     if getattr(conn, 'kind', None) != 'pg':
         return None
+    now = time.time()
+    cached = getattr(_get_latest_dataset_id, '_cache', None)
+    if cached and cached.get('exp', 0) > now:
+        return cached.get('id')
     try:
         row = conn.execute(
             "SELECT dataset_id FROM excel_datasets WHERE ativo = ? LIMIT 1",
             (True,),
         ).fetchone()
-        return row.get('dataset_id') if row else None
+        ds = row.get('dataset_id') if row else None
+        _get_latest_dataset_id._cache = {'id': ds, 'exp': now + 60}
+        return ds
     except Exception:
         return None
 
@@ -3762,6 +3781,29 @@ def _agrupar_romaneio_rows_por_codigo_produto(romaneio_rows, mapa_ean, mapa_dun,
     return linhas
 
 
+_ROMANEIO_CONFERENCIA_SQL = """SELECT id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
+                  placa, motorista, data_expedicao
+           FROM romaneio_por_item
+           WHERE dataset_id = ? AND {coluna} = ?
+           ORDER BY row_index
+           LIMIT ?"""
+
+
+def _conferencia_buscar_romaneio_rows(conn, ds, id_busca, limit_romaneio):
+    """Busca romaneio usando índice (id_viagem ou id_roteiro), sem TRIM/OR lento."""
+    params_base = (str(ds), id_busca, limit_romaneio)
+    rows = conn.execute(
+        _ROMANEIO_CONFERENCIA_SQL.format(coluna='id_viagem::text'),
+        params_base,
+    ).fetchall()
+    if not rows:
+        rows = conn.execute(
+            _ROMANEIO_CONFERENCIA_SQL.format(coluna='id_roteiro::text'),
+            params_base,
+        ).fetchall()
+    return rows or []
+
+
 def _conferencia_build_lista_pg(conn, id_viagem, fluxo_req='carregamento', limit_romaneio=400, somente_divergencias=False):
     """Monta lista de conferência no Postgres. Retorna (lista, meta, id_para_bipados, erro)."""
     id_viagem = (id_viagem or '').strip()
@@ -3780,20 +3822,12 @@ def _conferencia_build_lista_pg(conn, id_viagem, fluxo_req='carregamento', limit
         limit_romaneio = min(2000, max(200, int(limit_romaneio)))
     except (TypeError, ValueError):
         limit_romaneio = 400
-    romaneio_rows = conn.execute(
-        """SELECT id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
-                  codigo_cliente, endereco, cidade, placa, motorista, data_expedicao
-           FROM romaneio_por_item
-           WHERE dataset_id = ? AND (TRIM(COALESCE(id_viagem::text, '')) = ? OR TRIM(COALESCE(id_roteiro::text, '')) = ?)
-           ORDER BY row_index
-           LIMIT ?""",
-        (str(ds), id_busca, id_busca, limit_romaneio),
-    ).fetchall()
+    romaneio_rows = _conferencia_buscar_romaneio_rows(conn, ds, id_busca, limit_romaneio)
     id_para_bipados = id_busca
-    if romaneio_rows and len(romaneio_rows) > 0:
+    if romaneio_rows:
         r0 = romaneio_rows[0]
         id_para_bipados = str(r0.get('id_viagem') or '').strip() or id_busca
-    codigos_produto_romaneio = list({(str(r.get('codigo_produto') or '').strip()) for r in (romaneio_rows or []) if (r.get('codigo_produto') or '').strip()})
+    codigos_produto_romaneio = list({(str(r.get('codigo_produto') or '').strip()) for r in romaneio_rows if (r.get('codigo_produto') or '').strip()})
     if codigos_produto_romaneio:
         placeholders = ','.join(['?' for _ in codigos_produto_romaneio])
         base_rows = conn.execute(
@@ -3818,12 +3852,21 @@ def _conferencia_build_lista_pg(conn, id_viagem, fluxo_req='carregamento', limit
                 mapa_dun[cod] = dun
                 mapa_barras_to_codigo[dun] = cod
             mapa_codigo_barras[cod] = ean or dun
-    bipados = conn.execute(
-        "SELECT codigo_barras, SUM(quantidade) as quantidade_bipada FROM produtos_bipados WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ? GROUP BY codigo_barras",
+    bipados_rows = conn.execute(
+        """SELECT codigo_barras,
+                  SUM(quantidade) as quantidade_bipada,
+                  MAX(codigo_interno) as codigo_interno,
+                  MAX(produto) as produto,
+                  MAX(unidade) as unidade,
+                  MAX(peso) as peso
+           FROM produtos_bipados
+           WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ?
+             AND codigo_barras IS NOT NULL AND trim(codigo_barras) != ''
+           GROUP BY codigo_barras""",
         (id_para_bipados, fluxo_req),
     ).fetchall()
     bipados_dict = {}
-    for row in bipados or []:
+    for row in bipados_rows or []:
         cb = ((row.get('codigo_barras') or '') if hasattr(row, 'get') else (row[0] if len(row) > 0 else '')).strip()
         q = int((row.get('quantidade_bipada') or 0) if hasattr(row, 'get') else (row[1] if len(row) > 1 else 0))
         bipados_dict[cb] = bipados_dict.get(cb, 0) + q
@@ -3882,49 +3925,21 @@ def _conferencia_build_lista_pg(conn, id_viagem, fluxo_req='carregamento', limit
             'status_bipado': status_bipado,
             'id_viagem': id_para_bipados,
             'origem_romaneio': True,
-            '_todos_codigos_barras': list(todos_cb),
         })
-    extras = conn.execute(
-        """SELECT codigo_barras, MAX(codigo_interno) as codigo_interno, MAX(produto) as produto,
-                  SUM(quantidade) as quantidade_bipada, MAX(unidade) as unidade, MAX(peso) as peso
-           FROM produtos_bipados
-           WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ? AND codigo_barras IS NOT NULL AND trim(codigo_barras) != ''
-           GROUP BY codigo_barras""",
-        (id_para_bipados, fluxo_req),
-    ).fetchall()
-    _conferencia_incluir_extras_bipados(resultado, extras, mapa_barras_to_codigo, id_para_bipados)
+    _conferencia_incluir_extras_bipados(resultado, bipados_rows, mapa_barras_to_codigo, id_para_bipados)
     if somente_divergencias:
         resultado = [
             it for it in resultado
             if (it.get('quantidade_falta') or 0) > 0 or (it.get('quantidade_sobra') or 0) > 0
         ]
     meta = {'id_roteiro': '', 'identificador_rota': '', 'placa': '', 'motorista': '', 'data_expedicao': ''}
-    if romaneio_rows and len(romaneio_rows) > 0:
+    if romaneio_rows:
         r0 = romaneio_rows[0]
         meta['id_roteiro'] = str(r0.get('id_roteiro') or '').strip() or ''
         meta['identificador_rota'] = str(r0.get('identificador_rota') or '').strip() or ''
         meta['placa'] = str(r0.get('placa') or '').strip() or ''
         meta['motorista'] = str(r0.get('motorista') or '').strip() or ''
         meta['data_expedicao'] = str(r0.get('data_expedicao') or '').strip() or ''
-        for r in romaneio_rows:
-            if not meta['id_roteiro']:
-                v = str(r.get('id_roteiro') or '').strip()
-                if v:
-                    meta['id_roteiro'] = v
-            if not meta['identificador_rota']:
-                v = str(r.get('identificador_rota') or '').strip()
-                if v:
-                    meta['identificador_rota'] = v
-            if not meta['motorista']:
-                v = str(r.get('motorista') or '').strip()
-                if v:
-                    meta['motorista'] = v
-            if not meta['placa']:
-                v = str(r.get('placa') or '').strip()
-                if v:
-                    meta['placa'] = v
-            if meta['id_roteiro'] and meta['identificador_rota'] and meta['motorista'] and meta['placa']:
-                break
     return resultado, meta, id_para_bipados, None
 
 
@@ -3964,21 +3979,34 @@ def get_conferencia(id_viagem=None):
             ds = _get_latest_dataset_id(conn)
             id_para_lookup = id_para_bipados or id_busca
             meta = _conferencia_enriquecer_meta_pg(conn, ds, id_para_lookup, id_busca, meta)
-            try:
-                _carregar_motivos_divergencia(resultado, conn=conn)
-            except Exception:
-                pass
-            conn.close()
+            carregar_motivos = request.args.get('motivos', '1').strip().lower() not in ('0', 'false', 'no')
+            if carregar_motivos:
+                try:
+                    _carregar_motivos_divergencia(resultado, conn=conn)
+                except Exception:
+                    pass
             id_viagem_resposta = str(id_para_bipados).strip() if id_para_bipados else ''
+            id_norm_resp = _normalizar_id_viagem(id_para_lookup or id_busca)
+            inicio_p, fim_p = _consultar_periodo_viagem_raw_conn(conn, id_norm_resp or id_viagem_resposta, fluxo_req)
+            inicio_str = _formatar_data_hora_periodo(inicio_p)
+            fim_str = _formatar_data_hora_periodo(fim_p)
+            conn.close()
             total_romaneio = len(resultado)
             return jsonify({
                 'lista': resultado,
+                'lista_ja_agregada': True,
                 'id_roteiro': meta.get('id_roteiro') or '',
                 'id_viagem': id_viagem_resposta,
                 'identificador_rota': meta.get('identificador_rota') or '',
                 'placa': meta.get('placa') or '',
                 'motorista': meta.get('motorista') or '',
                 'data_expedicao': meta.get('data_expedicao') or '',
+                'coordenador': meta.get('coordenador') or COORDENADOR_PADRAO,
+                'conferente': meta.get('conferente') or '',
+                'ajudante1': meta.get('ajudante1') or '',
+                'ajudante2': meta.get('ajudante2') or '',
+                'inicio_carregamento': inicio_str,
+                'fim_carregamento': fim_str,
                 'total_romaneio': total_romaneio,
                 'limit_romaneio': limit_romaneio,
             })
@@ -4426,40 +4454,17 @@ def _ravex_id_input_ja_baixado(conn, dataset_id, id_input):
     id_norm = str(id_input or '').strip()
     if not id_norm or not dataset_id:
         return False, None
+    ds = str(dataset_id)
     info = None
-    try:
-        row = conn.execute(
-            """SELECT COUNT(*)::int AS n, MAX(importado_em) AS ultimo,
-                      MAX(TRIM(COALESCE(id_viagem::text, ''))) AS id_viagem,
-                      MAX(TRIM(COALESCE(id_roteiro::text, ''))) AS id_roteiro
-               FROM romaneio_por_item
-               WHERE dataset_id = ?
-                 AND (TRIM(COALESCE(id_viagem::text, '')) = ?
-                      OR TRIM(COALESCE(id_roteiro::text, '')) = ?)""",
-            (str(dataset_id), id_norm, id_norm),
-        ).fetchone()
-    except Exception:
-        row = conn.execute(
-            """SELECT COUNT(*) AS n, MAX(importado_em) AS ultimo,
-                      MAX(TRIM(COALESCE(id_viagem::text, ''))) AS id_viagem,
-                      MAX(TRIM(COALESCE(id_roteiro::text, ''))) AS id_roteiro
-               FROM romaneio_por_item
-               WHERE dataset_id = ?
-                 AND (TRIM(COALESCE(id_viagem::text, '')) = ?
-                      OR TRIM(COALESCE(id_roteiro::text, '')) = ?)""",
-            (str(dataset_id), id_norm, id_norm),
-        ).fetchone()
-    n = 0
-    ultimo = None
-    id_viagem = ''
-    id_roteiro = ''
-    if row:
+
+    def _info_romaneio(row):
         n = int((row.get('n') if hasattr(row, 'get') else row[0]) or 0)
+        if n <= 0:
+            return None
         ultimo = row.get('ultimo') if hasattr(row, 'get') else (row[1] if len(row) > 1 else None)
         id_viagem = str((row.get('id_viagem') if hasattr(row, 'get') else (row[2] if len(row) > 2 else '')) or '').strip()
         id_roteiro = str((row.get('id_roteiro') if hasattr(row, 'get') else (row[3] if len(row) > 3 else '')) or '').strip()
-    if n > 0:
-        info = {
+        return {
             'itens_romaneio': n,
             'importado_em': ultimo,
             'fonte': 'romaneio',
@@ -4467,6 +4472,32 @@ def _ravex_id_input_ja_baixado(conn, dataset_id, id_input):
             'id_roteiro': id_roteiro,
             'id_informado': id_norm,
         }
+
+    sql_viagem = """SELECT COUNT(*)::int AS n, MAX(importado_em) AS ultimo,
+                           MAX(id_viagem::text) AS id_viagem,
+                           MAX(id_roteiro::text) AS id_roteiro
+                    FROM romaneio_por_item
+                    WHERE dataset_id = ? AND id_viagem::text = ?"""
+    sql_roteiro = """SELECT COUNT(*)::int AS n, MAX(importado_em) AS ultimo,
+                            MAX(id_viagem::text) AS id_viagem,
+                            MAX(id_roteiro::text) AS id_roteiro
+                     FROM romaneio_por_item
+                     WHERE dataset_id = ? AND id_roteiro::text = ?"""
+    try:
+        row = conn.execute(sql_viagem, (ds, id_norm)).fetchone()
+        info = _info_romaneio(row) if row else None
+        if not info:
+            row = conn.execute(sql_roteiro, (ds, id_norm)).fetchone()
+            info = _info_romaneio(row) if row else None
+    except Exception:
+        sql_viagem = sql_viagem.replace('::int', '').replace('::text', '')
+        sql_roteiro = sql_roteiro.replace('::int', '').replace('::text', '')
+        row = conn.execute(sql_viagem, (ds, id_norm)).fetchone()
+        info = _info_romaneio(row) if row else None
+        if not info:
+            row = conn.execute(sql_roteiro, (ds, id_norm)).fetchone()
+            info = _info_romaneio(row) if row else None
+    if info:
         return True, info
     try:
         hist = conn.execute(
@@ -4549,19 +4580,20 @@ def _ravex_viagem_ja_baixada(conn, dataset_id, id_viagem):
     if not id_norm or not dataset_id:
         return False, None
     info = None
+    ds = str(dataset_id)
     try:
         row = conn.execute(
             """SELECT COUNT(*)::int AS n, MAX(importado_em) AS ultimo
                FROM romaneio_por_item
-               WHERE dataset_id = ? AND TRIM(COALESCE(id_viagem::text, '')) = ?""",
-            (str(dataset_id), id_norm),
+               WHERE dataset_id = ? AND id_viagem::text = ?""",
+            (ds, id_norm),
         ).fetchone()
     except Exception:
         row = conn.execute(
             """SELECT COUNT(*) AS n, MAX(importado_em) AS ultimo
                FROM romaneio_por_item
-               WHERE dataset_id = ? AND TRIM(COALESCE(id_viagem::text, '')) = ?""",
-            (str(dataset_id), id_norm),
+               WHERE dataset_id = ? AND id_viagem::text = ?""",
+            (ds, id_norm),
         ).fetchone()
     n = 0
     ultimo = None
@@ -4873,12 +4905,118 @@ def _ravex_roteiros_por_periodo_para_romaneio(token, data_inicio, data_fim):
     return resultado
 
 
-def _ravex_linhas_romaneio_viagem(token, id_viagem, id_roteiro_pre=None, identificador_rota_pre=None):
+def _ravex_extrair_identificador_rota(obj):
+    if not isinstance(obj, dict):
+        return ''
+    return (
+        obj.get('identificadorRota') or obj.get('identificador_rota')
+        or obj.get('identificador') or obj.get('nome') or obj.get('descricao') or ''
+    ).strip()
+
+
+def _ravex_resolver_id_db(conn, dataset_id, id_input):
+    """Resolve id_viagem/id_roteiro pelo cadastro local id_roteiros (sem API)."""
+    id_norm = str(id_input or '').strip()
+    if not id_norm or not dataset_id:
+        return None
+    try:
+        row = conn.execute(
+            """SELECT id_viagem::text AS id_viagem, id_roteiro::text AS id_roteiro, identificador_rota
+               FROM id_roteiros
+               WHERE dataset_id = ? AND (id_viagem::text = ? OR id_roteiro::text = ?)
+               LIMIT 1""",
+            (str(dataset_id), id_norm, id_norm),
+        ).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    id_viagem = str((row.get('id_viagem') if hasattr(row, 'get') else (row[0] if len(row) > 0 else '')) or '').strip()
+    id_roteiro = str((row.get('id_roteiro') if hasattr(row, 'get') else (row[1] if len(row) > 1 else '')) or '').strip()
+    identificador_rota = str((row.get('identificador_rota') if hasattr(row, 'get') else (row[2] if len(row) > 2 else '')) or '').strip()
+    if not id_viagem and not id_roteiro:
+        return None
+    return {
+        'id_viagem': id_viagem,
+        'id_roteiro': id_roteiro or id_norm,
+        'identificador_rota': identificador_rota,
+        'viagem_full': None,
+    }
+
+
+def _ravex_resolver_id_unico_ravex(token, id_unico):
+    """Resolve viagem/roteiro na API Ravex (consulta viagem e roteiro em paralelo)."""
+    if not obter_viagem_por_id or not obter_roteiro_por_id:
+        return None
+    id_str = str(id_unico or '').strip()
+    try:
+        rid = int(id_str)
+    except (TypeError, ValueError):
+        return None
+    viagem = None
+    roteiro = None
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fut_v = pool.submit(obter_viagem_por_id, token, rid)
+        fut_r = pool.submit(obter_roteiro_por_id, token, rid)
+        viagem = fut_v.result()
+        roteiro = fut_r.result()
+    if viagem:
+        id_viagem = id_str
+        id_roteiro = ''
+        identificador_rota = ''
+        roteiro_obj = viagem.get('roteiro') or viagem.get('roteiroFaturado')
+        if isinstance(roteiro_obj, dict):
+            id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or '')
+            identificador_rota = _ravex_extrair_identificador_rota(roteiro_obj)
+        if not id_roteiro:
+            id_roteiro = str(viagem.get('roteiroId') or viagem.get('idRoteiro') or '')
+        if not id_roteiro and isinstance(roteiro, dict):
+            id_roteiro = id_str
+            identificador_rota = _ravex_extrair_identificador_rota(roteiro) or identificador_rota
+        return {
+            'id_viagem': id_viagem,
+            'id_roteiro': id_roteiro or id_str,
+            'identificador_rota': identificador_rota,
+            'viagem_full': viagem,
+        }
+    if isinstance(roteiro, dict):
+        vf = roteiro.get('viagemFaturada') or roteiro.get('viagem_faturada')
+        id_viagem = ''
+        if isinstance(vf, dict):
+            id_viagem = str(vf.get('id') or vf.get('Id') or '')
+        if not id_viagem:
+            id_viagem = str(roteiro.get('viagemFaturadaId') or roteiro.get('viagem_id') or '')
+        if not id_viagem:
+            return {'erro': 'Roteiro ainda não possui viagem faturada. Só é possível bipar quando a viagem já foi faturada.'}
+        return {
+            'id_viagem': id_viagem,
+            'id_roteiro': id_str,
+            'identificador_rota': _ravex_extrair_identificador_rota(roteiro),
+            'viagem_full': None,
+        }
+    return {'erro': 'ID não encontrado como viagem nem como roteiro na API Ravex.'}
+
+
+def _ravex_resolver_importacao_unico(conn, token, dataset_id, id_unico):
+    """Resolve IDs para importação única: banco local primeiro, depois API em paralelo."""
+    local = _ravex_resolver_id_db(conn, dataset_id, id_unico)
+    if local and local.get('id_viagem'):
+        return local
+    api = _ravex_resolver_id_unico_ravex(token, id_unico)
+    if not api:
+        return {'erro': 'Não foi possível resolver o ID na API Ravex.'}
+    return api
+
+
+def _ravex_linhas_romaneio_viagem(token, id_viagem, id_roteiro_pre=None, identificador_rota_pre=None, viagem_full_pre=None):
     """Dado token e id_viagem, busca na API Ravex e monta (id_roteiro, linhas) para romaneio_por_item. Retorna (None, []) em erro.
     Se id_roteiro_pre e identificador_rota_pre forem passados (ex.: vindos de obter-roteiro-por-periodo), usa-os e não chama roteiro por período."""
     if not obter_viagem_por_id or not obter_canhotos_viagem or not obter_notas_fiscais_viagem or not obter_itens_nota_fiscal or not obter_ponto_referencia:
         return (None, [])
-    viagem_full = obter_viagem_por_id(token, id_viagem)
+    if viagem_full_pre and isinstance(viagem_full_pre, dict):
+        viagem_full = viagem_full_pre
+    else:
+        viagem_full = obter_viagem_por_id(token, id_viagem)
     if not viagem_full:
         return (None, [])
     # Usar id_roteiro e identificador_rota já obtidos por obter-roteiro-por-periodo quando fornecidos
@@ -5300,6 +5438,48 @@ def api_ravex_verificar_baixado():
     })
 
 
+@app.route('/api/ravex/verificar-baixado-lote', methods=['POST'])
+def api_ravex_verificar_baixado_lote():
+    """Verifica vários IDs de uma vez (evita N requisições HTTP na importação por lista)."""
+    if not _usa_banco_para_dados():
+        return jsonify({'erro': 'Configure DATABASE_URL.', 'ja_baixados': []}), 400
+    data = request.get_json(silent=True) or {}
+    ids_raw = data.get('ids') or data.get('id_list') or []
+    if isinstance(ids_raw, str):
+        ids_raw = ids_raw.replace(',', '\n').split('\n')
+    ids = []
+    vistos = set()
+    for raw in ids_raw or []:
+        s = str(raw or '').strip()
+        if s and s not in vistos:
+            vistos.add(s)
+            ids.append(s)
+    if not ids:
+        return jsonify({'ok': True, 'ja_baixados': [], 'total': 0}), 200
+    conn = get_db()
+    if getattr(conn, 'kind', None) != 'pg':
+        conn.close()
+        return jsonify({'erro': 'Banco não é Postgres.', 'ja_baixados': []}), 400
+    ds = _get_latest_dataset_id(conn)
+    if not ds:
+        conn.close()
+        return jsonify({'erro': 'Nenhum dataset ativo.', 'ja_baixados': []}), 400
+    ja_baixados = []
+    try:
+        for id_input in ids:
+            ja, info = _ravex_id_input_ja_baixado(conn, ds, id_input)
+            if ja:
+                ja_baixados.append({
+                    'id': id_input,
+                    'id_viagem': (info or {}).get('id_viagem') or '',
+                    'id_roteiro': (info or {}).get('id_roteiro') or '',
+                    'erro': _ravex_mensagem_ja_baixado(id_input, info),
+                })
+    finally:
+        conn.close()
+    return jsonify({'ok': True, 'ja_baixados': ja_baixados, 'total': len(ja_baixados)})
+
+
 @app.route('/api/ravex/importar-romaneio', methods=['POST'])
 def api_ravex_importar_romaneio():
     """Importa itens do romaneio da API Ravex por id_roteiro ou id_viagem. Só importa quando a viagem já existe (faturada)."""
@@ -5317,68 +5497,6 @@ def api_ravex_importar_romaneio():
         token = ravex_get_token()
     except Exception as e:
         return _ravex_502_resposta(e)
-    id_viagem = None
-    id_roteiro = None
-    if id_viagem_in:
-        try:
-            vid = int(id_viagem_in)
-        except (TypeError, ValueError):
-            vid = id_viagem_in
-        viagem = obter_viagem_por_id(token, vid)
-        if viagem:
-            id_viagem = str(vid)
-            roteiro_obj = viagem.get('roteiro') or viagem.get('roteiroFaturado')
-            if isinstance(roteiro_obj, dict):
-                id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or '')
-            if not id_roteiro:
-                id_roteiro = str(viagem.get('roteiroId') or viagem.get('idRoteiro') or '')
-    if not id_viagem and id_roteiro_in:
-        try:
-            rid = int(id_roteiro_in)
-        except (TypeError, ValueError):
-            rid = id_roteiro_in
-        roteiro = obter_roteiro_por_id(token, rid)
-        if not roteiro:
-            return jsonify({'erro': 'Roteiro não encontrado na API Ravex.'}), 404
-        id_roteiro = str(rid)
-        vf = roteiro.get('viagemFaturada') or roteiro.get('viagem_faturada')
-        if isinstance(vf, dict):
-            id_viagem = str(vf.get('id') or vf.get('Id') or '')
-        if not id_viagem:
-            id_viagem = str(roteiro.get('viagemFaturadaId') or roteiro.get('viagem_id') or '')
-        if not id_viagem:
-            return jsonify({'erro': 'Roteiro ainda não possui viagem faturada. Só é possível bipar quando a viagem já foi faturada.'}), 400
-    if not id_viagem and id_unico:
-        try:
-            vid = int(id_unico)
-        except (TypeError, ValueError):
-            vid = id_unico
-        viagem = obter_viagem_por_id(token, vid)
-        if viagem:
-            id_viagem = str(id_unico)
-            roteiro_obj = viagem.get('roteiro') or viagem.get('roteiroFaturado')
-            if isinstance(roteiro_obj, dict):
-                id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or '')
-            if not id_roteiro:
-                id_roteiro = str(viagem.get('roteiroId') or viagem.get('idRoteiro') or '')
-        else:
-            try:
-                rid = int(id_unico)
-            except (TypeError, ValueError):
-                rid = id_unico
-            roteiro = obter_roteiro_por_id(token, rid)
-            if not roteiro:
-                return jsonify({'erro': 'ID não encontrado como viagem nem como roteiro na API Ravex.'}), 404
-            id_roteiro = str(id_unico)
-            vf = roteiro.get('viagemFaturada') or roteiro.get('viagem_faturada')
-            if isinstance(vf, dict):
-                id_viagem = str(vf.get('id') or vf.get('Id') or '')
-            if not id_viagem:
-                id_viagem = str(roteiro.get('viagemFaturadaId') or roteiro.get('viagem_id') or '')
-            if not id_viagem:
-                return jsonify({'erro': 'Roteiro ainda não possui viagem faturada.'}), 400
-    if not id_viagem:
-        return jsonify({'erro': 'Não foi possível obter o ID da viagem.'}), 400
     conn = get_db()
     if getattr(conn, 'kind', None) != 'pg':
         conn.close()
@@ -5387,6 +5505,61 @@ def api_ravex_importar_romaneio():
     if not ds:
         conn.close()
         return jsonify({'erro': 'Nenhum dataset ativo. Importe a base (planilha) primeiro.'}), 400
+
+    id_viagem = None
+    id_roteiro = None
+    identificador_rota = ''
+    viagem_full = None
+
+    if id_unico and not id_viagem_in and not id_roteiro_in:
+        resolved = _ravex_resolver_importacao_unico(conn, token, ds, id_unico)
+        if not resolved or resolved.get('erro'):
+            conn.close()
+            err = (resolved or {}).get('erro') or 'Não foi possível resolver o ID.'
+            status = 404 if 'não encontrado' in err.lower() or 'nem como' in err.lower() else 400
+            return jsonify({'erro': err}), status
+        id_viagem = resolved.get('id_viagem')
+        id_roteiro = resolved.get('id_roteiro') or id_unico
+        identificador_rota = resolved.get('identificador_rota') or ''
+        viagem_full = resolved.get('viagem_full')
+    elif id_viagem_in:
+        try:
+            vid = int(id_viagem_in)
+        except (TypeError, ValueError):
+            vid = id_viagem_in
+        viagem_full = obter_viagem_por_id(token, vid)
+        if viagem_full:
+            id_viagem = str(vid)
+            roteiro_obj = viagem_full.get('roteiro') or viagem_full.get('roteiroFaturado')
+            if isinstance(roteiro_obj, dict):
+                id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or '')
+                identificador_rota = _ravex_extrair_identificador_rota(roteiro_obj)
+            if not id_roteiro:
+                id_roteiro = str(viagem_full.get('roteiroId') or viagem_full.get('idRoteiro') or '')
+    elif id_roteiro_in:
+        try:
+            rid = int(id_roteiro_in)
+        except (TypeError, ValueError):
+            rid = id_roteiro_in
+        roteiro = obter_roteiro_por_id(token, rid)
+        if not roteiro:
+            conn.close()
+            return jsonify({'erro': 'Roteiro não encontrado na API Ravex.'}), 404
+        id_roteiro = str(rid)
+        identificador_rota = _ravex_extrair_identificador_rota(roteiro)
+        vf = roteiro.get('viagemFaturada') or roteiro.get('viagem_faturada')
+        if isinstance(vf, dict):
+            id_viagem = str(vf.get('id') or vf.get('Id') or '')
+        if not id_viagem:
+            id_viagem = str(roteiro.get('viagemFaturadaId') or roteiro.get('viagem_id') or '')
+        if not id_viagem:
+            conn.close()
+            return jsonify({'erro': 'Roteiro ainda não possui viagem faturada. Só é possível bipar quando a viagem já foi faturada.'}), 400
+
+    if not id_viagem:
+        conn.close()
+        return jsonify({'erro': 'Não foi possível obter o ID da viagem.'}), 400
+
     forcar = _ravex_parse_forcar_reimportar(data)
     if not forcar:
         ja_dup, info_dup = _ravex_viagem_ja_baixada(conn, ds, id_viagem)
@@ -5395,7 +5568,12 @@ def api_ravex_importar_romaneio():
                 conn, ds, 'id_unico', id_viagem, id_roteiro or id_roteiro_in or id_unico, info_dup,
                 id_input=id_unico or id_viagem_in or id_roteiro_in,
             )
-    id_roteiro, linhas = _ravex_linhas_romaneio_viagem(token, id_viagem)
+    id_roteiro, linhas = _ravex_linhas_romaneio_viagem(
+        token, id_viagem,
+        id_roteiro_pre=id_roteiro,
+        identificador_rota_pre=identificador_rota,
+        viagem_full_pre=viagem_full,
+    )
     if id_roteiro is None:
         conn.close()
         return jsonify({'erro': 'Viagem não encontrada ou sem itens na API Ravex.'}), 404
@@ -6112,22 +6290,25 @@ def _carregar_motivos_divergencia(lista, conn=None):
 
 
 def _conferencia_enriquecer_meta_pg(conn, ds, id_para_lookup, id_busca, meta):
-    """Preenche meta com id_roteiros, placa e motorista em uma única consulta."""
+    """Preenche meta (roteiro, placa, motorista, responsáveis) em uma única consulta."""
     if not conn or not ds:
         return meta
-    if meta.get('id_roteiro') and meta.get('identificador_rota') and meta.get('placa') and meta.get('motorista'):
-        return meta
+    meta = dict(meta or {})
     id_t = str(id_para_lookup or id_busca or '').strip()
     if not id_t:
         return meta
+    if meta.get('_extras_carregados'):
+        return meta
     try:
         row = conn.execute(
-            """SELECT ir.id_roteiro, ir.identificador_rota, vp.placa, vm.motorista
+            """SELECT ir.id_roteiro, ir.identificador_rota, vp.placa, vm.motorista,
+                      vr.coordenador, vr.conferente, vr.ajudante1, vr.ajudante2
                FROM (SELECT ?::text AS id_v) q
                LEFT JOIN id_roteiros ir
-                 ON ir.dataset_id = ? AND TRIM(COALESCE(ir.id_viagem::text, '')) = q.id_v
-               LEFT JOIN viagem_placa vp ON TRIM(COALESCE(vp.id_viagem::text, '')) = q.id_v
-               LEFT JOIN viagem_motorista vm ON TRIM(COALESCE(vm.id_viagem::text, '')) = q.id_v
+                 ON ir.dataset_id = ? AND ir.id_viagem::text = q.id_v
+               LEFT JOIN viagem_placa vp ON vp.id_viagem = q.id_v
+               LEFT JOIN viagem_motorista vm ON vm.id_viagem = q.id_v
+               LEFT JOIN viagem_responsaveis vr ON vr.id_viagem = q.id_v
                LIMIT 1""",
             (id_t, str(ds)),
         ).fetchone()
@@ -6140,8 +6321,22 @@ def _conferencia_enriquecer_meta_pg(conn, ds, id_para_lookup, id_busca, meta):
                 meta['placa'] = str((row.get('placa') if hasattr(row, 'get') else (row[2] if len(row) > 2 else '')) or '').strip()
             if not meta.get('motorista'):
                 meta['motorista'] = str((row.get('motorista') if hasattr(row, 'get') else (row[3] if len(row) > 3 else '')) or '').strip()
+            coord = (row.get('coordenador') if hasattr(row, 'get') else (row[4] if len(row) > 4 else None) or '').strip()
+            meta['coordenador'] = coord or COORDENADOR_PADRAO
+            meta['conferente'] = (row.get('conferente') if hasattr(row, 'get') else (row[5] if len(row) > 5 else None) or '').strip()
+            meta['ajudante1'] = (row.get('ajudante1') if hasattr(row, 'get') else (row[6] if len(row) > 6 else None) or '').strip()
+            meta['ajudante2'] = (row.get('ajudante2') if hasattr(row, 'get') else (row[7] if len(row) > 7 else None) or '').strip()
+        else:
+            meta.setdefault('coordenador', COORDENADOR_PADRAO)
+            meta.setdefault('conferente', '')
+            meta.setdefault('ajudante1', '')
+            meta.setdefault('ajudante2', '')
     except Exception:
-        pass
+        meta.setdefault('coordenador', COORDENADOR_PADRAO)
+        meta.setdefault('conferente', '')
+        meta.setdefault('ajudante1', '')
+        meta.setdefault('ajudante2', '')
+    meta['_extras_carregados'] = True
     return meta
 
 
@@ -8997,19 +9192,24 @@ def _estoque_sp_coletar_movimentos(conn, data_inicio='', data_fim=''):
 
     tbl_d = _tbl_terceiros_documentos(conn)
     tbl_i = _tbl_terceiros_documento_itens(conn)
+    cod_prod_ter = "COALESCE(NULLIF(TRIM(i.codigo_produto_base), ''), NULLIF(TRIM(i.codigo_produto_xml), ''), '')"
+    desc_prod_ter = "COALESCE(NULLIF(TRIM(i.descricao_base), ''), NULLIF(TRIM(i.descricao_xml), ''), '')"
     entrada_ter = conn.execute(
         f'''SELECT COALESCE(i.codigo_ean, '') AS codigo_barras,
-                   COALESCE(i.codigo_produto, '') AS codigo_produto,
-                   COALESCE(MAX(i.descricao), '') AS produto,
+                   {cod_prod_ter} AS codigo_produto,
+                   COALESCE(MAX({desc_prod_ter}), '') AS produto,
                    COALESCE(SUM(i.quantidade_bipada), 0) AS quantidade,
                    COUNT(DISTINCT d.id) AS nfs
             FROM {tbl_i} i
             INNER JOIN {tbl_d} d ON d.id = i.documento_id
-            WHERE LOWER(TRIM(COALESCE(CAST(d.recebimento_concluido AS TEXT), ''))) IN ('1', 'true', 'sim', 't', 'yes')
+            WHERE (
+                    d.recebimento_concluido IS TRUE
+                    OR LOWER(TRIM(COALESCE(CAST(d.recebimento_concluido AS TEXT), ''))) IN ('1', 'true', 'sim', 't', 'yes')
+                  )
               AND LOWER(TRIM(COALESCE(d.consumivel_sp, ''))) NOT IN ('sim', 's', 'true', '1', 'yes')
               AND LOWER(TRIM(COALESCE(d.enviar_para_mg, ''))) NOT IN ('sim', 's', 'true', '1', 'yes')
               AND COALESCE(i.quantidade_bipada, 0) > 0
-            GROUP BY i.codigo_ean, i.codigo_produto
+            GROUP BY i.codigo_ean, {cod_prod_ter}
             ORDER BY quantidade DESC
             LIMIT 2000''',
     ).fetchall()

@@ -5,6 +5,8 @@ Usa apenas GET (exceto POST de autenticação).
 Credenciais: RAVEX_BASE_URL, RAVEX_USER, RAVEX_PASSWORD (variáveis de ambiente).
 """
 import os
+import time
+import threading
 
 try:
     import urllib3
@@ -35,8 +37,27 @@ def _get_ravex_credenciais():
     return user, pwd
 
 
+_token_cache = {'token': None, 'exp': 0.0}
+_token_lock = threading.Lock()
+_TOKEN_TTL_SEC = 3300  # reutiliza token ~55 min (evita POST /autenticar a cada importação)
+
+
 def get_token():
-    """Obtém token de acesso (POST /usuario/autenticar). Formato igual ao projeto BASE VIAGENS: form-data, sem headers extras."""
+    """Obtém token de acesso (POST /usuario/autenticar). Reutiliza token em cache na mesma instância."""
+    now = time.time()
+    with _token_lock:
+        cached = _token_cache.get('token')
+        if cached and (_token_cache.get('exp') or 0) > now:
+            return cached
+    token = _fetch_ravex_token()
+    with _token_lock:
+        _token_cache['token'] = token
+        _token_cache['exp'] = now + _TOKEN_TTL_SEC
+    return token
+
+
+def _fetch_ravex_token():
+    """Autentica na API Ravex e retorna access_token."""
     try:
         import requests
     except ImportError:
@@ -74,6 +95,13 @@ def get_token():
     if not token:
         raise RuntimeError("Resposta Ravex sem access_token")
     return token
+
+
+def ravex_invalidar_token_cache():
+    """Limpa cache de token (ex.: após 401)."""
+    with _token_lock:
+        _token_cache['token'] = None
+        _token_cache['exp'] = 0.0
 
 
 def _headers(token):

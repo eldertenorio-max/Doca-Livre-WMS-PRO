@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CONTROLE DE CARREGAMENTO ULTRAPÃO</title>
     <link rel="stylesheet" href="../static/style.css">
-    <link rel="prefetch" href="/entrada" as="document">
+    <link rel="stylesheet" href="../static/entrada-modulos.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
       // Configure antes do deploy (Render Static):
@@ -3032,6 +3032,23 @@
             100% { transform: translateX(-120%); }
         }
     </style>
+
+    <div id="hub-modulos-overlay" class="hub-modulos-overlay" hidden aria-hidden="true" role="dialog" aria-label="Escolha o módulo">
+        <div class="hub-entrada-topstripe" aria-hidden="true"></div>
+        <div class="hub-entrada-wrap hub-modulos-overlay-inner">
+            <div class="hub-entrada-logo">
+                <img src="../static/logo.png" alt="Ultra Pão Alimentos">
+            </div>
+            <h2 class="hub-entrada-titulo">Controle de Carregamento</h2>
+            <p class="hub-entrada-desc">Escolha o módulo ou pressione <kbd>Esc</kbd> para voltar ao que estava fazendo.</p>
+            <div class="hub-entrada-botoes">
+                <button type="button" class="hub-entrada-btn hub-entrada-btn--1" data-hub-modulo="carregamento">Carregamento (expedição)</button>
+                <button type="button" class="hub-entrada-btn hub-entrada-btn--2" data-hub-modulo="devolucoes">Devoluções</button>
+                <button type="button" class="hub-entrada-btn hub-entrada-btn--3" data-hub-modulo="terceiros">Recebimento e expedição de terceiros</button>
+                <button type="button" class="hub-entrada-btn hub-entrada-btn--4" data-hub-modulo="estoque-sp">Estoque SP em tempo real</button>
+            </div>
+        </div>
+    </div>
 
     <script src="../static/script.js"></script>
 </body>

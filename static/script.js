@@ -324,11 +324,12 @@ function _conferenciaProcessarBipagemCodigo(codigoBarras, quantidade, codigoProd
 async function _conferenciaDescartarRascunhoLocal(idViagem) {
     _limparPendenciasConferenciaTimers();
     if (idViagem) {
-        await loadConferencia(idViagem, { fluxo: 'carregamento', forcar: true, forcarIgnorarPendencias: true });
-        loadPeriodoCarregamento(idViagem);
-        loadEstatisticas();
+        try {
+            sessionStorage.removeItem(_conferenciaPeriodoBipagemKey(idViagem));
+        } catch (e) { /* ignore */ }
     }
     _conferenciaAtualizarAvisoRascunho();
+    loadEstatisticas();
 }
 
 var _conferenciaRetornoResolver = null;
@@ -978,6 +979,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initFiltrosBase();
     initBaseItemModal();
     initNavegacaoRapida();
+    initHubModulosOverlay();
     initConferenciaTabelaAcoes();
     initModalZerarItens();
     initConferenciaSessaoModais();
@@ -988,6 +990,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Primeira carga após um tick para a tela pintar antes (resposta mais rápida percebida)
     setTimeout(function() {
         loadAllData();
+        loadColaboradoresMotoristas();
+        loadPlacas();
         restaurarTerceirosUltimaNotaSeSessao();
     }, 0);
     initEventosStream();
@@ -1903,17 +1907,97 @@ async function moverDocumentoFluxoTerceirosAposStatus(documentoId, campo, valor)
 
 /** Libera SSE e gráficos antes de sair do painel (descarrega a página mais rápido). */
 function _prepararSaidaParaEntrada() {
+    _pausarPainelLeve({ destruirGraficos: true });
+}
+
+function _pausarPainelLeve(opts) {
+    opts = opts || {};
     try {
         if (_eventSource) {
             _eventSource.close();
             _eventSource = null;
         }
     } catch (e) {}
+    if (typeof _estoqueSpPararTimer === 'function') _estoqueSpPararTimer();
+    if (typeof _limparPendenciasConferenciaTimers === 'function') _limparPendenciasConferenciaTimers();
     try {
-        if (typeof destroyCharts === 'function') destroyCharts();
-        if (typeof destroyPainelDevolucoesCharts === 'function') destroyPainelDevolucoesCharts();
-        if (typeof destroyPainelTerceirosCharts === 'function') destroyPainelTerceirosCharts();
+        if (typeof _timerPosBipagem !== 'undefined' && _timerPosBipagem) {
+            clearTimeout(_timerPosBipagem);
+            _timerPosBipagem = null;
+        }
     } catch (e) {}
+    try {
+        if (typeof _ravexImportAbortarAtivo === 'function') _ravexImportAbortarAtivo();
+    } catch (e) {}
+    if (opts.destruirGraficos) {
+        try {
+            if (typeof destroyCharts === 'function') destroyCharts();
+            if (typeof destroyPainelDevolucoesCharts === 'function') destroyPainelDevolucoesCharts();
+            if (typeof destroyPainelTerceirosCharts === 'function') destroyPainelTerceirosCharts();
+        } catch (e) {}
+    }
+}
+
+function _pausarPainelParaHub() {
+    _pausarPainelLeve({ destruirGraficos: true });
+}
+
+function _mostrarHubModulos() {
+    var hub = document.getElementById('hub-modulos-overlay');
+    if (!hub) {
+        window.location.href = '/entrada';
+        return;
+    }
+    hub.hidden = false;
+    hub.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('hub-modulos-aberto');
+    var primeiro = hub.querySelector('[data-hub-modulo]');
+    if (primeiro && primeiro.focus) primeiro.focus();
+    setTimeout(function() {
+        if (hub.hidden) return;
+        _pausarPainelLeve({ destruirGraficos: false });
+    }, 0);
+}
+
+function _ocultarHubModulos(opts) {
+    opts = opts || {};
+    var hub = document.getElementById('hub-modulos-overlay');
+    if (!hub || hub.hidden) return;
+    hub.hidden = true;
+    hub.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('hub-modulos-aberto');
+    if (opts.retomarStream !== false && typeof initEventosStream === 'function') {
+        initEventosStream();
+    }
+}
+
+function initHubModulosOverlay() {
+    var hub = document.getElementById('hub-modulos-overlay');
+    if (!hub || hub._hubInit) return;
+    hub._hubInit = true;
+    hub.querySelectorAll('[data-hub-modulo]').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            var mod = btn.getAttribute('data-hub-modulo');
+            if (!mod) return;
+            _ocultarHubModulos({ retomarStream: false });
+            if (mod !== 'terceiros' && typeof _limparTerceirosDocumentoNaSessao === 'function') {
+                _limparTerceirosDocumentoNaSessao();
+            }
+            if (typeof window.controleMostrarModulo === 'function') {
+                window.controleMostrarModulo(mod);
+            } else {
+                window.location.href = '/painel?modulo=' + encodeURIComponent(mod);
+                return;
+            }
+            if (typeof initEventosStream === 'function') initEventosStream();
+        });
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Escape') return;
+        if (!hub || hub.hidden) return;
+        _ocultarHubModulos();
+    });
 }
 
 function _htmlBotoesAcaoConferencia(opts) {
@@ -2012,8 +2096,10 @@ function initNavegacaoRapida() {
     var linkInicio = document.querySelector('.header-link-inicio');
     if (!linkInicio) return;
     var href = linkInicio.getAttribute('href') || '/entrada';
+    var temHub = !!document.getElementById('hub-modulos-overlay');
 
     function prefetchEntrada() {
+        if (temHub) return;
         try {
             if (document.querySelector('link[rel="prefetch"][href="' + href + '"]')) return;
             var prefetch = document.createElement('link');
@@ -2026,6 +2112,7 @@ function initNavegacaoRapida() {
     prefetchEntrada();
 
     function irParaEntrada(e) {
+        if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1)) return;
         if (e) {
             e.preventDefault();
             e.stopPropagation();
@@ -2033,12 +2120,22 @@ function initNavegacaoRapida() {
         if (linkInicio._navegandoEntrada) return;
         linkInicio._navegandoEntrada = true;
         linkInicio.classList.add('header-link-inicio--saindo');
-        _prepararSaidaParaEntrada();
+        if (temHub) {
+            _mostrarHubModulos();
+            linkInicio.classList.remove('header-link-inicio--saindo');
+            linkInicio._navegandoEntrada = false;
+            return;
+        }
+        _pausarPainelParaHub();
         window.location.assign(href);
     }
 
     linkInicio.addEventListener('mouseenter', prefetchEntrada, { passive: true });
     linkInicio.addEventListener('click', irParaEntrada);
+    linkInicio.addEventListener('auxclick', function(e) {
+        if (e.button === 1) return;
+        irParaEntrada(e);
+    });
     linkInicio.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' || e.key === ' ') {
             irParaEntrada(e);
@@ -2435,7 +2532,7 @@ async function loadEstoqueSpTempoReal(silencioso) {
         if (!silencioso) {
             showMessage((data && data.erro) || 'Erro ao carregar estoque em tempo real.', 'error');
         }
-        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading">Erro ao carregar.</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading" style="color:#c62828;">' + escHtml((data && data.erro) || 'Erro ao carregar.') + '</td></tr>';
         return;
     }
     var ea = data.estoque_atual || {};
@@ -10102,20 +10199,8 @@ function initForms() {
             btnImportarRavexIdUnico.disabled = true;
             resultadoImportarRavex.style.display = 'none';
             var idTrim = idUnico.trim();
-            var forcarUnico = !!(document.getElementById('importar-ravex-forcar-reimportar') && document.getElementById('importar-ravex-forcar-reimportar').checked);
-            var signalUnico = _ravexImportSignalLoading('Verificando ID…');
+            var signalUnico = _ravexImportSignalLoading('Puxando roteiro/viagem da API Ravex... Aguarde.');
             try {
-                if (!forcarUnico) {
-                    var verUnico = await ravexVerificarIdJaBaixado(idTrim, signalUnico);
-                    if (signalUnico.aborted) return;
-                    if (verUnico.ja_baixado || verUnico.duplicado) {
-                        ravexMostrarDuplicado(verUnico, resultadoImportarRavex);
-                        return;
-                    }
-                }
-                if (signalUnico.aborted) return;
-                var textUnico = document.getElementById('ravex-loading-text');
-                if (textUnico) textUnico.textContent = 'Puxando roteiro/viagem da API Ravex...';
                 const r = await fetch(API_BASE + '/ravex/importar-romaneio', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -10171,29 +10256,32 @@ function initForms() {
             btnImportarRavexLista.disabled = true;
             resultadoImportarRavex.style.display = 'none';
             var forcarLista = !!(document.getElementById('importar-ravex-forcar-reimportar') && document.getElementById('importar-ravex-forcar-reimportar').checked);
-            var signalLista = _ravexImportSignalLoading('Verificando lista de IDs…');
+            var signalLista = _ravexImportSignalLoading('Puxando ' + ids.length + ' roteiro(s)/viagem(ns) da API Ravex... Aguarde.');
             try {
                 var bloquearLista = false;
                 if (!forcarLista) {
-                    var duplicadosLista = [];
-                    for (var li = 0; li < ids.length; li++) {
-                        if (signalLista.aborted) break;
-                        var verL = await ravexVerificarIdJaBaixado(ids[li], signalLista);
-                        if (verL.ja_baixado || verL.duplicado) duplicadosLista.push(ids[li]);
-                    }
-                    if (!signalLista.aborted && duplicadosLista.length === ids.length) {
+                    var rVer = await fetch(API_BASE + '/ravex/verificar-baixado-lote', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ids: ids }),
+                        signal: signalLista
+                    });
+                    var verLote = await rVer.json().catch(function() { return {}; });
+                    if (signalLista.aborted) return;
+                    var duplicadosLista = (verLote && Array.isArray(verLote.ja_baixados))
+                        ? verLote.ja_baixados.map(function(x) { return x.id; })
+                        : [];
+                    if (duplicadosLista.length === ids.length) {
                         ravexMostrarDuplicado({
                             erro: 'Todos os ' + ids.length + ' ID(s) da lista já foram baixados (ex.: ' + duplicadosLista.slice(0, 3).join(', ') + '). Marque «Forçar reimportação» para baixar de novo.'
                         }, resultadoImportarRavex);
                         bloquearLista = true;
-                    } else if (!signalLista.aborted && duplicadosLista.length > 0) {
+                    } else if (duplicadosLista.length > 0) {
                         var textLista = document.getElementById('ravex-loading-text');
                         if (textLista) textLista.textContent = duplicadosLista.length + ' ID(s) já baixados serão ignorados. Puxando da API…';
                     }
                 }
                 if (!bloquearLista && !signalLista.aborted) {
-                    var textLista2 = document.getElementById('ravex-loading-text');
-                    if (textLista2) textLista2.textContent = 'Puxando ' + ids.length + ' roteiro(s)/viagem(ns) da API Ravex... Aguarde.';
                     const r = await fetch(API_BASE + '/ravex/importar-lista', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -12880,7 +12968,9 @@ async function loadPeriodoCarregamento(idViagem) {
 
 // Carregar lista de colaboradores (TRANSPORTE GRU/PPY) para sugestões do campo Motorista
 let listaColaboradoresMotoristas = [];
+var _colaboradoresMotoristasCarregados = false;
 async function loadColaboradoresMotoristas() {
+    if (_colaboradoresMotoristasCarregados && listaColaboradoresMotoristas.length) return;
     try {
         const data = await fetchAPI('/colaboradores-motoristas');
         if (data && Array.isArray(data.nomes)) {
@@ -12889,6 +12979,7 @@ async function loadColaboradoresMotoristas() {
             if (datalist) {
                 datalist.innerHTML = listaColaboradoresMotoristas.map(n => '<option value="' + String(n).replace(/"/g, '&quot;') + '">').join('');
             }
+            _colaboradoresMotoristasCarregados = true;
         }
     } catch (e) {
         listaColaboradoresMotoristas = [];
@@ -12897,7 +12988,9 @@ async function loadColaboradoresMotoristas() {
 
 // Carregar lista de placas (aba Todas as placas Coluna B ou ROMANEIO POR ITEM) para sugestões do campo Placa
 let listaPlacas = [];
+var _placasCarregadas = false;
 async function loadPlacas() {
+    if (_placasCarregadas && listaPlacas.length) return;
     try {
         const data = await fetchAPI('/placas');
         if (data && Array.isArray(data.placas)) {
@@ -12906,6 +12999,7 @@ async function loadPlacas() {
             if (datalist) {
                 datalist.innerHTML = listaPlacas.map(p => '<option value="' + String(p).replace(/"/g, '&quot;') + '">').join('');
             }
+            _placasCarregadas = true;
         }
     } catch (e) {
         listaPlacas = [];
@@ -12913,6 +13007,39 @@ async function loadPlacas() {
 }
 
 const COORDENADOR_PADRAO = 'ASTROGILDO RODRIGUES DOS SANTOS';
+
+function _aplicarExtrasConferenciaResponse(conferencia, idViagem, isDev) {
+    if (!conferencia || isDev) return;
+    var setVal = function(id, val) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = (val && String(val).trim()) ? val : '-';
+    };
+    var setInput = function(id, val) {
+        var el = document.getElementById(id);
+        if (el) el.value = (val && String(val).trim()) ? val : '';
+    };
+    if (conferencia.coordenador !== undefined || conferencia.conferente !== undefined) {
+        setInput('viagem-coordenador', (conferencia.coordenador && String(conferencia.coordenador).trim()) ? conferencia.coordenador : COORDENADOR_PADRAO);
+        setInput('viagem-conferente', conferencia.conferente || '');
+        setInput('viagem-ajudante1', conferencia.ajudante1 || '');
+        setInput('viagem-ajudante2', conferencia.ajudante2 || '');
+    }
+    if (conferencia.inicio_carregamento !== undefined || conferencia.fim_carregamento !== undefined) {
+        var inicio = conferencia.inicio_carregamento;
+        var fim = conferencia.fim_carregamento;
+        if (_conferenciaUsaRascunhoLocal()) {
+            var local = _conferenciaObterPeriodoBipagemLocal(idViagem);
+            if (local && local.inicio) {
+                inicio = _formatarPeriodoBipagemLocal(local.inicio);
+                fim = _formatarPeriodoBipagemLocal(local.fim || local.inicio);
+            }
+        }
+        setVal('periodo-inicio-carregamento', inicio);
+        setVal('periodo-fim-carregamento', fim);
+        var periodoBox = document.getElementById('periodo-carregamento-box');
+        if (periodoBox) periodoBox.style.display = 'block';
+    }
+}
 
 // Carregar info da viagem: data expedição, placa, identificador rota, motorista, responsáveis (editáveis)
 async function loadViagemInfo(idViagem) {
@@ -13077,21 +13204,38 @@ window.buscarItensViagem = async function() {
         await _conferenciaDescartarRascunhoLocal(idAnterior);
     } else if (idAnterior && idAnterior !== idInput) {
         _limparPendenciasConferenciaTimers();
+        window._ultimoBipadoCodigo = '';
     }
+
+    var tbodyLoading = document.getElementById('tbody-conferencia');
+    if (tbodyLoading) tbodyLoading.innerHTML = '<tr><td colspan="12" class="loading">Carregando itens da viagem...</td></tr>';
 
     showOverlay('Carregando conferência da base de dados (romaneio por item)... Aguarde.');
     showMessage('Buscando itens na base...', 'success');
     
     var idViagem = idInput;
     var sucesso = false;
+    var overlayOculto = false;
+    function tentarOcultarOverlay() {
+        if (!overlayOculto && !cancelado) {
+            overlayOculto = true;
+            hideOverlay();
+        }
+    }
     try {
-        await loadConferencia(idInput, { signal: abortCtrl ? abortCtrl.signal : undefined, forcar: true });
+        await loadConferencia(idInput, {
+            signal: abortCtrl ? abortCtrl.signal : undefined,
+            forcar: true,
+            onDadosRecebidos: function(conf) {
+                tentarOcultarOverlay();
+                if (conf && !conf.erro) {
+                    var idV = (conf.id_viagem && String(conf.id_viagem).trim()) || idInput;
+                    _habilitarUiConferenciaViagem(idV);
+                }
+            },
+        });
         if (cancelado) return;
         idViagem = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim()) || document.getElementById('id-viagem').value.trim() || idInput;
-        await Promise.all([
-            loadPeriodoCarregamento(idViagem),
-            loadViagemInfo(idViagem),
-        ]);
         sucesso = true;
     } catch (e) {
         if (cancelado || (e && e._cancelado)) return;
@@ -13108,42 +13252,21 @@ window.buscarItensViagem = async function() {
             return;
         }
     } finally {
-        if (!cancelado) hideOverlay();
+        if (!cancelado && !overlayOculto) hideOverlay();
     }
     if (!sucesso) return;
 
-    window._conferenciaIdViagemAtiva = idViagem;
     _conferenciaSalvarSessao({ id_viagem: idViagem, visitou_conferencia: true, comprovante_gerado: false, tem_rascunho: false });
     _conferenciaAtualizarAvisoRascunho();
     
-    document.getElementById('id-viagem-hidden').value = idViagem;
-    document.getElementById('id-viagem').value = idViagem;
-    
-    var formBip = document.getElementById('form-bipagem-container');
-    if (formBip) formBip.classList.remove('conferencia-blocos-bloqueado');
-    var bloco4Wrap = document.getElementById('conferencia-bloco-4-wrapper');
-    if (bloco4Wrap) bloco4Wrap.classList.remove('conferencia-blocos-bloqueado');
-    var tituloWrap = document.getElementById('titulo-lista-wrapper');
-    if (tituloWrap) tituloWrap.style.display = 'flex';
-    document.getElementById('tabela-conferencia-container').style.display = 'block';
-    const periodoBox = document.getElementById('periodo-carregamento-box');
-    if (periodoBox) periodoBox.style.display = 'block';
-    const btnVoltarBipar = document.getElementById('btn-voltar-bipar');
-    if (btnVoltarBipar) btnVoltarBipar.style.display = 'inline-block';
-    
-    window.atualizarEstadoCampoBipar();
-    
-    loadColaboradoresMotoristas();
-    loadPlacas();
-    
-    setTimeout(() => {
+    setTimeout(function() {
         const docaSelect = document.getElementById('doca');
         const codigoBarrasInput = document.getElementById('codigo-barras');
         const docaVal = docaSelect ? docaSelect.value.trim() : '';
         const docaOk = ['1','2','3','4'].includes(docaVal);
         if (docaSelect && !docaOk) docaSelect.focus();
         else if (codigoBarrasInput && !codigoBarrasInput.disabled) codigoBarrasInput.focus();
-    }, 300);
+    }, 100);
 }
 
 // Buscar viagem no painel Devoluções (mesmo romaneio; bipagens separadas por fluxo devolução)
@@ -13567,6 +13690,110 @@ function agruparConferenciaPorCodigoProduto(conferencia) {
     });
 }
 
+function _habilitarUiConferenciaViagem(idViagem) {
+    if (!idViagem) return;
+    window._conferenciaIdViagemAtiva = idViagem;
+    var hid = document.getElementById('id-viagem-hidden');
+    var inp = document.getElementById('id-viagem');
+    if (hid) hid.value = idViagem;
+    if (inp) inp.value = idViagem;
+    var formBip = document.getElementById('form-bipagem-container');
+    if (formBip) formBip.classList.remove('conferencia-blocos-bloqueado');
+    var bloco4Wrap = document.getElementById('conferencia-bloco-4-wrapper');
+    if (bloco4Wrap) bloco4Wrap.classList.remove('conferencia-blocos-bloqueado');
+    var tituloWrap = document.getElementById('titulo-lista-wrapper');
+    if (tituloWrap) tituloWrap.style.display = 'flex';
+    var tabContainer = document.getElementById('tabela-conferencia-container');
+    if (tabContainer) tabContainer.style.display = 'block';
+    var periodoBox = document.getElementById('periodo-carregamento-box');
+    if (periodoBox) periodoBox.style.display = 'block';
+    var btnVoltarBipar = document.getElementById('btn-voltar-bipar');
+    if (btnVoltarBipar) btnVoltarBipar.style.display = 'inline-block';
+    if (typeof window.atualizarEstadoCampoBipar === 'function') window.atualizarEstadoCampoBipar();
+}
+
+function _htmlLinhaConferenciaTabela(item, idViagem, motivosEmEdicao) {
+    const statusClass = item.status_bipado === 'COMPLETO' ? 'status-OK' :
+                       item.status_bipado === 'EXCEDENTE' ? 'status-EXCEDENTE' :
+                       item.status_bipado === 'PARCIAL' ? 'status-SOBRA' : 'status-FALTA';
+    const statusText = item.status_bipado === 'COMPLETO' ? '✅ COMPLETO' :
+                      item.status_bipado === 'EXCEDENTE' ? '📦 EXCEDENTE' :
+                      item.status_bipado === 'PARCIAL' ? '⚠️ PARCIAL' : '❌ PENDENTE';
+    const rowClass = item.status_bipado === 'COMPLETO' ? 'row-completo' :
+                    item.status_bipado === 'EXCEDENTE' ? 'row-excedente' :
+                    item.status_bipado === 'PENDENTE' ? 'row-pendente' : 'row-parcial';
+    const codigoBarras = item.codigo_barras || '-';
+    const unidade = (item.unidade || '-').toString();
+    const qtdBipada = item.quantidade_bipada || 0;
+    const qtdProdutoItem = item.quantidade_produto || 0;
+    const avisoSobra = _avisoConferenciaBipagem(item.aviso_sobra, qtdProdutoItem, qtdBipada);
+    const btns = _htmlBotoesAcaoConferencia({
+        codigo_barras: codigoBarras,
+        produto: item.produto,
+        quantidade_bipada: qtdBipada,
+        quantidade_falta: item.quantidade_falta,
+        sem_codigo_html: (item.quantidade_falta > 0 ? '<span style="color: #ff9800;" title="Adicione o código do produto ' + escapeHtml(item.codigo_produto || '') + ' na aba BASE com o código de barras correspondente.">⚠️ Sem código de barras</span>' : '')
+    });
+    const motivoBruto = motivosEmEdicao[idViagem + '|' + (item.codigo_produto || '')] !== undefined ? motivosEmEdicao[idViagem + '|' + (item.codigo_produto || '')] : (item.motivo_divergencia || '');
+    const motivoVal = (motivoBruto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const codigoProdutoEsc = (item.codigo_produto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return '<tr class="' + rowClass + '" data-codigo="' + (item.codigo_produto || '') + '">'
+        + '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>'
+        + '<td><input type="text" class="input-motivo-divergencia" data-id-viagem="' + escHtml(idViagem) + '" data-codigo-produto="' + codigoProdutoEsc + '" value="' + motivoVal + '" placeholder="Motivo da divergência" onblur="salvarMotivoDivergencia(this)" title="Escreva o motivo e saia do campo para salvar"></td>'
+        + '<td><strong>' + codigoBarras + '</strong></td>'
+        + '<td><strong style="color: #1976D2;">' + (item.codigo_produto || '-') + '</strong></td>'
+        + '<td>' + (item.produto || '-') + '</td>'
+        + '<td><strong>' + (item.quantidade_produto || 0) + '</strong></td>'
+        + '<td>' + unidade + '</td>'
+        + '<td>' + ((item.peso_bruto != null && item.peso_bruto !== '') ? item.peso_bruto : '-') + '</td>'
+        + '<td style="color: #d32f2f; font-weight: bold;">' + avisoSobra + '</td>'
+        + '<td><strong style="color: ' + (qtdBipada > 0 ? '#4caf50' : '#666') + '">' + qtdBipada + '</strong></td>'
+        + '<td><strong style="color: ' + (item.quantidade_falta > 0 ? '#f44336' : '#4caf50') + '">' + (item.quantidade_falta || 0) + '</strong></td>'
+        + '<td style="max-width: 280px;"><div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">'
+        + btns.bipar + (btns.tirar || '') + (codigoBarras !== '-' ? (btns.excluir || '') : '')
+        + (item.quantidade_falta <= 0 && item.status_bipado !== 'EXCEDENTE' ? '<span style="color: #4caf50; font-weight: bold;">✓ Completo</span>' : '')
+        + (item.status_bipado === 'EXCEDENTE' ? '<span style="color: #e65100; font-weight: bold;">Bipado a mais</span>' : '')
+        + '</div></td></tr>';
+}
+
+function _renderizarTabelaConferenciaChunked(tbody, conferenciaOrdenada, idViagem, motivosEmEdicao, fluxoTab, seq) {
+    var CHUNK = 60;
+    if (!tbody || conferenciaOrdenada.length <= CHUNK) {
+        tbody.innerHTML = conferenciaOrdenada.map(function(item) {
+            return _htmlLinhaConferenciaTabela(item, idViagem, motivosEmEdicao);
+        }).join('');
+        atualizarTotaisConferenciaFromData(conferenciaOrdenada, fluxoTab);
+        return Promise.resolve();
+    }
+    return new Promise(function(resolve) {
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">Montando ' + conferenciaOrdenada.length + ' itens...</td></tr>';
+        var idx = 0;
+        function pintarLote() {
+            if (seq !== window._conferenciaLoadSeq) { resolve(); return; }
+            var fim = Math.min(idx + CHUNK, conferenciaOrdenada.length);
+            var html = '';
+            for (var i = idx; i < fim; i++) {
+                html += _htmlLinhaConferenciaTabela(conferenciaOrdenada[i], idViagem, motivosEmEdicao);
+            }
+            if (idx === 0) {
+                tbody.innerHTML = html;
+            } else {
+                var wrap = document.createElement('tbody');
+                wrap.innerHTML = html;
+                while (wrap.firstChild) tbody.appendChild(wrap.firstChild);
+            }
+            idx = fim;
+            if (idx < conferenciaOrdenada.length) {
+                requestAnimationFrame(pintarLote);
+            } else {
+                atualizarTotaisConferenciaFromData(conferenciaOrdenada, fluxoTab);
+                resolve();
+            }
+        }
+        requestAnimationFrame(pintarLote);
+    });
+}
+
 // Atualiza caixa "Gerar comprovante completo" (verde) vs "Gerar comprovante divergente" (laranja). Se conferenciaUI for passado, usa os dados; senão lê da tabela (DOM) para atualização imediata após Bipar/Tirar 1.
 function atualizarBoxesComprovante(conferenciaUI, fluxoTab) {
     if (fluxoTab === 'devolucao') return;
@@ -13651,7 +13878,7 @@ async function loadConferencia(idViagem = null, opts) {
         } else if (isDev) {
             conferencia = { lista: [], id_viagem: idViagem };
         } else {
-        var q = '?limit=2000&_=' + Date.now();
+        var q = '?limit=2000';
         if (isDev) q += '&fluxo=devolucao';
         var fetchOpts = {};
         if (opts.signal) fetchOpts.signal = opts.signal;
@@ -13662,6 +13889,9 @@ async function loadConferencia(idViagem = null, opts) {
             var errCancel = new Error('Cancelado');
             errCancel._cancelado = true;
             throw errCancel;
+        }
+        if (typeof opts.onDadosRecebidos === 'function') {
+            try { opts.onDadosRecebidos(conferencia); } catch (eCb) { /* ignore */ }
         }
         if (conferencia && !conferencia.erro) {
             const listaParaUI = Array.isArray(conferencia.lista) ? conferencia.lista : (Array.isArray(conferencia) ? conferencia : []);
@@ -13677,7 +13907,8 @@ async function loadConferencia(idViagem = null, opts) {
                     var i = L('id-viagem'); if (i) i.value = conferencia.id_viagem;
                 }
             }
-            const conferenciaUI = agruparConferenciaPorCodigoProduto(listaParaUI);
+            _aplicarExtrasConferenciaResponse(conferencia, idViagem, isDev);
+            const conferenciaUI = conferencia.lista_ja_agregada ? listaParaUI : agruparConferenciaPorCodigoProduto(listaParaUI);
             const tbody = L('tbody-conferencia');
             // Preservar texto que o usuário está digitando nos campos Motivo ao atualizar a tabela (ex.: refresh a cada 5s)
             const motivosEmEdicao = {};
@@ -13728,62 +13959,8 @@ async function loadConferencia(idViagem = null, opts) {
                 const itemBipado = conferenciaOrdenada.find(function(it) { return (it.codigo_barras || '').toString().trim() === ultimoCodigo; });
                 if (itemBipado && (itemBipado.status_bipado || '') === 'COMPLETO') window._ultimoBipadoCodigo = '';
             }
-            tbody.innerHTML = conferenciaOrdenada.map(item => {
-                const statusClass = item.status_bipado === 'COMPLETO' ? 'status-OK' : 
-                                   item.status_bipado === 'EXCEDENTE' ? 'status-EXCEDENTE' : 
-                                   item.status_bipado === 'PARCIAL' ? 'status-SOBRA' : 'status-FALTA';
-                const statusText = item.status_bipado === 'COMPLETO' ? '✅ COMPLETO' : 
-                                  item.status_bipado === 'EXCEDENTE' ? '📦 EXCEDENTE' : 
-                                  item.status_bipado === 'PARCIAL' ? '⚠️ PARCIAL' : '❌ PENDENTE';
-                
-                const rowClass = item.status_bipado === 'COMPLETO' ? 'row-completo' : 
-                                item.status_bipado === 'EXCEDENTE' ? 'row-excedente' : 
-                                item.status_bipado === 'PENDENTE' ? 'row-pendente' : 'row-parcial';
-                
-                const codigoBarras = item.codigo_barras || '-';
-                const unidade = (item.unidade || '-').toString();
-                const qtdBipada = item.quantidade_bipada || 0;
-                const qtdProdutoItem = item.quantidade_produto || 0;
-                const avisoSobra = _avisoConferenciaBipagem(item.aviso_sobra, qtdProdutoItem, qtdBipada);
-                const qtdProduto = item.quantidade_produto || 0;
-                const btns = _htmlBotoesAcaoConferencia({
-                    codigo_barras: codigoBarras,
-                    produto: item.produto,
-                    quantidade_bipada: qtdBipada,
-                    quantidade_falta: item.quantidade_falta,
-                    sem_codigo_html: (item.quantidade_falta > 0 ? '<span style="color: #ff9800;" title="Adicione o código do produto ' + escapeHtml(item.codigo_produto || '') + ' na aba BASE com o código de barras correspondente.">⚠️ Sem código de barras</span>' : '')
-                });
-                const btnBipar = btns.bipar;
-                const botoesTirar = btns.tirar;
-                const btnExcluir = codigoBarras !== '-' ? btns.excluir : '';
-                const motivoBruto = motivosEmEdicao[idViagem + '|' + (item.codigo_produto || '')] !== undefined ? motivosEmEdicao[idViagem + '|' + (item.codigo_produto || '')] : (item.motivo_divergencia || '');
-                const motivoVal = (motivoBruto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const codigoProdutoEsc = (item.codigo_produto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                
-                return `
-                <tr class="${rowClass}" data-codigo="${item.codigo_produto || ''}">
-                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                    <td><input type="text" class="input-motivo-divergencia" data-id-viagem="${escHtml(idViagem)}" data-codigo-produto="${codigoProdutoEsc}" value="${motivoVal}" placeholder="Motivo da divergência" onblur="salvarMotivoDivergencia(this)" title="Escreva o motivo e saia do campo para salvar"></td>
-                    <td><strong>${codigoBarras}</strong></td>
-                    <td><strong style="color: #1976D2;">${item.codigo_produto || '-'}</strong></td>
-                    <td>${item.produto || '-'}</td>
-                    <td><strong>${item.quantidade_produto || 0}</strong></td>
-                    <td>${unidade}</td>
-                    <td>${(item.peso_bruto != null && item.peso_bruto !== '') ? item.peso_bruto : '-'}</td>
-                    <td style="color: #d32f2f; font-weight: bold;">${avisoSobra}</td>
-                    <td><strong style="color: ${qtdBipada > 0 ? '#4caf50' : '#666'}">${qtdBipada}</strong></td>
-                    <td><strong style="color: ${item.quantidade_falta > 0 ? '#f44336' : '#4caf50'}">${item.quantidade_falta || 0}</strong></td>
-                    <td style="max-width: 280px;"><div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
-                        ${btnBipar}
-                        ${botoesTirar}
-                        ${btnExcluir}
-                        ${item.quantidade_falta <= 0 && item.status_bipado !== 'EXCEDENTE' ? '<span style="color: #4caf50; font-weight: bold;">✓ Completo</span>' : ''}
-                        ${item.status_bipado === 'EXCEDENTE' ? '<span style="color: #e65100; font-weight: bold;">Bipado a mais</span>' : ''}
-                    </div></td>
-                </tr>
-            `;
-            }).join('');
-            atualizarTotaisConferenciaFromData(conferenciaOrdenada, fluxoTab);
+            await _renderizarTabelaConferenciaChunked(tbody, conferenciaOrdenada, idViagem, motivosEmEdicao, fluxoTab, seq);
+            if (seq !== window._conferenciaLoadSeq) return;
             }
             var tituloWrap = L('titulo-lista-wrapper');
             var tabContainer = L('tabela-conferencia-container');

@@ -61,6 +61,42 @@ body {
 
 .header-link-inicio--saindo {
     opacity: 0.75;
+    pointer-events: none;
+}
+
+.hub-modulos-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 25000;
+    background: #f0f2f5;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.hub-modulos-overlay[hidden] {
+    display: none !important;
+}
+
+.hub-modulos-overlay .hub-modulos-overlay-inner {
+    min-height: calc(100vh - 8px);
+}
+
+body.hub-modulos-aberto {
+    overflow: hidden;
+}
+
+body.hub-modulos-aberto .container {
+    visibility: hidden;
+}
+
+/* Overlay na mesma página: sem animação de entrada (resposta instantânea) */
+.hub-modulos-overlay .hub-entrada-logo,
+.hub-modulos-overlay .hub-entrada-titulo,
+.hub-modulos-overlay .hub-entrada-desc,
+.hub-modulos-overlay .hub-entrada-btn {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
 }
 
 @media (min-width: 769px) {
