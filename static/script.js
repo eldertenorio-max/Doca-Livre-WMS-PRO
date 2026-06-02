@@ -14997,38 +14997,70 @@ function _extratoQtdSobraItem(item) {
     return Math.max(0, bip - rom);
 }
 
+function _extratoQtdFaltaItem(item) {
+    if (item.quantidade_falta != null && item.quantidade_falta !== '') {
+        var f = parseInt(item.quantidade_falta, 10);
+        if (!isNaN(f) && f > 0) return f;
+    }
+    var rom = parseInt(item.quantidade_produto, 10) || 0;
+    var bip = parseInt(item.quantidade_bipada, 10) || 0;
+    return Math.max(0, rom - bip);
+}
+
+function _extratoItemTemMais(item) {
+    return (item.status_bipado || '') === 'EXCEDENTE' || _extratoQtdSobraItem(item) > 0;
+}
+
+function _extratoItemTemFalta(item) {
+    if ((item.status_bipado || '') === 'EXCEDENTE') return false;
+    return _extratoQtdFaltaItem(item) > 0;
+}
+
+function _extratoHtmlLinhaResumoDivergencia(item, tipo) {
+    var cod = (item.codigo_produto || item.codigo || '').trim() || '-';
+    var nome = (item.produto || item.descricao || '').trim() || '-';
+    var rom = parseInt(item.quantidade_produto, 10) || 0;
+    var bip = parseInt(item.quantidade_bipada, 10) || 0;
+    var un = (item.unidade || '').trim();
+    var esc = typeof escapeHtml === 'function' ? escapeHtml : function(s) { return String(s || ''); };
+    var detalhe = tipo === 'mais'
+        ? '<strong>A mais: ' + _extratoQtdSobraItem(item) + '</strong>'
+        : '<strong>Falta: ' + _extratoQtdFaltaItem(item) + '</strong>';
+    return '<li><strong>' + esc(cod) + '</strong> — ' + esc(nome)
+        + ' · Romaneio: ' + rom + ' · Bipado: ' + bip + ' · ' + detalhe
+        + (un ? ' ' + esc(un) : '') + '</li>';
+}
+
 function _extratoAtualizarItensBipadosMais(extrato, fluxo) {
     fluxo = fluxo || 'carregamento';
     var boxId = fluxo === 'devolucao' ? 'dev-extrato-itens-bipados-mais' : 'extrato-itens-bipados-mais';
-    var listaId = fluxo === 'devolucao' ? 'dev-extrato-itens-bipados-mais-lista' : 'extrato-itens-bipados-mais-lista';
+    var conteudoId = fluxo === 'devolucao' ? 'dev-extrato-itens-bipados-mais-conteudo' : 'extrato-itens-bipados-mais-conteudo';
     var box = document.getElementById(boxId);
-    var lista = document.getElementById(listaId);
+    var conteudo = document.getElementById(conteudoId);
     if (!box) return;
-    var itens = (extrato || []).filter(function(item) {
-        return (item.status_bipado || '') === 'EXCEDENTE' || _extratoQtdSobraItem(item) > 0;
-    });
-    if (!itens.length) {
+    var itensMais = (extrato || []).filter(_extratoItemTemMais);
+    var itensFalta = (extrato || []).filter(_extratoItemTemFalta);
+    if (!itensMais.length && !itensFalta.length) {
         box.style.display = 'none';
         box.classList.remove('extrato-itens-bipados-mais--ativo');
-        if (lista) lista.innerHTML = '';
+        if (conteudo) conteudo.innerHTML = '';
         return;
     }
     box.style.display = 'block';
     box.classList.add('extrato-itens-bipados-mais--ativo');
-    if (lista) {
-        lista.innerHTML = itens.map(function(item) {
-            var cod = (item.codigo_produto || item.codigo || '').trim() || '-';
-            var nome = (item.produto || item.descricao || '').trim() || '-';
-            var rom = parseInt(item.quantidade_produto, 10) || 0;
-            var bip = parseInt(item.quantidade_bipada, 10) || 0;
-            var sobra = _extratoQtdSobraItem(item);
-            var un = (item.unidade || '').trim();
-            var esc = typeof escapeHtml === 'function' ? escapeHtml : function(s) { return String(s || ''); };
-            return '<li><strong>' + esc(cod) + '</strong> — ' + esc(nome)
-                + ' · Romaneio: ' + rom + ' · Bipado: ' + bip + ' · <strong>A mais: ' + sobra + '</strong>'
-                + (un ? ' ' + esc(un) : '') + '</li>';
-        }).join('');
+    if (!conteudo) return;
+    var html = '';
+    if (itensMais.length) {
+        html += '<p class="extrato-itens-bipados-mais-subtitulo extrato-itens-bipados-mais-subtitulo--mais">Bipados a mais</p><ul>'
+            + itensMais.map(function(item) { return _extratoHtmlLinhaResumoDivergencia(item, 'mais'); }).join('')
+            + '</ul>';
     }
+    if (itensFalta.length) {
+        html += '<p class="extrato-itens-bipados-mais-subtitulo extrato-itens-bipados-mais-subtitulo--falta">Faltantes</p><ul>'
+            + itensFalta.map(function(item) { return _extratoHtmlLinhaResumoDivergencia(item, 'falta'); }).join('')
+            + '</ul>';
+    }
+    conteudo.innerHTML = html;
 }
 
 // Carregar Extrato (mesmas colunas da Conferência: status, código barras, código produto, produto, qtd produto, unidade, aviso, qtd bipada, qtd falta)
