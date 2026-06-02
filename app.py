@@ -3098,6 +3098,16 @@ def _get_id_viagens_por_data_expedicao(data_inicio, data_fim):
     return ids_ok
 
 
+def _aplicar_filtro_expedicao_sql(sql, params, ids_filtro, col='id_viagem'):
+    """Acrescenta filtro por id_viagem quando há intervalo de data de expedição."""
+    if ids_filtro is None:
+        return sql, params
+    if len(ids_filtro) == 0:
+        return sql + ' AND 1=0', params
+    ph = ','.join('?' * len(ids_filtro))
+    return sql + f' AND {col} IN ({ph})', params + list(ids_filtro)
+
+
 COORDENADOR_PADRAO = 'ASTROGILDO RODRIGUES DOS SANTOS'
 
 
@@ -7372,15 +7382,18 @@ def export_divergencias_excel():
     data_exp_fim = request.args.get('data_expedicao_fim', '').strip()
     divergencias = _get_lista_divergencias_todas(fluxo)
     ids_filtro = _get_id_viagens_por_data_expedicao(data_exp_inicio, data_exp_fim)
-    if ids_filtro is not None and len(ids_filtro) > 0:
-        divergencias = [d for d in divergencias if (d.get('id_viagem') or '').strip() in ids_filtro]
+    if ids_filtro is not None:
+        if not ids_filtro:
+            divergencias = []
+        else:
+            divergencias = [d for d in divergencias if (d.get('id_viagem') or '').strip() in ids_filtro]
     ids_roteiros = sorted(set(d.get('id_viagem') or '' for d in divergencias if d.get('id_viagem')))
     wb = Workbook()
     header_font = Font(bold=True)
     if tipo == 'itens':
         ws = wb.active
         ws.title = 'Itens Divergentes'
-        headers = ['ID Roteiro', 'Status', 'Código de Barras', 'Código do Produto', 'Produto', 'Qtd. Romaneio', 'Unidade', 'Peso Bruto', 'Qtd. Bipada', 'Qtd. Falta', 'Qtd. Sobra', 'Aviso', 'Motivo da divergência']
+        headers = ['ID Roteiro', 'Status', 'Código de Barras', 'Código do Produto', 'Produto', 'Qtd. Romaneio', 'Qtd. Bipada', 'Unidade', 'Peso Bruto', 'Qtd. Falta', 'Qtd. Sobra', 'Aviso', 'Motivo da divergência']
         for col, h in enumerate(headers, 1):
             c = ws.cell(row=1, column=col, value=h)
             c.font = header_font
@@ -7393,9 +7406,9 @@ def export_divergencias_excel():
             ws.cell(row=row_idx, column=4, value=item.get('codigo_produto') or '')
             ws.cell(row=row_idx, column=5, value=item.get('produto') or '')
             ws.cell(row=row_idx, column=6, value=item.get('quantidade_produto'))
-            ws.cell(row=row_idx, column=7, value=item.get('unidade') or '')
-            ws.cell(row=row_idx, column=8, value=item.get('peso_bruto') or '')
-            ws.cell(row=row_idx, column=9, value=item.get('quantidade_bipada'))
+            ws.cell(row=row_idx, column=7, value=item.get('quantidade_bipada'))
+            ws.cell(row=row_idx, column=8, value=item.get('unidade') or '')
+            ws.cell(row=row_idx, column=9, value=item.get('peso_bruto') or '')
             ws.cell(row=row_idx, column=10, value=item.get('quantidade_falta'))
             ws.cell(row=row_idx, column=11, value=qtd_sobra)
             ws.cell(row=row_idx, column=12, value=item.get('aviso_sobra') or '')
@@ -7428,7 +7441,7 @@ def export_divergencias_excel():
         ws = wb.active
         ws.title = 'Divergências - Página Completa'
         headers_rot = ['ID Roteiro', 'Identificador da Rota', 'Data Expedição', 'Placa', 'Motorista', 'Início', 'Fim', 'Coordenador', 'Conferente', 'Auxiliar 1', 'Auxiliar 2']
-        headers_itens = ['Status', 'Código de Barras', 'Código do Produto', 'Produto', 'Qtd. Romaneio', 'Unidade', 'Peso Bruto', 'Qtd. Bipada', 'Qtd. Falta', 'Qtd. Sobra', 'Aviso', 'Motivo da divergência']
+        headers_itens = ['Status', 'Código de Barras', 'Código do Produto', 'Produto', 'Qtd. Romaneio', 'Qtd. Bipada', 'Unidade', 'Peso Bruto', 'Aviso', 'Qtd. Falta', 'Qtd. Sobra', 'Motivo da divergência']
         linha = 1
         for vid in ids_roteiros:
             itens_roteiro = [d for d in divergencias if (d.get('id_viagem') or '') == vid]
@@ -7472,12 +7485,12 @@ def export_divergencias_excel():
                 ws.cell(row=linha, column=3, value=item.get('codigo_produto') or '')
                 ws.cell(row=linha, column=4, value=item.get('produto') or '')
                 ws.cell(row=linha, column=5, value=item.get('quantidade_produto'))
-                ws.cell(row=linha, column=6, value=item.get('unidade') or '')
-                ws.cell(row=linha, column=7, value=item.get('peso_bruto') or '')
-                ws.cell(row=linha, column=8, value=item.get('quantidade_bipada'))
-                ws.cell(row=linha, column=9, value=item.get('quantidade_falta'))
-                ws.cell(row=linha, column=10, value=item.get('quantidade_sobra') or 0)
-                ws.cell(row=linha, column=11, value=item.get('aviso_sobra') or '')
+                ws.cell(row=linha, column=6, value=item.get('quantidade_bipada'))
+                ws.cell(row=linha, column=7, value=item.get('unidade') or '')
+                ws.cell(row=linha, column=8, value=item.get('peso_bruto') or '')
+                ws.cell(row=linha, column=9, value=item.get('aviso_sobra') or '')
+                ws.cell(row=linha, column=10, value=item.get('quantidade_falta'))
+                ws.cell(row=linha, column=11, value=item.get('quantidade_sobra') or 0)
                 ws.cell(row=linha, column=12, value=item.get('motivo_divergencia') or '')
                 linha += 1
             linha += 2  # linhas em branco entre roteiros
@@ -7506,8 +7519,8 @@ def _get_mapa_motivos_divergencia():
 def export_relatorio_bipados():
     """Gera Excel com todos os registros bipados (tudo que foi bipado). Conferente = do roteiro. Inclui Motivo da divergência."""
     from openpyxl import Workbook
-    data_inicio = request.args.get('data_inicio', '').strip()
-    data_fim = request.args.get('data_fim', '').strip()
+    data_inicio = (request.args.get('data_expedicao_inicio') or request.args.get('data_inicio') or '').strip()
+    data_fim = (request.args.get('data_expedicao_fim') or request.args.get('data_fim') or '').strip()
     fluxo = (request.args.get('fluxo') or 'carregamento').strip().lower()
     if fluxo not in ('carregamento', 'devolucao'):
         fluxo = 'carregamento'
@@ -7521,11 +7534,8 @@ def export_relatorio_bipados():
     params = []
     conditions = ["COALESCE(p.fluxo, 'carregamento') = ?"]
     params = [fluxo]
-    if ids_filtro is not None and len(ids_filtro) > 0:
-        conditions.append('p.id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')')
-        params.extend(list(ids_filtro))
-    if conditions:
-        sql += ' WHERE ' + ' AND '.join(conditions)
+    sql += ' WHERE ' + ' AND '.join(conditions)
+    sql, params = _aplicar_filtro_expedicao_sql(sql, params, ids_filtro, col='p.id_viagem')
     sql += ' ORDER BY p.data_hora DESC, p.id DESC'
     rows = conn.execute(sql, params).fetchall()
     conn.close()
@@ -7589,11 +7599,11 @@ def _relatorio_bipados_periodo(data_inicio, data_fim, data_expedicao_inicio=None
         d1 = (data_fim.strip() + ' 23:59:59') if len(data_fim.strip()) <= 10 else data_fim.strip()
         conditions.append('p.data_hora >= ? AND p.data_hora <= ?')
         params.extend([d0, d1])
-    if ids_filtro is not None and len(ids_filtro) > 0:
-        conditions.append('p.id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')')
-        params.extend(list(ids_filtro))
     if conditions:
         sql += ' WHERE ' + ' AND '.join(conditions)
+    else:
+        sql += ' WHERE 1=1'
+    sql, params = _aplicar_filtro_expedicao_sql(sql, params, ids_filtro, col='p.id_viagem')
     sql += ' ORDER BY p.data_hora DESC, p.id DESC'
     rows = conn.execute(sql, params).fetchall()
     conn.close()
@@ -7637,10 +7647,8 @@ def _relatorio_resumo_roteiro(data_expedicao_inicio=None, data_expedicao_fim=Non
         FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != '' AND COALESCE(fluxo, 'carregamento') = ?
     '''
     params = [fluxo]
-    if ids_filtro is not None and len(ids_filtro) > 0:
-        sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
-        params.extend(list(ids_filtro))
     sql += ' GROUP BY id_viagem ORDER BY MAX(data_hora) DESC'
+    sql, params = _aplicar_filtro_expedicao_sql(sql, params, ids_filtro, col='id_viagem')
     rows = conn.execute(sql, params).fetchall()
     conn.close()
     viagens = []
@@ -7659,11 +7667,12 @@ def _relatorio_resumo_roteiro(data_expedicao_inicio=None, data_expedicao_fim=Non
     total_faltas_map = {}
     for v in viagens[:300]:
         try:
-            with app.test_request_context(query_string={'fluxo': fluxo}):
+            with app.test_request_context(query_string={'fluxo': fluxo, 'limit': '2000'}):
                 ret = get_conferencia(v['id_viagem'])
                 resp = ret[0] if isinstance(ret, tuple) else ret
-                data = resp.get_json() if hasattr(resp, 'get_json') else []
-                total_faltas_map[v['id_viagem']] = sum((item.get('quantidade_falta') or 0) for item in (data if isinstance(data, list) else []))
+                data = resp.get_json() if hasattr(resp, 'get_json') else None
+                lista_conf = _conferencia_lista_de_resposta(data)
+                total_faltas_map[v['id_viagem']] = sum((item.get('quantidade_falta') or 0) for item in (lista_conf or []))
         except Exception:
             total_faltas_map[v['id_viagem']] = 0
     wb = Workbook()
@@ -7703,9 +7712,7 @@ def _relatorio_tempo_placa(data_expedicao_inicio=None, data_expedicao_fim=None):
         FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != ''
     '''
     params = []
-    if ids_filtro is not None and len(ids_filtro) > 0:
-        sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
-        params = list(ids_filtro)
+    sql, params = _aplicar_filtro_expedicao_sql(sql, params, ids_filtro, col='id_viagem')
     sql += ' GROUP BY id_viagem'
     rows = conn.execute(sql, params).fetchall()
     conn.close()
@@ -7745,9 +7752,7 @@ def _relatorio_itens_por_roteiro(data_expedicao_inicio=None, data_expedicao_fim=
         FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != ''
     '''
     params = []
-    if ids_filtro is not None and len(ids_filtro) > 0:
-        sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
-        params = list(ids_filtro)
+    sql, params = _aplicar_filtro_expedicao_sql(sql, params, ids_filtro, col='id_viagem')
     sql += ' GROUP BY id_viagem, codigo_barras ORDER BY id_viagem, total DESC'
     rows = conn.execute(sql, params).fetchall()
     conn.close()
@@ -7779,11 +7784,9 @@ def _relatorio_itens_mais_bipados(data_expedicao_inicio=None, data_expedicao_fim
     from openpyxl import Workbook
     ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
     conn = get_db()
-    sql = 'SELECT codigo_barras, produto, SUM(quantidade) as total, COUNT(DISTINCT id_viagem) as num_viagens FROM produtos_bipados'
+    sql = 'SELECT codigo_barras, produto, SUM(quantidade) as total, COUNT(DISTINCT id_viagem) as num_viagens FROM produtos_bipados WHERE 1=1'
     params = []
-    if ids_filtro is not None and len(ids_filtro) > 0:
-        sql += ' WHERE id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
-        params = list(ids_filtro)
+    sql, params = _aplicar_filtro_expedicao_sql(sql, params, ids_filtro, col='id_viagem')
     sql += ' GROUP BY codigo_barras ORDER BY total DESC'
     rows = conn.execute(sql, params).fetchall()
     conn.close()
@@ -7813,9 +7816,7 @@ def _relatorio_resumo_produto(data_expedicao_inicio=None, data_expedicao_fim=Non
                COUNT(DISTINCT id_viagem) as num_viagens, MIN(data_hora) as primeira, MAX(data_hora) as ultima
         FROM produtos_bipados WHERE COALESCE(fluxo, 'carregamento') = ?'''
     params = [fluxo]
-    if ids_filtro is not None and len(ids_filtro) > 0:
-        sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
-        params.extend(list(ids_filtro))
+    sql, params = _aplicar_filtro_expedicao_sql(sql, params, ids_filtro, col='id_viagem')
     sql += ' GROUP BY codigo_barras ORDER BY total DESC'
     rows = conn.execute(sql, params).fetchall()
     conn.close()
@@ -7840,8 +7841,11 @@ def _relatorio_roteiros_divergencia(data_expedicao_inicio=None, data_expedicao_f
     from openpyxl import Workbook
     ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
     divergencias = _get_lista_divergencias_todas(fluxo)
-    if ids_filtro is not None and len(ids_filtro) > 0:
-        divergencias = [d for d in divergencias if (d.get('id_viagem') or '').strip() in ids_filtro]
+    if ids_filtro is not None:
+        if len(ids_filtro) == 0:
+            divergencias = []
+        else:
+            divergencias = [d for d in divergencias if (d.get('id_viagem') or '').strip() in ids_filtro]
     by_roteiro = {}
     for d in divergencias:
         vid = d.get('id_viagem') or ''
@@ -7875,9 +7879,7 @@ def _relatorio_carregamento_veiculo(data_expedicao_inicio=None, data_expedicao_f
         FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != ''
     '''
     params = []
-    if ids_filtro is not None and len(ids_filtro) > 0:
-        sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
-        params = list(ids_filtro)
+    sql, params = _aplicar_filtro_expedicao_sql(sql, params, ids_filtro, col='id_viagem')
     sql += ' GROUP BY veiculo ORDER BY total DESC'
     rows = conn.execute(sql, params).fetchall()
     conn.close()
@@ -7899,11 +7901,9 @@ def _relatorio_peso_viagem_placa(data_expedicao_inicio=None, data_expedicao_fim=
     from openpyxl import Workbook
     ids_filtro = _get_id_viagens_por_data_expedicao(data_expedicao_inicio or '', data_expedicao_fim or '')
     conn = get_db()
-    sql = 'SELECT id_viagem, codigo_barras, quantidade FROM produtos_bipados'
+    sql = 'SELECT id_viagem, codigo_barras, quantidade FROM produtos_bipados WHERE 1=1'
     params = []
-    if ids_filtro is not None and len(ids_filtro) > 0:
-        sql += ' WHERE id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
-        params = list(ids_filtro)
+    sql, params = _aplicar_filtro_expedicao_sql(sql, params, ids_filtro, col='id_viagem')
     rows = conn.execute(sql, params).fetchall()
     mapa_peso = {}
     mapa_barras_codigo = {}
@@ -7981,9 +7981,7 @@ def _relatorio_responsaveis_viagem(data_expedicao_inicio=None, data_expedicao_fi
     conn = get_db()
     sql = "SELECT DISTINCT id_viagem FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(id_viagem) != ''"
     params = []
-    if ids_filtro is not None and len(ids_filtro) > 0:
-        sql += ' AND id_viagem IN (' + ','.join('?' * len(ids_filtro)) + ')'
-        params = list(ids_filtro)
+    sql, params = _aplicar_filtro_expedicao_sql(sql, params, ids_filtro, col='id_viagem')
     sql += ' ORDER BY id_viagem'
     ids = conn.execute(sql, params).fetchall()
     conn.close()
@@ -8189,7 +8187,7 @@ def export_relatorio_extrato_excel():
     if not id_viagem:
         return jsonify({'erro': 'Informe o ID do roteiro (id_viagem)'}), 400
     try:
-        with app.test_request_context(query_string={'fluxo': fluxo}):
+        with app.test_request_context(query_string={'fluxo': fluxo, 'limit': '2000'}):
             result = get_conferencia(id_viagem)
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
@@ -8198,7 +8196,10 @@ def export_relatorio_extrato_excel():
     data = resp.get_json() if hasattr(resp, 'get_json') else None
     if isinstance(data, dict) and data.get('erro'):
         return jsonify(data), status if status != 200 else 400
-    itens = data if isinstance(data, list) else []
+    itens = _conferencia_lista_de_resposta(data)
+    if itens is None:
+        err = (data or {}).get('erro') if isinstance(data, dict) else 'Erro ao carregar conferência'
+        return jsonify({'erro': err or 'Erro ao carregar conferência'}), 400
     if not itens:
         return jsonify({'erro': 'Nenhum item encontrado para este roteiro'}), 404
     wb = Workbook()
@@ -8206,22 +8207,22 @@ def export_relatorio_extrato_excel():
     ws.title = 'Extrato'
     header_font = Font(bold=True)
     ws.cell(row=1, column=1, value='Extrato - ID Roteiro: ' + id_viagem).font = Font(bold=True, size=12)
-    headers = ['Status', 'Código de Barras', 'Código do Produto', 'Produto', 'Qtd. Produto', 'Unidade', 'Peso Bruto', 'Aviso', 'Qtd. Bipada', 'Qtd. Falta', 'Motivo da divergência']
+    headers = ['Status', 'Motivo da divergência', 'Código de Barras', 'Código do Produto', 'Produto', 'Qtd. Produto', 'Qtd. Bipada', 'Unidade', 'Peso Bruto', 'Aviso', 'Qtd. Falta']
     for col, h in enumerate(headers, 1):
         c = ws.cell(row=3, column=col, value=h)
         c.font = header_font
     for row_idx, item in enumerate(itens, 4):
         ws.cell(row=row_idx, column=1, value=item.get('status_bipado') or '')
-        ws.cell(row=row_idx, column=2, value=item.get('codigo_barras') or '')
-        ws.cell(row=row_idx, column=3, value=item.get('codigo_produto') or '')
-        ws.cell(row=row_idx, column=4, value=item.get('produto') or '')
-        ws.cell(row=row_idx, column=5, value=item.get('quantidade_produto'))
-        ws.cell(row=row_idx, column=6, value=item.get('unidade') or '')
-        ws.cell(row=row_idx, column=7, value=item.get('peso_bruto') or '')
-        ws.cell(row=row_idx, column=8, value=item.get('aviso_sobra') or '')
-        ws.cell(row=row_idx, column=9, value=item.get('quantidade_bipada'))
-        ws.cell(row=row_idx, column=10, value=item.get('quantidade_falta'))
-        ws.cell(row=row_idx, column=11, value=item.get('motivo_divergencia') or '')
+        ws.cell(row=row_idx, column=2, value=item.get('motivo_divergencia') or '')
+        ws.cell(row=row_idx, column=3, value=item.get('codigo_barras') or '')
+        ws.cell(row=row_idx, column=4, value=item.get('codigo_produto') or '')
+        ws.cell(row=row_idx, column=5, value=item.get('produto') or '')
+        ws.cell(row=row_idx, column=6, value=item.get('quantidade_produto'))
+        ws.cell(row=row_idx, column=7, value=item.get('quantidade_bipada'))
+        ws.cell(row=row_idx, column=8, value=item.get('unidade') or '')
+        ws.cell(row=row_idx, column=9, value=item.get('peso_bruto') or '')
+        ws.cell(row=row_idx, column=10, value=item.get('aviso_sobra') or '')
+        ws.cell(row=row_idx, column=11, value=item.get('quantidade_falta'))
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -8720,9 +8721,10 @@ def get_painel_graficos():
         for v in viagens[:2]:
             ret = get_conferencia(v['id_viagem'])
             resp = ret[0] if isinstance(ret, tuple) else ret
-            data = resp.get_json() if hasattr(resp, 'get_json') else []
-            if isinstance(data, list):
-                v['total_faltas'] = sum((item.get('quantidade_falta') or 0) for item in data)
+            data = resp.get_json() if hasattr(resp, 'get_json') else None
+            lista_conf = _conferencia_lista_de_resposta(data)
+            if lista_conf is not None:
+                v['total_faltas'] = sum((item.get('quantidade_falta') or 0) for item in lista_conf)
             else:
                 v['total_faltas'] = 0
         for v in viagens[2:]:

@@ -14758,16 +14758,47 @@ function appendParamsDevolucao(url) {
     return url + (url.indexOf('?') >= 0 ? '&' : '?') + qs;
 }
 
-// Helper: baixar relatório por URL
-function downloadRelatorio(url, nomeArquivo) {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = nomeArquivo || 'relatorio.xlsx';
+function _baixarBlobExcel(blob, nomeArquivo, msgSucesso, msgErro) {
+    if (!blob || blob.size === 0) return;
+    var ct = (blob.type || '').toLowerCase();
+    if (ct.indexOf('json') !== -1) {
+        blob.text().then(function(t) {
+            try {
+                var d = JSON.parse(t);
+                showMessage((d && d.erro) || msgErro, 'error');
+            } catch (e) {
+                showMessage(msgErro, 'error');
+            }
+        });
+        return;
+    }
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = nomeArquivo;
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    showMessage('Download do relatório iniciado.', 'success');
+    URL.revokeObjectURL(a.href);
+    showMessage(msgSucesso, 'success');
+}
+
+// Helper: baixar relatório por URL (fetch + blob para exibir erros da API)
+function downloadRelatorio(url, nomeArquivo) {
+    fetch(url).then(function(r) {
+        if (!r.ok) {
+            return r.json().then(function(d) {
+                showMessage((d && d.erro) || 'Erro ao gerar relatório', 'error');
+            }).catch(function() {
+                showMessage('Erro ao gerar relatório', 'error');
+            });
+        }
+        return r.blob();
+    }).then(function(blob) {
+        _baixarBlobExcel(blob, nomeArquivo || 'relatorio.xlsx', 'Download do relatório iniciado.', 'Erro ao gerar relatório');
+    }).catch(function() {
+        showMessage('Erro ao gerar relatório', 'error');
+    });
 }
 
 window.exportarExtratoExcel = function() {
@@ -14784,16 +14815,7 @@ window.exportarExtratoExcel = function() {
         }
         return r.blob();
     }).then(function(blob) {
-        if (!blob || blob.type.indexOf('sheet') === -1) return;
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'extrato_roteiro_' + idViagem.replace(/[/\\]/g, '_') + '.xlsx';
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(a.href);
-        showMessage('Download do extrato em Excel iniciado.', 'success');
+        _baixarBlobExcel(blob, 'extrato_roteiro_' + idViagem.replace(/[/\\]/g, '_') + '.xlsx', 'Download do extrato em Excel iniciado.', 'Erro ao exportar extrato');
     });
 };
 
@@ -14855,16 +14877,7 @@ window.exportarExtratoDevolucaoExcel = function() {
         }
         return r.blob();
     }).then(function(blob) {
-        if (!blob || blob.type.indexOf('sheet') === -1) return;
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'extrato_devolucao_roteiro_' + idViagem.replace(/[/\\]/g, '_') + '.xlsx';
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(a.href);
-        showMessage('Download do extrato de devolução iniciado.', 'success');
+        _baixarBlobExcel(blob, 'extrato_devolucao_roteiro_' + idViagem.replace(/[/\\]/g, '_') + '.xlsx', 'Download do extrato de devolução iniciado.', 'Erro ao exportar extrato de devolução');
     });
 };
 
