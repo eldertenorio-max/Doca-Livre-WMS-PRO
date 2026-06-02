@@ -3438,6 +3438,11 @@ body.conferencia-lista-maximizada-aberta {
     display: none;
 }
 
+/* Linha de roteiro/placa no thead — só na impressão (repete em cada página) */
+.extrato-cabecalho-impressao-linha {
+    display: none;
+}
+
 /* Impressão: Extrato ou Divergências conforme classe no body */
 @media print {
     @page {
@@ -3453,18 +3458,32 @@ body.conferencia-lista-maximizada-aberta {
     .container * {
         visibility: hidden;
     }
-    /* ========== EXTRATO — retrato, compacto, economia de folha ========== */
+    /* Cadeia de ancestrais visível (senão título/resumo somem na impressão) */
+    body.print-extrato #modulo-carregamento,
+    body.print-extrato #modulo-carregamento .content,
+    body.print-extrato #modulo-devolucoes,
+    body.print-extrato #modulo-devolucoes .devolucoes-conteudo,
+    body.print-extrato #extrato,
+    body.print-extrato #devolucoes-panel-extrato,
     body.print-extrato #extrato-para-imprimir,
-    body.print-extrato #extrato-para-imprimir *,
     body.print-extrato #dev-extrato-para-imprimir,
+    body.print-extrato #extrato-para-imprimir *,
     body.print-extrato #dev-extrato-para-imprimir * {
         visibility: visible;
     }
+    body.print-extrato #extrato,
+    body.print-extrato #devolucoes-panel-extrato {
+        display: block !important;
+    }
+    body.print-extrato #devolucoes-panel-extrato {
+        display: block !important;
+    }
+    /* ========== EXTRATO — retrato, compacto, economia de folha ========== */
     body.print-extrato #extrato-para-imprimir,
     body.print-extrato #dev-extrato-para-imprimir {
-        position: absolute;
-        left: 0;
-        top: 0;
+        position: static !important;
+        left: auto;
+        top: auto;
         width: 100%;
         max-width: 100%;
         padding: 0;
@@ -3490,14 +3509,38 @@ body.conferencia-lista-maximizada-aberta {
         color: #000;
     }
     body.print-extrato #extrato-resumo,
-    body.print-extrato #dev-extrato-resumo {
+    body.print-extrato #dev-extrato-resumo,
+    body.print-extrato #extrato-resumo.extrato-resumo--preenchido,
+    body.print-extrato #dev-extrato-resumo.extrato-resumo--preenchido {
         display: block !important;
+        visibility: visible !important;
         margin: 0 0 3mm 0;
         padding: 2mm 2.5mm;
         background: #f4f6f8 !important;
         border: 0.5pt solid #bbb;
         border-radius: 1mm;
         page-break-inside: avoid;
+        break-inside: avoid;
+    }
+    body.print-extrato .extrato-cabecalho-impressao-linha {
+        display: table-row !important;
+    }
+    body.print-extrato .extrato-cabecalho-impressao-linha th {
+        display: table-cell !important;
+        padding: 1.5mm 2mm !important;
+        background: #fff !important;
+        color: #111 !important;
+        border: 0.5pt solid #bbb !important;
+        border-bottom: 1pt solid #366092 !important;
+        font-weight: 400 !important;
+        font-size: 7.5pt !important;
+        line-height: 1.35 !important;
+        text-align: left !important;
+        vertical-align: top !important;
+    }
+    body.print-extrato .extrato-cabecalho-impressao-texto {
+        white-space: normal;
+        word-wrap: break-word;
     }
     body.print-extrato #extrato-resumo h3,
     body.print-extrato #dev-extrato-resumo h3 {
