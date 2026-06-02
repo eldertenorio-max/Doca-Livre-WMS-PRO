@@ -736,6 +736,32 @@ function _conferenciaMostrarErroComprovante(msg, focarDoca) {
     }
 }
 
+function _conferenciaAtivarAbaExtrato(idViagem) {
+    if (typeof sairConferenciaListaMaximizadaSeAtiva === 'function') sairConferenciaListaMaximizadaSeAtiva();
+    var inputExtrato = document.getElementById('extrato-id-viagem');
+    var inputRelatorio = document.getElementById('relatorio-extrato-id-viagem');
+    if (inputExtrato) inputExtrato.value = idViagem;
+    if (inputRelatorio) inputRelatorio.value = idViagem;
+    var modulo = document.getElementById('modulo-carregamento');
+    var tabButtons = modulo ? modulo.querySelectorAll('.tab-button') : document.querySelectorAll('.tab-button');
+    var tabContents = modulo ? modulo.querySelectorAll('.tab-content') : document.querySelectorAll('.tab-content');
+    tabButtons.forEach(function(btn) { btn.classList.remove('active'); });
+    tabContents.forEach(function(c) { c.classList.remove('active'); });
+    var btnExtrato = modulo
+        ? modulo.querySelector('.tab-button[data-tab="extrato"]')
+        : document.querySelector('.tab-button[data-tab="extrato"]');
+    var contentExtrato = document.getElementById('extrato');
+    if (btnExtrato) btnExtrato.classList.add('active');
+    if (contentExtrato) contentExtrato.classList.add('active');
+    var tbody = document.getElementById('tbody-extrato');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando extrato...</td></tr>';
+    var resumoEl = document.getElementById('extrato-resumo');
+    if (resumoEl) resumoEl.style.display = 'none';
+    if (contentExtrato) {
+        try { contentExtrato.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* ignore */ }
+    }
+}
+
 async function _conferenciaSalvarBipagemEGerarExtrato() {
     var idViagem = window._getIdViagemAtivo && window._getIdViagemAtivo();
     if (!idViagem) {
@@ -777,28 +803,20 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
         _conferenciaSalvarSessao({ id_viagem: idViagem, comprovante_gerado: true, tem_rascunho: false });
         _limparPendenciasConferenciaTimers();
         salvou = true;
-        var inputExtrato = document.getElementById('extrato-id-viagem');
-        var inputRelatorio = document.getElementById('relatorio-extrato-id-viagem');
-        if (inputExtrato) inputExtrato.value = idViagem;
-        if (inputRelatorio) inputRelatorio.value = idViagem;
-        var tabButtons = document.querySelectorAll('.tab-button');
-        var tabContents = document.querySelectorAll('.tab-content');
-        tabButtons.forEach(function(btn) { btn.classList.remove('active'); });
-        tabContents.forEach(function(c) { c.classList.remove('active'); });
-        var btnExtrato = document.querySelector('.tab-button[data-tab="extrato"]');
-        var contentExtrato = document.getElementById('extrato');
-        if (btnExtrato) btnExtrato.classList.add('active');
-        if (contentExtrato) contentExtrato.classList.add('active');
-        await reloadConferenciaAtiva(idViagem, { forcar: true, forcarIgnorarPendencias: true, aguardarBipagem: false });
+        _conferenciaAtivarAbaExtrato(idViagem);
         await loadExtrato(idViagem);
+        void reloadConferenciaAtiva(idViagem, { forcar: true, forcarIgnorarPendencias: true, aguardarBipagem: false });
         loadEstatisticas();
         showMessage('Bipagem salva. Extrato atualizado.', 'success');
         _conferenciaAtualizarAvisoRascunho();
         return true;
     } catch (e) {
         if (window.ravexLoadingHide) window.ravexLoadingHide();
+        console.error('_conferenciaSalvarBipagemEGerarExtrato', e);
         if (!salvou) {
             showMessage('Erro ao salvar bipagem. Tente novamente.', 'error');
+        } else {
+            showMessage('Bipagem salva, mas houve erro ao abrir o extrato. Clique na aba Extrato e em Buscar.', 'warning');
         }
         return false;
     } finally {
@@ -840,7 +858,7 @@ function _conferenciaTabelaTemBipagemNoDOM() {
     var rows = tbody.querySelectorAll('tr');
     for (var i = 0; i < rows.length; i++) {
         var row = rows[i];
-        if (!row.cells || row.cells.length < 11 || row.querySelector('td[colspan]')) continue;
+        if (!row.cells || row.cells.length < 12 || row.querySelector('td[colspan]')) continue;
         if ((parseInt(row.cells[window._CONF_COL.BIPADO].textContent, 10) || 0) > 0) return true;
     }
     return false;
@@ -948,6 +966,13 @@ async function _conferenciaGravarBipagemCompletaNoServidor() {
         return { ok: false, falhas: 0, cancelado: true };
     }
     var itens = _conferenciaColetarItensTabelaParaGravar();
+    if (itens.length === 0 && _conferenciaTabelaTemBipagemNoDOM()) {
+        return {
+            ok: false,
+            falhas: 1,
+            erro: 'Não foi possível ler os itens bipados na tabela. Recarregue a conferência e tente novamente.'
+        };
+    }
     var veiculoInput = window._elBipagem('veiculo');
     var statusSelect = window._elBipagem('status');
     _conferenciaRegistrarMomentoBipagemLocal();
@@ -15188,6 +15213,10 @@ async function loadExtrato(idViagemOpcional) {
     const resumoEl = document.getElementById('extrato-resumo');
     const btnExcluir = document.getElementById('btn-excluir-extrato');
     const avisoDivergenteEl = document.getElementById('extrato-aviso-divergente');
+    if (!tbody) {
+        console.error('loadExtrato: elemento tbody-extrato não encontrado');
+        return;
+    }
     if (!idViagem) {
         tbody.innerHTML = '<tr><td colspan="11" class="loading">Digite o ID do roteiro e clique em Buscar para ver o comprovante (extrato) com as informações da carga.</td></tr>';
         if (resumoEl) resumoEl.style.display = 'none';
@@ -15200,13 +15229,24 @@ async function loadExtrato(idViagemOpcional) {
     tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando extrato...</td></tr>';
     if (resumoEl) resumoEl.style.display = 'none';
     const [extratoResp, periodo, viagemInfo] = await Promise.all([
-        fetchAPI(`/conferencia/${encodeURIComponent(idViagem)}`),
-        fetchAPI(`/viagem/${encodeURIComponent(idViagem)}/periodo`),
-        fetchAPI(`/viagem/${encodeURIComponent(idViagem)}/info`)
+        fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '?limit=2000'),
+        fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/periodo'),
+        fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/info')
     ]);
     const extratoLista = (extratoResp && extratoResp.lista && Array.isArray(extratoResp.lista)) ? extratoResp.lista : [];
-    const extrato = (typeof agruparConferenciaPorCodigoProduto === 'function') ? agruparConferenciaPorCodigoProduto(extratoLista) : extratoLista;
-    if (!extratoResp || extratoResp.erro || extrato.length === 0) {
+    const extrato = (extratoResp && extratoResp.lista_ja_agregada)
+        ? extratoLista
+        : ((typeof agruparConferenciaPorCodigoProduto === 'function') ? agruparConferenciaPorCodigoProduto(extratoLista) : extratoLista);
+    if (!extratoResp || extratoResp.erro) {
+        tbody.innerHTML = '<tr><td colspan="11" class="loading" style="color: #c62828;">' + escHtml(extratoResp && extratoResp.erro ? extratoResp.erro : 'Erro ao carregar extrato.') + '</td></tr>';
+        if (resumoEl) resumoEl.style.display = 'none';
+        if (btnExcluir) btnExcluir.style.display = 'none';
+        if (avisoDivergenteEl) avisoDivergenteEl.style.display = 'none';
+        _atualizarExtratoStatusRodape([]);
+        _extratoAtualizarItensBipadosMais([], 'carregamento');
+        return;
+    }
+    if (extrato.length === 0) {
         tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhum item encontrado para esta viagem. Bipe os itens na aba Conferência primeiro.</td></tr>';
         if (resumoEl) resumoEl.style.display = 'none';
         if (btnExcluir) btnExcluir.style.display = 'none';
@@ -15326,12 +15366,14 @@ async function loadExtratoDevolucao(idViagemOpcional) {
     if (resumoEl) resumoEl.style.display = 'none';
 
     const [extratoResp, periodo, viagemInfo] = await Promise.all([
-        fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '?fluxo=devolucao'),
+        fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '?fluxo=devolucao&limit=2000'),
         fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/periodo?fluxo=devolucao'),
         fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/info')
     ]);
     const extratoListaDev = (extratoResp && extratoResp.lista && Array.isArray(extratoResp.lista)) ? extratoResp.lista : [];
-    const extrato = (typeof agruparConferenciaPorCodigoProduto === 'function') ? agruparConferenciaPorCodigoProduto(extratoListaDev) : extratoListaDev;
+    const extrato = (extratoResp && extratoResp.lista_ja_agregada)
+        ? extratoListaDev
+        : ((typeof agruparConferenciaPorCodigoProduto === 'function') ? agruparConferenciaPorCodigoProduto(extratoListaDev) : extratoListaDev);
     if (!extratoResp || extratoResp.erro || extrato.length === 0) {
         tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhum item encontrado para esta viagem no fluxo de devoluções.</td></tr>';
         if (resumoEl) resumoEl.style.display = 'none';
