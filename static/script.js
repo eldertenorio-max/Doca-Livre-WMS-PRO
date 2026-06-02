@@ -218,6 +218,21 @@ window._CONF_COL = {
     ACAO: 11
 };
 
+/** Índices das colunas do extrato (carregamento e devolução). */
+window._EXTRATO_COL = {
+    STATUS: 0,
+    MOTIVO: 1,
+    COD_BARRAS: 2,
+    COD_PRODUTO: 3,
+    PRODUTO: 4,
+    QTD_PROD: 5,
+    BIPADO: 6,
+    UN: 7,
+    PESO: 8,
+    AVISO: 9,
+    FALTA: 10
+};
+
 function _conferenciaObterEstadoLinhaBipagem(codigoBarrasStr, codigoProdutoStr) {
     var tbody = document.getElementById(window._fluxoBipagemAtivo === 'devolucao' ? 'dev-tbody-conferencia' : 'tbody-conferencia');
     if (!tbody) return null;
@@ -15046,10 +15061,10 @@ function _htmlLinhaExtratoTabela(item) {
         + '<td><strong style="color: #1976D2;">' + escHtml(item.codigo_produto || '-') + '</strong></td>'
         + '<td>' + escHtml(item.produto || '-') + '</td>'
         + '<td><strong>' + escHtml(String(item.quantidade_produto || 0)) + '</strong></td>'
+        + '<td><strong style="color: ' + (qtdBip > 0 ? '#4caf50' : '#666') + '">' + qtdBip + '</strong></td>'
         + '<td>' + escHtml(item.unidade || '-') + '</td>'
         + '<td>' + escHtml((item.peso_bruto != null && item.peso_bruto !== '') ? String(item.peso_bruto) : '-') + '</td>'
         + _htmlTdAviso(avisoTexto)
-        + '<td><strong style="color: ' + (qtdBip > 0 ? '#4caf50' : '#666') + '">' + qtdBip + '</strong></td>'
         + '<td><strong style="color: ' + (qtdFalta > 0 ? '#f44336' : '#4caf50') + '">' + qtdFalta + '</strong></td>'
         + '</tr>';
 }

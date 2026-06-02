@@ -2505,6 +2505,22 @@ body.conferencia-lista-maximizada-aberta {
     print-color-adjust: exact;
 }
 
+/* Extrato (tela): Qtd. prod. e Bipado em destaque */
+#tabela-extrato th:nth-child(6),
+#tabela-extrato td:nth-child(6),
+#tabela-extrato th:nth-child(7),
+#tabela-extrato td:nth-child(7),
+#dev-extrato-para-imprimir table.data-table th:nth-child(6),
+#dev-extrato-para-imprimir table.data-table td:nth-child(6),
+#dev-extrato-para-imprimir table.data-table th:nth-child(7),
+#dev-extrato-para-imprimir table.data-table td:nth-child(7) {
+    font-size: 1.35rem;
+    font-weight: 700;
+    text-align: center;
+    vertical-align: middle;
+    font-variant-numeric: tabular-nums;
+}
+
 .conferencia-bloco-4-wrapper.conferencia-blocos-bloqueado {
     pointer-events: none;
     opacity: 0.82;
@@ -3806,15 +3822,15 @@ body.conferencia-lista-maximizada-aberta {
     body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td strong {
         color: #fff !important;
     }
-    body.print-extrato #tabela-extrato td:nth-child(10) strong,
+    body.print-extrato #tabela-extrato td:nth-child(7) strong,
     body.print-extrato #tabela-extrato td:nth-child(11) strong,
-    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(10) strong,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(7) strong,
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(11) strong {
         color: #000 !important;
     }
-    body.print-extrato #tabela-extrato tbody tr.row-excedente td:nth-child(10) strong,
+    body.print-extrato #tabela-extrato tbody tr.row-excedente td:nth-child(7) strong,
     body.print-extrato #tabela-extrato tbody tr.row-excedente td:nth-child(11) strong,
-    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td:nth-child(10) strong,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td:nth-child(7) strong,
     body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td:nth-child(11) strong {
         color: #fff !important;
     }
@@ -3866,20 +3882,27 @@ body.conferencia-lista-maximizada-aberta {
     body.print-extrato #tabela-extrato td:nth-child(7),
     body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(7),
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(7) {
-        width: 6%;
+        width: 8%;
         text-align: center;
     }
     body.print-extrato #tabela-extrato th:nth-child(8),
     body.print-extrato #tabela-extrato td:nth-child(8),
     body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(8),
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(8) {
-        width: 7%;
-        text-align: right;
+        width: 6%;
+        text-align: center;
     }
     body.print-extrato #tabela-extrato th:nth-child(9),
     body.print-extrato #tabela-extrato td:nth-child(9),
     body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(9),
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(9) {
+        width: 7%;
+        text-align: right;
+    }
+    body.print-extrato #tabela-extrato th:nth-child(10),
+    body.print-extrato #tabela-extrato td:nth-child(10),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(10),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(10) {
         width: 11%;
         font-size: 6.5pt;
         word-wrap: break-word;
@@ -3899,13 +3922,6 @@ body.conferencia-lista-maximizada-aberta {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
-    body.print-extrato #tabela-extrato th:nth-child(10),
-    body.print-extrato #tabela-extrato td:nth-child(10),
-    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(10),
-    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(10) {
-        width: 8%;
-        text-align: center;
-    }
     body.print-extrato #tabela-extrato th:nth-child(11),
     body.print-extrato #tabela-extrato td:nth-child(11),
     body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(11),
@@ -3915,20 +3931,20 @@ body.conferencia-lista-maximizada-aberta {
     }
     /* Qtd. romaneio, bipada e falta — números maiores na impressão */
     body.print-extrato #tabela-extrato th:nth-child(6),
-    body.print-extrato #tabela-extrato th:nth-child(10),
+    body.print-extrato #tabela-extrato th:nth-child(7),
     body.print-extrato #tabela-extrato th:nth-child(11),
     body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(6),
-    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(10),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(7),
     body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(11) {
         font-size: 8.5pt !important;
         font-weight: 700 !important;
         vertical-align: middle;
     }
     body.print-extrato #tabela-extrato td:nth-child(6),
-    body.print-extrato #tabela-extrato td:nth-child(10),
+    body.print-extrato #tabela-extrato td:nth-child(7),
     body.print-extrato #tabela-extrato td:nth-child(11),
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(6),
-    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(10),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(7),
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(11) {
         font-size: 11pt !important;
         font-weight: 700 !important;
@@ -3939,10 +3955,10 @@ body.conferencia-lista-maximizada-aberta {
         line-height: 1.25 !important;
     }
     body.print-extrato #tabela-extrato td:nth-child(6) strong,
-    body.print-extrato #tabela-extrato td:nth-child(10) strong,
+    body.print-extrato #tabela-extrato td:nth-child(7) strong,
     body.print-extrato #tabela-extrato td:nth-child(11) strong,
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(6) strong,
-    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(10) strong,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(7) strong,
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(11) strong {
         font-size: inherit !important;
         font-weight: 700 !important;
@@ -3953,12 +3969,12 @@ body.conferencia-lista-maximizada-aberta {
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(6) {
         width: 9%;
     }
-    body.print-extrato #tabela-extrato th:nth-child(10),
-    body.print-extrato #tabela-extrato td:nth-child(10),
+    body.print-extrato #tabela-extrato th:nth-child(7),
+    body.print-extrato #tabela-extrato td:nth-child(7),
     body.print-extrato #tabela-extrato th:nth-child(11),
     body.print-extrato #tabela-extrato td:nth-child(11),
-    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(10),
-    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(10),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(7),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(7),
     body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(11),
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(11) {
         width: 9%;
