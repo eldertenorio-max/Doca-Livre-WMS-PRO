@@ -10353,7 +10353,12 @@ function initForms() {
                 });
                 const data = await r.json().catch(function() { return {}; });
                 if (r.ok && data.ok) {
-                    showRavexModalConcluido('Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.');
+                    var msgOk = data.mensagem || (
+                        data.somente_roteiro
+                            ? ('Importado pelo roteiro <strong>' + (data.id_roteiro || idTrim) + '</strong> (sem viagem faturada). Itens: <strong>' + (data.total_itens || 0) + '</strong>.')
+                            : ('Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.')
+                    );
+                    showRavexModalConcluido(msgOk);
                     loadAllData();
                     ravexLoadingHide();
                 } else if (r.status === 409 || (data && data.duplicado)) {

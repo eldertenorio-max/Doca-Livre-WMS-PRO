@@ -30,6 +30,8 @@ try:
         get_token as ravex_get_token,
         obter_roteiro_por_id,
         obter_roteiro_por_periodo,
+        obter_itens_roteiro,
+        obter_itens_pedido,
         obter_viagem_por_id,
         obter_notas_fiscais_viagem,
         obter_itens_nota_fiscal,
@@ -43,6 +45,8 @@ except ImportError:
     ravex_get_token = None
     obter_roteiro_por_id = None
     obter_roteiro_por_periodo = None
+    obter_itens_roteiro = None
+    obter_itens_pedido = None
     obter_viagem_por_id = None
     obter_notas_fiscais_viagem = None
     obter_itens_nota_fiscal = None
@@ -841,7 +845,14 @@ class CompatConn:
     def executemany(self, sql, params_seq):
         if self._kind == 'pg' and sql and '?' in sql:
             sql = sql.replace('?', '%s')
-        return self._conn.executemany(sql, params_seq or [])
+        params_seq = list(params_seq or [])
+        if not params_seq:
+            return None
+        if self._kind == 'pg':
+            with self._conn.cursor() as cur:
+                cur.executemany(sql, params_seq)
+            return None
+        return self._conn.executemany(sql, params_seq)
 
     def commit(self):
         return self._conn.commit()
@@ -4395,15 +4406,54 @@ _ROMANEIO_INSERT_SQL = """INSERT INTO romaneio_por_item
     codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, importado_em, data)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)"""
 
+_ROMANEIO_INSERT_PG_TEMPLATE = (
+    '(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)'
+)
+_ROMANEIO_INSERT_PG_SQL = """INSERT INTO romaneio_por_item
+   (dataset_id, row_index, id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
+    codigo_cliente, endereco, cidade, placa, motorista, data_expedicao, importado_em, data)
+   VALUES %s"""
 
-def _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas):
+
+def _ravex_bulk_insert_romaneio_pg(conn, params):
+    """INSERT em lote no Postgres (execute_values — mais rápido que executemany linha a linha)."""
+    try:
+        from psycopg.extras import execute_values  # type: ignore
+    except ImportError:
+        execute_values = None
+    raw = getattr(conn, '_conn', conn)
+    if execute_values:
+        with raw.cursor() as cur:
+            execute_values(
+                cur,
+                _ROMANEIO_INSERT_PG_SQL,
+                params,
+                template=_ROMANEIO_INSERT_PG_TEMPLATE,
+                page_size=500,
+            )
+        return
+    with raw.cursor() as cur:
+        cur.executemany(_ROMANEIO_INSERT_SQL.replace('?', '%s'), params)
+
+
+def _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas, id_roteiro=None):
     """Remove romaneio anterior da viagem e grava linhas com executemany."""
     if not linhas:
         return 0
-    conn.execute(
-        """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
-        (str(ds), id_viagem),
-    )
+    id_roteiro_del = str(id_roteiro or (linhas[0].get('id_roteiro') if linhas else '') or '').strip()
+    id_viagem_del = str(id_viagem or '').strip()
+    if id_roteiro_del and (not id_viagem_del or id_viagem_del == id_roteiro_del):
+        conn.execute(
+            """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_roteiro = ?""",
+            (str(ds), id_roteiro_del),
+        )
+        id_viagem_grav = id_viagem_del or id_roteiro_del
+    else:
+        conn.execute(
+            """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
+            (str(ds), id_viagem_del),
+        )
+        id_viagem_grav = id_viagem_del
     importado_em = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     params = []
     for L in linhas:
@@ -4414,9 +4464,11 @@ def _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas):
         params.append(_romaneio_linha_para_tuple_pg(ds, L))
     if len(params) == 1:
         conn.execute(_ROMANEIO_INSERT_SQL, params[0])
+    elif getattr(conn, 'kind', None) == 'pg':
+        _ravex_bulk_insert_romaneio_pg(conn, params)
     else:
         conn.executemany(_ROMANEIO_INSERT_SQL, params)
-    _upsert_viagem_placa_motorista(conn, id_viagem, linhas[0].get('placa'), linhas[0].get('motorista'))
+    _upsert_viagem_placa_motorista(conn, id_viagem_grav, linhas[0].get('placa'), linhas[0].get('motorista'))
     return len(params)
 
 
@@ -5138,6 +5190,18 @@ def _ravex_extrair_identificador_rota(obj):
     ).strip()
 
 
+def _ravex_extrair_viagem_id_de_roteiro(roteiro):
+    """Extrai id da viagem faturada do objeto roteiro da API Ravex."""
+    if not isinstance(roteiro, dict):
+        return ''
+    vf = roteiro.get('viagemFaturada') or roteiro.get('viagem_faturada')
+    if isinstance(vf, dict):
+        return str(vf.get('id') or vf.get('Id') or '').strip()
+    if vf not in (None, '', 0):
+        return str(vf).strip()
+    return str(roteiro.get('viagemFaturadaId') or roteiro.get('viagem_id') or '').strip()
+
+
 def _ravex_resolver_id_db(conn, dataset_id, id_input):
     """Resolve id_viagem/id_roteiro pelo cadastro local id_roteiros (sem API)."""
     id_norm = str(id_input or '').strip()
@@ -5204,19 +5268,21 @@ def _ravex_resolver_id_unico_ravex(token, id_unico):
             'viagem_full': viagem,
         }
     if isinstance(roteiro, dict):
-        vf = roteiro.get('viagemFaturada') or roteiro.get('viagem_faturada')
-        id_viagem = ''
-        if isinstance(vf, dict):
-            id_viagem = str(vf.get('id') or vf.get('Id') or '')
-        if not id_viagem:
-            id_viagem = str(roteiro.get('viagemFaturadaId') or roteiro.get('viagem_id') or '')
-        if not id_viagem:
-            return {'erro': 'Roteiro ainda não possui viagem faturada. Só é possível bipar quando a viagem já foi faturada.'}
+        id_viagem = _ravex_extrair_viagem_id_de_roteiro(roteiro)
+        if id_viagem:
+            return {
+                'id_viagem': id_viagem,
+                'id_roteiro': id_str,
+                'identificador_rota': _ravex_extrair_identificador_rota(roteiro),
+                'viagem_full': None,
+            }
         return {
-            'id_viagem': id_viagem,
+            'id_viagem': '',
             'id_roteiro': id_str,
             'identificador_rota': _ravex_extrair_identificador_rota(roteiro),
             'viagem_full': None,
+            'roteiro_full': roteiro,
+            'somente_roteiro': True,
         }
     return {'erro': 'ID não encontrado como viagem nem como roteiro na API Ravex.'}
 
@@ -5224,12 +5290,214 @@ def _ravex_resolver_id_unico_ravex(token, id_unico):
 def _ravex_resolver_importacao_unico(conn, token, dataset_id, id_unico):
     """Resolve IDs para importação única: banco local primeiro, depois API em paralelo."""
     local = _ravex_resolver_id_db(conn, dataset_id, id_unico)
-    if local and local.get('id_viagem'):
-        return local
+    if local:
+        if local.get('id_viagem'):
+            return local
+        if local.get('id_roteiro'):
+            local['somente_roteiro'] = True
+            return local
     api = _ravex_resolver_id_unico_ravex(token, id_unico)
     if not api:
         return {'erro': 'Não foi possível resolver o ID na API Ravex.'}
     return api
+
+
+def _ravex_itens_produto_do_pedido(token, pedido_resumo, pedido_id, cache_pedido):
+    """Monta linhas de produto a partir de compartimentos ou GET /api/pedido/{id}/itens."""
+    pid = pedido_id
+    if pid is None and isinstance(pedido_resumo, dict):
+        pid = pedido_resumo.get('id') or pedido_resumo.get('Id')
+    if pid is None:
+        return [], None
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return [], None
+    pk = str(pid)
+    if pk in cache_pedido:
+        return cache_pedido[pk]
+    ref = None
+    endereco = cidade = codigo_cliente = ''
+    compartimentos = []
+    produtos = []
+    if isinstance(pedido_resumo, dict):
+        compartimentos = pedido_resumo.get('compartimentos') or []
+        ref = pedido_resumo.get('pontoReferencia') or pedido_resumo.get('ponto_referencia')
+    if ref and isinstance(ref, dict):
+        endereco = (ref.get('endereco') or ref.get('endereço') or ref.get('logradouro') or '').strip()
+        cidade = _normalizar_cidade_nome(ref.get('cidade') or '')
+        codigo_cliente = (ref.get('cnpj') or ref.get('Cnpj') or '').strip()
+    if compartimentos:
+        pass
+    elif obter_itens_pedido:
+        for item in obter_itens_pedido(token, pid) or []:
+            if not isinstance(item, dict):
+                continue
+            prod = item.get('produto') or {}
+            codigo_produto = str(item.get('codigo') or prod.get('codigo') or prod.get('Codigo') or '').strip()
+            descricao = str(item.get('descricao') or item.get('descricaoItem') or prod.get('descricao') or prod.get('descrição') or '').strip()
+            quantidade = int(item.get('quantidade', 0) or 0)
+            if not codigo_produto and not descricao and quantidade <= 0:
+                continue
+            produtos.append({
+                'codigo_produto': codigo_produto,
+                'descricao': descricao,
+                'quantidade': quantidade,
+                'unidade': str(item.get('unidade') or prod.get('unidade') or '').strip(),
+                'peso_bruto': str(item.get('pesoBruto') or item.get('pesoLiquido') or prod.get('pesoBruto') or '').strip(),
+                'codigo_cliente': codigo_cliente,
+                'endereco': endereco,
+                'cidade': cidade,
+            })
+        if produtos:
+            cache_pedido[pk] = (produtos, ref)
+            return produtos, ref
+    if not compartimentos and obter_pedido_por_id:
+        pedido_full = obter_pedido_por_id(token, pid)
+        if isinstance(pedido_full, dict):
+            compartimentos = pedido_full.get('compartimentos') or []
+            if not ref:
+                ref = pedido_full.get('pontoReferencia') or pedido_full.get('ponto_referencia')
+            if ref and isinstance(ref, dict):
+                endereco = (ref.get('endereco') or ref.get('endereço') or ref.get('logradouro') or '').strip()
+                cidade = _normalizar_cidade_nome(ref.get('cidade') or '')
+                codigo_cliente = (ref.get('cnpj') or ref.get('Cnpj') or '').strip()
+    for comp in compartimentos or []:
+        if not isinstance(comp, dict):
+            continue
+        prod = comp.get('produto') or {}
+        codigo_produto = str(prod.get('codigo') or prod.get('Codigo') or '').strip()
+        descricao = str(prod.get('descricao') or prod.get('descrição') or '').strip()
+        quantidade = int(comp.get('quantidade', 0) or 0)
+        if not codigo_produto and not descricao and quantidade <= 0:
+            continue
+        produtos.append({
+            'codigo_produto': codigo_produto,
+            'descricao': descricao,
+            'quantidade': quantidade,
+            'unidade': '',
+            'peso_bruto': '',
+            'codigo_cliente': codigo_cliente,
+            'endereco': endereco,
+            'cidade': cidade,
+        })
+    cache_pedido[pk] = (produtos, ref)
+    return produtos, ref
+
+
+def _ravex_linhas_romaneio_roteiro(token, id_roteiro, roteiro_full=None, identificador_rota_pre=None):
+    """Monta romaneio a partir do roteiro (itens/pedidos) quando ainda não há viagem faturada."""
+    if not obter_roteiro_por_id or not obter_itens_roteiro:
+        return (None, [])
+    id_roteiro = str(id_roteiro or '').strip()
+    if not id_roteiro:
+        return (None, [])
+    try:
+        rid = int(id_roteiro)
+    except (TypeError, ValueError):
+        return (None, [])
+    if not isinstance(roteiro_full, dict):
+        roteiro_full = obter_roteiro_por_id(token, rid)
+    if not isinstance(roteiro_full, dict):
+        return (None, [])
+    identificador_rota = (identificador_rota_pre or _ravex_extrair_identificador_rota(roteiro_full) or '').strip()
+    if not _ravex_identificador_rota_valido(identificador_rota):
+        identificador_rota = _ravex_extrair_identificador_rota(roteiro_full)
+    placa = ''
+    veiculo = roteiro_full.get('veiculo') or roteiro_full.get('veículo')
+    if isinstance(veiculo, dict):
+        placa = (veiculo.get('placa') or veiculo.get('Placa') or '').strip()
+    motorista = ''
+    mot = roteiro_full.get('motorista')
+    if isinstance(mot, dict):
+        motorista = (mot.get('nome') or mot.get('Nome') or '').strip()
+    data_ini = (
+        roteiro_full.get('dataInicioPrevisto') or roteiro_full.get('separacaoDatahora')
+        or roteiro_full.get('dataFimPrevisto') or ''
+    )
+    data_expedicao = data_ini[:10] if isinstance(data_ini, str) and len(data_ini) >= 10 else str(data_ini or '')
+
+    itens_roteiro = obter_itens_roteiro(token, rid) or []
+    if not itens_roteiro:
+        return (id_roteiro, [])
+
+    cache_pedido = {}
+    pedidos_fetch = []
+    pedidos_vistos = set()
+    for it in itens_roteiro:
+        if not isinstance(it, dict):
+            continue
+        pedido = it.get('pedido')
+        pid = (pedido.get('id') or pedido.get('Id')) if isinstance(pedido, dict) else None
+        if pid is not None:
+            pk = str(pid)
+            if pk not in pedidos_vistos:
+                pedidos_vistos.add(pk)
+                pedidos_fetch.append((pid, pedido))
+
+    def _fetch_pedido(pair):
+        pid, pedido_resumo = pair
+        try:
+            prods, _ref = _ravex_itens_produto_do_pedido(token, pedido_resumo, pid, cache_pedido)
+            return pid, prods
+        except Exception:
+            return pid, []
+
+    produtos_por_pedido = {}
+    if pedidos_fetch:
+        workers = min(_RAVEX_IMPORT_WORKERS * 2, max(2, len(pedidos_fetch)), 16)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for pid, prods in pool.map(_fetch_pedido, pedidos_fetch):
+                if prods:
+                    produtos_por_pedido[str(pid)] = prods
+
+    linhas = []
+    row_index = 0
+    for it in itens_roteiro:
+        if not isinstance(it, dict):
+            continue
+        pedido = it.get('pedido')
+        pid = (pedido.get('id') or pedido.get('Id')) if isinstance(pedido, dict) else None
+        prods = produtos_por_pedido.get(str(pid), []) if pid is not None else []
+        for item in prods:
+            row_index += 1
+            codigo_produto = item.get('codigo_produto') or ''
+            descricao = item.get('descricao') or ''
+            quantidade = int(item.get('quantidade') or 0)
+            data_row = {
+                'id_roteiro': id_roteiro,
+                'id_viagem': '',
+                'codigo_produto': codigo_produto,
+                'descricao': descricao,
+                'quantidade': quantidade,
+                'unidade': item.get('unidade') or '',
+                'peso_bruto': item.get('peso_bruto') or '',
+                'codigo_cliente': item.get('codigo_cliente') or '',
+                'endereco': item.get('endereco') or '',
+                'cidade': item.get('cidade') or '',
+                'placa': placa,
+                'motorista': motorista,
+                'data_expedicao': data_expedicao,
+            }
+            linhas.append({
+                'row_index': row_index,
+                'id_roteiro': id_roteiro,
+                'id_viagem': '',
+                'identificador_rota': identificador_rota or None,
+                'codigo_produto': codigo_produto or None,
+                'descricao': descricao or None,
+                'quantidade': quantidade,
+                'unidade': item.get('unidade') or None,
+                'peso_bruto': item.get('peso_bruto') or None,
+                'codigo_cliente': item.get('codigo_cliente') or None,
+                'endereco': item.get('endereco') or None,
+                'cidade': item.get('cidade') or None,
+                'placa': placa or None,
+                'motorista': motorista or None,
+                'data_expedicao': data_expedicao or None,
+                'data': data_row,
+            })
+    return (id_roteiro, linhas)
 
 
 def _ravex_linhas_romaneio_viagem(token, id_viagem, id_roteiro_pre=None, identificador_rota_pre=None, viagem_full_pre=None):
@@ -5551,40 +5819,18 @@ def _ravex_linhas_romaneio_viagem(token, id_viagem, id_roteiro_pre=None, identif
 
 
 def _ravex_resolver_id_para_viagem(token, id_unico):
-    """Dado um ID (roteiro ou viagem), resolve para (id_viagem, id_roteiro). Retorna (None, None) se não encontrar ou sem viagem faturada."""
-    if not id_unico or not obter_viagem_por_id or not obter_roteiro_por_id:
-        return (None, None)
-    id_unico = str(id_unico).strip()
-    if not id_unico:
-        return (None, None)
-    try:
-        vid = int(id_unico)
-    except (TypeError, ValueError):
-        vid = id_unico
-    viagem = obter_viagem_por_id(token, vid)
-    if viagem:
-        id_viagem = id_unico
-        roteiro_obj = viagem.get('roteiro') or viagem.get('roteiroFaturado')
-        if isinstance(roteiro_obj, dict):
-            id_roteiro = str(roteiro_obj.get('id') or roteiro_obj.get('Id') or '')
-        else:
-            id_roteiro = str(viagem.get('roteiroId') or viagem.get('idRoteiro') or '')
-        return (id_viagem, id_roteiro)
-    try:
-        rid = int(id_unico)
-    except (TypeError, ValueError):
-        rid = id_unico
-    roteiro = obter_roteiro_por_id(token, rid)
-    if not roteiro:
-        return (None, None)
-    vf = roteiro.get('viagemFaturada') or roteiro.get('viagem_faturada')
-    if isinstance(vf, dict):
-        id_viagem = str(vf.get('id') or vf.get('Id') or '')
-    else:
-        id_viagem = str(roteiro.get('viagemFaturadaId') or roteiro.get('viagem_id') or '')
+    """Dado um ID (roteiro ou viagem), resolve para (id_viagem, id_roteiro, somente_roteiro)."""
+    api = _ravex_resolver_id_unico_ravex(token, id_unico)
+    if not api or api.get('erro'):
+        return (None, None, False)
+    id_viagem = str(api.get('id_viagem') or '').strip()
+    id_roteiro = str(api.get('id_roteiro') or '').strip()
+    somente_roteiro = bool(api.get('somente_roteiro'))
+    if somente_roteiro and id_roteiro:
+        return (id_roteiro, id_roteiro, True)
     if not id_viagem:
-        return (None, None)
-    return (id_viagem, str(rid))
+        return (None, None, False)
+    return (id_viagem, id_roteiro, False)
 
 
 def _ravex_502_resposta(e):
@@ -5706,7 +5952,7 @@ def api_ravex_verificar_baixado_lote():
 
 @app.route('/api/ravex/importar-romaneio', methods=['POST'])
 def api_ravex_importar_romaneio():
-    """Importa itens do romaneio da API Ravex por id_roteiro ou id_viagem. Só importa quando a viagem já existe (faturada)."""
+    """Importa itens do romaneio da API Ravex por id_roteiro ou id_viagem (com ou sem viagem faturada)."""
     if not _usa_banco_para_dados():
         return jsonify({'erro': 'Configure DATABASE_URL para usar importação Ravex.'}), 400
     if not ravex_get_token or not obter_viagem_por_id or not obter_roteiro_por_id:
@@ -5734,6 +5980,8 @@ def api_ravex_importar_romaneio():
     id_roteiro = None
     identificador_rota = ''
     viagem_full = None
+    roteiro_full = None
+    somente_roteiro = False
 
     if id_unico and not id_viagem_in and not id_roteiro_in:
         resolved = _ravex_resolver_importacao_unico(conn, token, ds, id_unico)
@@ -5746,7 +5994,11 @@ def api_ravex_importar_romaneio():
         id_roteiro = resolved.get('id_roteiro') or id_unico
         identificador_rota = resolved.get('identificador_rota') or ''
         viagem_full = resolved.get('viagem_full')
+        roteiro_full = resolved.get('roteiro_full')
+        somente_roteiro = bool(resolved.get('somente_roteiro'))
     elif id_viagem_in:
+        roteiro_full = None
+        somente_roteiro = False
         try:
             vid = int(id_viagem_in)
         except (TypeError, ValueError):
@@ -5765,54 +6017,79 @@ def api_ravex_importar_romaneio():
             rid = int(id_roteiro_in)
         except (TypeError, ValueError):
             rid = id_roteiro_in
-        roteiro = obter_roteiro_por_id(token, rid)
-        if not roteiro:
+        roteiro_full = obter_roteiro_por_id(token, rid)
+        if not roteiro_full:
             conn.close()
             return jsonify({'erro': 'Roteiro não encontrado na API Ravex.'}), 404
         id_roteiro = str(rid)
-        identificador_rota = _ravex_extrair_identificador_rota(roteiro)
-        vf = roteiro.get('viagemFaturada') or roteiro.get('viagem_faturada')
-        if isinstance(vf, dict):
-            id_viagem = str(vf.get('id') or vf.get('Id') or '')
+        identificador_rota = _ravex_extrair_identificador_rota(roteiro_full)
+        id_viagem = _ravex_extrair_viagem_id_de_roteiro(roteiro_full)
         if not id_viagem:
-            id_viagem = str(roteiro.get('viagemFaturadaId') or roteiro.get('viagem_id') or '')
-        if not id_viagem:
-            conn.close()
-            return jsonify({'erro': 'Roteiro ainda não possui viagem faturada. Só é possível bipar quando a viagem já foi faturada.'}), 400
+            somente_roteiro = True
 
-    if not id_viagem:
+    if not id_viagem and not somente_roteiro:
         conn.close()
-        return jsonify({'erro': 'Não foi possível obter o ID da viagem.'}), 400
+        return jsonify({'erro': 'Não foi possível obter o ID da viagem ou do roteiro.'}), 400
+    if somente_roteiro and not id_roteiro:
+        conn.close()
+        return jsonify({'erro': 'Não foi possível obter o ID do roteiro.'}), 400
 
+    id_input_dup = id_unico or id_viagem_in or id_roteiro_in or id_roteiro
     forcar = _ravex_parse_forcar_reimportar(data)
     if not forcar:
-        ja_dup, info_dup = _ravex_viagem_ja_baixada(conn, ds, id_viagem)
+        if somente_roteiro:
+            ja_dup, info_dup = _ravex_id_input_ja_baixado(conn, ds, id_input_dup or id_roteiro)
+        else:
+            ja_dup, info_dup = _ravex_viagem_ja_baixada(conn, ds, id_viagem)
         if ja_dup:
             return _ravex_resposta_duplicado(
-                conn, ds, 'id_unico', id_viagem, id_roteiro or id_roteiro_in or id_unico, info_dup,
-                id_input=id_unico or id_viagem_in or id_roteiro_in,
+                conn, ds, 'id_unico', id_viagem or id_roteiro, id_roteiro or id_roteiro_in or id_unico, info_dup,
+                id_input=id_input_dup,
             )
-    id_roteiro, linhas = _ravex_linhas_romaneio_viagem(
-        token, id_viagem,
-        id_roteiro_pre=id_roteiro,
-        identificador_rota_pre=identificador_rota,
-        viagem_full_pre=viagem_full,
-    )
-    if id_roteiro is None:
-        conn.close()
-        return jsonify({'erro': 'Viagem não encontrada ou sem itens na API Ravex.'}), 404
+    if somente_roteiro:
+        id_roteiro, linhas = _ravex_linhas_romaneio_roteiro(
+            token, id_roteiro,
+            roteiro_full=roteiro_full,
+            identificador_rota_pre=identificador_rota,
+        )
+        if id_roteiro is None:
+            conn.close()
+            return jsonify({'erro': 'Roteiro não encontrado na API Ravex.'}), 404
+        if not linhas:
+            conn.close()
+            return jsonify({'erro': 'Roteiro sem itens/pedidos na API Ravex.'}), 404
+        chave_gravacao = id_roteiro
+    else:
+        id_roteiro, linhas = _ravex_linhas_romaneio_viagem(
+            token, id_viagem,
+            id_roteiro_pre=id_roteiro,
+            identificador_rota_pre=identificador_rota,
+            viagem_full_pre=viagem_full,
+        )
+        if id_roteiro is None:
+            conn.close()
+            return jsonify({'erro': 'Viagem não encontrada ou sem itens na API Ravex.'}), 404
+        chave_gravacao = id_viagem
     try:
-        n_itens = _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas)
+        n_itens = _ravex_insert_linhas_romaneio(
+            conn, ds, '' if somente_roteiro else chave_gravacao, linhas, id_roteiro=id_roteiro,
+        )
+        params_ok = {
+            'id_roteiro': id_roteiro or id_roteiro_in or id_unico,
+            'somente_roteiro': somente_roteiro,
+        }
+        if somente_roteiro:
+            params_ok['id_viagem'] = ''
+            params_ok['viagens_importadas'] = []
+        else:
+            params_ok['id_viagem'] = id_viagem
+            params_ok['viagens_importadas'] = [str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()]
         _registrar_importacao_ravex(
             conn,
             dataset_id=ds,
             tipo='id_unico',
             status='OK',
-            parametros={
-                'id_viagem': id_viagem,
-                'id_roteiro': id_roteiro or id_roteiro_in or id_unico,
-                'viagens_importadas': [str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()],
-            },
+            parametros=params_ok,
             viagens_processadas=1,
             total_itens=len(linhas),
             erros=[],
@@ -5827,10 +6104,11 @@ def api_ravex_importar_romaneio():
                 tipo='id_unico',
                 status='ERRO',
                 parametros={
-                'id_viagem': id_viagem,
-                'id_roteiro': id_roteiro or id_roteiro_in or id_unico,
-                'viagens_importadas': [str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()],
-            },
+                    'id_viagem': '' if somente_roteiro else id_viagem,
+                    'id_roteiro': id_roteiro or id_roteiro_in or id_unico,
+                    'somente_roteiro': somente_roteiro,
+                    'viagens_importadas': [] if somente_roteiro else [str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()],
+                },
                 viagens_processadas=0,
                 total_itens=0,
                 erros=[{'erro': str(e)}],
@@ -5839,12 +6117,17 @@ def api_ravex_importar_romaneio():
         except Exception:
             pass
         return jsonify({'erro': 'Erro ao gravar romaneio: %s' % str(e)}), 500
+    if somente_roteiro:
+        msg_conf = 'Romaneio importado pelo roteiro %s (sem viagem faturada). Use este ID do roteiro na conferência.' % id_roteiro
+    else:
+        msg_conf = 'Romaneio importado. Use o ID da viagem (%s) para conferência.' % id_viagem
     return jsonify({
         'ok': True,
-        'id_viagem': id_viagem,
+        'id_viagem': id_viagem or '',
         'id_roteiro': id_roteiro or id_viagem,
+        'somente_roteiro': somente_roteiro,
         'total_itens': len(linhas),
-        'mensagem': 'Romaneio importado. Use o ID da viagem (%s) para conferência.' % id_viagem,
+        'mensagem': msg_conf,
     })
 
 
@@ -6060,10 +6343,10 @@ def api_ravex_importar_lista():
 
         def _resolver_id(id_unico):
             try:
-                id_viagem, id_roteiro = _ravex_resolver_id_para_viagem(token, id_unico)
-                return id_unico, id_viagem, id_roteiro, None
+                id_viagem, id_roteiro, somente_roteiro = _ravex_resolver_id_para_viagem(token, id_unico)
+                return id_unico, id_viagem, id_roteiro, somente_roteiro, None
             except Exception as e:
-                return id_unico, None, None, str(e)
+                return id_unico, None, None, False, str(e)
 
         resolvidos = []
         workers = min(_RAVEX_IMPORT_WORKERS, max(1, len(ids_unicos)))
@@ -6074,35 +6357,52 @@ def api_ravex_importar_lista():
         ja_baixadas = set()
         if not forcar:
             ja_baixadas = _ravex_viagens_ja_baixadas_batch(
-                conn, ds, [r[1] for r in resolvidos if r[1]]
+                conn, ds, [r[1] for r in resolvidos if r[1] and not r[3]]
             )
 
         tarefas = []
-        for id_unico, id_viagem, id_roteiro, err_res in resolvidos:
+        for id_unico, id_viagem, id_roteiro, somente_roteiro, err_res in resolvidos:
             if err_res:
                 erros.append({'id': id_unico, 'erro': err_res})
                 continue
-            if not id_viagem:
-                erros.append({'id': id_unico, 'erro': 'ID não encontrado ou roteiro sem viagem faturada'})
+            if not id_viagem and not id_roteiro:
+                erros.append({'id': id_unico, 'erro': 'ID não encontrado na API Ravex'})
                 continue
-            id_norm = str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()
-            if not forcar and id_norm in ja_baixadas:
-                pulados_duplicados.append({
-                    'id': id_unico,
-                    'id_viagem': id_viagem,
-                    'id_roteiro': id_roteiro,
-                    'motivo': 'já importada',
-                })
-                continue
-            tarefas.append((id_unico, id_viagem, id_roteiro))
+            if somente_roteiro:
+                if not forcar:
+                    ja_r, _info = _ravex_id_input_ja_baixado(conn, ds, id_unico)
+                    if ja_r:
+                        pulados_duplicados.append({
+                            'id': id_unico,
+                            'id_viagem': '',
+                            'id_roteiro': id_roteiro,
+                            'motivo': 'já importada',
+                        })
+                        continue
+            else:
+                id_norm = str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()
+                if not forcar and id_norm in ja_baixadas:
+                    pulados_duplicados.append({
+                        'id': id_unico,
+                        'id_viagem': id_viagem,
+                        'id_roteiro': id_roteiro,
+                        'motivo': 'já importada',
+                    })
+                    continue
+            tarefas.append((id_unico, id_viagem, id_roteiro, somente_roteiro))
 
         def _fetch_linhas_id(t):
-            id_unico, id_viagem, id_roteiro = t
+            id_unico, id_viagem, id_roteiro, somente_roteiro = t
             try:
-                rid, linhas = _ravex_linhas_romaneio_viagem(token, id_viagem)
-                return id_unico, id_viagem, rid, linhas, None
+                if somente_roteiro:
+                    rid, linhas = _ravex_linhas_romaneio_roteiro(token, id_roteiro or id_unico)
+                else:
+                    rid, linhas = _ravex_linhas_romaneio_viagem(
+                        token, id_viagem, id_roteiro_pre=id_roteiro,
+                    )
+                return id_unico, id_viagem, rid, linhas, somente_roteiro, None
             except Exception as e:
-                return id_unico, id_viagem, None, [], str(e)
+                return id_unico, id_viagem, None, [], somente_roteiro, str(e)
 
         resultados_api = []
         workers = min(_RAVEX_IMPORT_WORKERS, max(1, len(tarefas)))
@@ -6111,7 +6411,7 @@ def api_ravex_importar_lista():
                 for res in pool.map(_fetch_linhas_id, tarefas):
                     resultados_api.append(res)
 
-        for id_unico, id_viagem, id_roteiro, linhas, err_api in resultados_api:
+        for id_unico, id_viagem, id_roteiro, linhas, somente_roteiro, err_api in resultados_api:
             if err_api:
                 erros.append({'id': id_unico, 'erro': err_api})
                 continue
@@ -6119,12 +6419,22 @@ def api_ravex_importar_lista():
                 erros.append({'id': id_unico, 'erro': 'Sem itens na API'})
                 continue
             try:
-                n_gravados = _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas)
+                n_gravados = _ravex_insert_linhas_romaneio(
+                    conn, ds,
+                    '' if somente_roteiro else id_viagem,
+                    linhas,
+                    id_roteiro=id_roteiro,
+                )
                 viagens_processadas += 1
                 total_itens += n_gravados
-                id_norm_v = str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()
-                if id_norm_v:
-                    viagens_importadas.append(id_norm_v)
+                if somente_roteiro:
+                    id_r_norm = str(id_roteiro or '').strip()
+                    if id_r_norm:
+                        viagens_importadas.append(id_r_norm)
+                else:
+                    id_norm_v = str(_normalizar_id_viagem(id_viagem) or id_viagem).strip()
+                    if id_norm_v:
+                        viagens_importadas.append(id_norm_v)
             except Exception as e:
                 erros.append({'id': id_unico, 'erro': str(e)})
         _registrar_importacao_ravex(

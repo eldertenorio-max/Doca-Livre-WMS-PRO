@@ -137,6 +137,30 @@ def obter_roteiro_por_id(token, roteiro_id):
     return _get(f"{RAVEX_BASE_URL}/api/roteiro/{rid}", token, 20)
 
 
+def obter_itens_roteiro(token, roteiro_id):
+    """GET /api/roteiro/{id}/itens. Lista pedidos/itens do roteiro (sem viagem faturada)."""
+    if roteiro_id is None or (isinstance(roteiro_id, (int, float)) and int(roteiro_id) <= 0):
+        return []
+    try:
+        rid = int(roteiro_id)
+    except (TypeError, ValueError):
+        return []
+    data = _get(f"{RAVEX_BASE_URL}/api/roteiro/{rid}/itens", token, 60)
+    return data if isinstance(data, list) else []
+
+
+def obter_itens_pedido(token, pedido_id):
+    """GET /api/pedido/{id}/itens. Itens do pedido (produto, quantidade)."""
+    if pedido_id is None or (isinstance(pedido_id, (int, float)) and int(pedido_id) <= 0):
+        return []
+    try:
+        pid = int(pedido_id)
+    except (TypeError, ValueError):
+        return []
+    data = _get(f"{RAVEX_BASE_URL}/api/pedido/{pid}/itens", token, 30)
+    return data if isinstance(data, list) else []
+
+
 def obter_roteiro_por_periodo(token, data_inicial_iso, data_final_iso):
     """
     GET /api/roteiro/obter-roteiro-por-periodo?pDataInicial=<date>&pDataFinal=<date>.
