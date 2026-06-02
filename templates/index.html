@@ -2651,56 +2651,6 @@
         </div>
     </div>
 
-    <!-- Modal horizontal: bipagem contínua (código + quantidade no próprio modal) -->
-    <div id="modal-bipagem-produto" class="modal modal-flex modal-bipagem-produto" style="display: none;" role="dialog" aria-labelledby="modal-bipagem-produto-titulo">
-        <div class="modal-content modal-bipagem-produto-content">
-            <div class="modal-bipagem-topo">
-                <div>
-                    <h2 id="modal-bipagem-produto-titulo" class="modal-bipagem-produto-titulo">Bipagem contínua</h2>
-                    <p class="modal-bipagem-produto-sub">Bipe o código, ajuste a quantidade se precisar e confirme. O modal permanece aberto para o próximo produto.</p>
-                </div>
-                <button type="button" class="btn btn-secondary modal-bipagem-btn-fechar" onclick="fecharModalBipagemProduto()">Fechar</button>
-            </div>
-            <div class="modal-bipagem-entrada-row">
-                <div class="modal-bipagem-entrada-campo modal-bipagem-entrada-campo--barras">
-                    <label for="modal-bipagem-codigo-input" class="modal-bipagem-label">Código de barras</label>
-                    <input type="text" id="modal-bipagem-codigo-input" class="modal-bipagem-codigo-input" autocomplete="off" spellcheck="false" placeholder="Bipe ou digite o código">
-                </div>
-                <div class="modal-bipagem-entrada-campo modal-bipagem-entrada-campo--qtd">
-                    <label for="modal-bipagem-qtd-agora" class="modal-bipagem-label">Quantidade</label>
-                    <input type="number" id="modal-bipagem-qtd-agora" class="modal-bipagem-qtd-input" value="1" min="1" max="99999" step="1" inputmode="numeric">
-                </div>
-                <button type="button" class="btn btn-primary modal-bipagem-btn-confirmar" id="btn-modal-bipagem-confirmar" onclick="void confirmarModalBipagemProduto()">✅ Confirmar</button>
-            </div>
-            <div id="modal-bipagem-carregando" class="modal-bipagem-carregando" style="display: none;">Buscando produto…</div>
-            <div id="modal-bipagem-corpo" class="modal-bipagem-corpo">
-                <div class="modal-bipagem-info-row">
-                    <div class="modal-bipagem-info-item modal-bipagem-info-item--desc">
-                        <span class="modal-bipagem-label">Descrição</span>
-                        <span id="modal-bipagem-descricao" class="modal-bipagem-valor">—</span>
-                    </div>
-                    <div class="modal-bipagem-info-item">
-                        <span class="modal-bipagem-label">Cód. produto</span>
-                        <span id="modal-bipagem-codigo-produto" class="modal-bipagem-valor">—</span>
-                    </div>
-                    <div class="modal-bipagem-info-item">
-                        <span class="modal-bipagem-label">No romaneio</span>
-                        <span id="modal-bipagem-qtd-romaneio" class="modal-bipagem-valor">0</span>
-                    </div>
-                    <div class="modal-bipagem-info-item">
-                        <span class="modal-bipagem-label">Já bipada</span>
-                        <span id="modal-bipagem-qtd-bipada" class="modal-bipagem-valor">0</span>
-                    </div>
-                    <div class="modal-bipagem-info-item">
-                        <span class="modal-bipagem-label">Status</span>
-                        <span id="modal-bipagem-status-linha" class="modal-bipagem-valor">—</span>
-                    </div>
-                </div>
-                <div id="modal-bipagem-aviso" class="modal-bipagem-aviso" style="display: none;"></div>
-            </div>
-        </div>
-    </div>
-
     <!-- Modal produto não cadastrado na conferência -->
     <div id="modal-produto-nao-cadastrado" class="modal modal-flex" style="display: none;">
         <div class="modal-content" style="max-width: 440px;">

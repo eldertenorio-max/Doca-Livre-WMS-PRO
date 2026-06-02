@@ -2068,7 +2068,10 @@ h2 {
 }
 .conferencia-lista-panel.conferencia-lista-maximizada {
     position: fixed;
-    inset: 0;
+    top: var(--conferencia-bloco4-h, 220px);
+    left: 0;
+    right: 0;
+    bottom: 0;
     z-index: 9000;
     background: #eef2f7;
     display: flex;
@@ -2076,6 +2079,34 @@ h2 {
     padding: 10px 14px 14px;
     box-sizing: border-box;
     overflow: hidden;
+}
+#conferencia-bloco-4-wrapper.conferencia-bloco-4-no-maximizar,
+#dev-conferencia-bloco-4-wrapper.conferencia-bloco-4-no-maximizar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 9001;
+    margin: 0;
+    padding: 8px 14px 10px;
+    background: #fff;
+    border-bottom: 2px solid #1976d2;
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.12);
+    max-height: 45vh;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+#conferencia-bloco-4-wrapper.conferencia-bloco-4-no-maximizar .conferencia-blocos-overlay,
+#dev-conferencia-bloco-4-wrapper.conferencia-bloco-4-no-maximizar .conferencia-blocos-overlay {
+    display: none;
+}
+#conferencia-bloco-4-wrapper.conferencia-bloco-4-no-maximizar .conferencia-bloco-4,
+#dev-conferencia-bloco-4-wrapper.conferencia-bloco-4-no-maximizar .conferencia-bloco-4 {
+    margin-bottom: 0;
+}
+body.conferencia-lista-maximizada-carregamento #dev-conferencia-bloco-4-wrapper.conferencia-bloco-4-no-maximizar,
+body.conferencia-lista-maximizada-devolucao #conferencia-bloco-4-wrapper.conferencia-bloco-4-no-maximizar {
+    display: none !important;
 }
 .conferencia-lista-panel.conferencia-lista-maximizada #titulo-lista-wrapper,
 .conferencia-lista-panel.conferencia-lista-maximizada #dev-titulo-lista-wrapper {
@@ -2519,6 +2550,52 @@ body.conferencia-lista-maximizada-aberta {
     display: flex;
     align-items: center;
 }
+/* Campo Qtd. bipada e colunas numéricas da lista — números maiores */
+#quantidade,
+#dev-quantidade,
+#ter-bipagem-quantidade {
+    font-size: 1.85rem;
+    font-weight: 700;
+    line-height: 1.2;
+    min-width: 5rem;
+    max-width: 8rem;
+    text-align: center;
+    padding: 10px 12px;
+    height: auto;
+}
+.conferencia-bloco-4 .form-group:has(#quantidade),
+.conferencia-bloco-4 .form-group:has(#dev-quantidade) {
+    flex: 0 0 auto;
+    min-width: 6.5rem;
+}
+#tabela-conferencia th:nth-child(6),
+#tabela-conferencia td:nth-child(6),
+#tabela-conferencia th:nth-child(10),
+#tabela-conferencia td:nth-child(10),
+#dev-tabela-conferencia th:nth-child(6),
+#dev-tabela-conferencia td:nth-child(6),
+#dev-tabela-conferencia th:nth-child(10),
+#dev-tabela-conferencia td:nth-child(10) {
+    font-size: 1.35rem;
+    font-weight: 700;
+    text-align: center;
+    vertical-align: middle;
+}
+#tabela-conferencia td:nth-child(6),
+#tabela-conferencia td:nth-child(10),
+#dev-tabela-conferencia td:nth-child(6),
+#dev-tabela-conferencia td:nth-child(10) {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+}
+#conferencia-bloco-4-wrapper.conferencia-bloco-4-no-maximizar #quantidade,
+#conferencia-bloco-4-wrapper.conferencia-bloco-4-no-maximizar #dev-quantidade,
+#dev-conferencia-bloco-4-wrapper.conferencia-bloco-4-no-maximizar #quantidade,
+#dev-conferencia-bloco-4-wrapper.conferencia-bloco-4-no-maximizar #dev-quantidade {
+    font-size: 2rem;
+    min-width: 5.5rem;
+}
+
 .conferencia-bloco4-acoes-row {
     align-items: flex-end !important;
     flex-wrap: nowrap !important;
@@ -2894,167 +2971,6 @@ body.conferencia-lista-maximizada-aberta {
 .modal.modal-flex {
     align-items: center;
     justify-content: center;
-}
-
-/* Modal horizontal — bipagem contínua na conferência */
-.modal-bipagem-produto {
-    z-index: 10120;
-}
-.modal-bipagem-produto-content {
-    width: min(98vw, 1120px);
-    max-width: 1120px;
-    max-height: 92vh;
-    overflow: auto;
-    padding: 20px 24px 24px;
-    border-radius: 12px;
-}
-.modal-bipagem-topo {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 16px;
-}
-.modal-bipagem-produto-titulo {
-    margin: 0 0 4px 0;
-    font-size: 1.5rem;
-    color: #1565c0;
-}
-.modal-bipagem-produto-sub {
-    margin: 0;
-    font-size: 13px;
-    color: #555;
-    max-width: 720px;
-}
-.modal-bipagem-btn-fechar {
-    flex-shrink: 0;
-}
-.modal-bipagem-entrada-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 12px 16px;
-    padding: 16px;
-    margin-bottom: 16px;
-    background: #e3f2fd;
-    border: 2px solid #1976d2;
-    border-radius: 10px;
-}
-.modal-bipagem-entrada-campo {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-.modal-bipagem-entrada-campo--barras {
-    flex: 1 1 280px;
-}
-.modal-bipagem-entrada-campo--qtd {
-    flex: 0 0 110px;
-}
-.modal-bipagem-label {
-    display: block;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #64748b;
-    margin-bottom: 6px;
-}
-.modal-bipagem-codigo-input {
-    width: 100%;
-    font-size: 1.35rem;
-    font-weight: 700;
-    font-family: Consolas, 'Courier New', monospace;
-    padding: 10px 12px;
-    border: 2px solid #1565c0;
-    border-radius: 8px;
-    box-sizing: border-box;
-}
-.modal-bipagem-qtd-input {
-    width: 100%;
-    font-size: 1.5rem;
-    font-weight: 700;
-    padding: 10px 8px;
-    text-align: center;
-    border: 2px solid #1976d2;
-    border-radius: 8px;
-    box-sizing: border-box;
-}
-.modal-bipagem-btn-confirmar {
-    flex: 0 0 auto;
-    font-size: 1rem;
-    padding: 12px 22px;
-    font-weight: 700;
-    align-self: flex-end;
-    min-height: 48px;
-}
-.modal-bipagem-carregando {
-    padding: 12px;
-    text-align: center;
-    font-size: 15px;
-    color: #666;
-}
-.modal-bipagem-info-row {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 12px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-}
-.modal-bipagem-info-item {
-    flex: 0 0 auto;
-    min-width: 100px;
-    max-width: 200px;
-    padding: 12px 14px;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-}
-.modal-bipagem-info-item--desc {
-    flex: 1 1 240px;
-    min-width: 200px;
-    max-width: none;
-}
-.modal-bipagem-valor {
-    display: block;
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: #1a1a1a;
-    line-height: 1.3;
-    word-break: break-word;
-}
-.modal-bipagem-info-item--desc .modal-bipagem-valor {
-    font-size: 1rem;
-}
-.modal-bipagem-aviso {
-    margin-top: 12px;
-    padding: 10px 12px;
-    background: #fff3e0;
-    border: 1px solid #ff9800;
-    border-left: 4px solid #e65100;
-    border-radius: 6px;
-    color: #e65100;
-    font-size: 13px;
-    font-weight: 600;
-}
-@media (max-width: 768px) {
-    .modal-bipagem-entrada-row {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    .modal-bipagem-entrada-campo--qtd {
-        flex: 1 1 auto;
-    }
-    .modal-bipagem-btn-confirmar {
-        width: 100%;
-    }
-    .modal-bipagem-info-row {
-        flex-wrap: wrap;
-    }
-    .modal-bipagem-info-item {
-        max-width: none;
-        flex: 1 1 45%;
-    }
 }
 
 .label-com-acao-cadastro {
@@ -3976,6 +3892,72 @@ body.conferencia-lista-maximizada-aberta {
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(11) {
         width: 8%;
         text-align: center;
+    }
+    /* Qtd. romaneio, bipada e falta — números maiores na impressão */
+    body.print-extrato #tabela-extrato th:nth-child(6),
+    body.print-extrato #tabela-extrato th:nth-child(10),
+    body.print-extrato #tabela-extrato th:nth-child(11),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(6),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(10),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(11) {
+        font-size: 8.5pt !important;
+        font-weight: 700 !important;
+        vertical-align: middle;
+    }
+    body.print-extrato #tabela-extrato td:nth-child(6),
+    body.print-extrato #tabela-extrato td:nth-child(10),
+    body.print-extrato #tabela-extrato td:nth-child(11),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(6),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(10),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(11) {
+        font-size: 11pt !important;
+        font-weight: 700 !important;
+        text-align: center !important;
+        vertical-align: middle !important;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.02em;
+        line-height: 1.25 !important;
+    }
+    body.print-extrato #tabela-extrato td:nth-child(6) strong,
+    body.print-extrato #tabela-extrato td:nth-child(10) strong,
+    body.print-extrato #tabela-extrato td:nth-child(11) strong,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(6) strong,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(10) strong,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(11) strong {
+        font-size: inherit !important;
+        font-weight: 700 !important;
+    }
+    body.print-extrato #tabela-extrato th:nth-child(6),
+    body.print-extrato #tabela-extrato td:nth-child(6),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(6),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(6) {
+        width: 9%;
+    }
+    body.print-extrato #tabela-extrato th:nth-child(10),
+    body.print-extrato #tabela-extrato td:nth-child(10),
+    body.print-extrato #tabela-extrato th:nth-child(11),
+    body.print-extrato #tabela-extrato td:nth-child(11),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(10),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(10),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(11),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(11) {
+        width: 9%;
+    }
+    body.print-extrato #extrato-total-itens,
+    body.print-extrato #extrato-total-qtd,
+    body.print-extrato #dev-extrato-total-itens,
+    body.print-extrato #dev-extrato-total-qtd {
+        font-size: 10pt !important;
+        font-weight: 700 !important;
+        font-variant-numeric: tabular-nums;
+    }
+    body.print-extrato .extrato-itens-bipados-mais-lista li {
+        font-size: 8.5pt !important;
+        line-height: 1.35;
+    }
+    body.print-extrato .extrato-itens-bipados-mais-lista li strong {
+        font-size: 9.5pt !important;
+        font-weight: 700 !important;
     }
     body.print-extrato #tabela-extrato tbody tr,
     body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr {
