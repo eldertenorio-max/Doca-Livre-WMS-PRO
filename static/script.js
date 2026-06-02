@@ -10205,6 +10205,8 @@ function initForms() {
             if (box) box.classList.remove('ravex-loading-box--error', 'ravex-loading-box--warning');
             if (barTrack) barTrack.style.display = '';
             if (errorActions) errorActions.style.display = 'none';
+            var bar = document.getElementById('ravex-loading-bar');
+            if (bar) bar.style.width = '12%';
             el.style.display = 'flex';
         }
     }
@@ -10345,13 +10347,9 @@ function initForms() {
             var idTrim = idUnico.trim();
             var signalUnico = _ravexImportSignalLoading('Puxando roteiro/viagem da API Ravex... Aguarde.');
             try {
-                const r = await fetch(API_BASE + '/ravex/importar-romaneio', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(ravexPayloadExtras({ id: idTrim })),
-                    signal: signalUnico
-                });
-                const data = await r.json().catch(function() { return {}; });
+                const res = await ravexPostImportarRomaneio({ id: idTrim }, signalUnico);
+                const r = { ok: res.ok, status: res.status };
+                const data = res.data || {};
                 if (r.ok && data.ok) {
                     var msgOk = data.mensagem || (
                         data.somente_roteiro
@@ -10359,14 +10357,17 @@ function initForms() {
                             : ('Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.')
                     );
                     showRavexModalConcluido(msgOk);
-                    loadAllData();
+                    if (typeof loadBaixadosRavex === 'function') loadBaixadosRavex('carregamento');
                     ravexLoadingHide();
                 } else if (r.status === 409 || (data && data.duplicado)) {
                     ravexMostrarDuplicado(data, resultadoImportarRavex);
                 } else {
                     resultadoImportarRavex.style.background = '#ffebee';
                     resultadoImportarRavex.style.border = '1px solid #f44336';
-                    var msg = 'Erro: ' + (data.erro || r.statusText || 'Falha ao importar');
+                    var msg = 'Erro: ' + (data.erro || 'Falha ao importar');
+                    if (r.status === 502 || r.status === 503 || r.status === 504) {
+                        msg = 'Servidor demorou ou ficou indisponível (HTTP ' + r.status + '). A importação pode ter continuado — confira em Baixados (Ravex) ou tente de novo.';
+                    }
                     if (data.diagnostico) msg += ' ' + data.diagnostico;
                     resultadoImportarRavex.innerHTML = msg;
                     ravexErrorShow(msg);
@@ -10376,8 +10377,11 @@ function initForms() {
                 else {
                     resultadoImportarRavex.style.background = '#ffebee';
                     resultadoImportarRavex.style.border = '1px solid #f44336';
-                    var msg = 'Erro de rede: ' + (e.message || 'Não foi possível conectar');
-                    resultadoImportarRavex.innerHTML = msg;
+                    var msg = (e && e.message) ? e.message : 'Não foi possível conectar';
+                    if (String(msg).indexOf('502') >= 0 || String(msg).indexOf('Failed to fetch') >= 0) {
+                        msg = 'Conexão interrompida ou servidor ocupado. Verifique em Baixados (Ravex) se os itens foram gravados.';
+                    }
+                    resultadoImportarRavex.innerHTML = 'Erro: ' + msg;
                     ravexErrorShow(msg);
                 }
             } finally {
@@ -11290,6 +11294,50 @@ function _ravexImportTratarAbort(e, resultadoEl) {
     }
     if (typeof showMessage === 'function') showMessage('Download cancelado.', 'info');
     return true;
+}
+
+function ravexLoadingSetProgress(pct, msg) {
+    var text = document.getElementById('ravex-loading-text');
+    var bar = document.getElementById('ravex-loading-bar');
+    if (text && msg) text.textContent = msg;
+    if (bar) {
+        var p = Math.max(0, Math.min(100, Number(pct) || 0));
+        bar.style.width = p + '%';
+    }
+}
+window.ravexLoadingSetProgress = ravexLoadingSetProgress;
+
+async function ravexPollImportarRomaneioJob(jobId, signal) {
+    var tentativas = 0;
+    while (tentativas < 180) {
+        if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        await new Promise(function(res) { setTimeout(res, 1200); });
+        tentativas++;
+        var sr = await fetch(API_BASE + '/ravex/importar-romaneio/status/' + encodeURIComponent(jobId), { signal: signal });
+        var sd = await sr.json().catch(function() { return {}; });
+        if (sr.status === 202) {
+            var pct = sd.progress != null ? sd.progress : Math.min(92, 8 + tentativas * 2);
+            ravexLoadingSetProgress(pct, sd.message || 'Importando... Aguarde.');
+            continue;
+        }
+        return { ok: sr.ok, status: sr.status, data: sd };
+    }
+    throw new Error('Tempo esgotado aguardando a importação no servidor. Tente de novo ou use um período menor.');
+}
+
+async function ravexPostImportarRomaneio(payload, signal) {
+    var r = await fetch(API_BASE + '/ravex/importar-romaneio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ravexPayloadExtras(payload)),
+        signal: signal
+    });
+    var data = await r.json().catch(function() { return {}; });
+    if (r.status === 202 && data.job_id) {
+        ravexLoadingSetProgress(8, 'Importação iniciada no servidor...');
+        return ravexPollImportarRomaneioJob(data.job_id, signal);
+    }
+    return { ok: r.ok, status: r.status, data: data };
 }
 
 async function ravexVerificarIdJaBaixado(id, signal) {
