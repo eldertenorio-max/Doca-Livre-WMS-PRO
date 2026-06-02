@@ -4728,6 +4728,18 @@ def _ravex_resposta_duplicado(conn, dataset_id, tipo, id_viagem, id_roteiro, inf
 
 _ravex_import_jobs = {}
 _ravex_import_jobs_lock = threading.Lock()
+_import_request_ctx = threading.local()
+
+
+def _usuario_atual():
+    """Usuário logado; em thread de importação usa valor copiado da requisição HTTP."""
+    u = getattr(_import_request_ctx, 'usuario', None)
+    if u is not None:
+        return str(u)
+    try:
+        return session.get('usuario', '') or ''
+    except RuntimeError:
+        return ''
 
 
 def _ravex_import_job_update(job_id, **fields):
@@ -4755,7 +4767,7 @@ def _ravex_import_job_cleanup():
 def _registrar_importacao_ravex(conn, *, dataset_id, tipo, status, parametros=None, viagens_processadas=0, total_itens=0, erros=None):
     """Registra no banco a execução de importações Ravex (para aba 'Baixados'). Usa horário atual UTC para criado_em."""
     try:
-        usuario = session.get('usuario', '') or None
+        usuario = _usuario_atual() or None
         agora_utc = datetime.now(timezone.utc)
         conn.execute(
             """INSERT INTO public.ravex_importacoes (dataset_id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em)
@@ -5876,7 +5888,7 @@ def _upsert_viagem_placa_motorista(conn, id_viagem, placa, motorista):
     if not id_viagem:
         return
     id_norm = _normalizar_id_viagem(id_viagem)
-    usuario = session.get('usuario', '') or ''
+    usuario = _usuario_atual()
     if getattr(conn, 'kind', None) == 'pg':
         conn.execute(
             '''INSERT INTO viagem_placa (id_viagem, placa, atualizado_por) VALUES (?, ?, ?)
@@ -6171,9 +6183,10 @@ def _ravex_importar_romaneio_executar(data, progress_cb=None):
     }, 200
 
 
-def _ravex_importar_romaneio_worker(job_id, data, app):
+def _ravex_importar_romaneio_worker(job_id, data, app, usuario=''):
     """Thread em background: importação longa (evita timeout 502 do proxy)."""
     with app.app_context():
+        _import_request_ctx.usuario = usuario or ''
         def progress_cb(pct, msg):
             _ravex_import_job_update(job_id, status='running', progress=pct, message=msg)
         try:
@@ -6217,7 +6230,12 @@ def api_ravex_importar_romaneio():
     job_id = uuid.uuid4().hex[:16]
     _ravex_import_job_update(job_id, status='running', progress=0, message='Iniciando...')
     app = current_app._get_current_object()
-    threading.Thread(target=_ravex_importar_romaneio_worker, args=(job_id, dict(data), app), daemon=True).start()
+    usuario_imp = session.get('usuario', '') or ''
+    threading.Thread(
+        target=_ravex_importar_romaneio_worker,
+        args=(job_id, dict(data), app, usuario_imp),
+        daemon=True,
+    ).start()
     return jsonify({'ok': True, 'async': True, 'job_id': job_id}), 202
 
 
