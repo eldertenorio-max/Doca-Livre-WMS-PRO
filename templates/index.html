@@ -2651,6 +2651,53 @@
         </div>
     </div>
 
+    <!-- Modal grande: confirmar bipagem do produto escaneado -->
+    <div id="modal-bipagem-produto" class="modal modal-flex modal-bipagem-produto" style="display: none;" role="dialog" aria-labelledby="modal-bipagem-produto-titulo">
+        <div class="modal-content modal-bipagem-produto-content">
+            <h2 id="modal-bipagem-produto-titulo" class="modal-bipagem-produto-titulo">Conferir bipagem</h2>
+            <p class="modal-bipagem-produto-sub">Confira os dados e confirme para registrar. Em seguida o campo de código fica pronto para o próximo produto.</p>
+            <div id="modal-bipagem-carregando" class="modal-bipagem-carregando" style="display: none;">Buscando produto…</div>
+            <div id="modal-bipagem-corpo" class="modal-bipagem-corpo">
+                <div class="modal-bipagem-grid">
+                    <div class="modal-bipagem-campo modal-bipagem-campo--wide">
+                        <span class="modal-bipagem-label">Descrição do produto</span>
+                        <span id="modal-bipagem-descricao" class="modal-bipagem-valor">—</span>
+                    </div>
+                    <div class="modal-bipagem-campo">
+                        <span class="modal-bipagem-label">Código do produto</span>
+                        <span id="modal-bipagem-codigo-produto" class="modal-bipagem-valor">—</span>
+                    </div>
+                    <div class="modal-bipagem-campo">
+                        <span class="modal-bipagem-label">Código bipado</span>
+                        <span id="modal-bipagem-codigo-barras" class="modal-bipagem-valor modal-bipagem-valor--codigo">—</span>
+                    </div>
+                    <div class="modal-bipagem-campo">
+                        <span class="modal-bipagem-label">Qtd. no romaneio</span>
+                        <span id="modal-bipagem-qtd-romaneio" class="modal-bipagem-valor">0</span>
+                    </div>
+                    <div class="modal-bipagem-campo">
+                        <span class="modal-bipagem-label">Qtd. já bipada</span>
+                        <span id="modal-bipagem-qtd-bipada" class="modal-bipagem-valor">0</span>
+                    </div>
+                    <div class="modal-bipagem-campo">
+                        <span class="modal-bipagem-label">Status na lista</span>
+                        <span id="modal-bipagem-status-linha" class="modal-bipagem-valor">—</span>
+                    </div>
+                </div>
+                <div id="modal-bipagem-aviso" class="modal-bipagem-aviso" style="display: none;"></div>
+                <div class="modal-bipagem-qtd-bloco">
+                    <label for="modal-bipagem-qtd-agora" class="modal-bipagem-label">Quantidade desta bipagem</label>
+                    <input type="number" id="modal-bipagem-qtd-agora" class="modal-bipagem-qtd-input" value="1" min="1" max="99999" step="1" inputmode="numeric">
+                    <p class="modal-bipagem-qtd-hint">Após confirmar, a quantidade bipada será atualizada na lista.</p>
+                </div>
+            </div>
+            <div class="modal-bipagem-acoes">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalBipagemProduto()">Cancelar</button>
+                <button type="button" class="btn btn-primary modal-bipagem-btn-confirmar" id="btn-modal-bipagem-confirmar" onclick="void confirmarModalBipagemProduto()">✅ Confirmar bipagem</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal produto não cadastrado na conferência -->
     <div id="modal-produto-nao-cadastrado" class="modal modal-flex" style="display: none;">
         <div class="modal-content" style="max-width: 440px;">
