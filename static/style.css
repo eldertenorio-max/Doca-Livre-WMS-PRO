@@ -3337,6 +3337,27 @@ body.conferencia-lista-maximizada-aberta {
 }
 
 /* Extrato - Assinaturas (tela e impressão) */
+.extrato-aviso-completo {
+    display: none;
+    margin-top: 24px;
+    padding: 18px 20px;
+    background: #e8f5e9;
+    border: 2px solid #4caf50;
+    border-radius: 8px;
+}
+.extrato-aviso-completo-titulo {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #2e7d32;
+}
+.extrato-aviso-completo-texto {
+    margin: 8px 0 0 0;
+    font-size: 14px;
+    color: #1b5e20;
+    line-height: 1.45;
+}
+
 .assinaturas-extrato {
     margin-top: 48px;
     padding-top: 32px;
@@ -3778,6 +3799,27 @@ body.conferencia-lista-maximizada-aberta {
         font-size: 7pt !important;
         line-height: 1.25 !important;
         color: #333 !important;
+    }
+    body.print-extrato .extrato-rodape-impressao #extrato-aviso-completo {
+        flex: 0 0 auto;
+        width: 100%;
+        margin: 0 !important;
+        padding: 2mm 2.5mm !important;
+        border: 0.75pt solid #2e7d32 !important;
+        border-radius: 1mm;
+        background: #f1f8e9 !important;
+    }
+    body.print-extrato .extrato-rodape-impressao #extrato-aviso-completo .extrato-aviso-completo-titulo {
+        margin: 0 !important;
+        font-size: 8pt !important;
+        font-weight: 700 !important;
+        color: #1b5e20 !important;
+    }
+    body.print-extrato .extrato-rodape-impressao #extrato-aviso-completo .extrato-aviso-completo-texto {
+        margin: 0.8mm 0 0 0 !important;
+        font-size: 7pt !important;
+        line-height: 1.25 !important;
+        color: #2e7d32 !important;
     }
     body.print-extrato .extrato-rodape-impressao .assinaturas-extrato {
         flex: 0 0 auto;

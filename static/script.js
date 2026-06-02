@@ -14820,6 +14820,28 @@ function _htmlLinhaExtratoTabela(item) {
 
 // Carregar Extrato (mesmas colunas da Conferência: status, código barras, código produto, produto, qtd produto, unidade, aviso, qtd bipada, qtd falta)
 // idViagemOpcional: quando passado (ex.: ao clicar em Gerar comprovante), usa esse ID e atualiza o input
+function _atualizarExtratoStatusRodape(extrato) {
+    var avisoDivergenteEl = document.getElementById('extrato-aviso-divergente');
+    var avisoCompletoEl = document.getElementById('extrato-aviso-completo');
+    var tituloAssinaturas = document.getElementById('extrato-assinaturas-titulo');
+    if (!extrato || !extrato.length) {
+        if (avisoDivergenteEl) avisoDivergenteEl.style.display = 'none';
+        if (avisoCompletoEl) avisoCompletoEl.style.display = 'none';
+        if (tituloAssinaturas) tituloAssinaturas.textContent = 'Documento conferido e carregado. Assinaturas:';
+        return;
+    }
+    var temDivergencia = extrato.some(function(item) {
+        return (item.quantidade_falta || 0) > 0 || (item.status_bipado !== 'COMPLETO');
+    });
+    if (avisoDivergenteEl) avisoDivergenteEl.style.display = temDivergencia ? 'block' : 'none';
+    if (avisoCompletoEl) avisoCompletoEl.style.display = temDivergencia ? 'none' : 'block';
+    if (tituloAssinaturas) {
+        tituloAssinaturas.textContent = temDivergencia
+            ? 'Documento conferido com divergências. Assinaturas:'
+            : 'Documento conferido e carregado — carregamento completo. Assinaturas:';
+    }
+}
+
 async function loadExtrato(idViagemOpcional) {
     const inputBusca = document.getElementById('extrato-id-viagem');
     const inputRelatorio = document.getElementById('relatorio-extrato-id-viagem');
@@ -14844,6 +14866,7 @@ async function loadExtrato(idViagemOpcional) {
         if (resumoEl) resumoEl.style.display = 'none';
         if (btnExcluir) btnExcluir.style.display = 'none';
         if (avisoDivergenteEl) avisoDivergenteEl.style.display = 'none';
+        _atualizarExtratoStatusRodape([]);
         return;
     }
     tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando extrato...</td></tr>';
@@ -14860,6 +14883,7 @@ async function loadExtrato(idViagemOpcional) {
         if (resumoEl) resumoEl.style.display = 'none';
         if (btnExcluir) btnExcluir.style.display = 'none';
         if (avisoDivergenteEl) avisoDivergenteEl.style.display = 'none';
+        _atualizarExtratoStatusRodape([]);
         // Mesmo sem itens, preencher assinaturas com os dados da viagem (motorista, conferente, ajudantes)
         (function preencherAssinaturasSozinho() {
             const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = (val != null && String(val).trim() !== '') ? String(val).trim() : '-'; };
@@ -14940,10 +14964,7 @@ async function loadExtrato(idViagemOpcional) {
     }
     if (btnExcluir) btnExcluir.style.display = 'inline-block';
     tbody.innerHTML = extrato.map(function(item) { return _htmlLinhaExtratoTabela(item); }).join('');
-
-    // Mostrar aviso "Comprovante divergente" quando há itens com falta ou status não completo
-    const temDivergencia = extrato.some(item => (item.quantidade_falta || 0) > 0 || (item.status_bipado !== 'COMPLETO'));
-    if (avisoDivergenteEl) avisoDivergenteEl.style.display = temDivergencia ? 'block' : 'none';
+    _atualizarExtratoStatusRodape(extrato);
 }
 
 async function loadExtratoDevolucao(idViagemOpcional) {

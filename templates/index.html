@@ -664,6 +664,11 @@
                 
                 <!-- Rodapé impressão: aviso + assinaturas lado a lado -->
                 <div class="extrato-rodape-impressao">
+                <!-- Status carregamento completo (sem divergências) -->
+                <div id="extrato-aviso-completo" class="extrato-aviso-completo" style="display: none;">
+                    <p class="extrato-aviso-completo-titulo">✅ CARREGAMENTO COMPLETO</p>
+                    <p class="extrato-aviso-completo-texto">Todos os itens desta viagem foram bipados conforme o romaneio. Comprovante emitido sem divergências.</p>
+                </div>
                 <!-- Aviso comprovante divergente (exibido quando há faltas na carga) -->
                 <div id="extrato-aviso-divergente" style="display: none; margin-top: 24px; padding: 20px; background: #ffebee; border: 2px solid #c62828; border-radius: 8px;">
                     <p style="margin: 0; font-size: 16px; font-weight: bold; color: #b71c1c;">⚠️ COMPROVANTE DIVERGENTE</p>
@@ -672,7 +677,7 @@
                 
                 <!-- Assinaturas (nomes preenchidos automaticamente da viagem) -->
                 <div class="assinaturas-extrato">
-                    <p class="assinaturas-extrato-titulo">Documento conferido e carregado. Assinaturas:</p>
+                    <p id="extrato-assinaturas-titulo" class="assinaturas-extrato-titulo">Documento conferido e carregado. Assinaturas:</p>
                     <div class="assinaturas-grid">
                         <div class="assinatura-bloco">
                             <label>Motorista</label>
