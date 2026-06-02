@@ -3252,35 +3252,65 @@ def set_viagem_responsaveis(id_viagem):
     })
 
 
+def _lista_distinta_ordenada(valores):
+    vistos = set()
+    out = []
+    for v in valores or []:
+        s = str(v or '').strip()
+        if not s:
+            continue
+        k = s.upper()
+        if k in vistos:
+            continue
+        vistos.add(k)
+        out.append(s)
+    return sorted(out, key=lambda x: x.upper())
+
+
 @app.route('/api/colaboradores-motoristas', methods=['GET'])
 def get_colaboradores_motoristas():
-    """Lista motoristas: do banco (tabelas motoristas e colaboradores). Sem dependência de planilha."""
+    """Lista motoristas do cadastro + viagens/romaneio já gravados (sugestões na conferência)."""
     conn = get_db()
+    nomes = []
     try:
         if getattr(conn, 'kind', None) == 'pg':
             rows = conn.execute(
-                """SELECT nome FROM motoristas WHERE coalesce(ativo, true) = true ORDER BY nome"""
-            ).fetchall()
-            if rows:
-                nomes = [r.get('nome', r[0]) for r in rows if r.get('nome') or (r[0] if hasattr(r, '__getitem__') else None)]
-                conn.close()
-                return jsonify({'nomes': nomes})
-            rows = conn.execute(
-                """SELECT nome FROM colaboradores WHERE coalesce(ativo, true) = true
-                   AND (upper(coalesce(tipo,'')) LIKE 'MOTORISTA%%' OR upper(coalesce(centro_custo,'')) LIKE '%%TRANSPORTE%%')
+                """SELECT DISTINCT TRIM(nome) AS nome FROM (
+                       SELECT nome FROM motoristas WHERE nome IS NOT NULL AND TRIM(nome) <> ''
+                       UNION
+                       SELECT motorista AS nome FROM viagem_motorista
+                         WHERE motorista IS NOT NULL AND TRIM(motorista) <> ''
+                       UNION
+                       SELECT motorista AS nome FROM romaneio_por_item
+                         WHERE motorista IS NOT NULL AND TRIM(motorista) <> ''
+                       UNION
+                       SELECT nome FROM colaboradores
+                         WHERE nome IS NOT NULL AND TRIM(nome) <> ''
+                           AND (
+                             UPPER(COALESCE(tipo, '')) LIKE 'MOTORISTA%%'
+                             OR UPPER(COALESCE(centro_custo, '')) LIKE '%%TRANSPORTE%%'
+                           )
+                   ) AS t
+                   WHERE TRIM(nome) <> ''
                    ORDER BY nome"""
             ).fetchall()
-            nomes = [r.get('nome', r[0]) for r in rows if r.get('nome') or (r[0] if hasattr(r, '__getitem__') else None)]
-            conn.close()
-            return jsonify({'nomes': nomes})
+            nomes = [r.get('nome') or r[0] for r in rows or []]
         else:
-            rows = conn.execute(
-                '''SELECT nome FROM colaboradores WHERE ativo = ? AND (tipo = ? OR UPPER(centro_custo) LIKE ? OR UPPER(centro_custo) LIKE ?) ORDER BY nome''',
-                (1, 'MOTORISTA', '%TRANSPORTE GRU%', '%TRANSPORTE PPY%')
-            ).fetchall()
-            nomes = [row[0] for row in rows if row[0]] if rows else []
+            for sql in (
+                '''SELECT nome FROM motoristas WHERE nome IS NOT NULL AND TRIM(nome) <> '' ORDER BY nome''',
+                '''SELECT motorista FROM viagem_motorista WHERE motorista IS NOT NULL AND TRIM(motorista) <> '' ''',
+                '''SELECT motorista FROM romaneio_por_item WHERE motorista IS NOT NULL AND TRIM(motorista) <> '' ''',
+                '''SELECT nome FROM colaboradores WHERE ativo = 1 AND (
+                       tipo = 'MOTORISTA' OR UPPER(centro_custo) LIKE '%TRANSPORTE GRU%'
+                       OR UPPER(centro_custo) LIKE '%TRANSPORTE PPY%') ORDER BY nome''',
+            ):
+                try:
+                    for row in conn.execute(sql).fetchall() or []:
+                        nomes.append(row[0] if not hasattr(row, 'get') else (row.get('nome') or row.get('motorista') or row[0]))
+                except Exception:
+                    pass
         conn.close()
-        return jsonify({'nomes': nomes})
+        return jsonify({'nomes': _lista_distinta_ordenada(nomes)})
     except Exception:
         try:
             conn.close()
@@ -3291,22 +3321,41 @@ def get_colaboradores_motoristas():
 
 @app.route('/api/placas', methods=['GET'])
 def get_placas():
-    """Lista placas do banco (tabela placas). Sem dependência de planilha."""
+    """Lista placas do cadastro + viagens/romaneio (sugestões na conferência)."""
     conn = get_db()
     try:
         if getattr(conn, 'kind', None) == 'pg':
             rows = conn.execute(
-                """SELECT placa FROM placas WHERE coalesce(ativo, true) = true AND placa IS NOT NULL AND placa <> '' ORDER BY placa"""
+                """SELECT DISTINCT TRIM(placa) AS placa FROM (
+                       SELECT placa FROM placas WHERE placa IS NOT NULL AND TRIM(placa) <> ''
+                       UNION
+                       SELECT placa FROM viagem_placa
+                         WHERE placa IS NOT NULL AND TRIM(placa) <> ''
+                       UNION
+                       SELECT placa FROM romaneio_por_item
+                         WHERE placa IS NOT NULL AND TRIM(placa) <> ''
+                   ) AS t
+                   WHERE TRIM(placa) <> ''
+                   ORDER BY placa"""
             ).fetchall()
         else:
-            # SQLite pode não ter tabela placas; tenta viagem_placa ou retorna vazio
-            try:
-                rows = conn.execute("""SELECT placa FROM placas WHERE ativo = 1 AND placa IS NOT NULL AND placa <> '' ORDER BY placa""").fetchall()
-            except Exception:
-                rows = []
-        lista = [r.get('placa', r[0]) for r in rows if r.get('placa') or (r[0] if hasattr(r, '__getitem__') else None)] if rows else []
+            rows = []
+            for sql in (
+                """SELECT placa FROM placas WHERE placa IS NOT NULL AND TRIM(placa) <> '' ORDER BY placa""",
+                """SELECT placa FROM viagem_placa WHERE placa IS NOT NULL AND TRIM(placa) <> '' """,
+                """SELECT placa FROM romaneio_por_item WHERE placa IS NOT NULL AND TRIM(placa) <> '' """,
+            ):
+                try:
+                    rows.extend(conn.execute(sql).fetchall() or [])
+                except Exception:
+                    pass
+        lista = []
+        for r in rows or []:
+            p = (r.get('placa') if hasattr(r, 'get') else None) or (r[0] if r else None)
+            if p:
+                lista.append(p)
         conn.close()
-        return jsonify({'placas': lista})
+        return jsonify({'placas': _lista_distinta_ordenada(lista)})
     except Exception:
         try:
             conn.close()

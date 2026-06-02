@@ -13165,44 +13165,60 @@ async function loadPeriodoCarregamento(idViagem) {
     }
 }
 
-// Carregar lista de colaboradores (TRANSPORTE GRU/PPY) para sugestões do campo Motorista
+// Sugestões Placa / Motorista (datalist) — cadastro + histórico no banco
 let listaColaboradoresMotoristas = [];
-var _colaboradoresMotoristasCarregados = false;
-async function loadColaboradoresMotoristas() {
-    if (_colaboradoresMotoristasCarregados && listaColaboradoresMotoristas.length) return;
+let listaPlacas = [];
+
+function _preencherDatalist(datalistId, valores, extras) {
+    var datalist = document.getElementById(datalistId);
+    if (!datalist) return;
+    var vistos = {};
+    var lista = [];
+    function add(v) {
+        var s = String(v || '').trim();
+        if (!s) return;
+        var k = s.toUpperCase();
+        if (vistos[k]) return;
+        vistos[k] = true;
+        lista.push(s);
+    }
+    (valores || []).forEach(add);
+    (extras || []).forEach(add);
+    lista.sort(function(a, b) { return a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }); });
+    datalist.innerHTML = lista.map(function(v) {
+        return '<option value="' + String(v).replace(/"/g, '&quot;') + '">';
+    }).join('');
+}
+
+async function loadColaboradoresMotoristas(forcar) {
     try {
         const data = await fetchAPI('/colaboradores-motoristas');
         if (data && Array.isArray(data.nomes)) {
             listaColaboradoresMotoristas = data.nomes;
-            const datalist = document.getElementById('datalist-motoristas');
-            if (datalist) {
-                datalist.innerHTML = listaColaboradoresMotoristas.map(n => '<option value="' + String(n).replace(/"/g, '&quot;') + '">').join('');
-            }
-            _colaboradoresMotoristasCarregados = true;
+            var motAtual = document.getElementById('viagem-motorista');
+            _preencherDatalist('datalist-motoristas', listaColaboradoresMotoristas, motAtual && motAtual.value ? [motAtual.value] : []);
         }
     } catch (e) {
-        listaColaboradoresMotoristas = [];
+        if (forcar) listaColaboradoresMotoristas = [];
     }
 }
 
-// Carregar lista de placas (aba Todas as placas Coluna B ou ROMANEIO POR ITEM) para sugestões do campo Placa
-let listaPlacas = [];
-var _placasCarregadas = false;
-async function loadPlacas() {
-    if (_placasCarregadas && listaPlacas.length) return;
+async function loadPlacas(forcar) {
     try {
         const data = await fetchAPI('/placas');
         if (data && Array.isArray(data.placas)) {
             listaPlacas = data.placas;
-            const datalist = document.getElementById('datalist-placas');
-            if (datalist) {
-                datalist.innerHTML = listaPlacas.map(p => '<option value="' + String(p).replace(/"/g, '&quot;') + '">').join('');
-            }
-            _placasCarregadas = true;
+            var placaAtual = document.getElementById('viagem-placa');
+            _preencherDatalist('datalist-placas', listaPlacas, placaAtual && placaAtual.value ? [placaAtual.value] : []);
         }
     } catch (e) {
-        listaPlacas = [];
+        if (forcar) listaPlacas = [];
     }
+}
+
+function atualizarSugestoesRotaConferencia() {
+    loadPlacas(true);
+    loadColaboradoresMotoristas(true);
 }
 
 const COORDENADOR_PADRAO = 'ASTROGILDO RODRIGUES DOS SANTOS';
@@ -13299,6 +13315,8 @@ async function loadViagemInfo(idViagem) {
         setVal('display-id-roteiro', '-');
         setVal('display-id-viagem', idViagem || '-');
     }
+    _preencherDatalist('datalist-placas', listaPlacas, placaInput && placaInput.value ? [placaInput.value] : []);
+    _preencherDatalist('datalist-motoristas', listaColaboradoresMotoristas, motoristaInput && motoristaInput.value ? [motoristaInput.value] : []);
 }
 
 // Salvar motorista alterado na viagem
@@ -13615,10 +13633,8 @@ function _zerarTabelaConferenciaNoDOM() {
         if (row.cells[0]) row.cells[0].innerHTML = '<span class="status-badge status-FALTA">❌ PENDENTE</span>';
         row.classList.remove('row-completo', 'row-excedente', 'row-parcial');
         row.classList.add('row-pendente');
-        var divAcao = row.cells[11] && row.cells[11].querySelector('div');
-        if (divAcao) {
-            divAcao.querySelectorAll('[data-conf-acao="tirar-1"], [data-conf-acao="tirar-tudo"]').forEach(function(b) { b.remove(); });
-        }
+        // Recriar célula de ação para remover qualquer hint antigo (ex.: "✓ Completo")
+        _conferenciaAtualizarCelulaAcaoLinha(row, 'PENDENTE', 0, qtdProduto);
     });
     atualizarTotaisConferenciaFromDOM();
     atualizarBoxesComprovante();
@@ -14105,7 +14121,18 @@ async function loadConferencia(idViagem = null, opts) {
                     var h = L('id-viagem-hidden'); if (h) h.value = conferencia.id_viagem;
                     var i = L('id-viagem'); if (i) i.value = conferencia.id_viagem;
                 }
+                if (!isDev) {
+                    _preencherDatalist('datalist-placas', listaPlacas, [
+                        conferencia.placa,
+                        elP && elP.value ? elP.value : ''
+                    ]);
+                    _preencherDatalist('datalist-motoristas', listaColaboradoresMotoristas, [
+                        conferencia.motorista,
+                        elM && elM.value ? elM.value : ''
+                    ]);
+                }
             }
+            if (!isDev) atualizarSugestoesRotaConferencia();
             _aplicarExtrasConferenciaResponse(conferencia, idViagem, isDev);
             const conferenciaUI = conferencia.lista_ja_agregada ? listaParaUI : agruparConferenciaPorCodigoProduto(listaParaUI);
             const tbody = L('tbody-conferencia');

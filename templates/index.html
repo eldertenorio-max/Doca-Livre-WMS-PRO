@@ -397,12 +397,12 @@
                                 <div class="form-row bloco2-linha-topo">
                                     <div class="form-group">
                                         <label for="viagem-placa">Placa</label>
-                                        <input type="text" id="viagem-placa" list="datalist-placas" placeholder="Placa" style="font-weight: bold; color: #333; max-width: 140px;" onchange="salvarPlacaViagem()" onblur="salvarPlacaViagem()">
+                                        <input type="text" id="viagem-placa" list="datalist-placas" placeholder="Digite ou escolha a placa" autocomplete="off" title="Sugestões: todas as placas cadastradas e usadas no sistema" style="font-weight: bold; color: #333; max-width: 140px;" onchange="salvarPlacaViagem()" onblur="salvarPlacaViagem()">
                                         <datalist id="datalist-placas"></datalist>
                                     </div>
                                     <div class="form-group">
                                         <label for="viagem-motorista">Motorista</label>
-                                        <input type="text" id="viagem-motorista" list="datalist-motoristas" placeholder="Motorista" style="font-weight: bold; color: #333; max-width: 100%;" onchange="salvarMotoristaViagem()" onblur="salvarMotoristaViagem()">
+                                        <input type="text" id="viagem-motorista" list="datalist-motoristas" placeholder="Digite ou escolha o motorista" autocomplete="off" title="Sugestões: motoristas do cadastro e já usados em viagens" style="font-weight: bold; color: #333; max-width: 100%;" onchange="salvarMotoristaViagem()" onblur="salvarMotoristaViagem()">
                                         <datalist id="datalist-motoristas"></datalist>
                                     </div>
                                 </div>
