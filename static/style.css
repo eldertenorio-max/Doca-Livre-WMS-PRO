@@ -3438,9 +3438,31 @@ body.conferencia-lista-maximizada-aberta {
     display: none;
 }
 
-/* Linha de roteiro/placa no thead — só na impressão (repete em cada página) */
-.extrato-cabecalho-impressao-linha {
+/* Extrato — itens bipados a mais (excedente) */
+.extrato-itens-bipados-mais {
     display: none;
+    margin: 0 0 16px 0;
+    padding: 14px 16px;
+    background: #fff3e0;
+    border: 1px solid #ffcc80;
+    border-left: 4px solid #e65100;
+    border-radius: 6px;
+}
+.extrato-itens-bipados-mais--ativo {
+    display: block;
+}
+.extrato-itens-bipados-mais-titulo {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: #e65100;
+}
+.extrato-itens-bipados-mais-lista {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #333;
 }
 
 /* Impressão: Extrato ou Divergências conforme classe no body */
@@ -3458,32 +3480,18 @@ body.conferencia-lista-maximizada-aberta {
     .container * {
         visibility: hidden;
     }
-    /* Cadeia de ancestrais visível (senão título/resumo somem na impressão) */
-    body.print-extrato #modulo-carregamento,
-    body.print-extrato #modulo-carregamento .content,
-    body.print-extrato #modulo-devolucoes,
-    body.print-extrato #modulo-devolucoes .devolucoes-conteudo,
-    body.print-extrato #extrato,
-    body.print-extrato #devolucoes-panel-extrato,
+    /* ========== EXTRATO — retrato, compacto, economia de folha ========== */
     body.print-extrato #extrato-para-imprimir,
-    body.print-extrato #dev-extrato-para-imprimir,
     body.print-extrato #extrato-para-imprimir *,
+    body.print-extrato #dev-extrato-para-imprimir,
     body.print-extrato #dev-extrato-para-imprimir * {
         visibility: visible;
     }
-    body.print-extrato #extrato,
-    body.print-extrato #devolucoes-panel-extrato {
-        display: block !important;
-    }
-    body.print-extrato #devolucoes-panel-extrato {
-        display: block !important;
-    }
-    /* ========== EXTRATO — retrato, compacto, economia de folha ========== */
     body.print-extrato #extrato-para-imprimir,
     body.print-extrato #dev-extrato-para-imprimir {
-        position: static !important;
-        left: auto;
-        top: auto;
+        position: absolute;
+        left: 0;
+        top: 0;
         width: 100%;
         max-width: 100%;
         padding: 0;
@@ -3509,38 +3517,37 @@ body.conferencia-lista-maximizada-aberta {
         color: #000;
     }
     body.print-extrato #extrato-resumo,
-    body.print-extrato #dev-extrato-resumo,
-    body.print-extrato #extrato-resumo.extrato-resumo--preenchido,
-    body.print-extrato #dev-extrato-resumo.extrato-resumo--preenchido {
+    body.print-extrato #dev-extrato-resumo {
         display: block !important;
-        visibility: visible !important;
         margin: 0 0 3mm 0;
         padding: 2mm 2.5mm;
         background: #f4f6f8 !important;
         border: 0.5pt solid #bbb;
         border-radius: 1mm;
         page-break-inside: avoid;
-        break-inside: avoid;
     }
-    body.print-extrato .extrato-cabecalho-impressao-linha {
-        display: table-row !important;
+    body.print-extrato .extrato-itens-bipados-mais--ativo {
+        display: block !important;
+        margin: 0 0 3mm 0;
+        padding: 2mm 2.5mm;
+        background: #fff8e1 !important;
+        border: 0.5pt solid #e65100;
+        border-left: 2pt solid #e65100;
+        border-radius: 1mm;
+        page-break-inside: avoid;
     }
-    body.print-extrato .extrato-cabecalho-impressao-linha th {
-        display: table-cell !important;
-        padding: 1.5mm 2mm !important;
-        background: #fff !important;
+    body.print-extrato .extrato-itens-bipados-mais-titulo {
+        margin: 0 0 1mm 0;
+        font-size: 8pt;
+        font-weight: 700;
+        color: #e65100 !important;
+    }
+    body.print-extrato .extrato-itens-bipados-mais-lista {
+        margin: 0;
+        padding-left: 4mm;
+        font-size: 7pt;
+        line-height: 1.3;
         color: #111 !important;
-        border: 0.5pt solid #bbb !important;
-        border-bottom: 1pt solid #366092 !important;
-        font-weight: 400 !important;
-        font-size: 7.5pt !important;
-        line-height: 1.35 !important;
-        text-align: left !important;
-        vertical-align: top !important;
-    }
-    body.print-extrato .extrato-cabecalho-impressao-texto {
-        white-space: normal;
-        word-wrap: break-word;
     }
     body.print-extrato #extrato-resumo h3,
     body.print-extrato #dev-extrato-resumo h3 {
