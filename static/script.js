@@ -288,6 +288,16 @@ function _conferenciaProcessarBipagemCodigo(codigoBarras, quantidade, codigoProd
     var cod = (codigoBarras || '').toString().trim();
     if (!cod) return false;
     var qtd = parseInt(quantidade, 10) || 1;
+    if (qtd > 0 && _conferenciaUsaRascunhoLocal()) {
+        var docaEl = window._elBipagem('doca');
+        var doca = docaEl && docaEl.value ? String(docaEl.value).trim() : '';
+        if (['1', '2', '3', '4'].indexOf(doca) < 0) {
+            if (!opts.silencioso) {
+                _conferenciaMostrarErroComprovante('Selecione a doca (1, 2, 3 ou 4) no bloco «3. DADOS DO CARREGAMENTO» antes de bipar.', true);
+            }
+            return false;
+        }
+    }
     var estLinha = _conferenciaObterEstadoLinhaBipagem(cod, codigoProdutoOpcional || '');
     if (!opts.permitirExcedente && qtd > 0 && estLinha && estLinha.prod > 0 && estLinha.bip >= estLinha.prod) {
         if (!opts.silencioso) {
@@ -522,10 +532,59 @@ function _conferenciaCancelarGravacaoComprovante() {
     showMessage('Gravação cancelada. A bipagem permanece neste aparelho; você pode tentar gerar o comprovante de novo.', 'warning');
 }
 
+function _conferenciaValidarPreComprovante() {
+    var idV = window._getIdViagemAtivo && window._getIdViagemAtivo();
+    if (!idV) {
+        return { ok: false, erro: 'Nenhuma viagem carregada. Busque o ID do roteiro na conferência.' };
+    }
+    var docaEl = window._elBipagem('doca');
+    var doca = docaEl && docaEl.value ? String(docaEl.value).trim() : '';
+    if (['1', '2', '3', '4'].indexOf(doca) < 0) {
+        return {
+            ok: false,
+            erro: 'Selecione a doca (1, 2, 3 ou 4) no bloco «3. DADOS DO CARREGAMENTO» antes de gerar o comprovante.',
+            focarDoca: true
+        };
+    }
+    if (_conferenciaUsaRascunhoLocal()) {
+        var itens = _conferenciaColetarItensTabelaParaGravar();
+        if (!itens.length && !_conferenciaTabelaTemBipagemNoDOM()) {
+            return { ok: false, erro: 'Nenhum item bipado na tabela. Bipe os produtos antes de gerar o comprovante.' };
+        }
+    }
+    return { ok: true };
+}
+
+function _conferenciaMostrarErroComprovante(msg, focarDoca) {
+    if (window.ravexErrorShow) {
+        window.ravexErrorShow(msg);
+    } else {
+        showMessage(msg, 'error');
+    }
+    if (focarDoca) {
+        var docaEl = document.getElementById('doca');
+        if (docaEl) {
+            try { docaEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+            docaEl.focus();
+            docaEl.style.outline = '3px solid #c62828';
+            docaEl.style.outlineOffset = '2px';
+            setTimeout(function() {
+                docaEl.style.outline = '';
+                docaEl.style.outlineOffset = '';
+            }, 4500);
+        }
+    }
+}
+
 async function _conferenciaSalvarBipagemEGerarExtrato() {
-    var idViagem = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value || '').trim();
+    var idViagem = window._getIdViagemAtivo && window._getIdViagemAtivo();
     if (!idViagem) {
-        showMessage('Nenhuma viagem selecionada', 'error');
+        _conferenciaMostrarErroComprovante('Nenhuma viagem selecionada.');
+        return false;
+    }
+    var pre = _conferenciaValidarPreComprovante();
+    if (!pre.ok) {
+        _conferenciaMostrarErroComprovante(pre.erro, pre.focarDoca);
         return false;
     }
     var btnC = document.getElementById('btn-confirmar-comprovante-completo');
@@ -547,11 +606,11 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
         }
         if (!flushOk || flushOk.ok === false || flushOk.falhas > 0) {
             if (flushOk && flushOk.erro === 'doca') {
-                showMessage('Selecione a doca (1, 2, 3 ou 4) na conferência antes de gerar o comprovante.', 'error');
+                _conferenciaMostrarErroComprovante('Selecione a doca (1, 2, 3 ou 4) no bloco «3. DADOS DO CARREGAMENTO» antes de gerar o comprovante.', true);
             } else if (flushOk && flushOk.erro) {
-                showMessage(flushOk.erro, 'error');
+                _conferenciaMostrarErroComprovante(flushOk.erro);
             } else {
-                showMessage('Não foi possível gravar toda a bipagem. Verifique a doca e tente de novo.', 'error');
+                _conferenciaMostrarErroComprovante('Não foi possível gravar toda a bipagem. Verifique a doca e tente de novo.');
             }
             return false;
         }
@@ -757,6 +816,13 @@ async function _conferenciaGravarBipagemCompletaNoServidor() {
             p.adds = {};
         }
         _conferenciaLimparPeriodoBipagemLocal(idViagem);
+        if (itens.length > 0 && (result.gravados == null || result.gravados <= 0)) {
+            return {
+                ok: false,
+                falhas: 1,
+                erro: (result.mensagem || 'Nenhum item foi gravado no servidor. Verifique códigos de barras e doca.')
+            };
+        }
         return { ok: true, falhas: 0, gravados: result.gravados || itens.length };
     }
     return {
@@ -14257,6 +14323,11 @@ window.biparItem = function(btnOrCodigo, codigoBarrasOrProduto, produtoOrQtd, qu
 }
 
 window.abrirModalComprovanteCompleto = function() {
+    var pre = _conferenciaValidarPreComprovante();
+    if (!pre.ok) {
+        _conferenciaMostrarErroComprovante(pre.erro, pre.focarDoca);
+        return;
+    }
     var modal = document.getElementById('modal-comprovante-completo');
     if (modal) {
         modal.style.display = 'flex';
@@ -14271,12 +14342,23 @@ window.fecharModalComprovanteCompleto = function() {
 };
 
 window.confirmarGerarComprovanteCompleto = function() {
+    var pre = _conferenciaValidarPreComprovante();
+    if (!pre.ok) {
+        fecharModalComprovanteCompleto();
+        _conferenciaMostrarErroComprovante(pre.erro, pre.focarDoca);
+        return;
+    }
     fecharModalComprovanteCompleto();
     void _conferenciaSalvarBipagemEGerarExtrato();
 };
 
 // Comprovante divergente: modal de confirmação
 window.abrirModalComprovanteDivergente = function() {
+    var pre = _conferenciaValidarPreComprovante();
+    if (!pre.ok) {
+        _conferenciaMostrarErroComprovante(pre.erro, pre.focarDoca);
+        return;
+    }
     const modal = document.getElementById('modal-comprovante-divergente');
     if (modal) {
         modal.style.display = 'flex';
@@ -14291,6 +14373,12 @@ window.fecharModalComprovanteDivergente = function() {
 };
 
 window.confirmarGerarComprovanteDivergente = function() {
+    var pre = _conferenciaValidarPreComprovante();
+    if (!pre.ok) {
+        fecharModalComprovanteDivergente();
+        _conferenciaMostrarErroComprovante(pre.erro, pre.focarDoca);
+        return;
+    }
     fecharModalComprovanteDivergente();
     void _conferenciaSalvarBipagemEGerarExtrato();
 };
