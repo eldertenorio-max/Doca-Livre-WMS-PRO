@@ -2847,6 +2847,90 @@ function _baixadosRavexFiltroState(scope) {
     return window._baixadosRavexFiltrosPorScope[scope];
 }
 
+function _baixadosRavexFmtData(iso) {
+    var s = String(iso || '').trim();
+    if (!s) return '—';
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[3] + '/' + m[2] + '/' + m[1];
+    return s;
+}
+
+/** Texto legível para a coluna Descrição (Baixados Ravex). */
+function _baixadosRavexDescricaoImportacao(row) {
+    var tipo = String((row && row.tipo) || '').toLowerCase();
+    var p = (row && row.parametros) || {};
+    if (typeof p === 'string') {
+        try { p = JSON.parse(p); } catch (e) { p = {}; }
+    }
+    p = p || {};
+    var partes = [];
+    var titulo = '';
+
+    if (p.origem === 'romaneio_por_item') {
+        partes.push('Importação legada (agrupada por data)');
+        if (p.dataset_id) partes.push('dataset ' + p.dataset_id);
+        return { texto: partes.join(' · '), titulo: '' };
+    }
+
+    if (tipo === 'id_unico' || (!tipo && (p.id_roteiro || p.id_viagem || p.id_informado))) {
+        var idR = String(p.id_roteiro || p.id_informado || '').trim();
+        var idV = String(p.id_viagem || '').trim();
+        var somenteR = p.somente_roteiro === true || p.somente_roteiro === 'true';
+        var viagens = Array.isArray(p.viagens_importadas) ? p.viagens_importadas.map(String).filter(Boolean) : [];
+        if (idR) partes.push('Roteiro ' + idR);
+        if (somenteR || (!idV && !viagens.length && !p.id_viagem)) {
+            partes.push('(sem viagem faturada)');
+        } else if (idV) {
+            partes.push('Viagem ' + idV);
+        } else if (viagens.length === 1) {
+            partes.push('Viagem ' + viagens[0]);
+        } else if (viagens.length > 1) {
+            partes.push(viagens.length + ' viagens');
+            titulo = 'Viagens: ' + viagens.join(', ');
+        }
+        return { texto: partes.join(' · '), titulo: titulo };
+    }
+
+    if (tipo === 'periodo') {
+        var di = p.data_inicio || '';
+        var df = p.data_fim || '';
+        if (di || df) {
+            partes.push('Período ' + _baixadosRavexFmtData(di) + ' a ' + _baixadosRavexFmtData(df));
+        }
+        var nImp = (Array.isArray(p.viagens_importadas) ? p.viagens_importadas.length : 0)
+            || parseInt(row.viagens_processadas, 10) || 0;
+        if (nImp) partes.push(nImp + (nImp === 1 ? ' viagem importada' : ' viagens importadas'));
+        var pul = parseInt(p.pulados_duplicados, 10);
+        if (pul > 0) partes.push(pul + (pul === 1 ? ' pulada (duplicada)' : ' puladas (duplicadas)'));
+        if (Array.isArray(p.viagens_importadas) && p.viagens_importadas.length) {
+            titulo = 'IDs viagem: ' + p.viagens_importadas.join(', ');
+        }
+        return { texto: partes.join(' · ') || 'Sincronização por período', titulo: titulo };
+    }
+
+    if (tipo === 'lista') {
+        var nIds = parseInt(p.ids_recebidos, 10) || 0;
+        if (nIds) partes.push('Lista de ' + nIds + (nIds === 1 ? ' ID' : ' IDs'));
+        var nImp2 = (Array.isArray(p.viagens_importadas) ? p.viagens_importadas.length : 0)
+            || parseInt(row.viagens_processadas, 10) || 0;
+        if (nImp2) partes.push(nImp2 + (nImp2 === 1 ? ' importada' : ' importadas'));
+        var pul2 = parseInt(p.pulados_duplicados, 10);
+        if (pul2 > 0) partes.push(pul2 + ' pulada(s) (duplicada)');
+        if (Array.isArray(p.viagens_importadas) && p.viagens_importadas.length) {
+            titulo = 'Importadas: ' + p.viagens_importadas.join(', ');
+        }
+        return { texto: partes.join(' · ') || 'Importação em lista', titulo: titulo };
+    }
+
+    if (p.id_roteiro) partes.push('Roteiro ' + p.id_roteiro);
+    if (p.id_viagem) partes.push('Viagem ' + p.id_viagem);
+    if (p.id_informado && !p.id_roteiro) partes.push('ID ' + p.id_informado);
+    if (!partes.length && Object.keys(p).length) {
+        return { texto: 'Importação', titulo: JSON.stringify(p) };
+    }
+    return { texto: partes.join(' · ') || '—', titulo: Object.keys(p).length ? JSON.stringify(p) : '' };
+}
+
 async function loadBaixadosRavex(scope) {
     scope = _baixadosRavexScope(scope);
     window._baixadosRavexScopeAtivo = scope;
@@ -2888,7 +2972,10 @@ async function loadBaixadosRavex(scope) {
         return;
     }
     tbody.innerHTML = rows.map(r => {
-        const params = r.parametros ? JSON.stringify(r.parametros) : '';
+        var desc = (typeof _baixadosRavexDescricaoImportacao === 'function')
+            ? _baixadosRavexDescricaoImportacao(r) : { texto: '', titulo: '' };
+        var descTxt = desc.texto || '—';
+        var descTitle = desc.titulo || descTxt;
         const erros = Array.isArray(r.erros) ? r.erros.length : 0;
         var st = String(r.status || '');
         var stHtml = escapeHtml(st);
@@ -2903,7 +2990,7 @@ async function loadBaixadosRavex(scope) {
             + '<td>' + escapeHtml(String(r.criado_em || '')) + '</td>'
             + '<td>' + escapeHtml(String(r.tipo || '')) + '</td>'
             + '<td>' + stHtml + '</td>'
-            + '<td style="max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="' + escapeHtml(params) + '">' + escapeHtml(params) + '</td>'
+            + '<td class="baixa-ravex-descricao" style="max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="' + escapeHtml(descTitle) + '">' + escapeHtml(descTxt) + '</td>'
             + '<td><strong>' + escapeHtml(String(r.viagens_processadas || 0)) + '</strong></td>'
             + '<td><strong>' + escapeHtml(String(r.total_itens || 0)) + '</strong></td>'
             + '<td>' + escapeHtml(String(r.usuario || '')) + '</td>'
