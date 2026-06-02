@@ -333,6 +333,49 @@ function _conferenciaProcessarBipagemCodigo(codigoBarras, quantidade, codigoProd
 
 var _modalBipagemCtx = null;
 
+function _conferenciaModalEstaAberto() {
+    var m = document.getElementById('modal-bipagem-produto');
+    return !!(m && m.style.display === 'flex');
+}
+
+function _conferenciaValidarPreBipagem(modoDev) {
+    var idViagem = window._getIdViagemAtivo && window._getIdViagemAtivo();
+    if (!idViagem) {
+        showMessage('Por favor, selecione uma viagem primeiro', 'error');
+        return false;
+    }
+    if (!modoDev) {
+        var docaEl = window._elBipagem && window._elBipagem('doca');
+        var doca = docaEl && docaEl.value ? String(docaEl.value).trim() : '';
+        if (!doca || ['1', '2', '3', '4'].indexOf(doca) < 0) {
+            showMessage('Selecione a doca antes de bipar', 'error');
+            return false;
+        }
+    }
+    if (modoDev && (!window._devolucaoNfAtiva || !window._devolucaoNfAtiva.id)) {
+        showMessage('Inicie uma NF (número + motivo) antes de bipar o retorno.', 'error');
+        return false;
+    }
+    return true;
+}
+
+function _conferenciaFocarCodigoModalBipagem() {
+    var inp = document.getElementById('modal-bipagem-codigo-input');
+    if (inp) {
+        inp.focus();
+        inp.select();
+    }
+}
+
+function _conferenciaProntoProximoNoModal() {
+    window.ultimoCodigoBuscado = '';
+    var inpCod = document.getElementById('modal-bipagem-codigo-input');
+    var inpQtd = document.getElementById('modal-bipagem-qtd-agora');
+    if (inpCod) inpCod.value = '';
+    if (inpQtd) inpQtd.value = '1';
+    _conferenciaFocarCodigoModalBipagem();
+}
+
 function _conferenciaDadosParaModalBipagem(codigoBarras, codigoProduto) {
     var est = _conferenciaObterEstadoLinhaBipagem(codigoBarras, codigoProduto || '');
     if (!est) {
@@ -368,21 +411,20 @@ function fecharModalBipagemProduto() {
 function _conferenciaPreencherModalBipagem(dados) {
     var elDesc = document.getElementById('modal-bipagem-descricao');
     var elCod = document.getElementById('modal-bipagem-codigo-produto');
-    var elBarras = document.getElementById('modal-bipagem-codigo-barras');
     var elRom = document.getElementById('modal-bipagem-qtd-romaneio');
     var elBip = document.getElementById('modal-bipagem-qtd-bipada');
     var elSt = document.getElementById('modal-bipagem-status-linha');
     var elAviso = document.getElementById('modal-bipagem-aviso');
     var elQtd = document.getElementById('modal-bipagem-qtd-agora');
+    var elCodInp = document.getElementById('modal-bipagem-codigo-input');
     if (elDesc) elDesc.textContent = dados.descricao || '—';
     if (elCod) elCod.textContent = dados.codigoProduto || '—';
-    if (elBarras) elBarras.textContent = dados.codigoBarras || '—';
     if (elRom) elRom.textContent = String(dados.qtdRomaneio != null ? dados.qtdRomaneio : 0);
     if (elBip) elBip.textContent = String(dados.qtdBipada != null ? dados.qtdBipada : 0);
     if (elSt) elSt.textContent = dados.status || '—';
-    if (elQtd) {
+    if (elCodInp && dados.codigoBarras) elCodInp.value = dados.codigoBarras;
+    if (elQtd && dados.atualizarQtd !== false) {
         elQtd.value = String(dados.qtdAgora != null && dados.qtdAgora > 0 ? dados.qtdAgora : 1);
-        elQtd.min = '1';
     }
     if (elAviso) {
         if (dados.aviso) {
@@ -395,49 +437,74 @@ function _conferenciaPreencherModalBipagem(dados) {
     }
 }
 
-async function _conferenciaPrepararBipagemPorCodigo(codigoBarras, opts) {
+function _conferenciaGarantirCtxModal(opts) {
     opts = opts || {};
-    var codBarras = String(codigoBarras || '').trim();
+    var modoDev = !!opts.modoDevolucao;
+    if (!_modalBipagemCtx) {
+        _modalBipagemCtx = {
+            modoDevolucao: modoDev,
+            codigoInputId: opts.codigoInputId || (modoDev ? 'dev-codigo-barras' : 'codigo-barras'),
+            qtdInputId: opts.qtdInputId || (modoDev ? 'dev-quantidade' : 'quantidade'),
+            permitirExcedente: !!opts.permitirExcedente,
+            permitirRepetir: !!opts.permitirRepetir,
+            codigoBarras: '',
+            codigoProduto: ''
+        };
+    } else {
+        if (opts.permitirExcedente) _modalBipagemCtx.permitirExcedente = true;
+        if (opts.permitirRepetir) _modalBipagemCtx.permitirRepetir = true;
+    }
+    return _modalBipagemCtx;
+}
+
+function _conferenciaAbrirModalBipagem(opts) {
+    opts = opts || {};
+    var modoDev = !!opts.modoDevolucao;
+    if (!_conferenciaValidarPreBipagem(modoDev)) return false;
+    var modal = document.getElementById('modal-bipagem-produto');
+    if (!modal) return false;
+    _conferenciaGarantirCtxModal(opts);
+    modal.style.display = 'flex';
+    var corpo = document.getElementById('modal-bipagem-corpo');
+    var carreg = document.getElementById('modal-bipagem-carregando');
+    if (corpo) corpo.style.display = 'block';
+    if (carreg) carreg.style.display = 'none';
+    if (!opts.manterCampos) {
+        var inpCod = document.getElementById('modal-bipagem-codigo-input');
+        var inpQtd = document.getElementById('modal-bipagem-qtd-agora');
+        if (inpCod && !opts.codigoInicial) inpCod.value = '';
+        if (inpQtd && !opts.manterQtd) inpQtd.value = '1';
+    }
+    if (!opts.semFoco) _conferenciaFocarCodigoModalBipagem();
+    return true;
+}
+
+async function _conferenciaCarregarProdutoNoModal(codigoBarras, opts) {
+    opts = opts || {};
+    var codBarras = normalizarCodigoBarrasDuplicado(String(codigoBarras || '').trim());
     if (!codBarras) return false;
     var modoDev = !!opts.modoDevolucao;
-    var qtdForm = parseInt(document.getElementById(opts.qtdInputId || 'quantidade') && document.getElementById(opts.qtdInputId || 'quantidade').value, 10);
-    if (!qtdForm || qtdForm < 1) qtdForm = 1;
+    if (!_conferenciaAbrirModalBipagem(opts)) return false;
 
-    var idViagem = window._getIdViagemAtivo && window._getIdViagemAtivo();
-    if (!idViagem) {
-        showMessage('Por favor, selecione uma viagem primeiro', 'error');
-        return false;
-    }
-    var docaEl = window._elBipagem && window._elBipagem('doca');
-    var doca = docaEl && docaEl.value ? String(docaEl.value).trim() : '';
-    if (!modoDev && (!doca || ['1', '2', '3', '4'].indexOf(doca) < 0)) {
-        showMessage('Selecione a doca antes de bipar', 'error');
-        return false;
-    }
-    if (modoDev && (!window._devolucaoNfAtiva || !window._devolucaoNfAtiva.id)) {
-        showMessage('Inicie uma NF (número + motivo) antes de bipar o retorno.', 'error');
-        return false;
-    }
-
-    var modal = document.getElementById('modal-bipagem-produto');
     var carreg = document.getElementById('modal-bipagem-carregando');
     var corpo = document.getElementById('modal-bipagem-corpo');
     var btnOk = document.getElementById('btn-modal-bipagem-confirmar');
-    if (!modal) return false;
-
-    _modalBipagemCtx = {
-        codigoBarras: codBarras,
-        modoDevolucao: modoDev,
-        qtdInputId: opts.qtdInputId || (modoDev ? 'dev-quantidade' : 'quantidade'),
-        codigoInputId: opts.codigoInputId || (modoDev ? 'dev-codigo-barras' : 'codigo-barras'),
-        permitirExcedente: !!opts.permitirExcedente,
-        permitirRepetir: !!opts.permitirRepetir
-    };
-
     if (carreg) carreg.style.display = 'block';
     if (corpo) corpo.style.display = 'none';
     if (btnOk) btnOk.disabled = true;
-    modal.style.display = 'flex';
+
+    var inpCod = document.getElementById('modal-bipagem-codigo-input');
+    if (inpCod) inpCod.value = codBarras;
+
+    var qtdForm = 1;
+    if (!opts.manterQtd) {
+        var elQtd = document.getElementById('modal-bipagem-qtd-agora');
+        var qRaw = parseInt(elQtd && elQtd.value, 10);
+        if (!isNaN(qRaw) && qRaw >= 1) qtdForm = qRaw;
+    }
+
+    var ctx = _conferenciaGarantirCtxModal(opts);
+    ctx.codigoBarras = codBarras;
 
     var descricao = '';
     var codigoProduto = codBarras;
@@ -463,8 +530,7 @@ async function _conferenciaPrepararBipagemPorCodigo(codigoBarras, opts) {
     if (!descricao && estado.descricao) descricao = estado.descricao;
     if (!descricao) descricao = '—';
 
-    _modalBipagemCtx.codigoProduto = codigoProduto;
-    _modalBipagemCtx.qtdAgora = qtdForm;
+    ctx.codigoProduto = codigoProduto;
 
     _conferenciaPreencherModalBipagem({
         descricao: descricao,
@@ -474,48 +540,97 @@ async function _conferenciaPrepararBipagemPorCodigo(codigoBarras, opts) {
         qtdBipada: estado.qtdBipada,
         status: estado.status,
         qtdAgora: qtdForm,
+        atualizarQtd: !opts.manterQtd,
         aviso: aviso
     });
 
     if (carreg) carreg.style.display = 'none';
     if (corpo) corpo.style.display = 'block';
     if (btnOk) btnOk.disabled = false;
+    return true;
+}
+
+async function _conferenciaPrepararBipagemPorCodigo(codigoBarras, opts) {
+    opts = opts || {};
+    var codBarras = normalizarCodigoBarrasDuplicado(String(codigoBarras || '').trim());
+    if (!codBarras) return false;
+    var modoDev = !!opts.modoDevolucao;
+    if (!_conferenciaValidarPreBipagem(modoDev)) return false;
+
+    var mainCod = document.getElementById(opts.codigoInputId || (modoDev ? 'dev-codigo-barras' : 'codigo-barras'));
+    if (mainCod) mainCod.value = '';
+
+    var ok = await _conferenciaCarregarProdutoNoModal(codBarras, opts);
+    if (!ok) return false;
+
     var elQtd = document.getElementById('modal-bipagem-qtd-agora');
-    if (elQtd) {
+    if (opts.focarQtd && elQtd) {
         elQtd.focus();
         elQtd.select();
+    } else if (!opts.focarQtd) {
+        _conferenciaFocarCodigoModalBipagem();
     }
     return true;
 }
 
 async function confirmarModalBipagemProduto() {
-    if (!_modalBipagemCtx) return;
+    if (!_modalBipagemCtx) {
+        var modoDev0 = window._fluxoBipagemAtivo === 'devolucao';
+        if (!_conferenciaValidarPreBipagem(modoDev0)) return;
+        _conferenciaGarantirCtxModal({ modoDevolucao: modoDev0 });
+    }
     var ctx = _modalBipagemCtx;
+    var inpCod = document.getElementById('modal-bipagem-codigo-input');
     var elQtd = document.getElementById('modal-bipagem-qtd-agora');
+    var codBarras = normalizarCodigoBarrasDuplicado((inpCod && inpCod.value || ctx.codigoBarras || '').trim());
+    if (!codBarras) {
+        showMessage('Informe o código de barras', 'warning');
+        _conferenciaFocarCodigoModalBipagem();
+        return;
+    }
+    if (!ctx.codigoProduto || ctx.codigoBarras !== codBarras) {
+        await _conferenciaCarregarProdutoNoModal(codBarras, { modoDevolucao: ctx.modoDevolucao, manterQtd: true, manterCampos: true, semFoco: true });
+    }
     var qtd = parseInt(elQtd && elQtd.value, 10);
     if (!qtd || qtd < 1) {
-        alert('Informe uma quantidade válida (mínimo 1).');
+        showMessage('Informe uma quantidade válida (mínimo 1).', 'warning');
         if (elQtd) elQtd.focus();
         return;
     }
-    var cod = ctx.codigoProduto || ctx.codigoBarras;
-    var modal = document.getElementById('modal-bipagem-produto');
-    if (modal) modal.style.display = 'none';
-    _modalBipagemCtx = null;
-
-    var codInp = document.getElementById(ctx.codigoInputId || 'codigo-barras');
-    if (codInp) codInp.value = ctx.codigoBarras;
 
     var procOpts = {
         permitirRepetir: !!ctx.permitirRepetir,
         permitirExcedente: !!ctx.permitirExcedente
     };
-    _conferenciaProcessarBipagemCodigo(ctx.codigoBarras, qtd, ctx.codigoProduto || '', procOpts);
+    _conferenciaProcessarBipagemCodigo(codBarras, qtd, ctx.codigoProduto || '', procOpts);
     if (typeof buscarProdutoNaPlanilha === 'function') {
-        buscarProdutoNaPlanilha(ctx.codigoBarras, qtd, true, true);
+        buscarProdutoNaPlanilha(codBarras, qtd, true, true);
     }
 
-    _conferenciaProntoParaProximoBip();
+    var estado = _conferenciaDadosParaModalBipagem(codBarras, ctx.codigoProduto || '');
+    _conferenciaPreencherModalBipagem({
+        descricao: estado.descricao || (document.getElementById('modal-bipagem-descricao') && document.getElementById('modal-bipagem-descricao').textContent) || '—',
+        codigoProduto: ctx.codigoProduto || '—',
+        codigoBarras: codBarras,
+        qtdRomaneio: estado.qtdRomaneio,
+        qtdBipada: estado.qtdBipada,
+        status: estado.status,
+        atualizarQtd: false,
+        aviso: ''
+    });
+
+    ctx.codigoBarras = '';
+    ctx.codigoProduto = '';
+    _conferenciaProntoProximoNoModal();
+}
+
+function _conferenciaEncaminharCodigoParaModal(codigo, inputEl, opts) {
+    opts = opts || {};
+    var cod = normalizarCodigoBarrasDuplicado(String(codigo || '').trim());
+    if (!cod) return;
+    if (inputEl) inputEl.value = '';
+    window.ultimoCodigoBuscado = cod;
+    _conferenciaPrepararBipagemPorCodigo(cod, Object.assign({ focarQtd: true }, opts));
 }
 
 function _conferenciaBindInputCodigoBarras(inputEl, opts) {
@@ -527,23 +642,23 @@ function _conferenciaBindInputCodigoBarras(inputEl, opts) {
         clearTimeout(timeoutBusca);
         if (codigo.length >= 3 && codigo !== window.ultimoCodigoBuscado) {
             timeoutBusca = setTimeout(function() {
-                window.ultimoCodigoBuscado = codigo;
-                _conferenciaPrepararBipagemPorCodigo(codigo, opts);
+                _conferenciaEncaminharCodigoParaModal(codigo, e.target, opts);
             }, 60);
         }
     });
     inputEl.addEventListener('blur', function(e) {
         if (window._ignorarBlurBipagemConferencia) return;
         var dest = e.relatedTarget;
+        if (dest && (dest.id === 'modal-bipagem-codigo-input' || dest.id === 'modal-bipagem-qtd-agora')) return;
         if (dest && (dest.tagName === 'BUTTON' || dest.type === 'submit' || dest.closest('[data-conf-acao]'))) return;
         setTimeout(function() {
             if (window._ignorarBlurBipagemConferencia) return;
             var active = document.activeElement;
+            if (active && (active.id === 'modal-bipagem-codigo-input' || active.id === 'modal-bipagem-qtd-agora')) return;
             if (active && (active.tagName === 'BUTTON' || active.type === 'submit' || active.closest('[data-conf-acao]'))) return;
             var codigo = normalizarCodigoBarrasDuplicado((e.target.value || '').trim());
             if (codigo.length >= 3 && codigo !== window.ultimoCodigoBuscado) {
-                window.ultimoCodigoBuscado = codigo;
-                _conferenciaPrepararBipagemPorCodigo(codigo, opts);
+                _conferenciaEncaminharCodigoParaModal(codigo, e.target, opts);
             }
         }, 0);
     });
@@ -553,31 +668,63 @@ function _conferenciaBindInputCodigoBarras(inputEl, opts) {
             clearTimeout(timeoutBusca);
             var codigo = normalizarCodigoBarrasDuplicado((e.target.value || '').trim());
             if (codigo.length > 0) {
-                window.ultimoCodigoBuscado = codigo;
-                _conferenciaPrepararBipagemPorCodigo(codigo, opts);
+                _conferenciaEncaminharCodigoParaModal(codigo, e.target, opts);
             }
         }
     });
-    inputEl.addEventListener('paste', function(e) {
+    inputEl.addEventListener('paste', function() {
         setTimeout(function() {
-            var codigo = normalizarCodigoBarrasDuplicado((e.target.value || '').trim());
+            var codigo = normalizarCodigoBarrasDuplicado((inputEl.value || '').trim());
             if (codigo.length >= 3) {
-                window.ultimoCodigoBuscado = codigo;
-                _conferenciaPrepararBipagemPorCodigo(codigo, opts);
+                _conferenciaEncaminharCodigoParaModal(codigo, inputEl, opts);
             }
         }, 50);
     });
 }
 
-(function _conferenciaInitModalBipagem() {
-    var elQtdModal = document.getElementById('modal-bipagem-qtd-agora');
-    if (elQtdModal) {
-        elQtdModal.addEventListener('keydown', function(e) {
+function _conferenciaBindModalBipagemInputs() {
+    var inpCod = document.getElementById('modal-bipagem-codigo-input');
+    var inpQtd = document.getElementById('modal-bipagem-qtd-agora');
+    if (!inpCod || inpCod._bindModalBipagem) return;
+    inpCod._bindModalBipagem = true;
+
+    inpCod.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        var codigo = normalizarCodigoBarrasDuplicado((inpCod.value || '').trim());
+        if (!codigo) return;
+        if (!_modalBipagemCtx) {
+            var modoDev = window._fluxoBipagemAtivo === 'devolucao';
+            _conferenciaGarantirCtxModal({ modoDevolucao: modoDev });
+        }
+        window.ultimoCodigoBuscado = codigo;
+        _conferenciaCarregarProdutoNoModal(codigo, {
+            modoDevolucao: _modalBipagemCtx && _modalBipagemCtx.modoDevolucao,
+            manterQtd: true,
+            manterCampos: true
+        }).then(function() {
+            if (inpQtd) {
+                inpQtd.focus();
+                inpQtd.select();
+            }
+        });
+    });
+
+    if (inpQtd) {
+        inpQtd.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 confirmarModalBipagemProduto();
             }
         });
+    }
+}
+
+(function _conferenciaInitModalBipagem() {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _conferenciaBindModalBipagemInputs);
+    } else {
+        _conferenciaBindModalBipagemInputs();
     }
 })();
 
@@ -10299,7 +10446,7 @@ function initForms() {
             return;
         }
         window.ultimoCodigoBuscado = cod;
-        await _conferenciaPrepararBipagemPorCodigo(cod, { modoDevolucao: false });
+        await _conferenciaPrepararBipagemPorCodigo(cod, { modoDevolucao: false, focarQtd: true });
     });
     const formProdutoDev = document.getElementById('form-produto-devolucao');
     if (formProdutoDev) {
@@ -10314,7 +10461,8 @@ function initForms() {
             await _conferenciaPrepararBipagemPorCodigo(codDev, {
                 modoDevolucao: true,
                 qtdInputId: 'dev-quantidade',
-                codigoInputId: 'dev-codigo-barras'
+                codigoInputId: 'dev-codigo-barras',
+                focarQtd: true
             });
         });
     }
@@ -14625,7 +14773,8 @@ window.biparItem = function(btnOrCodigo, codigoBarrasOrProduto, produtoOrQtd, qu
         qtdInputId: dev ? 'dev-quantidade' : 'quantidade',
         codigoInputId: dev ? 'dev-codigo-barras' : 'codigo-barras',
         permitirExcedente: true,
-        permitirRepetir: true
+        permitirRepetir: true,
+        focarQtd: true
     });
 }
 
