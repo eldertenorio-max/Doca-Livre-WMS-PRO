@@ -2544,10 +2544,13 @@ def delete_produto(produto_id):
 @app.route('/api/conferencia/<id_viagem>/zerar', methods=['DELETE', 'POST'])
 def zerar_bipagem_viagem(id_viagem):
     """Remove todos os registros de bipagem da viagem para permitir bipar novamente"""
-    id_norm = _normalizar_id_viagem(id_viagem)
+    data = request.get_json(silent=True) or {}
+    id_norm = _normalizar_id_viagem(
+        id_viagem or data.get('id_viagem') or request.args.get('id_viagem')
+    )
     if not id_norm:
         return jsonify({'erro': 'ID do roteiro não informado'}), 400
-    fluxo = (request.args.get('fluxo') or (request.json or {}).get('fluxo') or 'carregamento').strip().lower()
+    fluxo = (request.args.get('fluxo') or data.get('fluxo') or 'carregamento').strip().lower()
     if fluxo not in ('carregamento', 'devolucao'):
         fluxo = 'carregamento'
     conn = get_db()

@@ -202,6 +202,22 @@ function _conferenciaEnfileirarRemoveLocal(codigoBarras, qtd) {
 
 window._conferenciaUltimoBip = { codigo: '', em: 0 };
 
+/** Índices das colunas da tabela ITENS DA VIAGEM (conferência carregamento e devolução). */
+window._CONF_COL = {
+    STATUS: 0,
+    MOTIVO: 1,
+    COD_BARRAS: 2,
+    COD_PRODUTO: 3,
+    PRODUTO: 4,
+    QTD_PROD: 5,
+    BIPADO: 6,
+    UN: 7,
+    PESO: 8,
+    AVISO: 9,
+    FALTA: 10,
+    ACAO: 11
+};
+
 function _conferenciaObterEstadoLinhaBipagem(codigoBarrasStr, codigoProdutoStr) {
     var tbody = document.getElementById(window._fluxoBipagemAtivo === 'devolucao' ? 'dev-tbody-conferencia' : 'tbody-conferencia');
     if (!tbody) return null;
@@ -212,20 +228,21 @@ function _conferenciaObterEstadoLinhaBipagem(codigoBarrasStr, codigoProdutoStr) 
         var row = rows[i];
         if (!row.cells || row.cells.length < 12) continue;
         var dataCodigo = (row.getAttribute && row.getAttribute('data-codigo')) || '';
-        var cbLinha = (row.cells[2].textContent || '').trim();
-        var cpLinha = (row.cells[3].textContent || '').trim();
+        var C = window._CONF_COL;
+        var cbLinha = (row.cells[C.COD_BARRAS].textContent || '').trim();
+        var cpLinha = (row.cells[C.COD_PRODUTO].textContent || '').trim();
         var cbValido = cbLinha && cbLinha !== '-';
         var match = (codigoProdutoStr && (cpLinha === codigoProdutoStr || dataCodigo === codigoProdutoStr))
             || (codigoBarrasStr && cbValido && cbLinha === codigoBarrasStr);
         if (!match) continue;
-        var prod = parseInt(row.cells[5].textContent, 10) || 0;
-        var bip = parseInt(row.cells[9].textContent, 10) || 0;
+        var prod = parseInt(row.cells[C.QTD_PROD].textContent, 10) || 0;
+        var bip = parseInt(row.cells[C.BIPADO].textContent, 10) || 0;
         return {
             row: row,
             prod: prod,
             bip: bip,
             codigo_barras: cbLinha,
-            produto: (row.cells[4].textContent || '').trim()
+            produto: (row.cells[C.PRODUTO].textContent || '').trim()
         };
     }
     return null;
@@ -239,11 +256,12 @@ function _atualizarCodigoBarrasLinhaConferencia(codigoProduto, codigoBarras) {
     var est = _conferenciaObterEstadoLinhaBipagem('', codigoProduto);
     if (!est || !est.row) return false;
     var row = est.row;
-    var cellCb = row.cells[2];
+    var C = window._CONF_COL;
+    var cellCb = row.cells[C.COD_BARRAS];
     if (cellCb) {
         cellCb.innerHTML = '<strong>' + escapeHtml(codigoBarras) + '</strong>';
     }
-    var cellAviso = row.cells[8];
+    var cellAviso = row.cells[C.AVISO];
     if (cellAviso) {
         var avisoTxt = (cellAviso.textContent || '').trim();
         if (avisoTxt.indexOf('Sem código') >= 0 || avisoTxt.indexOf('⚠️ Sem código') >= 0) {
@@ -252,8 +270,8 @@ function _atualizarCodigoBarrasLinhaConferencia(codigoProduto, codigoBarras) {
             cellAviso.style.fontWeight = '';
         }
     }
-    var qtdProd = parseInt(row.cells[5].textContent, 10) || 0;
-    var qtdBip = parseInt(row.cells[9].textContent, 10) || 0;
+    var qtdProd = parseInt(row.cells[C.QTD_PROD].textContent, 10) || 0;
+    var qtdBip = parseInt(row.cells[C.BIPADO].textContent, 10) || 0;
     var qtdFalta = Math.max(0, qtdProd - qtdBip);
     var st = _statusBipagemConferencia(qtdProd, qtdBip);
     _conferenciaAtualizarCelulaAcaoLinha(row, st, qtdBip, qtdFalta);
@@ -262,10 +280,11 @@ function _atualizarCodigoBarrasLinhaConferencia(codigoProduto, codigoBarras) {
 
 function _conferenciaAtualizarCelulaAcaoLinha(row, stLinha, novaQtdBipada, novaQtdFalta) {
     if (!row || !row.cells || row.cells.length < 12) return;
-    var cellAcao = row.cells[11];
+    var C = window._CONF_COL;
+    var cellAcao = row.cells[C.ACAO];
     if (!cellAcao) return;
-    var codigoBarrasLinha = (row.cells[2].textContent || '').trim();
-    var produtoNome = (row.cells[4].textContent || '').trim();
+    var codigoBarrasLinha = (row.cells[C.COD_BARRAS].textContent || '').trim();
+    var produtoNome = (row.cells[C.PRODUTO].textContent || '').trim();
     var btns = _htmlBotoesAcaoConferencia({
         codigo_barras: codigoBarrasLinha,
         produto: produtoNome,
@@ -809,7 +828,7 @@ function _conferenciaTabelaTemBipagemNoDOM() {
     for (var i = 0; i < rows.length; i++) {
         var row = rows[i];
         if (!row.cells || row.cells.length < 11 || row.querySelector('td[colspan]')) continue;
-        if ((parseInt(row.cells[9].textContent, 10) || 0) > 0) return true;
+        if ((parseInt(row.cells[window._CONF_COL.BIPADO].textContent, 10) || 0) > 0) return true;
     }
     return false;
 }
@@ -857,10 +876,11 @@ async function _conferenciaPersistirAddNoServidor(codigoBarras, quantidade) {
             if (tbody) {
                 tbody.querySelectorAll('tr').forEach(function(row) {
                     if (!row.cells || row.cells.length < 12) return;
-                    var cb = (row.cells[2].textContent || '').trim();
+                    var C = window._CONF_COL;
+                    var cb = (row.cells[C.COD_BARRAS].textContent || '').trim();
                     if (cb !== codigoBarras) return;
-                    if (!override.produto) override.produto = (row.cells[4].textContent || '').trim();
-                    if (!override.codigo_interno) override.codigo_interno = (row.getAttribute('data-codigo') || row.cells[3].textContent || '').trim();
+                    if (!override.produto) override.produto = (row.cells[C.PRODUTO].textContent || '').trim();
+                    if (!override.codigo_interno) override.codigo_interno = (row.getAttribute('data-codigo') || row.cells[C.COD_PRODUTO].textContent || '').trim();
                 });
             }
         }
@@ -882,19 +902,20 @@ function _conferenciaColetarItensTabelaParaGravar() {
     for (var i = 0; i < rows.length; i++) {
         var row = rows[i];
         if (!row.cells || row.cells.length < 12 || row.querySelector('td[colspan]')) continue;
-        var qtdBip = parseInt(row.cells[9].textContent, 10) || 0;
+        var C = window._CONF_COL;
+        var qtdBip = parseInt(row.cells[C.BIPADO].textContent, 10) || 0;
         if (qtdBip <= 0) continue;
-        var codigoBarras = (row.cells[2].textContent || '').trim();
-        var codigoInterno = (row.getAttribute('data-codigo') || row.cells[3].textContent || '').trim();
+        var codigoBarras = (row.cells[C.COD_BARRAS].textContent || '').trim();
+        var codigoInterno = (row.getAttribute('data-codigo') || row.cells[C.COD_PRODUTO].textContent || '').trim();
         if ((!codigoBarras || codigoBarras === '-') && !codigoInterno) continue;
         itens.push({
             codigo_barras: codigoBarras,
             codigo_interno: codigoInterno,
             codigo_produto: codigoInterno,
-            produto: (row.cells[4].textContent || '').trim(),
+            produto: (row.cells[C.PRODUTO].textContent || '').trim(),
             quantidade: qtdBip,
-            unidade: (row.cells[6].textContent || '').trim(),
-            peso: (row.cells[7].textContent || '').trim()
+            unidade: (row.cells[C.UN].textContent || '').trim(),
+            peso: (row.cells[C.PESO].textContent || '').trim()
         });
     }
     return itens;
@@ -970,9 +991,10 @@ async function _conferenciaPersistirBipagemVisivelNaTabela() {
     for (var i = 0; i < rows.length; i++) {
         var row = rows[i];
         if (!row.cells || row.cells.length < 12 || row.querySelector('td[colspan]')) continue;
-        var qtdBip = parseInt(row.cells[9].textContent, 10) || 0;
+        var C = window._CONF_COL;
+        var qtdBip = parseInt(row.cells[C.BIPADO].textContent, 10) || 0;
         if (qtdBip <= 0) continue;
-        var cod = (row.cells[2].textContent || '').trim();
+        var cod = (row.cells[C.COD_BARRAS].textContent || '').trim();
         if (!cod || cod === '-') continue;
         var res = await _conferenciaPersistirAddNoServidor(cod, qtdBip);
         if (res && res.ok) ok++;
@@ -11269,16 +11291,19 @@ async function fetchAPI(endpoint, options = {}) {
     try {
         const method = ((options && options.method) ? options.method : 'GET').toString().toUpperCase();
         const isWrite = method !== 'GET' && method !== 'HEAD';
+        const hasBody = options.body !== undefined && options.body !== null && options.body !== '';
+        const headers = { ...(options.headers || {}) };
+        if (hasBody && !headers['Content-Type'] && !headers['content-type']) {
+            headers['Content-Type'] = 'application/json';
+        }
         const response = await fetch(`${API_BASE}${endpoint}`, {
             credentials: 'same-origin',
             cache: 'no-store',
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            },
+            headers: headers,
             ...(isWrite && typeof options.keepalive === 'undefined' ? { keepalive: true } : {}),
             ...(method === 'POST' && typeof options.priority === 'undefined' ? { priority: 'high' } : {}),
-            ...options
+            ...options,
+            headers: headers
         });
         const ct = (response.headers.get('content-type') || '').toLowerCase();
         if (ct.includes('application/json')) {
@@ -12658,18 +12683,19 @@ function atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdu
     for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         if (!row.cells || row.cells.length < 12) continue;
+        const C = window._CONF_COL;
         const dataCodigo = (row.getAttribute && row.getAttribute('data-codigo')) || '';
-        const cellCodigoBarras = row.cells[2];
-        const cellCodigoProduto = row.cells[3];
+        const cellCodigoBarras = row.cells[C.COD_BARRAS];
+        const cellCodigoProduto = row.cells[C.COD_PRODUTO];
         const codigoBarrasLinha = (cellCodigoBarras && cellCodigoBarras.textContent) ? (cellCodigoBarras.textContent || '').trim() : '';
         const codigoProdutoLinha = (cellCodigoProduto && cellCodigoProduto.textContent) ? (cellCodigoProduto.textContent || '').trim() : '';
         const match = (codigoProdutoStr && (codigoProdutoLinha === codigoProdutoStr || dataCodigo === codigoProdutoStr)) || (codigoBarrasStr && codigoBarrasLinha === codigoBarrasStr);
         if (!match) continue;
-        const cellQtdBipada = row.cells[9];
-        const cellQtdFalta = row.cells[10];
-        const cellAviso = row.cells[8];
-        const cellStatus = row.cells[0];
-        const cellQtdProduto = row.cells[5];
+        const cellQtdBipada = row.cells[C.BIPADO];
+        const cellQtdFalta = row.cells[C.FALTA];
+        const cellAviso = row.cells[C.AVISO];
+        const cellStatus = row.cells[C.STATUS];
+        const cellQtdProduto = row.cells[C.QTD_PROD];
         if (!cellQtdBipada || !cellQtdFalta) continue;
         const qtdBipadaAtual = parseInt(cellQtdBipada.textContent, 10) || 0;
         const qtdFaltaAtual = parseInt(cellQtdFalta.textContent, 10) || 0;
@@ -12855,9 +12881,10 @@ function atualizarTotaisConferenciaFromDOM() {
     let temExcedente = false;
     tbody.querySelectorAll('tr').forEach(function(row) {
         if (row.cells.length < 11) return;
-        const qtdProduto = parseInt(row.cells[5] && row.cells[5].textContent ? row.cells[5].textContent.replace(/\s/g, '') : 0, 10) || 0;
-        const qtdBipada = parseInt(row.cells[9] && row.cells[9].textContent ? row.cells[9].textContent.replace(/\s/g, '') : 0, 10) || 0;
-        const qtdFalta = parseInt(row.cells[10] && row.cells[10].textContent ? row.cells[10].textContent.replace(/\s/g, '') : 0, 10) || 0;
+        const C = window._CONF_COL;
+        const qtdProduto = parseInt(row.cells[C.QTD_PROD] && row.cells[C.QTD_PROD].textContent ? row.cells[C.QTD_PROD].textContent.replace(/\s/g, '') : 0, 10) || 0;
+        const qtdBipada = parseInt(row.cells[C.BIPADO] && row.cells[C.BIPADO].textContent ? row.cells[C.BIPADO].textContent.replace(/\s/g, '') : 0, 10) || 0;
+        const qtdFalta = parseInt(row.cells[C.FALTA] && row.cells[C.FALTA].textContent ? row.cells[C.FALTA].textContent.replace(/\s/g, '') : 0, 10) || 0;
         totalItens += qtdProduto;
         totalBipado += qtdBipada;
         totalFalta += qtdFalta;
@@ -13739,11 +13766,12 @@ function _zerarTabelaConferenciaNoDOM() {
     if (!tbody) return;
     tbody.querySelectorAll('tr').forEach(function(row) {
         if (!row.cells || row.cells.length < 11 || row.querySelector('td[colspan]')) return;
-        var qtdProduto = parseInt(row.cells[5].textContent, 10) || 0;
-        row.cells[9].innerHTML = '<strong style="color: #666">0</strong>';
-        row.cells[10].innerHTML = '<strong style="color: ' + (qtdProduto > 0 ? '#f44336' : '#4caf50') + '">' + qtdProduto + '</strong>';
-        if (row.cells[8]) row.cells[8].textContent = '';
-        if (row.cells[0]) row.cells[0].innerHTML = '<span class="status-badge status-FALTA">❌ PENDENTE</span>';
+        var C = window._CONF_COL;
+        var qtdProduto = parseInt(row.cells[C.QTD_PROD].textContent, 10) || 0;
+        row.cells[C.BIPADO].innerHTML = '<strong style="color: #666">0</strong>';
+        row.cells[C.FALTA].innerHTML = '<strong style="color: ' + (qtdProduto > 0 ? '#f44336' : '#4caf50') + '">' + qtdProduto + '</strong>';
+        if (row.cells[C.AVISO]) row.cells[C.AVISO].textContent = '';
+        if (row.cells[C.STATUS]) row.cells[C.STATUS].innerHTML = '<span class="status-badge status-FALTA">❌ PENDENTE</span>';
         row.classList.remove('row-completo', 'row-excedente', 'row-parcial');
         row.classList.add('row-pendente');
         // Recriar célula de ação para remover qualquer hint antigo (ex.: "✓ Completo")
@@ -13764,10 +13792,11 @@ async function _executarZerarBipagemViagem(idViagem) {
     if (window.ultimoCodigoBuscado) window.ultimoCodigoBuscado = '';
     await _esperarBipagemConferenciaIdle(8000);
     _zerarTabelaConferenciaNoDOM();
-    var fluxoQ = (window._fluxoBipagemAtivo === 'devolucao') ? '?fluxo=devolucao' : '';
+    var fluxo = window._fluxoBipagemAtivo === 'devolucao' ? 'devolucao' : 'carregamento';
     try {
-        var result = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '/zerar' + fluxoQ, {
-            method: 'DELETE'
+        var result = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '/zerar', {
+            method: 'POST',
+            body: JSON.stringify({ id_viagem: idViagem, fluxo: fluxo })
         });
         if (result && result.success) {
             showMessage(result.mensagem || 'Bipagem zerada. Você pode bipar novamente.', 'success');
@@ -13888,9 +13917,10 @@ window.confirmarExcluirItem = async function() {
                     var r = rows[i];
                     var cbCell = r.cells && r.cells[2];
                     if (cbCell && (cbCell.textContent || '').trim() === codigoBarras) {
-                        var qp = parseInt(r.cells[5].textContent, 10) || 0;
-                        r.cells[9].innerHTML = '<strong style="color: #666">0</strong>';
-                        r.cells[10].innerHTML = '<strong style="color: #f44336">' + qp + '</strong>';
+                        var Cz = window._CONF_COL;
+                        var qp = parseInt(r.cells[Cz.QTD_PROD].textContent, 10) || 0;
+                        r.cells[Cz.BIPADO].innerHTML = '<strong style="color: #666">0</strong>';
+                        r.cells[Cz.FALTA].innerHTML = '<strong style="color: #f44336">' + qp + '</strong>';
                         break;
                     }
                 }
@@ -14072,10 +14102,10 @@ function _htmlLinhaConferenciaTabela(item, idViagem, motivosEmEdicao) {
         + '<td><strong style="color: #1976D2;">' + (item.codigo_produto || '-') + '</strong></td>'
         + '<td>' + (item.produto || '-') + '</td>'
         + '<td><strong>' + (item.quantidade_produto || 0) + '</strong></td>'
+        + '<td><strong style="color: ' + (qtdBipada > 0 ? '#4caf50' : '#666') + '">' + qtdBipada + '</strong></td>'
         + '<td>' + unidade + '</td>'
         + '<td>' + ((item.peso_bruto != null && item.peso_bruto !== '') ? item.peso_bruto : '-') + '</td>'
         + '<td style="color: #d32f2f; font-weight: bold;">' + avisoSobra + '</td>'
-        + '<td><strong style="color: ' + (qtdBipada > 0 ? '#4caf50' : '#666') + '">' + qtdBipada + '</strong></td>'
         + '<td><strong style="color: ' + (item.quantidade_falta > 0 ? '#f44336' : '#4caf50') + '">' + (item.quantidade_falta || 0) + '</strong></td>'
         + '<td style="max-width: 280px;"><div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">'
         + btns.bipar + (btns.tirar || '') + (codigoBarras !== '-' ? (btns.excluir || '') : '')
@@ -14141,8 +14171,9 @@ function atualizarBoxesComprovante(conferenciaUI, fluxoTab) {
                 var row = rows[i];
                 if (!row.cells || row.cells.length < 11 || row.querySelector('td[colspan]')) continue;
                 temItens = true;
-                var qtdProd = parseInt(row.cells[5].textContent, 10) || 0;
-                var qtdBip = parseInt(row.cells[9].textContent, 10) || 0;
+                var Cb = window._CONF_COL;
+                var qtdProd = parseInt(row.cells[Cb.QTD_PROD].textContent, 10) || 0;
+                var qtdBip = parseInt(row.cells[Cb.BIPADO].textContent, 10) || 0;
                 if (_statusBipagemConferencia(qtdProd, qtdBip) !== 'COMPLETO') {
                     todosCompletos = false;
                     break;
@@ -14429,7 +14460,7 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
         if (!okTudo) return;
         try {
             if (_conferenciaUsaRascunhoLocal()) {
-                var qtdBipTudo = cells ? (parseInt(cells[9].textContent, 10) || 0) : 0;
+                var qtdBipTudo = cells ? (parseInt(cells[window._CONF_COL.BIPADO].textContent, 10) || 0) : 0;
                 if (qtdBipTudo > 0) {
                     var dataCodTudo = (row && row.getAttribute('data-codigo')) || '';
                     _conferenciaProcessarBipagemCodigo(codigoBarras, -qtdBipTudo, dataCodTudo, { permitirRepetir: true });
@@ -14439,14 +14470,15 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
             }
             await _flushTodasPendenciasConferencia();
             if (cells) {
-                var qtdProduto = parseInt(cells[5].textContent, 10) || 0;
-                cells[9].innerHTML = '<strong style="color: #666">0</strong>';
-                cells[10].innerHTML = '<strong style="color: #f44336">' + qtdProduto + '</strong>';
-                if (row.cells[8]) { row.cells[8].textContent = ''; row.cells[8].style.color = ''; row.cells[8].style.fontWeight = ''; }
+                var Ct = window._CONF_COL;
+                var qtdProduto = parseInt(cells[Ct.QTD_PROD].textContent, 10) || 0;
+                cells[Ct.BIPADO].innerHTML = '<strong style="color: #666">0</strong>';
+                cells[Ct.FALTA].innerHTML = '<strong style="color: #f44336">' + qtdProduto + '</strong>';
+                if (row.cells[Ct.AVISO]) { row.cells[Ct.AVISO].textContent = ''; row.cells[Ct.AVISO].style.color = ''; row.cells[Ct.AVISO].style.fontWeight = ''; }
                 if (row && row.classList) {
                     row.classList.remove('row-completo', 'row-excedente', 'row-parcial');
                     row.classList.add('row-pendente');
-                    if (row.cells[0]) row.cells[0].innerHTML = '<span class="status-badge status-FALTA">❌ PENDENTE</span>';
+                    if (row.cells[Ct.STATUS]) row.cells[Ct.STATUS].innerHTML = '<span class="status-badge status-FALTA">❌ PENDENTE</span>';
                 }
                 atualizarTotaisConferenciaFromDOM();
                 atualizarBoxesComprovante();
@@ -14479,7 +14511,7 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
     }
 
     if (cells) {
-        var qtdBipada = parseInt(cells[9].textContent, 10) || 0;
+        var qtdBipada = parseInt(cells[window._CONF_COL.BIPADO].textContent, 10) || 0;
         if (qtdBipada <= 0) return;
         var dataCod = (row && row.getAttribute('data-codigo')) || '';
         _conferenciaProcessarBipagemCodigo(codigoBarras, -1, dataCod);
@@ -14593,7 +14625,10 @@ window.excluirExtratoViagem = function() {
     if (!confirm('Excluir todos os itens bipados da viagem ' + idViagem + '? O extrato desta viagem será apagado.')) {
         return;
     }
-    fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '/zerar', { method: 'DELETE' }).then(function(result) {
+    fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '/zerar', {
+        method: 'POST',
+        body: JSON.stringify({ id_viagem: idViagem, fluxo: 'carregamento' })
+    }).then(function(result) {
         if (result && result.success) {
             showMessage('Extrato excluído. Os itens bipados desta viagem foram removidos.', 'success');
             document.getElementById('extrato-id-viagem').value = '';
