@@ -10247,12 +10247,6 @@ function initForms() {
         if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
         return val.substring(0, 10);
     }
-    function ravexPayloadExtras(base) {
-        var o = base && typeof base === 'object' ? Object.assign({}, base) : {};
-        var chk = document.getElementById('importar-ravex-forcar-reimportar');
-        if (chk && chk.checked) o.forcar_reimportar = true;
-        return o;
-    }
     function ravexMostrarDuplicado(data, resultadoEl) {
         var msg = (data && data.erro) ? data.erro : 'Esta viagem já foi baixada anteriormente.';
         _ravexImportAbortarAtivo();
@@ -11295,6 +11289,14 @@ function _ravexImportTratarAbort(e, resultadoEl) {
     if (typeof showMessage === 'function') showMessage('Download cancelado.', 'info');
     return true;
 }
+
+function ravexPayloadExtras(base) {
+    var o = base && typeof base === 'object' ? Object.assign({}, base) : {};
+    var chk = document.getElementById('importar-ravex-forcar-reimportar');
+    if (chk && chk.checked) o.forcar_reimportar = true;
+    return o;
+}
+window.ravexPayloadExtras = ravexPayloadExtras;
 
 function ravexLoadingSetProgress(pct, msg) {
     var text = document.getElementById('ravex-loading-text');
