@@ -14758,11 +14758,31 @@ function appendParamsDevolucao(url) {
     return url + (url.indexOf('?') >= 0 ? '&' : '?') + qs;
 }
 
+function mostrarRelatorioLoading(titulo, subtitulo) {
+    var el = document.getElementById('relatorio-loading-overlay');
+    var text = document.getElementById('relatorio-loading-text');
+    var sub = document.getElementById('relatorio-loading-sub');
+    if (text) text.textContent = titulo || 'Gerando relatório…';
+    if (sub) sub.textContent = subtitulo || 'Aguarde enquanto o arquivo Excel é preparado.';
+    if (el) {
+        el.style.display = 'flex';
+        el.setAttribute('aria-busy', 'true');
+    }
+}
+
+function fecharRelatorioLoading() {
+    var el = document.getElementById('relatorio-loading-overlay');
+    if (el) {
+        el.style.display = 'none';
+        el.setAttribute('aria-busy', 'false');
+    }
+}
+
 function _baixarBlobExcel(blob, nomeArquivo, msgSucesso, msgErro) {
-    if (!blob || blob.size === 0) return;
+    if (!blob || blob.size === 0) return Promise.resolve();
     var ct = (blob.type || '').toLowerCase();
     if (ct.indexOf('json') !== -1) {
-        blob.text().then(function(t) {
+        return blob.text().then(function(t) {
             try {
                 var d = JSON.parse(t);
                 showMessage((d && d.erro) || msgErro, 'error');
@@ -14770,7 +14790,6 @@ function _baixarBlobExcel(blob, nomeArquivo, msgSucesso, msgErro) {
                 showMessage(msgErro, 'error');
             }
         });
-        return;
     }
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -14781,24 +14800,40 @@ function _baixarBlobExcel(blob, nomeArquivo, msgSucesso, msgErro) {
     document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
     showMessage(msgSucesso, 'success');
+    return Promise.resolve();
 }
 
-// Helper: baixar relatório por URL (fetch + blob para exibir erros da API)
-function downloadRelatorio(url, nomeArquivo) {
-    fetch(url).then(function(r) {
+function fetchRelatorioExcel(url, nomeArquivo, opcoes) {
+    opcoes = opcoes || {};
+    mostrarRelatorioLoading(opcoes.titulo, opcoes.subtitulo);
+    var fetchInit = opcoes.fetchInit || {};
+    return fetch(url, fetchInit).then(function(r) {
         if (!r.ok) {
             return r.json().then(function(d) {
-                showMessage((d && d.erro) || 'Erro ao gerar relatório', 'error');
+                showMessage((d && d.erro) || opcoes.msgErro || 'Erro ao gerar relatório', 'error');
             }).catch(function() {
-                showMessage('Erro ao gerar relatório', 'error');
+                showMessage(opcoes.msgErro || 'Erro ao gerar relatório', 'error');
             });
         }
         return r.blob();
     }).then(function(blob) {
-        _baixarBlobExcel(blob, nomeArquivo || 'relatorio.xlsx', 'Download do relatório iniciado.', 'Erro ao gerar relatório');
+        if (!blob) return;
+        return _baixarBlobExcel(
+            blob,
+            nomeArquivo || 'relatorio.xlsx',
+            opcoes.msgSucesso || 'Download do relatório iniciado.',
+            opcoes.msgErro || 'Erro ao gerar relatório'
+        );
     }).catch(function() {
-        showMessage('Erro ao gerar relatório', 'error');
+        showMessage(opcoes.msgErro || 'Erro ao gerar relatório', 'error');
+    }).finally(function() {
+        fecharRelatorioLoading();
     });
+}
+
+// Helper: baixar relatório por URL (fetch + blob para exibir erros da API)
+function downloadRelatorio(url, nomeArquivo, opcoes) {
+    fetchRelatorioExcel(url, nomeArquivo, opcoes);
 }
 
 window.exportarExtratoExcel = function() {
@@ -14809,13 +14844,11 @@ window.exportarExtratoExcel = function() {
     }
     let url = API_BASE + '/relatorios/excel/extrato?id_viagem=' + encodeURIComponent(idViagem);
     url = appendParamsDataExpedicao(url);
-    fetch(url).then(function(r) {
-        if (!r.ok) {
-            return r.json().then(function(d) { showMessage(d.erro || 'Erro ao exportar extrato', 'error'); }).catch(function() { showMessage('Erro ao exportar extrato', 'error'); });
-        }
-        return r.blob();
-    }).then(function(blob) {
-        _baixarBlobExcel(blob, 'extrato_roteiro_' + idViagem.replace(/[/\\]/g, '_') + '.xlsx', 'Download do extrato em Excel iniciado.', 'Erro ao exportar extrato');
+    fetchRelatorioExcel(url, 'extrato_roteiro_' + idViagem.replace(/[/\\]/g, '_') + '.xlsx', {
+        titulo: 'Gerando extrato…',
+        subtitulo: 'Aguarde enquanto o Excel do roteiro é preparado.',
+        msgSucesso: 'Download do extrato em Excel iniciado.',
+        msgErro: 'Erro ao exportar extrato'
     });
 };
 
@@ -14871,13 +14904,11 @@ window.exportarExtratoDevolucaoExcel = function() {
     }
     let url = API_BASE + '/relatorios/excel/extrato?id_viagem=' + encodeURIComponent(idViagem);
     url = appendParamsDevolucao(url);
-    fetch(url).then(function(r) {
-        if (!r.ok) {
-            return r.json().then(function(d) { showMessage(d.erro || 'Erro ao exportar extrato de devolução', 'error'); }).catch(function() { showMessage('Erro ao exportar extrato de devolução', 'error'); });
-        }
-        return r.blob();
-    }).then(function(blob) {
-        _baixarBlobExcel(blob, 'extrato_devolucao_roteiro_' + idViagem.replace(/[/\\]/g, '_') + '.xlsx', 'Download do extrato de devolução iniciado.', 'Erro ao exportar extrato de devolução');
+    fetchRelatorioExcel(url, 'extrato_devolucao_roteiro_' + idViagem.replace(/[/\\]/g, '_') + '.xlsx', {
+        titulo: 'Gerando extrato de devolução…',
+        subtitulo: 'Aguarde enquanto o Excel do roteiro é preparado.',
+        msgSucesso: 'Download do extrato de devolução iniciado.',
+        msgErro: 'Erro ao exportar extrato de devolução'
     });
 };
 
@@ -15027,22 +15058,12 @@ window.exportarRelatorioTerceirosNf = function() {
         return;
     }
     const url = API_BASE + '/terceiros/relatorios/excel/nf?documento_id=' + encodeURIComponent(docId);
-    fetch(url, { credentials: 'same-origin' }).then(function(r) {
-        if (!r.ok) {
-            return r.json().then(function(d) { showMessage((d && d.erro) || 'Erro ao exportar NF', 'error'); }).catch(function() { showMessage('Erro ao exportar NF', 'error'); });
-        }
-        return r.blob();
-    }).then(function(blob) {
-        if (!blob) return;
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'relatorio_terceiros_nf_' + docId + '.xlsx';
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(a.href);
-        showMessage('Download do relatório da NF iniciado.', 'success');
+    fetchRelatorioExcel(url, 'relatorio_terceiros_nf_' + docId + '.xlsx', {
+        titulo: 'Gerando relatório da NF…',
+        subtitulo: 'Aguarde enquanto o Excel é preparado.',
+        msgSucesso: 'Download do relatório da NF iniciado.',
+        msgErro: 'Erro ao exportar NF',
+        fetchInit: { credentials: 'same-origin' }
     });
 };
 

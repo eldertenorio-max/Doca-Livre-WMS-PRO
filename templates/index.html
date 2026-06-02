@@ -2967,6 +2967,17 @@
         </div>
     </div>
 
+    <!-- Gerando relatório Excel (aba Relatórios) -->
+    <div id="relatorio-loading-overlay" class="ter-descarga-loading-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="relatorio-loading-text" aria-busy="true">
+        <div class="ter-descarga-loading-box">
+            <p id="relatorio-loading-text" class="ter-descarga-loading-text">Gerando relatório…</p>
+            <div class="ter-descarga-loading-bar-track" aria-hidden="true">
+                <div class="ter-descarga-loading-bar"></div>
+            </div>
+            <p id="relatorio-loading-sub" class="ter-descarga-loading-sub">Aguarde enquanto o arquivo Excel é preparado.</p>
+        </div>
+    </div>
+
     <!-- Overlay centralizado para "Puxando da API Ravex..." ou erro -->
     <div id="ravex-loading-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center;">
         <div class="ravex-loading-box" id="ravex-loading-box">
