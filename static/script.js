@@ -265,9 +265,7 @@ function _atualizarCodigoBarrasLinhaConferencia(codigoProduto, codigoBarras) {
     if (cellAviso) {
         var avisoTxt = (cellAviso.textContent || '').trim();
         if (avisoTxt.indexOf('Sem código') >= 0 || avisoTxt.indexOf('⚠️ Sem código') >= 0) {
-            cellAviso.textContent = '';
-            cellAviso.style.color = '';
-            cellAviso.style.fontWeight = '';
+            _aplicarEstiloCelulaAviso(cellAviso, '');
         }
     }
     var qtdProd = parseInt(row.cells[C.QTD_PROD].textContent, 10) || 0;
@@ -8622,6 +8620,20 @@ function _avisoConferenciaBipagem(avisoExistente, qtdProduto, qtdBipada) {
     return partes.join(' — ');
 }
 
+function _htmlTdAviso(textoAviso) {
+    var t = (textoAviso || '').trim();
+    var esc = typeof escapeHtml === 'function' ? escapeHtml : function(s) { return String(s || ''); };
+    return '<td' + (t ? ' class="celula-aviso-alerta"' : '') + '>' + esc(t) + '</td>';
+}
+
+function _aplicarEstiloCelulaAviso(cell, textoAviso) {
+    if (!cell) return;
+    var t = (textoAviso || '').trim();
+    cell.textContent = t;
+    if (t) cell.classList.add('celula-aviso-alerta');
+    else cell.classList.remove('celula-aviso-alerta');
+}
+
 /** Alinhado a app._status_bipagem_terceiros: excedente antes de completo. */
 function _statusBipagemTerLocais(qtdXml, qtdBipada) {
     var xml = parseFloat(qtdXml) || 0;
@@ -12708,14 +12720,7 @@ function atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdu
         cellQtdFalta.innerHTML = '<strong style="color: ' + (novaQtdFalta > 0 ? '#f44336' : '#4caf50') + '">' + novaQtdFalta + '</strong>';
         if (cellAviso) {
             var textoAviso = _avisoConferenciaBipagem(cellAviso.textContent, qtdProduto, novaQtdBipada);
-            cellAviso.textContent = textoAviso;
-            if (textoAviso) {
-                cellAviso.style.color = '#d32f2f';
-                cellAviso.style.fontWeight = 'bold';
-            } else {
-                cellAviso.style.color = '';
-                cellAviso.style.fontWeight = '';
-            }
+            _aplicarEstiloCelulaAviso(cellAviso, textoAviso);
         }
         if (cellStatus && row.classList) {
             var stLinha = _statusBipagemConferencia(qtdProduto, novaQtdBipada);
@@ -13770,7 +13775,7 @@ function _zerarTabelaConferenciaNoDOM() {
         var qtdProduto = parseInt(row.cells[C.QTD_PROD].textContent, 10) || 0;
         row.cells[C.BIPADO].innerHTML = '<strong style="color: #666">0</strong>';
         row.cells[C.FALTA].innerHTML = '<strong style="color: ' + (qtdProduto > 0 ? '#f44336' : '#4caf50') + '">' + qtdProduto + '</strong>';
-        if (row.cells[C.AVISO]) row.cells[C.AVISO].textContent = '';
+        if (row.cells[C.AVISO]) _aplicarEstiloCelulaAviso(row.cells[C.AVISO], '');
         if (row.cells[C.STATUS]) row.cells[C.STATUS].innerHTML = '<span class="status-badge status-FALTA">❌ PENDENTE</span>';
         row.classList.remove('row-completo', 'row-excedente', 'row-parcial');
         row.classList.add('row-pendente');
@@ -14105,7 +14110,7 @@ function _htmlLinhaConferenciaTabela(item, idViagem, motivosEmEdicao) {
         + '<td><strong style="color: ' + (qtdBipada > 0 ? '#4caf50' : '#666') + '">' + qtdBipada + '</strong></td>'
         + '<td>' + unidade + '</td>'
         + '<td>' + ((item.peso_bruto != null && item.peso_bruto !== '') ? item.peso_bruto : '-') + '</td>'
-        + '<td style="color: #d32f2f; font-weight: bold;">' + avisoSobra + '</td>'
+        + _htmlTdAviso(avisoSobra)
         + '<td><strong style="color: ' + (item.quantidade_falta > 0 ? '#f44336' : '#4caf50') + '">' + (item.quantidade_falta || 0) + '</strong></td>'
         + '<td style="max-width: 280px;"><div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">'
         + btns.bipar + (btns.tirar || '') + (codigoBarras !== '-' ? (btns.excluir || '') : '')
@@ -14474,7 +14479,7 @@ window.tirarBipado = async function(btnOrCodigo, codigoBarrasOrQtd, quantidadeMa
                 var qtdProduto = parseInt(cells[Ct.QTD_PROD].textContent, 10) || 0;
                 cells[Ct.BIPADO].innerHTML = '<strong style="color: #666">0</strong>';
                 cells[Ct.FALTA].innerHTML = '<strong style="color: #f44336">' + qtdProduto + '</strong>';
-                if (row.cells[Ct.AVISO]) { row.cells[Ct.AVISO].textContent = ''; row.cells[Ct.AVISO].style.color = ''; row.cells[Ct.AVISO].style.fontWeight = ''; }
+                if (row.cells[Ct.AVISO]) _aplicarEstiloCelulaAviso(row.cells[Ct.AVISO], '');
                 if (row && row.classList) {
                     row.classList.remove('row-completo', 'row-excedente', 'row-parcial');
                     row.classList.add('row-pendente');
@@ -15032,6 +15037,7 @@ function _htmlLinhaExtratoTabela(item) {
     const motivo = (item.motivo_divergencia || '').trim();
     const qtdBip = parseInt(item.quantidade_bipada, 10) || 0;
     const qtdFalta = parseInt(item.quantidade_falta, 10) || 0;
+    const avisoTexto = _avisoConferenciaBipagem(item.aviso_sobra, item.quantidade_produto || 0, qtdBip);
     const pack = _terConferenciaBadgeEClasseLinha((item && item.status_bipado) || 'PENDENTE');
     return '<tr class="' + pack.rowClass + '">'
         + _htmlStatusExtratoCelula(item)
@@ -15042,7 +15048,7 @@ function _htmlLinhaExtratoTabela(item) {
         + '<td><strong>' + escHtml(String(item.quantidade_produto || 0)) + '</strong></td>'
         + '<td>' + escHtml(item.unidade || '-') + '</td>'
         + '<td>' + escHtml((item.peso_bruto != null && item.peso_bruto !== '') ? String(item.peso_bruto) : '-') + '</td>'
-        + '<td style="color: #d32f2f; font-weight: bold;">' + escHtml(item.aviso_sobra || '') + '</td>'
+        + _htmlTdAviso(avisoTexto)
         + '<td><strong style="color: ' + (qtdBip > 0 ? '#4caf50' : '#666') + '">' + qtdBip + '</strong></td>'
         + '<td><strong style="color: ' + (qtdFalta > 0 ? '#f44336' : '#4caf50') + '">' + qtdFalta + '</strong></td>'
         + '</tr>';

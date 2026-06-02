@@ -2487,6 +2487,24 @@ body.conferencia-lista-maximizada-aberta {
     background-color: #e8f5e9 !important;
 }
 
+/* Coluna Aviso com alerta (ex.: Bipou N a mais) — conferência, extrato e impressão */
+.celula-aviso-alerta,
+#tabela-conferencia td.celula-aviso-alerta,
+#dev-tabela-conferencia td.celula-aviso-alerta,
+#tabela-extrato td.celula-aviso-alerta,
+#dev-extrato-para-imprimir table.data-table td.celula-aviso-alerta {
+    background-color: #ffcdd2 !important;
+    color: #b71c1c !important;
+    font-weight: 700 !important;
+    border-left: 4px solid #c62828 !important;
+    border-right: 4px solid #c62828 !important;
+    text-align: center;
+    vertical-align: middle;
+    line-height: 1.25;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
 .conferencia-bloco-4-wrapper.conferencia-blocos-bloqueado {
     pointer-events: none;
     opacity: 0.82;
@@ -3864,20 +3882,22 @@ body.conferencia-lista-maximizada-aberta {
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(9) {
         width: 11%;
         font-size: 6.5pt;
-        font-weight: 700;
-        color: #c62828 !important;
         word-wrap: break-word;
         overflow-wrap: anywhere;
         line-height: 1.2;
-        vertical-align: top;
+        vertical-align: middle;
+        text-align: center;
     }
-    body.print-extrato #tabela-extrato tbody tr.row-excedente td:nth-child(9),
-    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td:nth-child(9) {
-        color: #ffcdd2 !important;
-    }
-    body.print-extrato #tabela-extrato tbody tr.row-parcial td:nth-child(9),
-    body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-parcial td:nth-child(9) {
-        color: #bf360c !important;
+    body.print-extrato #tabela-extrato td.celula-aviso-alerta,
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td.celula-aviso-alerta {
+        background-color: #ffcdd2 !important;
+        color: #b71c1c !important;
+        font-weight: 700 !important;
+        font-size: 7pt !important;
+        border-left: 3px solid #c62828 !important;
+        border-right: 3px solid #c62828 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
     body.print-extrato #tabela-extrato th:nth-child(10),
     body.print-extrato #tabela-extrato td:nth-child(10),
