@@ -3,28 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Controle de Carregamento — Módulos</title>
+    <title>Gestão de Processos de Estoque e Armazenagem — Módulos</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
 </head>
 <body class="hub-entrada-body">
     <div class="hub-entrada-topstripe" aria-hidden="true"></div>
 
     <div class="hub-entrada-wrap">
-        <div class="hub-entrada-logo">
-            <img src="{{ url_for('static', filename='logo.png') }}" alt="Ultra Pão Alimentos">
-        </div>
-
-        <h1 class="hub-entrada-titulo">Controle de Carregamento</h1>
+        <h1 class="hub-entrada-titulo">Gestão de Processos de Estoque e Armazenagem</h1>
 
         <p class="hub-entrada-desc">
-            Escolha o módulo: <strong>Carregamento</strong>, <strong>Devoluções</strong>, <strong>Terceiros</strong> ou <strong>Estoque SP em tempo real</strong>.
+            Escolha o módulo: <strong>Carga/Expedição</strong>, <strong>Retorno</strong>, <strong>Descarga/Recebimento</strong> ou <strong>Estoque</strong>.
         </p>
 
         <div class="hub-entrada-botoes">
-            <a class="hub-entrada-btn hub-entrada-btn--1" href="{{ url_for('painel') }}?modulo=carregamento">Carregamento (expedição)</a>
-            <a class="hub-entrada-btn hub-entrada-btn--2" href="{{ url_for('painel') }}?modulo=devolucoes">Devoluções</a>
-            <a class="hub-entrada-btn hub-entrada-btn--3" href="{{ url_for('painel') }}?modulo=terceiros">Recebimento e expedição de terceiros</a>
-            <a class="hub-entrada-btn hub-entrada-btn--4" href="{{ url_for('painel') }}?modulo=estoque-sp">Estoque SP em tempo real</a>
+            <a class="hub-entrada-btn hub-entrada-btn--1" href="{{ url_for('painel') }}?modulo=carregamento">Carga/Expedição</a>
+            <a class="hub-entrada-btn hub-entrada-btn--2" href="{{ url_for('painel') }}?modulo=devolucoes">Retorno</a>
+            <a class="hub-entrada-btn hub-entrada-btn--3" href="{{ url_for('painel') }}?modulo=terceiros">Descarga/Recebimento</a>
+            <a class="hub-entrada-btn hub-entrada-btn--4" href="{{ url_for('painel') }}?modulo=estoque-sp">Estoque</a>
         </div>
 
         <footer class="hub-entrada-rodape">
