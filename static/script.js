@@ -804,7 +804,7 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
         _limparPendenciasConferenciaTimers();
         salvou = true;
         _conferenciaAtivarAbaExtrato(idViagem);
-        await loadExtrato(idViagem);
+        await loadExtrato(idViagem, { forcar: true });
         void reloadConferenciaAtiva(idViagem, { forcar: true, forcarIgnorarPendencias: true, aguardarBipagem: false });
         loadEstatisticas();
         showMessage('Bipagem salva. Extrato atualizado.', 'success');
@@ -10578,13 +10578,9 @@ function initForms() {
             resultadoImportarRavex.style.display = 'none';
             var signalPeriodo = _ravexImportSignalLoading('Puxando roteiros da API Ravex... Aguarde.');
             try {
-                const r = await fetch(API_BASE + '/ravex/sincronizar-periodo', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(ravexPayloadExtras({ data_inicio: dataInicio, data_fim: dataFim })),
-                    signal: signalPeriodo
-                });
-                const data = await r.json().catch(function() { return {}; });
+                const res = await ravexPostRavexJob('/ravex/sincronizar-periodo', { data_inicio: dataInicio, data_fim: dataFim }, signalPeriodo);
+                const r = { ok: res.ok, status: res.status };
+                const data = res.data || {};
                 if (r.ok && data.ok) {
                     showRavexModalConcluido('Sincronização concluída. Viagens processadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens gravados: <strong>' + (data.total_itens || 0) + '</strong>. Viagens listadas no período: ' + (data.viagens_listadas || 0) + ravexResumoPuladosDuplicados(data) + (data.erros && data.erros.length ? '. Erros em algumas viagens: ' + data.erros.length : '') + '.');
                     loadAllData();
@@ -10718,13 +10714,9 @@ function initForms() {
                     }
                 }
                 if (!bloquearLista && !signalLista.aborted) {
-                    const r = await fetch(API_BASE + '/ravex/importar-lista', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(ravexPayloadExtras({ ids: ids })),
-                        signal: signalLista
-                    });
-                    const data = await r.json().catch(function() { return {}; });
+                    const res = await ravexPostRavexJob('/ravex/importar-lista', { ids: ids }, signalLista);
+                    const r = { ok: res.ok, status: res.status };
+                    const data = res.data || {};
                     if (r.ok && data.ok) {
                         showRavexModalConcluido('Lista processada. Viagens importadas: <strong>' + (data.viagens_processadas || 0) + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>. IDs na lista: ' + (data.ids_recebidos || 0) + ravexResumoPuladosDuplicados(data) + (data.erros && data.erros.length ? '. Erros: ' + data.erros.length : '') + '.');
                         loadAllData();
@@ -11483,7 +11475,11 @@ async function ravexPollImportarRomaneioJob(jobId, signal) {
 }
 
 async function ravexPostImportarRomaneio(payload, signal) {
-    var r = await fetch(API_BASE + '/ravex/importar-romaneio', {
+    return ravexPostRavexJob('/ravex/importar-romaneio', payload, signal);
+}
+
+async function ravexPostRavexJob(path, payload, signal) {
+    var r = await fetch(API_BASE + path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ravexPayloadExtras(payload)),
@@ -11491,7 +11487,7 @@ async function ravexPostImportarRomaneio(payload, signal) {
     });
     var data = await r.json().catch(function() { return {}; });
     if (r.status === 202 && data.job_id) {
-        ravexLoadingSetProgress(8, 'Importação iniciada no servidor...');
+        ravexLoadingSetProgress(8, 'Processando no servidor...');
         return ravexPollImportarRomaneioJob(data.job_id, signal);
     }
     return { ok: r.ok, status: r.status, data: data };
@@ -13660,7 +13656,9 @@ window.buscarItensViagem = async function() {
 
     _conferenciaSalvarSessao({ id_viagem: idViagem, visitou_conferencia: true, comprovante_gerado: false, tem_rascunho: false });
     _conferenciaAtualizarAvisoRascunho();
-    
+    void loadExtrato(idViagem, { prefetch: true });
+    void loadEstatisticas();
+
     setTimeout(function() {
         const docaSelect = document.getElementById('doca');
         const codigoBarrasInput = document.getElementById('codigo-barras');
@@ -14160,7 +14158,7 @@ function _htmlLinhaConferenciaTabela(item, idViagem, motivosEmEdicao) {
 }
 
 function _renderizarTabelaConferenciaChunked(tbody, conferenciaOrdenada, idViagem, motivosEmEdicao, fluxoTab, seq) {
-    var CHUNK = 60;
+    var CHUNK = 120;
     if (!tbody || conferenciaOrdenada.length <= CHUNK) {
         tbody.innerHTML = conferenciaOrdenada.map(function(item) {
             return _htmlLinhaConferenciaTabela(item, idViagem, motivosEmEdicao);
@@ -14321,7 +14319,10 @@ async function loadConferencia(idViagem = null, opts) {
                     ]);
                 }
             }
-            if (!isDev) atualizarSugestoesRotaConferencia();
+            if (!isDev) {
+                atualizarSugestoesRotaConferencia();
+                _cacheExtratoSalvar(idViagem, fluxoTab, conferencia);
+            }
             _aplicarExtrasConferenciaResponse(conferencia, idViagem, isDev);
             const conferenciaUI = conferencia.lista_ja_agregada ? listaParaUI : agruparConferenciaPorCodigoProduto(listaParaUI);
             const tbody = L('tbody-conferencia');
@@ -15204,6 +15205,154 @@ function _extratoAtualizarItensBipadosMais(extrato, fluxo) {
     conteudo.innerHTML = html;
 }
 
+// Cache do extrato (mesma fonte da conferência) para exibir na hora ao abrir a aba
+window._cacheConferenciaExtrato = window._cacheConferenciaExtrato || {};
+
+function _cacheExtratoChave(idViagem, fluxo) {
+    return (fluxo || 'carregamento') + '|' + String(idViagem || '').trim();
+}
+
+function _cacheExtratoSalvar(idViagem, fluxo, resp) {
+    if (!idViagem || !resp || resp.erro) return;
+    window._cacheConferenciaExtrato[_cacheExtratoChave(idViagem, fluxo)] = { ts: Date.now(), resp: resp };
+}
+
+function _cacheExtratoObter(idViagem, fluxo) {
+    return window._cacheConferenciaExtrato[_cacheExtratoChave(idViagem, fluxo)] || null;
+}
+
+function _extratoListaDeResp(resp) {
+    var lista = (resp && resp.lista && Array.isArray(resp.lista)) ? resp.lista : [];
+    if (resp && resp.lista_ja_agregada) return lista;
+    return (typeof agruparConferenciaPorCodigoProduto === 'function') ? agruparConferenciaPorCodigoProduto(lista) : lista;
+}
+
+function _extratoMetaDeResp(resp) {
+    if (!resp) return { viagemInfo: {}, periodo: {} };
+    return {
+        viagemInfo: {
+            data_expedicao: resp.data_expedicao,
+            placa: resp.placa,
+            motorista: resp.motorista,
+            identificador_rota: resp.identificador_rota,
+            coordenador: resp.coordenador,
+            conferente: resp.conferente,
+            ajudante1: resp.ajudante1,
+            ajudante2: resp.ajudante2,
+        },
+        periodo: {
+            inicio_carregamento: resp.inicio_carregamento,
+            fim_carregamento: resp.fim_carregamento,
+        },
+    };
+}
+
+function _preencherExtratoTela(idViagem, extrato, extratoResp, viagemInfo, periodo) {
+    var tbody = document.getElementById('tbody-extrato');
+    var resumoEl = document.getElementById('extrato-resumo');
+    var btnExcluir = document.getElementById('btn-excluir-extrato');
+    var avisoDivergenteEl = document.getElementById('extrato-aviso-divergente');
+    if (!tbody) return;
+    viagemInfo = viagemInfo || {};
+    periodo = periodo || {};
+    if (!extratoResp || extratoResp.erro) {
+        tbody.innerHTML = '<tr><td colspan="11" class="loading" style="color: #c62828;">' + escHtml(extratoResp && extratoResp.erro ? extratoResp.erro : 'Erro ao carregar extrato.') + '</td></tr>';
+        if (resumoEl) resumoEl.style.display = 'none';
+        if (btnExcluir) btnExcluir.style.display = 'none';
+        if (avisoDivergenteEl) avisoDivergenteEl.style.display = 'none';
+        _atualizarExtratoStatusRodape([]);
+        _extratoAtualizarItensBipadosMais([], 'carregamento');
+        return;
+    }
+    if (!extrato || !extrato.length) {
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhum item encontrado para esta viagem. Bipe os itens na aba Conferência primeiro.</td></tr>';
+        if (resumoEl) resumoEl.style.display = 'none';
+        if (btnExcluir) btnExcluir.style.display = 'none';
+        if (avisoDivergenteEl) avisoDivergenteEl.style.display = 'none';
+        _atualizarExtratoStatusRodape([]);
+        _extratoAtualizarItensBipadosMais([], 'carregamento');
+        (function preencherAssinaturasSozinho() {
+            var set = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = (val != null && String(val).trim() !== '') ? String(val).trim() : '-'; };
+            var idHidden = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value || '').trim();
+            var mesmoRoteiro = idHidden === idViagem;
+            var formMotorista = mesmoRoteiro && document.getElementById('viagem-motorista') ? document.getElementById('viagem-motorista').value.trim() : '';
+            var formConferente = mesmoRoteiro && document.getElementById('viagem-conferente') ? document.getElementById('viagem-conferente').value.trim() : '';
+            var formAjudante1 = mesmoRoteiro && document.getElementById('viagem-ajudante1') ? document.getElementById('viagem-ajudante1').value.trim() : '';
+            var formAjudante2 = mesmoRoteiro && document.getElementById('viagem-ajudante2') ? document.getElementById('viagem-ajudante2').value.trim() : '';
+            set('assinatura-nome-motorista', (viagemInfo.motorista && String(viagemInfo.motorista).trim()) ? viagemInfo.motorista.trim() : formMotorista);
+            set('assinatura-nome-conferente', (viagemInfo.conferente && String(viagemInfo.conferente).trim()) ? viagemInfo.conferente.trim() : formConferente);
+            set('assinatura-nome-ajudante1', (viagemInfo.ajudante1 && String(viagemInfo.ajudante1).trim()) ? viagemInfo.ajudante1.trim() : formAjudante1);
+            set('assinatura-nome-ajudante2', (viagemInfo.ajudante2 && String(viagemInfo.ajudante2).trim()) ? viagemInfo.ajudante2.trim() : formAjudante2);
+        })();
+        return;
+    }
+    var totalQtdBipada = 0;
+    var totalQtdRomaneio = 0;
+    var pesoTotal = 0;
+    extrato.forEach(function(item) {
+        totalQtdBipada += parseInt(item.quantidade_bipada, 10) || 0;
+        totalQtdRomaneio += parseInt(item.quantidade_produto, 10) || 0;
+        var p = item.peso_bruto;
+        if (p != null && p !== '' && p !== '-') {
+            var num = parseFloat(String(p).replace(',', '.').replace(/\s/g, ''));
+            if (!isNaN(num)) pesoTotal += num;
+        }
+    });
+    if (resumoEl) {
+        resumoEl.style.display = 'block';
+        var totalItens = document.getElementById('extrato-total-itens');
+        var totalQtdEl = document.getElementById('extrato-total-qtd');
+        var pesoTotalEl = document.getElementById('extrato-peso-total');
+        var idViagemDisplay = document.getElementById('extrato-id-viagem-display');
+        var inicioCarreg = document.getElementById('extrato-inicio-carregamento');
+        var fimCarreg = document.getElementById('extrato-fim-carregamento');
+        var dataExpedicaoEl = document.getElementById('extrato-data-expedicao');
+        var placaEl = document.getElementById('extrato-placa');
+        var identificadorRotaEl = document.getElementById('extrato-identificador-rota');
+        var motoristaEl = document.getElementById('extrato-motorista');
+        if (totalItens) totalItens.textContent = extrato.length;
+        if (totalQtdEl) totalQtdEl.textContent = totalQtdBipada + ' / ' + totalQtdRomaneio;
+        if (pesoTotalEl) pesoTotalEl.textContent = pesoTotal > 0 ? pesoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '-';
+        if (idViagemDisplay) idViagemDisplay.textContent = idViagem;
+        if (dataExpedicaoEl) dataExpedicaoEl.textContent = (viagemInfo.data_expedicao && String(viagemInfo.data_expedicao).trim()) ? viagemInfo.data_expedicao : '-';
+        if (placaEl) placaEl.textContent = (viagemInfo.placa && String(viagemInfo.placa).trim()) ? viagemInfo.placa : '-';
+        if (identificadorRotaEl) identificadorRotaEl.textContent = (viagemInfo.identificador_rota && String(viagemInfo.identificador_rota).trim()) ? viagemInfo.identificador_rota : '-';
+        if (motoristaEl) motoristaEl.textContent = (viagemInfo.motorista && String(viagemInfo.motorista).trim()) ? viagemInfo.motorista : '-';
+        var coordenadorEl = document.getElementById('extrato-coordenador');
+        var conferenteEl = document.getElementById('extrato-conferente');
+        var ajudante1El = document.getElementById('extrato-ajudante1');
+        var ajudante2El = document.getElementById('extrato-ajudante2');
+        if (coordenadorEl) coordenadorEl.textContent = (viagemInfo.coordenador && String(viagemInfo.coordenador).trim()) ? viagemInfo.coordenador : '-';
+        if (conferenteEl) conferenteEl.textContent = (viagemInfo.conferente && String(viagemInfo.conferente).trim()) ? viagemInfo.conferente : '-';
+        if (ajudante1El) ajudante1El.textContent = (viagemInfo.ajudante1 && String(viagemInfo.ajudante1).trim()) ? viagemInfo.ajudante1 : '-';
+        if (ajudante2El) ajudante2El.textContent = (viagemInfo.ajudante2 && String(viagemInfo.ajudante2).trim()) ? viagemInfo.ajudante2 : '-';
+        if (inicioCarreg) inicioCarreg.textContent = (periodo.inicio_carregamento) ? periodo.inicio_carregamento : '-';
+        var setAssinaturaNome = function(id, val) {
+            var el = document.getElementById(id);
+            if (el) el.textContent = (val != null && String(val).trim() !== '') ? String(val).trim() : '-';
+        };
+        var idHidden = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value || '').trim();
+        var mesmoRoteiro = idHidden === idViagem;
+        var formMotorista = mesmoRoteiro && document.getElementById('viagem-motorista') ? document.getElementById('viagem-motorista').value.trim() : '';
+        var formConferente = mesmoRoteiro && document.getElementById('viagem-conferente') ? document.getElementById('viagem-conferente').value.trim() : '';
+        var formAjudante1 = mesmoRoteiro && document.getElementById('viagem-ajudante1') ? document.getElementById('viagem-ajudante1').value.trim() : '';
+        var formAjudante2 = mesmoRoteiro && document.getElementById('viagem-ajudante2') ? document.getElementById('viagem-ajudante2').value.trim() : '';
+        var motorista = (viagemInfo.motorista && String(viagemInfo.motorista).trim()) ? viagemInfo.motorista.trim() : formMotorista;
+        var conferente = (viagemInfo.conferente && String(viagemInfo.conferente).trim()) ? viagemInfo.conferente.trim() : formConferente;
+        var ajudante1 = (viagemInfo.ajudante1 && String(viagemInfo.ajudante1).trim()) ? viagemInfo.ajudante1.trim() : formAjudante1;
+        var ajudante2 = (viagemInfo.ajudante2 && String(viagemInfo.ajudante2).trim()) ? viagemInfo.ajudante2.trim() : formAjudante2;
+        setAssinaturaNome('assinatura-nome-motorista', motorista);
+        setAssinaturaNome('assinatura-nome-conferente', conferente);
+        setAssinaturaNome('assinatura-nome-ajudante1', ajudante1);
+        setAssinaturaNome('assinatura-nome-ajudante2', ajudante2);
+        if (fimCarreg) fimCarreg.textContent = (periodo.fim_carregamento) ? periodo.fim_carregamento : '-';
+    }
+    if (btnExcluir) btnExcluir.style.display = 'inline-block';
+    tbody.innerHTML = extrato.map(function(item) { return _htmlLinhaExtratoTabela(item); }).join('');
+    _atualizarExtratoStatusRodape(extrato);
+    _extratoAtualizarItensBipadosMais(extrato, 'carregamento');
+}
+
 // Carregar Extrato (mesmas colunas da Conferência: status, código barras, código produto, produto, qtd produto, unidade, aviso, qtd bipada, qtd falta)
 // idViagemOpcional: quando passado (ex.: ao clicar em Gerar comprovante), usa esse ID e atualiza o input
 function _atualizarExtratoStatusRodape(extrato) {
@@ -15228,7 +15377,9 @@ function _atualizarExtratoStatusRodape(extrato) {
     }
 }
 
-async function loadExtrato(idViagemOpcional) {
+async function loadExtrato(idViagemOpcional, opts) {
+    opts = opts || {};
+    var fluxo = opts.fluxo || 'carregamento';
     const inputBusca = document.getElementById('extrato-id-viagem');
     const inputRelatorio = document.getElementById('relatorio-extrato-id-viagem');
     let idViagem = (idViagemOpcional && String(idViagemOpcional).trim()) ? String(idViagemOpcional).trim() : (inputBusca && inputBusca.value.trim());
@@ -15245,8 +15396,6 @@ async function loadExtrato(idViagemOpcional) {
     }
     const tbody = document.getElementById('tbody-extrato');
     const resumoEl = document.getElementById('extrato-resumo');
-    const btnExcluir = document.getElementById('btn-excluir-extrato');
-    const avisoDivergenteEl = document.getElementById('extrato-aviso-divergente');
     if (!tbody) {
         console.error('loadExtrato: elemento tbody-extrato não encontrado');
         return;
@@ -15254,120 +15403,36 @@ async function loadExtrato(idViagemOpcional) {
     if (!idViagem) {
         tbody.innerHTML = '<tr><td colspan="11" class="loading">Digite o ID do roteiro e clique em Buscar para ver o comprovante (extrato) com as informações da carga.</td></tr>';
         if (resumoEl) resumoEl.style.display = 'none';
-        if (btnExcluir) btnExcluir.style.display = 'none';
-        if (avisoDivergenteEl) avisoDivergenteEl.style.display = 'none';
         _atualizarExtratoStatusRodape([]);
         _extratoAtualizarItensBipadosMais([], 'carregamento');
         return;
     }
-    tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando extrato...</td></tr>';
-    if (resumoEl) resumoEl.style.display = 'none';
-    const [extratoResp, periodo, viagemInfo] = await Promise.all([
-        fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '?limit=2000'),
-        fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/periodo'),
-        fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/info')
-    ]);
-    const extratoLista = (extratoResp && extratoResp.lista && Array.isArray(extratoResp.lista)) ? extratoResp.lista : [];
-    const extrato = (extratoResp && extratoResp.lista_ja_agregada)
-        ? extratoLista
-        : ((typeof agruparConferenciaPorCodigoProduto === 'function') ? agruparConferenciaPorCodigoProduto(extratoLista) : extratoLista);
-    if (!extratoResp || extratoResp.erro) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading" style="color: #c62828;">' + escHtml(extratoResp && extratoResp.erro ? extratoResp.erro : 'Erro ao carregar extrato.') + '</td></tr>';
+    if (opts.prefetch) {
+        try {
+            var qPre = '/conferencia/' + encodeURIComponent(idViagem) + '?limit=2000';
+            if (fluxo === 'devolucao') qPre += '&fluxo=devolucao';
+            var pre = await fetchAPI(qPre);
+            if (pre && !pre.erro) _cacheExtratoSalvar(idViagem, fluxo, pre);
+        } catch (e) { /* ignore */ }
+        return;
+    }
+    var cacheHit = !opts.forcar && _cacheExtratoObter(idViagem, fluxo);
+    var pintouCache = false;
+    if (cacheHit && cacheHit.resp) {
+        var metaCache = _extratoMetaDeResp(cacheHit.resp);
+        _preencherExtratoTela(idViagem, _extratoListaDeResp(cacheHit.resp), cacheHit.resp, metaCache.viagemInfo, metaCache.periodo);
+        pintouCache = true;
+    }
+    if (!pintouCache) {
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando extrato...</td></tr>';
         if (resumoEl) resumoEl.style.display = 'none';
-        if (btnExcluir) btnExcluir.style.display = 'none';
-        if (avisoDivergenteEl) avisoDivergenteEl.style.display = 'none';
-        _atualizarExtratoStatusRodape([]);
-        _extratoAtualizarItensBipadosMais([], 'carregamento');
-        return;
     }
-    if (extrato.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhum item encontrado para esta viagem. Bipe os itens na aba Conferência primeiro.</td></tr>';
-        if (resumoEl) resumoEl.style.display = 'none';
-        if (btnExcluir) btnExcluir.style.display = 'none';
-        if (avisoDivergenteEl) avisoDivergenteEl.style.display = 'none';
-        _atualizarExtratoStatusRodape([]);
-        _extratoAtualizarItensBipadosMais([], 'carregamento');
-        // Mesmo sem itens, preencher assinaturas com os dados da viagem (motorista, conferente, ajudantes)
-        (function preencherAssinaturasSozinho() {
-            const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = (val != null && String(val).trim() !== '') ? String(val).trim() : '-'; };
-            const idHidden = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value || '').trim();
-            const mesmoRoteiro = idHidden === idViagem;
-            const formMotorista = mesmoRoteiro && document.getElementById('viagem-motorista') ? document.getElementById('viagem-motorista').value.trim() : '';
-            const formConferente = mesmoRoteiro && document.getElementById('viagem-conferente') ? document.getElementById('viagem-conferente').value.trim() : '';
-            const formAjudante1 = mesmoRoteiro && document.getElementById('viagem-ajudante1') ? document.getElementById('viagem-ajudante1').value.trim() : '';
-            const formAjudante2 = mesmoRoteiro && document.getElementById('viagem-ajudante2') ? document.getElementById('viagem-ajudante2').value.trim() : '';
-            set('assinatura-nome-motorista', (viagemInfo && viagemInfo.motorista && String(viagemInfo.motorista).trim()) ? viagemInfo.motorista.trim() : formMotorista);
-            set('assinatura-nome-conferente', (viagemInfo && viagemInfo.conferente && String(viagemInfo.conferente).trim()) ? viagemInfo.conferente.trim() : formConferente);
-            set('assinatura-nome-ajudante1', (viagemInfo && viagemInfo.ajudante1 && String(viagemInfo.ajudante1).trim()) ? viagemInfo.ajudante1.trim() : formAjudante1);
-            set('assinatura-nome-ajudante2', (viagemInfo && viagemInfo.ajudante2 && String(viagemInfo.ajudante2).trim()) ? viagemInfo.ajudante2.trim() : formAjudante2);
-        })();
-        return;
-    }
-    let totalQtdBipada = 0;
-    let totalQtdRomaneio = 0;
-    let pesoTotal = 0;
-    extrato.forEach(item => {
-        totalQtdBipada += parseInt(item.quantidade_bipada, 10) || 0;
-        totalQtdRomaneio += parseInt(item.quantidade_produto, 10) || 0;
-        const p = item.peso_bruto;
-        if (p != null && p !== '' && p !== '-') {
-            const num = parseFloat(String(p).replace(',', '.').replace(/\s/g, ''));
-            if (!isNaN(num)) pesoTotal += num;
-        }
-    });
-    if (resumoEl) {
-        resumoEl.style.display = 'block';
-        const totalItens = document.getElementById('extrato-total-itens');
-        const totalQtdEl = document.getElementById('extrato-total-qtd');
-        const pesoTotalEl = document.getElementById('extrato-peso-total');
-        const idViagemDisplay = document.getElementById('extrato-id-viagem-display');
-        const inicioCarreg = document.getElementById('extrato-inicio-carregamento');
-        const fimCarreg = document.getElementById('extrato-fim-carregamento');
-        const dataExpedicaoEl = document.getElementById('extrato-data-expedicao');
-        const placaEl = document.getElementById('extrato-placa');
-        const identificadorRotaEl = document.getElementById('extrato-identificador-rota');
-        const motoristaEl = document.getElementById('extrato-motorista');
-        if (totalItens) totalItens.textContent = extrato.length;
-        if (totalQtdEl) totalQtdEl.textContent = totalQtdBipada + ' / ' + totalQtdRomaneio;
-        if (pesoTotalEl) pesoTotalEl.textContent = pesoTotal > 0 ? pesoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '-';
-        if (idViagemDisplay) idViagemDisplay.textContent = idViagem;
-        if (dataExpedicaoEl) dataExpedicaoEl.textContent = (viagemInfo && viagemInfo.data_expedicao && String(viagemInfo.data_expedicao).trim()) ? viagemInfo.data_expedicao : '-';
-        if (placaEl) placaEl.textContent = (viagemInfo && viagemInfo.placa && String(viagemInfo.placa).trim()) ? viagemInfo.placa : '-';
-        if (identificadorRotaEl) identificadorRotaEl.textContent = (viagemInfo && viagemInfo.identificador_rota && String(viagemInfo.identificador_rota).trim()) ? viagemInfo.identificador_rota : '-';
-        if (motoristaEl) motoristaEl.textContent = (viagemInfo && viagemInfo.motorista && String(viagemInfo.motorista).trim()) ? viagemInfo.motorista : '-';
-        const coordenadorEl = document.getElementById('extrato-coordenador');
-        const conferenteEl = document.getElementById('extrato-conferente');
-        const ajudante1El = document.getElementById('extrato-ajudante1');
-        const ajudante2El = document.getElementById('extrato-ajudante2');
-        if (coordenadorEl) coordenadorEl.textContent = (viagemInfo && viagemInfo.coordenador && String(viagemInfo.coordenador).trim()) ? viagemInfo.coordenador : '-';
-        if (conferenteEl) conferenteEl.textContent = (viagemInfo && viagemInfo.conferente && String(viagemInfo.conferente).trim()) ? viagemInfo.conferente : '-';
-        if (ajudante1El) ajudante1El.textContent = (viagemInfo && viagemInfo.ajudante1 && String(viagemInfo.ajudante1).trim()) ? viagemInfo.ajudante1 : '-';
-        if (ajudante2El) ajudante2El.textContent = (viagemInfo && viagemInfo.ajudante2 && String(viagemInfo.ajudante2).trim()) ? viagemInfo.ajudante2 : '-';
-        if (inicioCarreg) inicioCarreg.textContent = (periodo && periodo.inicio_carregamento) ? periodo.inicio_carregamento : '-';
-        const setAssinaturaNome = (id, val) => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = (val != null && String(val).trim() !== '') ? String(val).trim() : '-';
-        };
-        const idHidden = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value || '').trim();
-        const mesmoRoteiro = idHidden === idViagem;
-        const formMotorista = mesmoRoteiro && document.getElementById('viagem-motorista') ? document.getElementById('viagem-motorista').value.trim() : '';
-        const formConferente = mesmoRoteiro && document.getElementById('viagem-conferente') ? document.getElementById('viagem-conferente').value.trim() : '';
-        const formAjudante1 = mesmoRoteiro && document.getElementById('viagem-ajudante1') ? document.getElementById('viagem-ajudante1').value.trim() : '';
-        const formAjudante2 = mesmoRoteiro && document.getElementById('viagem-ajudante2') ? document.getElementById('viagem-ajudante2').value.trim() : '';
-        const motorista = (viagemInfo && viagemInfo.motorista && String(viagemInfo.motorista).trim()) ? viagemInfo.motorista.trim() : formMotorista;
-        const conferente = (viagemInfo && viagemInfo.conferente && String(viagemInfo.conferente).trim()) ? viagemInfo.conferente.trim() : formConferente;
-        const ajudante1 = (viagemInfo && viagemInfo.ajudante1 && String(viagemInfo.ajudante1).trim()) ? viagemInfo.ajudante1.trim() : formAjudante1;
-        const ajudante2 = (viagemInfo && viagemInfo.ajudante2 && String(viagemInfo.ajudante2).trim()) ? viagemInfo.ajudante2.trim() : formAjudante2;
-        setAssinaturaNome('assinatura-nome-motorista', motorista);
-        setAssinaturaNome('assinatura-nome-conferente', conferente);
-        setAssinaturaNome('assinatura-nome-ajudante1', ajudante1);
-        setAssinaturaNome('assinatura-nome-ajudante2', ajudante2);
-        if (fimCarreg) fimCarreg.textContent = (periodo && periodo.fim_carregamento) ? periodo.fim_carregamento : '-';
-    }
-    if (btnExcluir) btnExcluir.style.display = 'inline-block';
-    tbody.innerHTML = extrato.map(function(item) { return _htmlLinhaExtratoTabela(item); }).join('');
-    _atualizarExtratoStatusRodape(extrato);
-    _extratoAtualizarItensBipadosMais(extrato, 'carregamento');
+    var qConf = '/conferencia/' + encodeURIComponent(idViagem) + '?limit=2000';
+    if (fluxo === 'devolucao') qConf += '&fluxo=devolucao';
+    var extratoResp = await fetchAPI(qConf);
+    if (extratoResp && !extratoResp.erro) _cacheExtratoSalvar(idViagem, fluxo, extratoResp);
+    var meta = _extratoMetaDeResp(extratoResp);
+    _preencherExtratoTela(idViagem, _extratoListaDeResp(extratoResp), extratoResp, meta.viagemInfo, meta.periodo);
 }
 
 async function loadExtratoDevolucao(idViagemOpcional) {
@@ -15399,11 +15464,11 @@ async function loadExtratoDevolucao(idViagemOpcional) {
     tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando extrato de devoluções...</td></tr>';
     if (resumoEl) resumoEl.style.display = 'none';
 
-    const [extratoResp, periodo, viagemInfo] = await Promise.all([
-        fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '?fluxo=devolucao&limit=2000'),
-        fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/periodo?fluxo=devolucao'),
-        fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/info')
-    ]);
+    const extratoResp = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '?fluxo=devolucao&limit=2000');
+    if (extratoResp && !extratoResp.erro) _cacheExtratoSalvar(idViagem, 'devolucao', extratoResp);
+    var metaDev = _extratoMetaDeResp(extratoResp);
+    var periodo = metaDev.periodo;
+    var viagemInfo = metaDev.viagemInfo;
     const extratoListaDev = (extratoResp && extratoResp.lista && Array.isArray(extratoResp.lista)) ? extratoResp.lista : [];
     const extrato = (extratoResp && extratoResp.lista_ja_agregada)
         ? extratoListaDev

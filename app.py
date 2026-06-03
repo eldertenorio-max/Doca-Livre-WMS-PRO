@@ -4452,7 +4452,7 @@ def _ravex_parse_forcar_reimportar(data):
     return bool(data.get('forcar_reimportar') or data.get('forcar') or data.get('reimportar'))
 
 
-_RAVEX_IMPORT_WORKERS = max(1, min(8, int(os.environ.get('RAVEX_IMPORT_WORKERS', '4') or 4)))
+_RAVEX_IMPORT_WORKERS = max(1, min(12, int(os.environ.get('RAVEX_IMPORT_WORKERS', '6') or 6)))
 
 
 def _ravex_identificador_rota_valido(identificador_rota):
@@ -6245,14 +6245,21 @@ def _ravex_importar_romaneio_executar(data, progress_cb=None):
     }, 200
 
 
-def _ravex_importar_romaneio_worker(job_id, data, app, usuario=''):
-    """Thread em background: importação longa (evita timeout 502 do proxy)."""
+def _ravex_job_worker(job_id, job_kind, data, app, usuario=''):
+    """Thread em background: importação Ravex longa (evita timeout 502 do proxy)."""
     with app.app_context():
         _import_request_ctx.usuario = usuario or ''
+
         def progress_cb(pct, msg):
             _ravex_import_job_update(job_id, status='running', progress=pct, message=msg)
+
         try:
-            body, code = _ravex_importar_romaneio_executar(data, progress_cb=progress_cb)
+            if job_kind == 'periodo':
+                body, code = _ravex_sincronizar_periodo_executar(data, progress_cb=progress_cb)
+            elif job_kind == 'lista':
+                body, code = _ravex_importar_lista_executar(data, progress_cb=progress_cb)
+            else:
+                body, code = _ravex_importar_romaneio_executar(data, progress_cb=progress_cb)
             _ravex_import_job_update(
                 job_id,
                 status='done',
@@ -6263,7 +6270,7 @@ def _ravex_importar_romaneio_worker(job_id, data, app, usuario=''):
             )
         except Exception as e:
             try:
-                app.logger.exception('ravex import job %s', job_id)
+                app.logger.exception('ravex job %s %s', job_kind, job_id)
             except Exception:
                 pass
             _ravex_import_job_update(
@@ -6274,6 +6281,26 @@ def _ravex_importar_romaneio_worker(job_id, data, app, usuario=''):
                 body={'erro': str(e)},
                 http_status=500,
             )
+
+
+def _ravex_importar_romaneio_worker(job_id, data, app, usuario=''):
+    """Compat: worker de importação unitária."""
+    _ravex_job_worker(job_id, 'romaneio', data, app, usuario)
+
+
+def _ravex_iniciar_job_background(job_kind, data):
+    """Cria job assíncrono e retorna (job_id, 202)."""
+    _ravex_import_job_cleanup()
+    job_id = uuid.uuid4().hex[:16]
+    _ravex_import_job_update(job_id, status='running', progress=0, message='Iniciando...', kind=job_kind)
+    app = current_app._get_current_object()
+    usuario_imp = session.get('usuario', '') or ''
+    threading.Thread(
+        target=_ravex_job_worker,
+        args=(job_id, job_kind, dict(data), app, usuario_imp),
+        daemon=True,
+    ).start()
+    return job_id
 
 
 @app.route('/api/ravex/importar-romaneio', methods=['POST'])
@@ -6288,16 +6315,7 @@ def api_ravex_importar_romaneio():
     if data.get('sync') or request.args.get('sync'):
         body, code = _ravex_importar_romaneio_executar(data)
         return jsonify(body), code
-    _ravex_import_job_cleanup()
-    job_id = uuid.uuid4().hex[:16]
-    _ravex_import_job_update(job_id, status='running', progress=0, message='Iniciando...')
-    app = current_app._get_current_object()
-    usuario_imp = session.get('usuario', '') or ''
-    threading.Thread(
-        target=_ravex_importar_romaneio_worker,
-        args=(job_id, dict(data), app, usuario_imp),
-        daemon=True,
-    ).start()
+    job_id = _ravex_iniciar_job_background('romaneio', data)
     return jsonify({'ok': True, 'async': True, 'job_id': job_id}), 202
 
 
@@ -6323,23 +6341,31 @@ def api_ravex_importar_romaneio_status(job_id):
     }), 202
 
 
-@app.route('/api/ravex/sincronizar-periodo', methods=['POST'])
-def api_ravex_sincronizar_periodo():
-    """Puxa roteiros do período via /api/roteiro/obter-roteiro-por-periodo, depois para cada viagem faturada (viagemFaturada.id)
-    busca o restante na API e grava na tabela romaneio_por_item."""
+def _ravex_sincronizar_periodo_executar(data, progress_cb=None):
+    """Sincroniza romaneio do período Ravex. Retorna (body_dict, http_status)."""
+    def _prog(pct, msg):
+        if progress_cb:
+            try:
+                progress_cb(int(pct), msg or '')
+            except Exception:
+                pass
+
     if not _usa_banco_para_dados():
-        return jsonify({'erro': 'Configure DATABASE_URL para usar sincronização Ravex.'}), 400
+        return {'erro': 'Configure DATABASE_URL para usar sincronização Ravex.'}, 400
     if not ravex_get_token or not obter_roteiro_por_periodo:
-        return jsonify({'erro': 'Módulo ravex_client não disponível ou obter_roteiro_por_periodo não implementado.'}), 500
-    data = request.get_json() or {}
+        return {'erro': 'Módulo ravex_client não disponível ou obter_roteiro_por_periodo não implementado.'}, 500
+    data = data or {}
     data_inicio = (data.get('data_inicio') or data.get('dataInicio') or '').strip()
     data_fim = (data.get('data_fim') or data.get('dataFim') or '').strip()
     if not data_inicio or not data_fim:
-        return jsonify({'erro': 'Informe data_inicio e data_fim (ex: 2026-03-01 e 2026-03-05).'}), 400
+        return {'erro': 'Informe data_inicio e data_fim (ex: 2026-03-01 e 2026-03-05).'}, 400
+    _prog(5, 'Autenticando na API Ravex...')
     try:
         token = ravex_get_token()
     except Exception as e:
-        return _ravex_502_resposta(e)
+        msg = getattr(e, 'args', [str(e)])[0] if getattr(e, 'args', None) else str(e)
+        return {'erro': 'Falha ao autenticar na API Ravex: %s' % msg}, 502
+    _prog(12, 'Buscando roteiros do período na Ravex...')
     roteiros_romaneio = _ravex_roteiros_por_periodo_para_romaneio(token, data_inicio, data_fim)
     # Evitar processar o mesmo id_viagem mais de uma vez (pode aparecer em mais de um roteiro no período)
     vistos = set()
@@ -6352,11 +6378,11 @@ def api_ravex_sincronizar_periodo():
     conn = get_db()
     if getattr(conn, 'kind', None) != 'pg':
         conn.close()
-        return jsonify({'erro': 'Banco não é Postgres.'}), 400
+        return {'erro': 'Banco não é Postgres.'}, 400
     ds = _get_latest_dataset_id(conn)
     if not ds:
         conn.close()
-        return jsonify({'erro': 'Nenhum dataset ativo. Importe a base (planilha) primeiro.'}), 400
+        return {'erro': 'Nenhum dataset ativo. Importe a base (planilha) primeiro.'}, 400
     viagens_processadas = 0
     total_itens = 0
     erros = []
@@ -6404,6 +6430,9 @@ def api_ravex_sincronizar_periodo():
                 continue
             viagens_a_processar.append(v)
 
+        total_proc = len(viagens_a_processar)
+        _prog(22, 'Puxando %d viagem(ns) da API Ravex...' % total_proc)
+
         def _fetch_linhas_viagem(v):
             id_viagem = v.get('id_viagem') or ''
             id_roteiro_pre = v.get('id_roteiro') or None
@@ -6421,10 +6450,16 @@ def api_ravex_sincronizar_periodo():
         resultados_api = []
         workers = min(_RAVEX_IMPORT_WORKERS, max(1, len(viagens_a_processar)))
         if viagens_a_processar:
+            done_api = 0
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 for res in pool.map(_fetch_linhas_viagem, viagens_a_processar):
                     resultados_api.append(res)
+                    done_api += 1
+                    if total_proc:
+                        pct = 22 + int(68 * done_api / total_proc)
+                        _prog(pct, 'API Ravex: %d/%d viagem(ns)...' % (done_api, total_proc))
 
+        _prog(92, 'Gravando romaneio no banco...')
         for id_viagem, id_roteiro, linhas, err_api in resultados_api:
             if err_api:
                 erros.append({'id_viagem': id_viagem, 'erro': err_api})
@@ -6475,9 +6510,10 @@ def api_ravex_sincronizar_periodo():
             conn.close()
         except Exception:
             pass
-        return jsonify({'erro': 'Erro ao sincronizar: %s' % str(e)}), 500
+        return {'erro': 'Erro ao sincronizar: %s' % str(e)}, 500
     conn.close()
-    return jsonify({
+    _prog(100, 'Sincronização concluída.')
+    return {
         'ok': True,
         'viagens_processadas': viagens_processadas,
         'total_itens': total_itens,
@@ -6487,17 +6523,38 @@ def api_ravex_sincronizar_periodo():
         'pulados_duplicados': pulados_duplicados,
         'total_pulados_duplicados': len(pulados_duplicados),
         'erros': erros,
-    })
+    }, 200
 
 
-@app.route('/api/ravex/importar-lista', methods=['POST'])
-def api_ravex_importar_lista():
-    """Importa romaneio para uma lista de IDs (cada ID pode ser id_roteiro ou id_viagem). Um ID por item na lista."""
-    if not _usa_banco_para_dados():
-        return jsonify({'erro': 'Configure DATABASE_URL para usar importação Ravex.'}), 400
-    if not ravex_get_token:
-        return jsonify({'erro': 'Módulo ravex_client não disponível.'}), 500
+@app.route('/api/ravex/sincronizar-periodo', methods=['POST'])
+def api_ravex_sincronizar_periodo():
+    """Puxa roteiros do período (assíncrono por padrão; use ?sync=1 para resposta direta)."""
     data = request.get_json() or {}
+    data_inicio = (data.get('data_inicio') or data.get('dataInicio') or '').strip()
+    data_fim = (data.get('data_fim') or data.get('dataFim') or '').strip()
+    if not data_inicio or not data_fim:
+        return jsonify({'erro': 'Informe data_inicio e data_fim (ex: 2026-03-01 e 2026-03-05).'}), 400
+    if data.get('sync') or request.args.get('sync'):
+        body, code = _ravex_sincronizar_periodo_executar(data)
+        return jsonify(body), code
+    job_id = _ravex_iniciar_job_background('periodo', data)
+    return jsonify({'ok': True, 'async': True, 'job_id': job_id}), 202
+
+
+def _ravex_importar_lista_executar(data, progress_cb=None):
+    """Importa lista de IDs Ravex. Retorna (body_dict, http_status)."""
+    def _prog(pct, msg):
+        if progress_cb:
+            try:
+                progress_cb(int(pct), msg or '')
+            except Exception:
+                pass
+
+    if not _usa_banco_para_dados():
+        return {'erro': 'Configure DATABASE_URL para usar importação Ravex.'}, 400
+    if not ravex_get_token:
+        return {'erro': 'Módulo ravex_client não disponível.'}, 500
+    data = data or {}
     raw_ids = data.get('ids') or data.get('lista') or data.get('id_list') or []
     if isinstance(raw_ids, str):
         raw_ids = [s.strip() for s in raw_ids.replace(',', '\n').splitlines() if s.strip()]
@@ -6505,19 +6562,21 @@ def api_ravex_importar_lista():
         raw_ids = []
     ids = [str(x).strip() for x in raw_ids if str(x).strip()]
     if not ids:
-        return jsonify({'erro': 'Informe uma lista de IDs (ids: ["18765009", "18765008", ...] ou um ID por linha).'}), 400
+        return {'erro': 'Informe uma lista de IDs (ids: ["18765009", "18765008", ...] ou um ID por linha).'}, 400
+    _prog(5, 'Autenticando na API Ravex...')
     try:
         token = ravex_get_token()
     except Exception as e:
-        return _ravex_502_resposta(e)
+        msg = getattr(e, 'args', [str(e)])[0] if getattr(e, 'args', None) else str(e)
+        return {'erro': 'Falha ao autenticar na API Ravex: %s' % msg}, 502
     conn = get_db()
     if getattr(conn, 'kind', None) != 'pg':
         conn.close()
-        return jsonify({'erro': 'Banco não é Postgres.'}), 400
+        return {'erro': 'Banco não é Postgres.'}, 400
     ds = _get_latest_dataset_id(conn)
     if not ds:
         conn.close()
-        return jsonify({'erro': 'Nenhum dataset ativo. Importe a base primeiro.'}), 400
+        return {'erro': 'Nenhum dataset ativo. Importe a base primeiro.'}, 400
     viagens_processadas = 0
     total_itens = 0
     erros = []
@@ -6583,6 +6642,9 @@ def api_ravex_importar_lista():
                     continue
             tarefas.append((id_unico, id_viagem, id_roteiro, somente_roteiro))
 
+        total_tarefas = len(tarefas)
+        _prog(18, 'Puxando %d ID(s) da API Ravex...' % total_tarefas)
+
         def _fetch_linhas_id(t):
             id_unico, id_viagem, id_roteiro, somente_roteiro = t
             try:
@@ -6599,10 +6661,16 @@ def api_ravex_importar_lista():
         resultados_api = []
         workers = min(_RAVEX_IMPORT_WORKERS, max(1, len(tarefas)))
         if tarefas:
+            done_api = 0
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 for res in pool.map(_fetch_linhas_id, tarefas):
                     resultados_api.append(res)
+                    done_api += 1
+                    if total_tarefas:
+                        pct = 18 + int(72 * done_api / total_tarefas)
+                        _prog(pct, 'API Ravex: %d/%d ID(s)...' % (done_api, total_tarefas))
 
+        _prog(92, 'Gravando romaneio no banco...')
         for id_unico, id_viagem, id_roteiro, linhas, somente_roteiro, err_api in resultados_api:
             if err_api:
                 erros.append({'id': id_unico, 'erro': err_api})
@@ -6663,9 +6731,10 @@ def api_ravex_importar_lista():
             conn.close()
         except Exception:
             pass
-        return jsonify({'erro': 'Erro ao importar lista: %s' % str(e)}), 500
+        return {'erro': 'Erro ao importar lista: %s' % str(e)}, 500
     conn.close()
-    return jsonify({
+    _prog(100, 'Importação da lista concluída.')
+    return {
         'ok': True,
         'viagens_processadas': viagens_processadas,
         'total_itens': total_itens,
@@ -6673,7 +6742,26 @@ def api_ravex_importar_lista():
         'pulados_duplicados': pulados_duplicados,
         'total_pulados_duplicados': len(pulados_duplicados),
         'erros': erros,
-    })
+    }, 200
+
+
+@app.route('/api/ravex/importar-lista', methods=['POST'])
+def api_ravex_importar_lista():
+    """Importa lista de IDs (assíncrono por padrão; use ?sync=1 para resposta direta)."""
+    data = request.get_json() or {}
+    raw_ids = data.get('ids') or data.get('lista') or data.get('id_list') or []
+    if isinstance(raw_ids, str):
+        raw_ids = [s.strip() for s in raw_ids.replace(',', '\n').splitlines() if s.strip()]
+    elif not isinstance(raw_ids, list):
+        raw_ids = []
+    ids = [str(x).strip() for x in raw_ids if str(x).strip()]
+    if not ids:
+        return jsonify({'erro': 'Informe uma lista de IDs.'}), 400
+    if data.get('sync') or request.args.get('sync'):
+        body, code = _ravex_importar_lista_executar(data)
+        return jsonify(body), code
+    job_id = _ravex_iniciar_job_background('lista', data)
+    return jsonify({'ok': True, 'async': True, 'job_id': job_id}), 202
 
 
 @app.route('/api/extrato', methods=['GET'])
