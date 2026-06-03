@@ -13106,7 +13106,6 @@ window._abrirModalCadastroItemFromBipagem = async function() {
         return;
     }
     var produto = (window._elBipagem('produto-nome') && window._elBipagem('produto-nome').value || '').trim();
-    var quantidade = parseInt(window._elBipagem('quantidade') && window._elBipagem('quantidade').value, 10) || 1;
     var idViagem = (window._getIdViagemAtivo && window._getIdViagemAtivo()) || '';
     var status = (window._elBipagem('status') && window._elBipagem('status').value) || 'PENDENTE';
     var tipo = _inferirTipoCodigoBarras(codigoBarras);
@@ -13114,7 +13113,6 @@ window._abrirModalCadastroItemFromBipagem = async function() {
     document.getElementById('cadastro-item-codigo-ean').value = tipo === 'EAN' ? codigoBarras : '';
     document.getElementById('cadastro-item-codigo-dun').value = tipo === 'DUN' ? codigoBarras : '';
     document.getElementById('cadastro-item-tipo-codigo').value = tipo;
-    document.getElementById('cadastro-item-quantidade').value = quantidade;
     document.getElementById('cadastro-item-id-viagem').value = idViagem;
     document.getElementById('cadastro-item-status').value = status;
     document.getElementById('cadastro-item-codigo-interno').value = (window._elBipagem('codigo-produto') && window._elBipagem('codigo-produto').value || '').trim();
@@ -13153,11 +13151,6 @@ window.confirmarCadastroItem = async function() {
     if (!descricao) {
         showMessage('Informe a descrição do produto', 'error');
         document.getElementById('cadastro-item-descricao').focus();
-        return;
-    }
-    const quantidade = parseInt(document.getElementById('cadastro-item-quantidade').value) || 1;
-    if (quantidade < 1) {
-        showMessage('Quantidade deve ser pelo menos 1', 'error');
         return;
     }
     var selRom = document.getElementById('cadastro-item-vinculo-romaneio');
@@ -13211,26 +13204,15 @@ window.confirmarCadastroItem = async function() {
             showMessage(respV.mensagem || 'Base atualizada com o vínculo do código.', 'success');
             _atualizarCodigoBarrasLinhaConferencia(codigoInterno, codigoBipado);
             window.ultimoCodigoBuscado = '';
+        } else {
+            _atualizarCodigoBarrasLinhaConferencia(codigoInterno, codigoBipado);
+            showMessage('Código vinculado ao item. Bipe na conferência quando quiser.', 'success');
         }
         document.getElementById('modal-cadastro-item').style.display = 'none';
-        const dados = {
-            codigo_barras: codigoBipado,
-            produto: descricao,
-            quantidade: quantidade,
-            codigo_interno: codigoInterno,
-            codigo_dun: codigoDun,
-            unidade: unidade,
-            peso: peso,
-            veiculo: '',
-            status: document.getElementById('cadastro-item-status').value,
-            id_viagem: idViagem,
-            doca: docaEl ? docaEl.value : ''
-        };
         var cpEl = window._elBipagem('codigo-produto');
         if (cpEl) cpEl.value = codigoInterno;
         var pnEl = window._elBipagem('produto-nome');
         if (pnEl) pnEl.value = descricao;
-        await addProduto(true, dados);
         if (idViagem) {
             await reloadConferenciaAtiva(idViagem, {
                 forcar: true,
@@ -13246,7 +13228,7 @@ window.confirmarCadastroItem = async function() {
         if (cbOk) cbOk.value = '';
         focarCampoCodigoBarras();
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = 'Confirmar, vincular base e bipar'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Confirmar e vincular'; }
     }
 };
 
