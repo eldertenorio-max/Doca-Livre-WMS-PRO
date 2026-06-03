@@ -2643,6 +2643,84 @@ def remover_itens_bipados():
     return jsonify({'success': True, 'mensagem': f'{removidos} unidade(s) removida(s).', 'removidos': removidos})
 
 
+_PRODUTOS_BIPADOS_INSERT_SQL = '''INSERT INTO produtos_bipados
+   (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca,
+    codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+
+_PRODUTOS_BIPADOS_INSERT_PG_TEMPLATE = (
+    '(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+)
+_PRODUTOS_BIPADOS_INSERT_PG_SQL = """INSERT INTO produtos_bipados
+   (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca,
+    codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo)
+   VALUES %s"""
+
+
+def _mapa_unidades_romaneio_viagem(conn, id_viagem):
+    """Mapa codigo_produto -> unidade do romaneio (uma query; evita abrir planilha por item)."""
+    id_norm = _normalizar_id_viagem(id_viagem)
+    if not id_norm or not _usa_banco_para_dados():
+        return {}
+    mapa = {}
+    try:
+        ds = _get_latest_dataset_id(conn)
+        if not ds:
+            return {}
+        if getattr(conn, 'kind', None) == 'pg':
+            sql = """SELECT codigo_produto, unidade FROM romaneio_por_item
+                     WHERE dataset_id = ? AND (
+                       TRIM(COALESCE(id_viagem::text, '')) = ?
+                       OR TRIM(COALESCE(id_roteiro::text, '')) = ?
+                     )"""
+        else:
+            sql = """SELECT codigo_produto, unidade FROM romaneio_por_item
+                     WHERE dataset_id = ? AND (
+                       TRIM(COALESCE(id_viagem, '')) = ?
+                       OR TRIM(COALESCE(id_roteiro, '')) = ?
+                     )"""
+        rows = conn.execute(sql, (str(ds), id_norm, id_norm)).fetchall()
+        for row in rows:
+            r = dict(row) if hasattr(row, 'keys') else row
+            cp = str((r.get('codigo_produto') if hasattr(r, 'get') else r[0]) or '').strip()
+            un = str((r.get('unidade') if hasattr(r, 'get') else (r[1] if len(r) > 1 else '')) or '').strip()
+            if not cp or not un:
+                continue
+            if cp not in mapa:
+                mapa[cp] = un
+            cn = _normalizar_codigo_produto(cp)
+            if cn and cn not in mapa:
+                mapa[cn] = un
+    except Exception:
+        pass
+    return mapa
+
+
+def _bulk_insert_produtos_bipados(conn, params):
+    """INSERT em lote (execute_values no Postgres)."""
+    if not params:
+        return
+    if len(params) == 1:
+        conn.execute(_PRODUTOS_BIPADOS_INSERT_SQL, params[0])
+        return
+    if getattr(conn, 'kind', None) == 'pg':
+        try:
+            from psycopg.extras import execute_values  # type: ignore
+            raw = getattr(conn, '_conn', conn)
+            with raw.cursor() as cur:
+                execute_values(
+                    cur,
+                    _PRODUTOS_BIPADOS_INSERT_PG_SQL,
+                    params,
+                    template=_PRODUTOS_BIPADOS_INSERT_PG_TEMPLATE,
+                    page_size=500,
+                )
+            return
+        except Exception:
+            pass
+    conn.executemany(_PRODUTOS_BIPADOS_INSERT_SQL, params)
+
+
 @app.route('/api/conferencia/<id_viagem>/gravar-bipagem', methods=['POST'])
 def gravar_bipagem_viagem(id_viagem):
     """Grava de uma vez a bipagem exibida na tela (ao gerar comprovante, após rascunho local)."""
@@ -2668,7 +2746,10 @@ def gravar_bipagem_viagem(id_viagem):
     gravados = 0
     pulados = 0
     agora = datetime.now(timezone.utc)
+    mapa_unidades = _mapa_unidades_romaneio_viagem(conn, id_norm)
+    params_insert = []
     try:
+        _pg_auditoria_sync_desligar(conn)
         if getattr(conn, 'kind', None) == 'pg':
             conn.execute(
                 """DELETE FROM produtos_bipados
@@ -2681,12 +2762,6 @@ def gravar_bipagem_viagem(id_viagem):
                 "DELETE FROM produtos_bipados WHERE id_viagem = ? AND COALESCE(fluxo, 'carregamento') = ?",
                 (id_norm, fluxo),
             )
-        insert_sql = (
-            '''INSERT INTO produtos_bipados
-               (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca,
-                codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
-        )
         for it in itens:
             if not isinstance(it, dict):
                 pulados += 1
@@ -2708,15 +2783,22 @@ def gravar_bipagem_viagem(id_viagem):
             produto = str(it.get('produto') or '').strip()
             codigo_dun = str(it.get('codigo_dun') or '').strip()
             unidade = str(it.get('unidade') or '').strip()
+            if unidade in ('', '-'):
+                unidade = ''
             peso = str(it.get('peso') or '').strip()
-            if not codigo_interno:
+            if not codigo_interno and cb and cb != '-':
                 info = buscar_produto_na_planilha(cb)
                 if info and not info.get('erro') and info.get('codigo_produto'):
                     codigo_interno = str(info.get('codigo_produto') or '').strip()
-            if not unidade and codigo_interno and id_norm:
-                unidade = get_unidade_romaneio(id_norm, codigo_interno) or ''
-            conn.execute(
-                insert_sql,
+            if not unidade and codigo_interno:
+                unidade = (
+                    mapa_unidades.get(codigo_interno)
+                    or mapa_unidades.get(_normalizar_codigo_produto(codigo_interno) or '')
+                    or ''
+                )
+                if not unidade and not _usa_banco_para_dados() and id_norm:
+                    unidade = get_unidade_romaneio(id_norm, codigo_interno) or ''
+            params_insert.append(
                 (
                     cb,
                     produto,
@@ -2732,9 +2814,10 @@ def gravar_bipagem_viagem(id_viagem):
                     peso,
                     usuario_logado,
                     fluxo,
-                ),
+                )
             )
             gravados += 1
+        _bulk_insert_produtos_bipados(conn, params_insert)
         inicio_p = _parse_datetime_iso(data.get('inicio_carregamento'))
         fim_p = _parse_datetime_iso(data.get('fim_carregamento'))
         if inicio_p and fim_p:

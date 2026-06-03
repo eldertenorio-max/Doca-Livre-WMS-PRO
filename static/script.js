@@ -755,7 +755,8 @@ function _conferenciaMostrarErroComprovante(msg, focarDoca) {
     }
 }
 
-function _conferenciaAtivarAbaExtrato(idViagem) {
+function _conferenciaAtivarAbaExtrato(idViagem, opts) {
+    opts = opts || {};
     if (typeof sairConferenciaListaMaximizadaSeAtiva === 'function') sairConferenciaListaMaximizadaSeAtiva();
     var inputExtrato = document.getElementById('extrato-id-viagem');
     var inputRelatorio = document.getElementById('relatorio-extrato-id-viagem');
@@ -773,9 +774,11 @@ function _conferenciaAtivarAbaExtrato(idViagem) {
     if (btnExtrato) btnExtrato.classList.add('active');
     if (contentExtrato) contentExtrato.classList.add('active');
     var tbody = document.getElementById('tbody-extrato');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando extrato...</td></tr>';
+    if (tbody && !opts.semLoading) {
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando extrato...</td></tr>';
+    }
     var resumoEl = document.getElementById('extrato-resumo');
-    if (resumoEl) resumoEl.style.display = 'none';
+    if (resumoEl && !opts.semLoading) resumoEl.style.display = 'none';
     if (contentExtrato) {
         try { contentExtrato.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* ignore */ }
     }
@@ -797,6 +800,7 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
     if (btnC) btnC.disabled = true;
     if (btnD) btnD.disabled = true;
     var salvou = false;
+    var periodoAntesGravar = _conferenciaObterPeriodoBipagemLocal(idViagem);
     try {
         window._conferenciaSalvandoNoComprovante = true;
         window._conferenciaGravarCancelado = false;
@@ -822,12 +826,12 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
         _conferenciaSalvarSessao({ id_viagem: idViagem, comprovante_gerado: true, tem_rascunho: false });
         _limparPendenciasConferenciaTimers();
         salvou = true;
-        _conferenciaAtivarAbaExtrato(idViagem);
-        await loadExtrato(idViagem, { forcar: true });
-        void reloadConferenciaAtiva(idViagem, { forcar: true, forcarIgnorarPendencias: true, aguardarBipagem: false });
-        loadEstatisticas();
+        _conferenciaAtivarAbaExtrato(idViagem, { semLoading: true });
+        _conferenciaPreencherExtratoInstantaneo(idViagem, { periodoLocal: periodoAntesGravar });
         showMessage('Bipagem salva. Extrato atualizado.', 'success');
         _conferenciaAtualizarAvisoRascunho();
+        void loadExtrato(idViagem, { forcar: true, silencioso: true });
+        loadEstatisticas();
         return true;
     } catch (e) {
         if (window.ravexLoadingHide) window.ravexLoadingHide();
@@ -969,6 +973,84 @@ function _conferenciaColetarItensTabelaParaGravar() {
         });
     }
     return itens;
+}
+
+/** Monta lista do extrato a partir da tabela da conferência (instantâneo após gerar comprovante). */
+function _conferenciaMontarExtratoDaTabela() {
+    var tbody = document.getElementById('tbody-conferencia');
+    if (!tbody) return [];
+    var C = window._CONF_COL;
+    var lista = [];
+    var rows = tbody.querySelectorAll('tr');
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row.cells || row.cells.length < 12 || row.querySelector('td[colspan]')) continue;
+        var qtdProd = parseInt(row.cells[C.QTD_PROD].textContent, 10) || 0;
+        var qtdBip = parseInt(row.cells[C.BIPADO].textContent, 10) || 0;
+        var qtdFalta = parseInt(row.cells[C.FALTA].textContent, 10) || 0;
+        var codigoInterno = (row.getAttribute('data-codigo') || row.cells[C.COD_PRODUTO].textContent || '').trim();
+        var motivoInput = row.cells[C.MOTIVO].querySelector('input.input-motivo-divergencia');
+        var motivo = motivoInput ? motivoInput.value.trim() : (row.cells[C.MOTIVO].textContent || '').trim();
+        var avisoCell = row.cells[C.AVISO].textContent || '';
+        lista.push({
+            codigo_barras: (row.cells[C.COD_BARRAS].textContent || '').trim(),
+            codigo_produto: codigoInterno,
+            produto: (row.cells[C.PRODUTO].textContent || '').trim(),
+            quantidade_produto: qtdProd,
+            quantidade_bipada: qtdBip,
+            quantidade_falta: qtdFalta,
+            unidade: (row.cells[C.UN].textContent || '').trim(),
+            peso_bruto: (row.cells[C.PESO].textContent || '').trim(),
+            motivo_divergencia: motivo,
+            aviso_sobra: _avisoConferenciaBipagem(avisoCell, qtdProd, qtdBip),
+            status_bipado: _statusBipagemConferencia(qtdProd, qtdBip)
+        });
+    }
+    return lista;
+}
+
+/** Preenche o extrato na hora com os dados já visíveis na conferência (sem esperar API). */
+function _conferenciaPreencherExtratoInstantaneo(idViagem, opts) {
+    opts = opts || {};
+    var extrato = _conferenciaMontarExtratoDaTabela();
+    var cacheHit = _cacheExtratoObter(idViagem, 'carregamento');
+    var baseResp = (cacheHit && cacheHit.resp) ? cacheHit.resp : {};
+    var meta = _extratoMetaDeResp(baseResp);
+    var periodo = meta.periodo || {};
+    if (opts.periodoLocal && opts.periodoLocal.inicio) {
+        periodo = {
+            inicio_carregamento: _formatarPeriodoBipagemLocal(opts.periodoLocal.inicio),
+            fim_carregamento: _formatarPeriodoBipagemLocal(opts.periodoLocal.fim || opts.periodoLocal.inicio)
+        };
+    }
+    var idHidden = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value || '').trim();
+    var mesmoRoteiro = idHidden === idViagem;
+    if (mesmoRoteiro) {
+        var vi = meta.viagemInfo || {};
+        var pick = function(id, atual) {
+            if (atual && String(atual).trim()) return atual;
+            var el = document.getElementById(id);
+            return el && el.value ? el.value.trim() : (el && el.textContent ? el.textContent.trim() : '');
+        };
+        meta.viagemInfo = {
+            data_expedicao: pick('data-expedicao', vi.data_expedicao),
+            placa: pick('viagem-placa', vi.placa),
+            motorista: pick('viagem-motorista', vi.motorista),
+            identificador_rota: pick('viagem-identificador-rota', vi.identificador_rota),
+            coordenador: pick('viagem-coordenador', vi.coordenador),
+            conferente: pick('viagem-conferente', vi.conferente),
+            ajudante1: pick('viagem-ajudante1', vi.ajudante1),
+            ajudante2: pick('viagem-ajudante2', vi.ajudante2)
+        };
+    }
+    var respSynth = Object.assign({}, baseResp, {
+        lista: extrato,
+        lista_ja_agregada: true,
+        inicio_carregamento: periodo.inicio_carregamento,
+        fim_carregamento: periodo.fim_carregamento
+    });
+    _cacheExtratoSalvar(idViagem, 'carregamento', respSynth);
+    _preencherExtratoTela(idViagem, extrato, respSynth, meta.viagemInfo, periodo);
 }
 
 /** Grava toda a bipagem da tela em uma única requisição (rápido e confiável). */
@@ -15589,7 +15671,7 @@ async function loadExtrato(idViagemOpcional, opts) {
         _preencherExtratoTela(idViagem, _extratoListaDeResp(cacheHit.resp), cacheHit.resp, metaCache.viagemInfo, metaCache.periodo);
         pintouCache = true;
     }
-    if (!pintouCache) {
+    if (!pintouCache && !opts.silencioso) {
         tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando extrato...</td></tr>';
         if (resumoEl) resumoEl.style.display = 'none';
     }
