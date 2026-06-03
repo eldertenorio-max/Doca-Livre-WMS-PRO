@@ -4064,6 +4064,13 @@ def get_conferencia(id_viagem=None):
             inicio_p, fim_p = _consultar_periodo_viagem_raw_conn(conn, id_norm_resp or id_viagem_resposta, fluxo_req)
             inicio_str = _formatar_data_hora_periodo(inicio_p)
             fim_str = _formatar_data_hora_periodo(fim_p)
+            ja_baixado_ravex = True
+            aviso_ravex = ''
+            if ds:
+                ja_b, _info_b = _ravex_id_input_ja_baixado(conn, ds, id_busca)
+                ja_baixado_ravex = bool(ja_b)
+                if not ja_baixado_ravex:
+                    aviso_ravex = _ravex_mensagem_nao_baixado(id_busca)
             conn.close()
             total_romaneio = len(resultado)
             return jsonify({
@@ -4083,6 +4090,8 @@ def get_conferencia(id_viagem=None):
                 'fim_carregamento': fim_str,
                 'total_romaneio': total_romaneio,
                 'limit_romaneio': limit_romaneio,
+                'ja_baixado_ravex': ja_baixado_ravex,
+                'aviso_ravex': aviso_ravex,
             })
         except Exception as e:
             try:
@@ -4687,6 +4696,17 @@ def _ravex_mensagem_ja_baixado(id_input, info):
         msg += ' Itens no romaneio: %s.' % n_it
     msg += ' Para baixar de novo, marque «Forçar reimportação» abaixo.'
     return msg
+
+
+def _ravex_mensagem_nao_baixado(id_input):
+    """Texto quando o ID ainda não consta nos baixados/importações Ravex."""
+    id_inf = str(id_input or '').strip()
+    if not id_inf:
+        return 'Roteiro ou viagem não informado.'
+    return (
+        'Este ID (%s) não foi baixado do Ravex. '
+        'Importe o romaneio na aba «Importar Ravex» (ou confira em «Baixados Ravex») antes de conferir.'
+    ) % id_inf
 
 
 def _ravex_viagem_ja_baixada(conn, dataset_id, id_viagem):

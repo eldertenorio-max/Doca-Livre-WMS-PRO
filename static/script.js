@@ -100,6 +100,25 @@ function _conferenciaAtualizarAvisoRascunho() {
     el.style.display = (mostrar && idV) ? 'block' : 'none';
 }
 
+function _conferenciaAtualizarAvisoNaoBaixado(conferencia) {
+    var el = document.getElementById('conferencia-nao-baixado-aviso');
+    if (!el) return;
+    var conf = conferencia || {};
+    var mostrar = conf.ja_baixado_ravex === false && conf.aviso_ravex;
+    if (mostrar) {
+        el.textContent = conf.aviso_ravex;
+        el.style.display = 'block';
+        var chave = String(conf.aviso_ravex) + '|' + (conf.id_viagem || conf.id_roteiro || '');
+        if (window._conferenciaUltimoAvisoNaoBaixado !== chave) {
+            window._conferenciaUltimoAvisoNaoBaixado = chave;
+            showMessage(conf.aviso_ravex, 'warning');
+        }
+    } else {
+        el.style.display = 'none';
+        window._conferenciaUltimoAvisoNaoBaixado = '';
+    }
+}
+
 function _conferenciaMarcarSessaoRascunho() {
     var idV = window._getIdViagemAtivo && window._getIdViagemAtivo();
     if (!idV) return;
@@ -13589,6 +13608,7 @@ window.buscarItensViagem = async function() {
 
     var tbodyLoading = document.getElementById('tbody-conferencia');
     if (tbodyLoading) tbodyLoading.innerHTML = '<tr><td colspan="12" class="loading">Carregando itens da viagem...</td></tr>';
+    _conferenciaAtualizarAvisoNaoBaixado({ ja_baixado_ravex: true });
 
     showOverlay('Carregando conferência da base de dados (romaneio por item)... Aguarde.');
     showMessage('Buscando itens na base...', 'success');
@@ -14304,6 +14324,7 @@ async function loadConferencia(idViagem = null, opts) {
             if (!isDev) {
                 atualizarSugestoesRotaConferencia();
                 _cacheExtratoSalvar(idViagem, fluxoTab, conferencia);
+                _conferenciaAtualizarAvisoNaoBaixado(conferencia);
             }
             _aplicarExtrasConferenciaResponse(conferencia, idViagem, isDev);
             const conferenciaUI = conferencia.lista_ja_agregada ? listaParaUI : agruparConferenciaPorCodigoProduto(listaParaUI);
@@ -14336,7 +14357,10 @@ async function loadConferencia(idViagem = null, opts) {
                 var msgVazio = (isDev && (!window._devolucaoNfAtiva || !window._devolucaoNfAtiva.id))
                     ? 'Inicie uma NF e bip os itens do retorno.'
                     : (isDev ? 'Nenhum item bipado nesta NF ainda. Escaneie o retorno.' : 'Nenhum item encontrado para esta viagem no romaneio.');
-                tbody.innerHTML = '<tr><td colspan="12" class="loading">' + msgVazio + '</td></tr>';
+                if (!isDev && conferencia.ja_baixado_ravex === false && conferencia.aviso_ravex) {
+                    msgVazio = conferencia.aviso_ravex;
+                }
+                tbody.innerHTML = '<tr><td colspan="12" class="loading">' + escapeHtml(msgVazio) + '</td></tr>';
                 atualizarTotaisConferenciaFromData([], fluxoTab);
             } else {
             // Ordenar: item bipado por último no topo; itens COMPLETO no final
@@ -14374,6 +14398,7 @@ async function loadConferencia(idViagem = null, opts) {
         } else if (conferencia && conferencia.erro) {
             const tbodyE = L('tbody-conferencia');
             if (tbodyE) tbodyE.innerHTML = `<tr><td colspan="12" class="loading" style="color: #f44336;">Erro: ${conferencia.erro}</td></tr>`;
+            if (!isDev) _conferenciaAtualizarAvisoNaoBaixado({ ja_baixado_ravex: true });
             showMessage(conferencia.erro, 'error');
             return undefined;
         } else {
