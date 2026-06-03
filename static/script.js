@@ -2353,11 +2353,6 @@ function initHubModulosOverlay() {
             if (typeof initEventosStream === 'function') initEventosStream();
         });
     });
-    document.addEventListener('keydown', function(e) {
-        if (e.key !== 'Escape') return;
-        if (!hub || hub.hidden) return;
-        _ocultarHubModulos();
-    });
 }
 
 function _htmlBotoesAcaoConferencia(opts) {
