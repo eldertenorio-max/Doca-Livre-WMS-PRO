@@ -1236,6 +1236,9 @@ function initEventosStream() {
 document.addEventListener('DOMContentLoaded', function() {
     initModulos();
     initTabs();
+    if (typeof prefetchBaixadosRavex === 'function') {
+        setTimeout(function() { prefetchBaixadosRavex('carregamento'); }, 600);
+    }
     initDevolucoesTabs();
     initDevolucaoNfFlow();
     initEstoqueSp();
@@ -2970,6 +2973,21 @@ function initTabs() {
     const tabContents = document.querySelectorAll('.tab-content');
     
     tabButtons.forEach(button => {
+        button.addEventListener('mouseenter', function() {
+            var t = button.getAttribute('data-tab');
+            if (t === 'baixa-ravex' && typeof prefetchBaixadosRavex === 'function') {
+                prefetchBaixadosRavex('carregamento');
+            }
+            if (t === 'conferencia') {
+                var idPre = (document.getElementById('id-viagem') && document.getElementById('id-viagem').value.trim())
+                    || (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim()) || '';
+                if (idPre && !_cacheExtratoObter(idPre, 'carregamento')) {
+                    fetchAPI('/conferencia/' + encodeURIComponent(idPre) + _conferenciaQueryRapida()).then(function(r) {
+                        if (r && !r.erro) _cacheExtratoSalvar(idPre, 'carregamento', r);
+                    }).catch(function() {});
+                }
+            }
+        }, { passive: true });
         button.addEventListener('click', () => {
             const targetTab = button.getAttribute('data-tab');
             if (typeof sairConferenciaListaMaximizadaSeAtiva === 'function') sairConferenciaListaMaximizadaSeAtiva();
@@ -3138,23 +3156,34 @@ function _baixadosRavexDescricaoImportacao(row) {
     return { texto: partes.join(' · ') || '—', titulo: Object.keys(p).length ? JSON.stringify(p) : '' };
 }
 
-async function loadBaixadosRavex(scope) {
-    scope = _baixadosRavexScope(scope);
-    window._baixadosRavexScopeAtivo = scope;
-    const tbody = _baixadosRavexEl('tbody-baixa-ravex', scope);
-    if (!tbody) return;
-    if (typeof initBaixadosRavexFiltros === 'function') initBaixadosRavexFiltros(scope);
-    if (typeof initBaixadosRavexExcluir === 'function') initBaixadosRavexExcluir(scope);
-    var jaTinhaDados = tbody.querySelector('tr:not(.loading)');
-    if (!jaTinhaDados) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando...</td></tr>';
-    }
-    var qs = (typeof _baixadosRavexQueryFiltros === 'function') ? _baixadosRavexQueryFiltros(scope) : '?limit=500';
-    const resp = await fetchAPI('/ravex/importacoes' + qs);
-    if (!resp || resp.erro) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading" style="color:#c62828;">' + (resp && resp.erro ? escapeHtml(resp.erro) : 'Erro ao carregar histórico') + '</td></tr>';
-        return;
-    }
+var _BAIXADOS_RAVEX_CACHE_TTL_MS = 120000;
+
+function _cacheBaixadosRavexKey(scope, qs) {
+    return _baixadosRavexScope(scope) + '|' + (qs || '');
+}
+
+function _cacheBaixadosRavexGet(key) {
+    var c = window._cacheBaixadosRavex && window._cacheBaixadosRavex[key];
+    if (!c || !c.resp) return null;
+    if (Date.now() - (c.ts || 0) > _BAIXADOS_RAVEX_CACHE_TTL_MS) return null;
+    return c.resp;
+}
+
+function _cacheBaixadosRavexSet(key, resp) {
+    if (!window._cacheBaixadosRavex) window._cacheBaixadosRavex = {};
+    window._cacheBaixadosRavex[key] = { ts: Date.now(), resp: resp };
+}
+
+function _cacheBaixadosRavexInvalidar(scope) {
+    if (!window._cacheBaixadosRavex) return;
+    var prefix = _baixadosRavexScope(scope || 'carregamento') + '|';
+    Object.keys(window._cacheBaixadosRavex).forEach(function(k) {
+        if (k.indexOf(prefix) === 0) delete window._cacheBaixadosRavex[k];
+    });
+}
+
+function _paintBaixadosRavex(resp, scope, tbody) {
+    if (!tbody || !resp) return;
     if (typeof _baixadosRavexPreencherUsuarios === 'function') {
         _baixadosRavexPreencherUsuarios(Array.isArray(resp.usuarios) ? resp.usuarios : [], scope);
     }
@@ -3178,12 +3207,15 @@ async function loadBaixadosRavex(scope) {
         tbody.innerHTML = '<tr><td colspan="9" class="loading">' + escapeHtml(msgVazio) + '</td></tr>';
         return;
     }
-    tbody.innerHTML = rows.map(r => {
+    tbody.innerHTML = rows.map(function(r) {
         var desc = (typeof _baixadosRavexDescricaoImportacao === 'function')
             ? _baixadosRavexDescricaoImportacao(r) : { texto: '', titulo: '' };
         var descTxt = desc.texto || '—';
         var descTitle = desc.titulo || descTxt;
-        const erros = Array.isArray(r.erros) ? r.erros.length : 0;
+        var erros = (r.erros_count != null && r.erros_count !== '')
+            ? parseInt(r.erros_count, 10)
+            : (Array.isArray(r.erros) ? r.erros.length : 0);
+        if (isNaN(erros)) erros = 0;
         var st = String(r.status || '');
         var stHtml = escapeHtml(st);
         if (st === 'DUPLICADO') {
@@ -3205,6 +3237,69 @@ async function loadBaixadosRavex(scope) {
             + '<td class="baixa-ravex-acoes">' + acaoHtml + '</td>'
             + '</tr>';
     }).join('');
+}
+
+function prefetchBaixadosRavex(scope) {
+    scope = _baixadosRavexScope(scope);
+    var qs = (typeof _baixadosRavexQueryFiltros === 'function') ? _baixadosRavexQueryFiltros(scope) : '?limit=150';
+    var key = _cacheBaixadosRavexKey(scope, qs);
+    if (_cacheBaixadosRavexGet(key)) return;
+    if (window._baixadosRavexPrefetchEmCurso && window._baixadosRavexPrefetchEmCurso[key]) return;
+    if (!window._baixadosRavexPrefetchEmCurso) window._baixadosRavexPrefetchEmCurso = {};
+    window._baixadosRavexPrefetchEmCurso[key] = true;
+    var usuariosOk = window._baixadosRavexUsuariosCarregados && window._baixadosRavexUsuariosCarregados[scope];
+    fetchAPI('/ravex/importacoes' + qs + (usuariosOk ? '&usuarios=0' : '&usuarios=1')).then(function(resp) {
+        if (resp && !resp.erro) {
+            _cacheBaixadosRavexSet(key, resp);
+            if (Array.isArray(resp.usuarios) && resp.usuarios.length) {
+                if (!window._baixadosRavexUsuariosCarregados) window._baixadosRavexUsuariosCarregados = {};
+                window._baixadosRavexUsuariosCarregados[scope] = true;
+            }
+        }
+    }).catch(function() { /* ignore */ }).finally(function() {
+        delete window._baixadosRavexPrefetchEmCurso[key];
+    });
+}
+
+async function loadBaixadosRavex(scope, opts) {
+    opts = opts || {};
+    scope = _baixadosRavexScope(scope);
+    window._baixadosRavexScopeAtivo = scope;
+    const tbody = _baixadosRavexEl('tbody-baixa-ravex', scope);
+    if (!tbody) return;
+    if (typeof initBaixadosRavexFiltros === 'function') initBaixadosRavexFiltros(scope);
+    if (typeof initBaixadosRavexExcluir === 'function') initBaixadosRavexExcluir(scope);
+    var qs = (typeof _baixadosRavexQueryFiltros === 'function') ? _baixadosRavexQueryFiltros(scope) : '?limit=150';
+    var cacheKey = _cacheBaixadosRavexKey(scope, qs);
+    var cached = !opts.forcar && _cacheBaixadosRavexGet(cacheKey);
+    if (cached) {
+        _paintBaixadosRavex(cached, scope, tbody);
+    } else {
+        var jaTinhaDados = tbody.querySelector('tr:not(.loading)');
+        if (!jaTinhaDados) {
+            tbody.innerHTML = '<tr><td colspan="9" class="loading">Carregando...</td></tr>';
+        }
+    }
+    var usuariosOk = window._baixadosRavexUsuariosCarregados && window._baixadosRavexUsuariosCarregados[scope];
+    try {
+        const resp = await fetchAPI('/ravex/importacoes' + qs + (usuariosOk ? '&usuarios=0' : '&usuarios=1'));
+        if (!resp || resp.erro) {
+            if (!cached) {
+                tbody.innerHTML = '<tr><td colspan="9" class="loading" style="color:#c62828;">' + (resp && resp.erro ? escapeHtml(resp.erro) : 'Erro ao carregar histórico') + '</td></tr>';
+            }
+            return;
+        }
+        if (Array.isArray(resp.usuarios) && resp.usuarios.length) {
+            if (!window._baixadosRavexUsuariosCarregados) window._baixadosRavexUsuariosCarregados = {};
+            window._baixadosRavexUsuariosCarregados[scope] = true;
+        }
+        _cacheBaixadosRavexSet(cacheKey, resp);
+        _paintBaixadosRavex(resp, scope, tbody);
+    } catch (e) {
+        if (!cached) {
+            tbody.innerHTML = '<tr><td colspan="9" class="loading" style="color:#c62828;">Erro ao carregar histórico. Tente novamente.</td></tr>';
+        }
+    }
 }
 
 function _baixadosRavexResumoExclusao(row) {
@@ -3253,7 +3348,8 @@ async function excluirImportacaoRavex(importId, row, scope) {
     }
     var n = resp.total_viagens != null ? resp.total_viagens : (Array.isArray(resp.viagens_excluidas) ? resp.viagens_excluidas.length : 0);
     showMessage('Importação excluída' + (n ? (' (' + n + ' viagem' + (n === 1 ? '' : 'ns') + ')') : '') + '.', 'success');
-    loadBaixadosRavex(scope || window._baixadosRavexScopeAtivo || 'carregamento');
+    _cacheBaixadosRavexInvalidar(scope);
+    loadBaixadosRavex(scope || window._baixadosRavexScopeAtivo || 'carregamento', { forcar: true });
 }
 
 function initBaixadosRavexExcluir(scope) {
@@ -3332,7 +3428,7 @@ function _baixadosRavexAtualizarBtnsData(scope) {
 
 function _baixadosRavexQueryFiltros(scope) {
     var f = _baixadosRavexFiltroState(scope);
-    var q = ['limit=500'];
+    var q = ['limit=150'];
     if (f.data_inicio) q.push('data_inicio=' + encodeURIComponent(f.data_inicio));
     if (f.data_fim) q.push('data_fim=' + encodeURIComponent(f.data_fim));
     if (!f.data_inicio && !f.data_fim && f.periodo && f.periodo !== 'todos') {
@@ -10494,7 +10590,8 @@ function initForms() {
         if (ravexModalConcluidoMensagem) ravexModalConcluidoMensagem.innerHTML = htmlMessage;
         if (ravexModalConcluido) ravexModalConcluido.style.display = 'flex';
         if (resultadoImportarRavex) resultadoImportarRavex.style.display = 'none';
-        if (typeof loadBaixadosRavex === 'function') void loadBaixadosRavex();
+        if (typeof _cacheBaixadosRavexInvalidar === 'function') _cacheBaixadosRavexInvalidar('carregamento');
+        if (typeof loadBaixadosRavex === 'function') void loadBaixadosRavex('carregamento', { forcar: true });
     }
     if (ravexModalConcluidoOk && ravexModalConcluido) {
         ravexModalConcluidoOk.addEventListener('click', function() {
@@ -10566,7 +10663,8 @@ function initForms() {
         }
         if (typeof showMessage === 'function') showMessage(msg, 'warning');
         if (typeof ravexLoadingHide === 'function') ravexLoadingHide();
-        if (typeof loadBaixadosRavex === 'function') void loadBaixadosRavex();
+        if (typeof _cacheBaixadosRavexInvalidar === 'function') _cacheBaixadosRavexInvalidar('carregamento');
+        if (typeof loadBaixadosRavex === 'function') void loadBaixadosRavex('carregamento', { forcar: true });
     }
     function ravexResumoPuladosDuplicados(data) {
         var n = (data && data.total_pulados_duplicados) || 0;
@@ -10655,7 +10753,6 @@ function initForms() {
                             : ('Importado. ID viagem: <strong>' + (data.id_viagem || '') + '</strong>. Total de itens: <strong>' + (data.total_itens || 0) + '</strong>.')
                     );
                     showRavexModalConcluido(msgOk);
-                    if (typeof loadBaixadosRavex === 'function') loadBaixadosRavex('carregamento');
                     ravexLoadingHide();
                 } else if (r.status === 409 || (data && data.duplicado)) {
                     ravexMostrarDuplicado(data, resultadoImportarRavex);
@@ -13610,22 +13707,55 @@ window.buscarItensViagem = async function() {
     if (tbodyLoading) tbodyLoading.innerHTML = '<tr><td colspan="12" class="loading">Carregando itens da viagem...</td></tr>';
     _conferenciaAtualizarAvisoNaoBaixado({ ja_baixado_ravex: true });
 
-    showOverlay('Carregando conferência da base de dados (romaneio por item)... Aguarde.');
-    showMessage('Buscando itens na base...', 'success');
-    
+    var cacheHit = _cacheExtratoObter(idInput, 'carregamento');
+    var overlayTimer = null;
+    function agendarOverlay() {
+        if (overlayTimer) return;
+        overlayTimer = setTimeout(function() {
+            overlayTimer = null;
+            showOverlay('Carregando conferência da base de dados (romaneio por item)... Aguarde.');
+        }, cacheHit && cacheHit.resp ? 700 : 350);
+    }
+    function cancelarOverlayAgendado() {
+        if (overlayTimer) {
+            clearTimeout(overlayTimer);
+            overlayTimer = null;
+        }
+    }
+
     var idViagem = idInput;
     var sucesso = false;
     var overlayOculto = false;
     function tentarOcultarOverlay() {
+        cancelarOverlayAgendado();
         if (!overlayOculto && !cancelado) {
             overlayOculto = true;
             hideOverlay();
         }
     }
+
+    if (cacheHit && cacheHit.resp) {
+        try {
+            await loadConferencia(idInput, {
+                respCache: cacheHit.resp,
+                forcar: false,
+                onDadosRecebidos: function(conf) {
+                    if (conf && !conf.erro) {
+                        var idV = (conf.id_viagem && String(conf.id_viagem).trim()) || idInput;
+                        _habilitarUiConferenciaViagem(idV);
+                    }
+                },
+            });
+        } catch (eCache) { /* ignore */ }
+    } else {
+        agendarOverlay();
+    }
+
     try {
         await loadConferencia(idInput, {
             signal: abortCtrl ? abortCtrl.signal : undefined,
             forcar: true,
+            rapido: true,
             onDadosRecebidos: function(conf) {
                 tentarOcultarOverlay();
                 if (conf && !conf.erro) {
@@ -13637,6 +13767,12 @@ window.buscarItensViagem = async function() {
         if (cancelado) return;
         idViagem = (document.getElementById('id-viagem-hidden') && document.getElementById('id-viagem-hidden').value.trim()) || document.getElementById('id-viagem').value.trim() || idInput;
         sucesso = true;
+        void loadConferencia(idInput, {
+            forcar: true,
+            rapido: false,
+            silencioso: true,
+            verificarBaixado: false
+        });
     } catch (e) {
         if (cancelado || (e && e._cancelado)) return;
         showMessage('Erro ao conectar. Tente novamente.', 'error');
@@ -14160,7 +14296,7 @@ function _htmlLinhaConferenciaTabela(item, idViagem, motivosEmEdicao) {
 }
 
 function _renderizarTabelaConferenciaChunked(tbody, conferenciaOrdenada, idViagem, motivosEmEdicao, fluxoTab, seq) {
-    var CHUNK = 120;
+    var CHUNK = 250;
     if (!tbody || conferenciaOrdenada.length <= CHUNK) {
         tbody.innerHTML = conferenciaOrdenada.map(function(item) {
             return _htmlLinhaConferenciaTabela(item, idViagem, motivosEmEdicao);
@@ -14273,7 +14409,9 @@ async function loadConferencia(idViagem = null, opts) {
 
     try {
         var conferencia;
-        if (opts._listaOverride && Array.isArray(opts._listaOverride)) {
+        if (opts.respCache && !opts.forcar) {
+            conferencia = opts.respCache;
+        } else if (opts._listaOverride && Array.isArray(opts._listaOverride)) {
             conferencia = { lista: opts._listaOverride, id_viagem: idViagem, modo_devolucao_nf: !!opts._modoDevolucaoNf };
         } else if (isDev && window._devolucaoNfAtiva && window._devolucaoNfAtiva.id) {
             var fetchOptsNf = {};
@@ -14282,8 +14420,9 @@ async function loadConferencia(idViagem = null, opts) {
         } else if (isDev) {
             conferencia = { lista: [], id_viagem: idViagem };
         } else {
-        var q = '?limit=2000';
-        if (isDev) q += '&fluxo=devolucao';
+        var q = (opts.rapido === false) ? '?limit=2000' : _conferenciaQueryRapida();
+        if (opts.verificarBaixado === false) q += (q.indexOf('?') >= 0 ? '&' : '?') + 'verificar_baixado=0';
+        if (isDev) q += (q.indexOf('?') >= 0 ? '&' : '?') + 'fluxo=devolucao';
         var fetchOpts = {};
         if (opts.signal) fetchOpts.signal = opts.signal;
         conferencia = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + q, fetchOpts);
@@ -14296,6 +14435,12 @@ async function loadConferencia(idViagem = null, opts) {
         }
         if (typeof opts.onDadosRecebidos === 'function') {
             try { opts.onDadosRecebidos(conferencia); } catch (eCb) { /* ignore */ }
+        }
+        if (opts.silencioso && _conferenciaTemPendenciasLocais()) {
+            if (!isDev && conferencia && !conferencia.erro) {
+                _cacheExtratoSalvar(idViagem, fluxoTab, conferencia);
+            }
+            return conferencia;
         }
         if (conferencia && !conferencia.erro) {
             const listaParaUI = Array.isArray(conferencia.lista) ? conferencia.lista : (Array.isArray(conferencia) ? conferencia : []);
@@ -14381,8 +14526,10 @@ async function loadConferencia(idViagem = null, opts) {
                 const itemBipado = conferenciaOrdenada.find(function(it) { return (it.codigo_barras || '').toString().trim() === ultimoCodigo; });
                 if (itemBipado && (itemBipado.status_bipado || '') === 'COMPLETO') window._ultimoBipadoCodigo = '';
             }
-            await _renderizarTabelaConferenciaChunked(tbody, conferenciaOrdenada, idViagem, motivosEmEdicao, fluxoTab, seq);
-            if (seq !== window._conferenciaLoadSeq) return;
+            void _renderizarTabelaConferenciaChunked(tbody, conferenciaOrdenada, idViagem, motivosEmEdicao, fluxoTab, seq).then(function() {
+                if (seq !== window._conferenciaLoadSeq) return;
+                atualizarBoxesComprovante(conferenciaUI, fluxoTab);
+            });
             }
             var tituloWrap = L('titulo-lista-wrapper');
             var tabContainer = L('tabela-conferencia-container');
@@ -14390,7 +14537,9 @@ async function loadConferencia(idViagem = null, opts) {
             if (tabContainer) tabContainer.style.display = 'block';
             var btnZ = isDev ? document.getElementById('dev-btn-zerar-bipados') : document.getElementById('btn-voltar-bipar');
             if (btnZ) btnZ.style.display = 'inline-block';
-            atualizarBoxesComprovante(conferenciaUI, fluxoTab);
+            if (conferenciaUI.length <= 250) {
+                atualizarBoxesComprovante(conferenciaUI, fluxoTab);
+            }
             if (isDev) window._devConferenciaIdViagemAtiva = idViagem;
             else window._conferenciaIdViagemAtiva = idViagem;
             if (!isDev && _conferenciaUsaRascunhoLocal()) _conferenciaAtualizarAvisoRascunho();
@@ -15214,6 +15363,7 @@ function _extratoAtualizarItensBipadosMais(extrato, fluxo) {
 
 // Cache do extrato (mesma fonte da conferência) para exibir na hora ao abrir a aba
 window._cacheConferenciaExtrato = window._cacheConferenciaExtrato || {};
+var _CACHE_CONFERENCIA_TTL_MS = 180000;
 
 function _cacheExtratoChave(idViagem, fluxo) {
     return (fluxo || 'carregamento') + '|' + String(idViagem || '').trim();
@@ -15225,7 +15375,16 @@ function _cacheExtratoSalvar(idViagem, fluxo, resp) {
 }
 
 function _cacheExtratoObter(idViagem, fluxo) {
-    return window._cacheConferenciaExtrato[_cacheExtratoChave(idViagem, fluxo)] || null;
+    var hit = window._cacheConferenciaExtrato[_cacheExtratoChave(idViagem, fluxo)] || null;
+    if (!hit || !hit.resp) return null;
+    if (Date.now() - (hit.ts || 0) > _CACHE_CONFERENCIA_TTL_MS) return null;
+    return hit;
+}
+
+function _conferenciaQueryRapida(extra) {
+    var q = ['limit=2000', 'motivos=0', 'periodo_meta=0'];
+    if (extra) q.push(extra);
+    return '?' + q.join('&');
 }
 
 function _extratoListaDeResp(resp) {
@@ -15416,7 +15575,7 @@ async function loadExtrato(idViagemOpcional, opts) {
     }
     if (opts.prefetch) {
         try {
-            var qPre = '/conferencia/' + encodeURIComponent(idViagem) + '?limit=2000';
+            var qPre = '/conferencia/' + encodeURIComponent(idViagem) + _conferenciaQueryRapida();
             if (fluxo === 'devolucao') qPre += '&fluxo=devolucao';
             var pre = await fetchAPI(qPre);
             if (pre && !pre.erro) _cacheExtratoSalvar(idViagem, fluxo, pre);

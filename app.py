@@ -4061,12 +4061,18 @@ def get_conferencia(id_viagem=None):
                     pass
             id_viagem_resposta = str(id_para_bipados).strip() if id_para_bipados else ''
             id_norm_resp = _normalizar_id_viagem(id_para_lookup or id_busca)
-            inicio_p, fim_p = _consultar_periodo_viagem_raw_conn(conn, id_norm_resp or id_viagem_resposta, fluxo_req)
-            inicio_str = _formatar_data_hora_periodo(inicio_p)
-            fim_str = _formatar_data_hora_periodo(fim_p)
+            carregar_periodo = request.args.get('periodo_meta', '1').strip().lower() not in ('0', 'false', 'no')
+            if carregar_periodo:
+                inicio_p, fim_p = _consultar_periodo_viagem_raw_conn(conn, id_norm_resp or id_viagem_resposta, fluxo_req)
+                inicio_str = _formatar_data_hora_periodo(inicio_p)
+                fim_str = _formatar_data_hora_periodo(fim_p)
+            else:
+                inicio_str = ''
+                fim_str = ''
             ja_baixado_ravex = True
             aviso_ravex = ''
-            if ds:
+            verificar_baixado = request.args.get('verificar_baixado', '1').strip().lower() not in ('0', 'false', 'no')
+            if verificar_baixado and ds:
                 ja_b, _info_b = _ravex_id_input_ja_baixado(conn, ds, id_busca)
                 ja_baixado_ravex = bool(ja_b)
                 if not ja_baixado_ravex:
@@ -4951,12 +4957,26 @@ def _ravex_listar_usuarios_distintos(conn):
     return out
 
 
+def _ravex_slim_parametros_listagem(params):
+    """Reduz payload JSON na listagem (viagens_importadas enormes)."""
+    if not isinstance(params, dict):
+        return params or {}
+    vi = params.get('viagens_importadas')
+    if isinstance(vi, list) and len(vi) > 50:
+        slim = dict(params)
+        slim['viagens_importadas'] = vi[:50]
+        slim['_viagens_total'] = len(vi)
+        return slim
+    return params
+
+
 def _ravex_importacao_dict_from_row(r):
     def _get(k, idx):
         return (r.get(k) if hasattr(r, 'get') else (r[idx] if hasattr(r, '__getitem__') and len(r) > idx else None))
 
     params = _get('parametros', 3)
     errs = _get('erros', 7)
+    erros_qtd = _get('erros_qtd', None)
     try:
         if isinstance(params, str):
             params = json.loads(params)
@@ -4967,15 +4987,23 @@ def _ravex_importacao_dict_from_row(r):
             errs = json.loads(errs)
     except Exception:
         pass
+    if erros_qtd is None:
+        erros_qtd = len(errs) if isinstance(errs, list) else 0
+    else:
+        try:
+            erros_qtd = int(erros_qtd or 0)
+        except (TypeError, ValueError):
+            erros_qtd = 0
     return {
         'id': _get('id', 0),
         'tipo': _get('tipo', 1) or '',
         'status': _get('status', 2) or '',
-        'parametros': params or {},
+        'parametros': _ravex_slim_parametros_listagem(params),
         'viagens_processadas': _get('viagens_processadas', 4) or 0,
         'total_itens': _get('total_itens', 5) or 0,
         'usuario': _get('usuario', 6) or '',
-        'erros': errs or [],
+        'erros': [],
+        'erros_count': erros_qtd,
         'criado_em': _formatar_criado_em_baixados_ravex(_get('criado_em', 8)),
     }
 
@@ -6830,16 +6858,17 @@ def api_ravex_listar_importacoes():
         if getattr(conn, 'kind', None) != 'pg':
             conn.close()
             return jsonify({'erro': 'Banco não é Postgres.', 'rows': []}), 400
-        limit = request.args.get('limit', '200')
+        limit = request.args.get('limit', '150')
         dataset_filtro = (request.args.get('dataset_id') or '').strip()
         periodo = (request.args.get('periodo') or '').strip().lower()
         data_inicio = (request.args.get('data_inicio') or '').strip()
         data_fim = (request.args.get('data_fim') or '').strip()
         usuario_filtro = (request.args.get('usuario') or '').strip()
+        include_usuarios = request.args.get('usuarios', '1').strip().lower() not in ('0', 'false', 'no')
         try:
             limit_i = max(10, min(500, int(limit)))
         except Exception:
-            limit_i = 200
+            limit_i = 150
         inicio_dt, fim_dt = _ravex_filtro_periodo_datas(periodo, data_inicio, data_fim)
         tem_filtros = bool(inicio_dt and fim_dt) or bool(usuario_filtro)
         where = []
@@ -6854,7 +6883,8 @@ def api_ravex_listar_importacoes():
             where.append('LOWER(TRIM(COALESCE(usuario, \'\'))) = LOWER(?)')
             params.append(usuario_filtro)
         where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
-        sql = f"""SELECT id, tipo, status, parametros, viagens_processadas, total_itens, usuario, erros, criado_em
+        sql = f"""SELECT id, tipo, status, parametros, viagens_processadas, total_itens, usuario,
+                         COALESCE(jsonb_array_length(erros), 0) AS erros_qtd, criado_em
                   FROM public.ravex_importacoes
                   {where_sql}
                   ORDER BY criado_em DESC NULLS LAST
@@ -6864,9 +6894,15 @@ def api_ravex_listar_importacoes():
         out = [_ravex_importacao_dict_from_row(r) for r in (rows or [])]
         fonte = 'ravex_importacoes'
         if not out and not tem_filtros:
-            out = _listar_baixados_ravex_de_romaneio(conn, limit_i)
-            fonte = 'romaneio_por_item' if out else 'vazio'
-        usuarios = _ravex_listar_usuarios_distintos(conn)
+            tem_historico = conn.execute(
+                'SELECT 1 FROM public.ravex_importacoes LIMIT 1'
+            ).fetchone()
+            if not tem_historico:
+                out = _listar_baixados_ravex_de_romaneio(conn, limit_i)
+                fonte = 'romaneio_por_item' if out else 'vazio'
+            else:
+                fonte = 'vazio'
+        usuarios = _ravex_listar_usuarios_distintos(conn) if include_usuarios else []
         conn.close()
         return jsonify({'ok': True, 'rows': out, 'fonte': fonte, 'usuarios': usuarios})
     except Exception as e:

@@ -841,7 +841,7 @@
                             <option value="">Todos</option>
                         </select>
                     </div>
-                    <button type="button" class="btn btn-secondary" id="btn-atualizar-baixados-ravex" onclick="loadBaixadosRavex('carregamento')">🔄 Atualizar lista</button>
+                    <button type="button" class="btn btn-secondary" id="btn-atualizar-baixados-ravex" onclick="loadBaixadosRavex('carregamento', { forcar: true })">🔄 Atualizar lista</button>
                 </div>
                 <p id="baixa-ravex-filtro-resumo" class="baixa-ravex-filtro-resumo" style="display: none;"></p>
                 <div style="overflow: auto;">
@@ -1481,7 +1481,7 @@
                                 <option value="">Todos</option>
                             </select>
                         </div>
-                        <button type="button" class="btn btn-secondary" onclick="loadBaixadosRavex('devolucao')">🔄 Atualizar lista</button>
+                        <button type="button" class="btn btn-secondary" onclick="loadBaixadosRavex('devolucao', { forcar: true })">🔄 Atualizar lista</button>
                     </div>
                     <p id="dev-baixa-ravex-filtro-resumo" class="baixa-ravex-filtro-resumo" style="display: none;"></p>
                     <div style="overflow: auto;">
