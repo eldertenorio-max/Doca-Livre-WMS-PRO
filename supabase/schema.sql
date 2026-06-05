@@ -180,7 +180,8 @@ comment on table public.romaneio is 'Quantidade esperada por código de barras (
 -- excel_datasets: controle de "versões" de cada importação.
 -- Cada vez que você importa uma planilha (BASE, romaneio etc.),
 -- é criado um registro com um dataset_id (UUID). As tabelas
--- base_codigo_barras e excel_romaneio_por_item referenciam esse
+-- base_codigo_barras referencia excel_datasets; romaneio operacional em romaneio_por_item
+-- (create_table_romaneio_por_item.sql após schema.sql)
 -- dataset_id, assim o sistema sabe qual versão da planilha usar.
 -- Apenas um dataset fica "ativo" (ativo = true); o script de
 -- importação desativa os antigos e ativa o novo.
@@ -229,41 +230,7 @@ create index if not exists idx_base_codigo_barras_codigo_interno on public.base_
 create index if not exists idx_base_codigo_barras_ean on public.base_codigo_barras (ean) where ean is not null;
 create index if not exists idx_base_codigo_barras_dun on public.base_codigo_barras (dun) where dun is not null;
 
--- Aba ROMANEIO POR ITEM (itens por viagem/roteiro)
-create table if not exists public.excel_romaneio_por_item (
-  id bigserial primary key,
-  dataset_id uuid not null references public.excel_datasets(dataset_id) on delete cascade,
-  row_index integer not null,
-  
-  -- Campos principais (indexados)
-  id_roteiro text,
-  id_viagem text,
-  identificador_rota text,
-  codigo_produto text,
-  descricao text,
-  quantidade integer,
-  unidade text,
-  peso_bruto text,
-  codigo_cliente text,
-  endereco text,
-  cidade text,
-  placa text,
-  motorista text,
-  data_expedicao text,
-  
-  -- Dados completos em JSONB
-  data jsonb not null,
-  
-  importado_em timestamptz not null default now()
-);
-
-comment on table public.excel_romaneio_por_item is 'Aba ROMANEIO POR ITEM da planilha (itens por viagem)';
-
-create index if not exists idx_excel_romaneio_dataset on public.excel_romaneio_por_item (dataset_id);
-create index if not exists idx_excel_romaneio_id_roteiro on public.excel_romaneio_por_item (id_roteiro) where id_roteiro is not null;
-create index if not exists idx_excel_romaneio_id_viagem on public.excel_romaneio_por_item (id_viagem) where id_viagem is not null;
-create index if not exists idx_excel_romaneio_codigo_produto on public.excel_romaneio_por_item (codigo_produto) where codigo_produto is not null;
-create index if not exists idx_excel_romaneio_roteiro_codigo on public.excel_romaneio_por_item (id_roteiro, codigo_produto);
+-- Romaneio por item: use create_table_romaneio_por_item.sql (tabela romaneio_por_item)
 
 -- id_roteiros (registro dos roteiros da API Ravex por período / dataset)
 create table if not exists public.id_roteiros (
@@ -343,19 +310,19 @@ comment on view public.v_resumo_viagem is 'Resumo estatístico de bipagem por vi
 -- View: itens divergentes (para auditoria)
 create or replace view public.v_divergencias as
 select
-  r.id_roteiro as id_viagem,
+  coalesce(nullif(trim(r.id_viagem), ''), nullif(trim(r.id_roteiro), '')) as id_viagem,
   r.codigo_produto,
   r.descricao as produto,
   sum(r.quantidade) as quantidade_esperada,
   coalesce(sum(b.quantidade), 0) as quantidade_bipada,
   sum(r.quantidade) - coalesce(sum(b.quantidade), 0) as divergencia,
   dm.motivo
-from public.excel_romaneio_por_item r
+from public.romaneio_por_item r
 left join public.produtos_bipados b
-  on r.id_roteiro = b.id_viagem
+  on coalesce(nullif(trim(r.id_viagem), ''), nullif(trim(r.id_roteiro), '')) = b.id_viagem
   and r.codigo_produto = b.codigo_interno
 left join public.divergencia_motivo dm
-  on r.id_roteiro = dm.id_viagem
+  on coalesce(nullif(trim(r.id_viagem), ''), nullif(trim(r.id_roteiro), '')) = dm.id_viagem
   and r.codigo_produto = dm.codigo_produto
 where r.dataset_id = (
   select dataset_id
@@ -364,7 +331,11 @@ where r.dataset_id = (
   order by importado_em desc
   limit 1
 )
-group by r.id_roteiro, r.codigo_produto, r.descricao, dm.motivo
+group by
+  coalesce(nullif(trim(r.id_viagem), ''), nullif(trim(r.id_roteiro), '')),
+  r.codigo_produto,
+  r.descricao,
+  dm.motivo
 having sum(r.quantidade) - coalesce(sum(b.quantidade), 0) != 0;
 
 comment on view public.v_divergencias is 'Itens com divergência entre romaneio e bipagem (falta/sobra)';

@@ -30,8 +30,10 @@ O código do app **não muda** — só a URL de conexão.
 
 ```
 supabase/migrate_excel_base_to_base_codigo_barras.sql
+supabase/create_table_romaneio_por_item.sql          ← IMPORTANTE (Ravex/conferência)
+supabase/create_table_motoristas.sql
+supabase/create_table_placas.sql
 supabase/migrate_roteiros.sql
-supabase/migrate_roteiros_rename_to_id_roteiros.sql
 supabase/migrate_identificador_rota.sql
 supabase/migrate_viagem_periodo_bipagem.sql
 supabase/migrate_devolucao_nf.sql
@@ -53,9 +55,30 @@ supabase/enable_rls_views.sql
 supabase/fix_supabase_linter_security.sql
 ```
 
+> **Não rode** `migrate_roteiros_rename_to_id_roteiros.sql` em projeto novo (só renomeia tabela antiga `roteiros` → `id_roteiros`).
+
 > Se algum script der “já existe”, pode ignorar e seguir.
 
-**Alternativa:** faça um deploy no Render apontando temporariamente para o banco **novo** (só com `schema.sql` rodado). O `app.py` cria tabelas extras no boot; depois rode a migração de dados.
+### Como saber se a estrutura está completa
+
+No **Table Editor** do projeto **Sistema WMS**, você deve ver **cerca de 22 tabelas** + 2 views (`v_divergencias`, `v_resumo_viagem`).
+
+Se só aparecerem **~14 tabelas** (só `schema.sql`), faltam migrations. Compare com esta lista:
+
+| Tabela | Vem de |
+|--------|--------|
+| usuarios, colaboradores, produtos_bipados, romaneio, divergencia_motivo | schema.sql |
+| viagem_placa, viagem_motorista, viagem_responsaveis | schema.sql |
+| excel_datasets, base_codigo_barras, excel_romaneio_por_item, id_roteiros | schema.sql |
+| **romaneio_por_item** | create_table_romaneio_por_item.sql |
+| **motoristas**, **placas** | create_table_motoristas/placas.sql |
+| **ravex_importacoes** | migrate_ravex_importacoes.sql |
+| **terceiros_documentos** (+ itens, eventos) | app boot ou migrate_terceiros_* |
+| **devolucao_nota_fiscal** | migrate_devolucao_nf.sql |
+| **viagem_periodo_bipagem** | migrate_viagem_periodo_bipagem.sql |
+| **tabela_geral_dados**, **tabela_geral_snapshot** | migrate_tabela_geral_dados.sql |
+
+**Atalho:** após `schema.sql` + `create_table_romaneio_por_item.sql`, aponte o Render **temporariamente** para o banco novo e abra o site uma vez — o `app.py` cria terceiros e outras tabelas no boot. Depois rode o restante das migrations (RLS) e copie os dados.
 
 ---
 

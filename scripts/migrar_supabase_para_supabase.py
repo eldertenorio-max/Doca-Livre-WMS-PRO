@@ -17,6 +17,10 @@ Opções úteis:
   --sem-limpar           não faz TRUNCATE no destino (append / upsert manual)
   --tabela produtos_bipados   copia só uma tabela (pode repetir)
 
+Renomeações automáticas (origem → destino):
+  conjuntos_de_dados_excel → excel_datasets
+
+Pré-requisito: estrutura (tabelas vazias) já criada no destino.
 Depois compare:
   $env:DATABASE_URL = $env:DATABASE_URL_ORIGEM; python scripts/contar_linhas_supabase.py
   $env:DATABASE_URL = $env:DATABASE_URL_DESTINO; python scripts/contar_linhas_supabase.py
@@ -31,6 +35,7 @@ from collections import defaultdict, deque
 try:
     import psycopg
     from psycopg.rows import dict_row
+    from psycopg.types.json import Json
 except ImportError:
     print("Instale: pip install psycopg[binary]")
     sys.exit(1)
@@ -39,6 +44,20 @@ try:
     from dotenv import load_dotenv
 except ImportError:
     load_dotenv = None  # type: ignore
+
+# Origem (nome antigo) → destino (nome no Sistema WMS / app)
+_ALIASES_TABELA: dict[str, str] = {
+    "conjuntos_de_dados_excel": "excel_datasets",
+}
+
+# Tabelas legadas só no antigo — ignorar na migração (não abortar)
+_IGNORAR_ORIGEM: frozenset[str] = frozenset(
+    {"excel_placas", "excel_colaboradores", "roteiros"}
+)
+
+
+def _destino_de(tabela_origem: str) -> str:
+    return _ALIASES_TABELA.get(tabela_origem, tabela_origem)
 
 
 def _raiz() -> str:
@@ -120,8 +139,10 @@ def _ordenar_tabelas(tabelas: list[str], edges: list[tuple[str, str]]) -> list[s
     return ordem
 
 
-def _colunas_comuns(src, dst, schema: str, tabela: str) -> list[str]:
-    def _cols(conn):
+def _colunas_comuns_entre_tabelas(
+    src, dst, schema: str, tabela_origem: str, tabela_destino: str
+) -> list[str]:
+    def _cols(conn, tabela: str):
         rows = conn.execute(
             """
             SELECT column_name
@@ -133,8 +154,12 @@ def _colunas_comuns(src, dst, schema: str, tabela: str) -> list[str]:
         ).fetchall()
         return [r["column_name"] for r in rows]
 
-    dest_set = set(_cols(dst))
-    return [c for c in _cols(src) if c in dest_set]
+    dest_set = set(_cols(dst, tabela_destino))
+    return [c for c in _cols(src, tabela_origem) if c in dest_set]
+
+
+def _colunas_comuns(src, dst, schema: str, tabela: str) -> list[str]:
+    return _colunas_comuns_entre_tabelas(src, dst, schema, tabela, tabela)
 
 
 def _contar(conn, schema: str, tabela: str) -> int:
@@ -182,26 +207,78 @@ def _ajustar_sequence(conn, schema: str, tabela: str) -> None:
     )
 
 
+def _tem_coluna(conn, schema: str, tabela: str, coluna: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = %s AND table_name = %s AND column_name = %s
+        LIMIT 1
+        """,
+        (schema, tabela, coluna),
+    ).fetchone()
+    return row is not None
+
+
+def _contar_unicos(conn, schema: str, tabela: str, dedupe_on: list[str]) -> int:
+    dedupe_sql = ", ".join(f'"{c}"' for c in dedupe_on)
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*)::bigint AS n FROM (
+            SELECT DISTINCT {dedupe_sql} FROM "{schema}"."{tabela}"
+        ) q
+        """
+    ).fetchone()
+    return int(row["n"]) if row else 0
+
+
+def _valor_celula(valor):
+    if isinstance(valor, (dict, list)):
+        return Json(valor)
+    return valor
+
+
 def _copiar_tabela(
     src,
     dst,
     schema: str,
-    tabela: str,
+    tabela_origem: str,
+    tabela_destino: str,
     cols: list[str],
     *,
     batch: int,
     dry_run: bool,
+    dedupe_on: list[str] | None = None,
+    dedupe_order_col: str | None = None,
 ) -> int:
     if not cols:
         return 0
     col_sql = ", ".join(f'"{c}"' for c in cols)
+    order_sql = ", ".join(f'"{c}"' for c in cols)
     ph = ", ".join(["%s"] * len(cols))
-    insert_sql = f'INSERT INTO "{schema}"."{tabela}" ({col_sql}) VALUES ({ph})'
+    insert_sql = (
+        f'INSERT INTO "{schema}"."{tabela_destino}" ({col_sql}) VALUES ({ph})'
+    )
+    if dedupe_on:
+        dedupe_sql = ", ".join(f'"{c}"' for c in dedupe_on)
+        order_dedupe = dedupe_sql
+        if dedupe_order_col:
+            order_dedupe += f', "{dedupe_order_col}" DESC'
+        base_sql = (
+            f'SELECT {col_sql} FROM ('
+            f'SELECT DISTINCT ON ({dedupe_sql}) {col_sql} '
+            f'FROM "{schema}"."{tabela_origem}" '
+            f'ORDER BY {order_dedupe}'
+            f') _u ORDER BY {order_sql}'
+        )
+    else:
+        base_sql = (
+            f'SELECT {col_sql} FROM "{schema}"."{tabela_origem}" ORDER BY {order_sql}'
+        )
     total = 0
     offset = 0
     while True:
         rows = src.execute(
-            f'SELECT {col_sql} FROM "{schema}"."{tabela}" ORDER BY 1 LIMIT %s OFFSET %s',
+            f'{base_sql} LIMIT %s OFFSET %s',
             (batch, offset),
         ).fetchall()
         if not rows:
@@ -210,7 +287,7 @@ def _copiar_tabela(
             total += len(rows)
         else:
             for row in rows:
-                dst.execute(insert_sql, [row[c] for c in cols])
+                dst.execute(insert_sql, [_valor_celula(row[c]) for c in cols])
         offset += batch
     return total
 
@@ -264,39 +341,80 @@ def main() -> None:
             if faltando:
                 print("Aviso: tabelas não encontradas na origem:", ", ".join(faltando))
         else:
-            tabelas = tabelas_src
+            tabelas = [
+                t
+                for t in tabelas_src
+                if t not in _IGNORAR_ORIGEM and _destino_de(t) in tabelas_dst
+            ]
+            ignoradas = [t for t in tabelas_src if t in _IGNORAR_ORIGEM]
+            if ignoradas:
+                print("Ignorando tabelas legadas na origem:", ", ".join(sorted(ignoradas)))
+            sem_par = [
+                t
+                for t in tabelas_src
+                if t not in _IGNORAR_ORIGEM and _destino_de(t) not in tabelas_dst
+            ]
+            if sem_par:
+                print(
+                    "\nERRO: estas tabelas existem na origem mas NÃO no destino.\n"
+                    "Crie a estrutura no Sistema WMS antes (schema + migrations):\n  - "
+                    + "\n  - ".join(
+                        f"{t} → {_destino_de(t)}" if t in _ALIASES_TABELA else t
+                        for t in sem_par[:20]
+                    )
+                )
+                if len(sem_par) > 20:
+                    print(f"  ... e mais {len(sem_par) - 20}")
+                sys.exit(1)
 
-        sem_destino = [t for t in tabelas if t not in tabelas_dst]
+        # FKs: usar nome da tabela no destino para ordenação
+        edges_raw = _dependencias_fk(src, schema)
+        edges = [
+            (_destino_de(filho), _destino_de(pai))
+            for filho, pai in edges_raw
+            if filho in tabelas or _destino_de(filho) in {_destino_de(t) for t in tabelas}
+        ]
+        nomes_destino = sorted({_destino_de(t) for t in tabelas})
+        ordem_destino = _ordenar_tabelas(nomes_destino, edges)
+        # um par origem→destino por tabela destino (primeira origem que mapeia)
+        origem_por_destino: dict[str, str] = {}
+        for t in tabelas:
+            d = _destino_de(t)
+            origem_por_destino.setdefault(d, t)
+        ordem = [(origem_por_destino[d], d) for d in ordem_destino]
+
+        sem_destino = [t for t in tabelas if _destino_de(t) not in tabelas_dst]
         if sem_destino:
             print(
-                "\nERRO: estas tabelas existem na origem mas NÃO no destino.\n"
-                "Rode supabase/schema.sql e as migrations no projeto NOVO antes:\n  - "
-                + "\n  - ".join(sem_destino[:20])
+                "\nERRO: destino ausente para:\n  - "
+                + "\n  - ".join(f"{t} → {_destino_de(t)}" for t in sem_destino[:20])
             )
-            if len(sem_destino) > 20:
-                print(f"  ... e mais {len(sem_destino) - 20}")
             sys.exit(1)
 
-        edges = _dependencias_fk(src, schema)
-        ordem = _ordenar_tabelas(tabelas, edges)
-
         if not args.sem_limpar and not args.dry_run:
-            print(f"\nLimpando {len(ordem)} tabela(s) no destino…")
-            _limpar_destino(dst, schema, ordem)
+            print(f"\nLimpando {len(ordem_destino)} tabela(s) no destino…")
+            _limpar_destino(dst, schema, ordem_destino)
             dst.commit()
 
         print(f"\nCopiando {len(ordem)} tabela(s)…\n")
         resumo: list[tuple[str, int, int]] = []
 
-        for tabela in ordem:
-            cols = _colunas_comuns(src, dst, schema, tabela)
+        for tabela_origem, tabela_destino in ordem:
+            label = (
+                f"{tabela_origem} → {tabela_destino}"
+                if tabela_origem != tabela_destino
+                else tabela_origem
+            )
+            cols = _colunas_comuns_entre_tabelas(
+                src, dst, schema, tabela_origem, tabela_destino
+            )
             if not cols:
-                print(f"  {tabela}: sem colunas em comum (pulando)")
+                print(f"  {label}: sem colunas em comum (pulando)")
                 continue
-            n_origem = _contar(src, schema, tabela)
+            n_origem = _contar(src, schema, tabela_origem)
             if n_origem == 0:
-                print(f"  {tabela}: vazia na origem")
-                resumo.append((tabela, 0, 0))
+                print(f"  {label}: vazia na origem")
+                resumo.append((label, 0, 0))
                 continue
             cols_src = [
                 r["column_name"]
@@ -306,22 +424,51 @@ def main() -> None:
                     WHERE table_schema = %s AND table_name = %s
                     ORDER BY ordinal_position
                     """,
-                    (schema, tabela),
+                    (schema, tabela_origem),
                 ).fetchall()
             ]
             faltantes = set(cols_src) - set(cols)
             if faltantes:
-                print(f"  {tabela}: colunas só na origem (ignoradas): {', '.join(sorted(faltantes))}")
+                print(
+                    f"  {label}: colunas só na origem (ignoradas): "
+                    f"{', '.join(sorted(faltantes))}"
+                )
+            dedupe_on = None
+            dedupe_order_col = None
+            if tabela_destino == "romaneio_por_item" and _tem_coluna(
+                src, schema, tabela_origem, "id"
+            ):
+                dedupe_on = ["dataset_id", "row_index"]
+                dedupe_order_col = "id"
+            n_origem_bruto = n_origem
+            if dedupe_on:
+                n_origem = _contar_unicos(src, schema, tabela_origem, dedupe_on)
+                if n_origem != n_origem_bruto:
+                    print(
+                        f"  {label}: origem tinha {n_origem_bruto} linhas, "
+                        f"{n_origem} únicas por (dataset_id, row_index)"
+                    )
             n_copiadas = _copiar_tabela(
-                src, dst, schema, tabela, cols, batch=args.batch, dry_run=args.dry_run
+                src,
+                dst,
+                schema,
+                tabela_origem,
+                tabela_destino,
+                cols,
+                batch=args.batch,
+                dry_run=args.dry_run,
+                dedupe_on=dedupe_on,
+                dedupe_order_col=dedupe_order_col,
             )
             if not args.dry_run:
-                _ajustar_sequence(dst, schema, tabela)
+                _ajustar_sequence(dst, schema, tabela_destino)
                 dst.commit()
-            n_destino = _contar(dst, schema, tabela) if not args.dry_run else n_copiadas
+            n_destino = (
+                _contar(dst, schema, tabela_destino) if not args.dry_run else n_copiadas
+            )
             ok = "OK" if n_origem == n_destino or args.dry_run else "DIVERGENTE"
-            print(f"  {tabela}: origem={n_origem} destino={n_destino} [{ok}]")
-            resumo.append((tabela, n_origem, n_destino))
+            print(f"  {label}: origem={n_origem} destino={n_destino} [{ok}]")
+            resumo.append((label, n_origem, n_destino))
 
         print("\n--- Resumo ---")
         total_o = sum(r[1] for r in resumo)

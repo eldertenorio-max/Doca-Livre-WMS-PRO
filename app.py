@@ -384,10 +384,6 @@ def init_db():
                 conn.execute('ALTER TABLE public.romaneio_por_item ADD COLUMN identificador_rota TEXT')
             except Exception:
                 conn.rollback()
-            try:
-                conn.execute('ALTER TABLE public.excel_romaneio_por_item ADD COLUMN identificador_rota TEXT')
-            except Exception:
-                conn.rollback()
             # Coluna importado_em no romaneio_por_item (para auditoria de importação Ravex)
             try:
                 conn.execute('ALTER TABLE public.romaneio_por_item ADD COLUMN IF NOT EXISTS importado_em TIMESTAMPTZ')

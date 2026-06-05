@@ -20,7 +20,6 @@ alter table public.divergencia_motivo enable row level security;
 alter table public.romaneio enable row level security;
 alter table public.excel_datasets enable row level security;
 alter table public.base_codigo_barras enable row level security;
-alter table public.excel_romaneio_por_item enable row level security;
 alter table public.id_roteiros enable row level security;
 alter table public.viagem_periodo_bipagem enable row level security;
 alter table public.devolucao_nota_fiscal enable row level security;
@@ -321,34 +320,19 @@ create policy "Permitir DELETE em base_codigo_barras"
   using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 
 -- ============================================================
--- 2.11. EXCEL_ROMANEIO_POR_ITEM
--- ============================================================
-
-create policy "Permitir SELECT em excel_romaneio_por_item"
-  on public.excel_romaneio_por_item
-  for select
-  using (true);
-
-create policy "Permitir INSERT em excel_romaneio_por_item"
-  on public.excel_romaneio_por_item
-  for insert
-  with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
-
-create policy "Permitir DELETE em excel_romaneio_por_item"
-  on public.excel_romaneio_por_item
-  for delete
-  using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
-
--- ============================================================
 -- 2.12. ID_ROTEIROS
 -- ============================================================
 
+drop policy if exists "Permitir SELECT em id_roteiros" on public.id_roteiros;
 create policy "Permitir SELECT em id_roteiros"
   on public.id_roteiros for select using (true);
+drop policy if exists "Permitir INSERT em id_roteiros" on public.id_roteiros;
 create policy "Permitir INSERT em id_roteiros"
   on public.id_roteiros for insert with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+drop policy if exists "Permitir UPDATE em id_roteiros" on public.id_roteiros;
 create policy "Permitir UPDATE em id_roteiros"
   on public.id_roteiros for update using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+drop policy if exists "Permitir DELETE em id_roteiros" on public.id_roteiros;
 create policy "Permitir DELETE em id_roteiros"
   on public.id_roteiros for delete using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 
@@ -356,12 +340,16 @@ create policy "Permitir DELETE em id_roteiros"
 -- 2.14. VIAGEM_PERIODO_BIPAGEM
 -- ============================================================
 
+drop policy if exists "Permitir SELECT em viagem_periodo_bipagem" on public.viagem_periodo_bipagem;
 create policy "Permitir SELECT em viagem_periodo_bipagem"
   on public.viagem_periodo_bipagem for select using (true);
+drop policy if exists "Permitir INSERT em viagem_periodo_bipagem" on public.viagem_periodo_bipagem;
 create policy "Permitir INSERT em viagem_periodo_bipagem"
   on public.viagem_periodo_bipagem for insert with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+drop policy if exists "Permitir UPDATE em viagem_periodo_bipagem" on public.viagem_periodo_bipagem;
 create policy "Permitir UPDATE em viagem_periodo_bipagem"
   on public.viagem_periodo_bipagem for update using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+drop policy if exists "Permitir DELETE em viagem_periodo_bipagem" on public.viagem_periodo_bipagem;
 create policy "Permitir DELETE em viagem_periodo_bipagem"
   on public.viagem_periodo_bipagem for delete using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 
@@ -369,12 +357,16 @@ create policy "Permitir DELETE em viagem_periodo_bipagem"
 -- 2.15. DEVOLUCAO_NOTA_FISCAL
 -- ============================================================
 
+drop policy if exists "Permitir SELECT em devolucao_nota_fiscal" on public.devolucao_nota_fiscal;
 create policy "Permitir SELECT em devolucao_nota_fiscal"
   on public.devolucao_nota_fiscal for select using (true);
+drop policy if exists "Permitir INSERT em devolucao_nota_fiscal" on public.devolucao_nota_fiscal;
 create policy "Permitir INSERT em devolucao_nota_fiscal"
   on public.devolucao_nota_fiscal for insert with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+drop policy if exists "Permitir UPDATE em devolucao_nota_fiscal" on public.devolucao_nota_fiscal;
 create policy "Permitir UPDATE em devolucao_nota_fiscal"
   on public.devolucao_nota_fiscal for update using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+drop policy if exists "Permitir DELETE em devolucao_nota_fiscal" on public.devolucao_nota_fiscal;
 create policy "Permitir DELETE em devolucao_nota_fiscal"
   on public.devolucao_nota_fiscal for delete using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
 

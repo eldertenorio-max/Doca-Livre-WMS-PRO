@@ -2,8 +2,8 @@
 -- Terceiros (NF-e XML): habilitar RLS e políticas
 -- ============================================================
 -- Remove o selo "SEM RESTRIÇÃO" / UNRESTRICTED no painel do Supabase.
--- Execute no SQL Editor DEPOIS que as tabelas já existirem
--- (criadas pelo app na primeira conexão ou pelo schema do projeto).
+-- Execute no SQL Editor DEPOIS de create_table_terceiros.sql
+-- (ou após o app criar as tabelas na primeira conexão).
 -- Pode rodar mais de uma vez (idempotente).
 -- ============================================================
 
