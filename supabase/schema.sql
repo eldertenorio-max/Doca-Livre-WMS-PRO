@@ -295,21 +295,25 @@ begin
 end;
 $$;
 
+drop trigger if exists trigger_usuarios_timestamp on public.usuarios;
 create trigger trigger_usuarios_timestamp
   before update on public.usuarios
   for each row
   execute function atualizar_timestamp_modificacao();
 
+drop trigger if exists trigger_viagem_placa_timestamp on public.viagem_placa;
 create trigger trigger_viagem_placa_timestamp
   before update on public.viagem_placa
   for each row
   execute function atualizar_timestamp_modificacao();
 
+drop trigger if exists trigger_viagem_motorista_timestamp on public.viagem_motorista;
 create trigger trigger_viagem_motorista_timestamp
   before update on public.viagem_motorista
   for each row
   execute function atualizar_timestamp_modificacao();
 
+drop trigger if exists trigger_viagem_responsaveis_timestamp on public.viagem_responsaveis;
 create trigger trigger_viagem_responsaveis_timestamp
   before update on public.viagem_responsaveis
   for each row

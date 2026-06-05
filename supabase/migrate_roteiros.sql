@@ -22,11 +22,18 @@ create index if not exists idx_id_roteiros_id_viagem on public.id_roteiros (id_v
 -- Habilitar RLS para remover o aviso UNRESTRICTED
 alter table public.id_roteiros enable row level security;
 
+drop policy if exists "Permitir SELECT em id_roteiros" on public.id_roteiros;
 create policy "Permitir SELECT em id_roteiros"
   on public.id_roteiros for select using (true);
+
+drop policy if exists "Permitir INSERT em id_roteiros" on public.id_roteiros;
 create policy "Permitir INSERT em id_roteiros"
   on public.id_roteiros for insert with check ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+
+drop policy if exists "Permitir UPDATE em id_roteiros" on public.id_roteiros;
 create policy "Permitir UPDATE em id_roteiros"
   on public.id_roteiros for update using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));
+
+drop policy if exists "Permitir DELETE em id_roteiros" on public.id_roteiros;
 create policy "Permitir DELETE em id_roteiros"
   on public.id_roteiros for delete using ((select auth.role() in ('anon'::text, 'authenticated'::text, 'service_role'::text)));

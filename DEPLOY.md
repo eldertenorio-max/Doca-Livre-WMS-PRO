@@ -139,6 +139,20 @@ Isso vai copiar:
 
 ---
 
+## 🔄 Migrar de um Supabase antigo para um novo (Sistema WMS)
+
+Se você criou um **projeto novo** no Supabase e quer levar **toda a base** (tabelas + dados) e depois apontar o Render:
+
+📄 Siga o guia completo: **`MIGRAR_SUPABASE.md`**
+
+Resumo:
+
+1. Rode `supabase/schema.sql` + migrations no projeto **novo**
+2. `python scripts/migrar_supabase_para_supabase.py` (origem → destino)
+3. Atualize `DATABASE_URL` no Render para a URL do pooler do projeto novo
+
+---
+
 ## 📝 Atualizações futuras
 
 Depois de fazer alterações no código:
