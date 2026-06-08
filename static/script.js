@@ -3028,6 +3028,9 @@ function initWmsEnderecamento() {
     if (bPesq) bPesq.addEventListener('click', loadWmsPesquisaSku);
     var bRec = document.getElementById('btn-wms-novo-recebimento');
     if (bRec) bRec.addEventListener('click', wmsCriarRecebimento);
+    var bBuscaNf = document.getElementById('btn-wms-buscar-nf');
+    if (bBuscaNf) bBuscaNf.addEventListener('click', wmsBuscarNfDescarga);
+    wmsInitRecebimentoIntegracaoNf();
     var bRecL = document.getElementById('btn-wms-rec-lista');
     if (bRecL) bRecL.addEventListener('click', loadWmsRecebimentos);
     var bConf = document.getElementById('btn-wms-conferir-palete');
@@ -3264,12 +3267,93 @@ async function loadWmsRecebimentos() {
     var rows = data.recebimentos || [];
     tb.innerHTML = rows.length ? rows.map(function(r) {
         var nf = r.numero_nf || '—';
+        var orig = (r.origem || '').toLowerCase();
+        var vinc = r.terceiros_documento_id ? ' · Doc #' + r.terceiros_documento_id : '';
         var btnExcluir = '<button type="button" class="btn btn-sm" style="background:#c62828;color:#fff;" '
             + 'data-wms-rec-id="' + escHtml(String(r.id)) + '" data-wms-rec-nf="' + escHtml(String(nf)) + '" '
             + 'onclick="event.stopPropagation(); wmsExcluirRecebimento(this)" title="Excluir recebimento">Excluir</button>';
-        return '<tr style="cursor:pointer;" onclick="wmsAbrirRecebimento(' + r.id + ')"><td>' + escHtml(r.id) + '</td><td>' + escHtml(r.numero_nf || '') + '</td><td>' + escHtml(r.fornecedor || '') + '</td><td>' + escHtml(r.placa || '') + '</td><td>' + escHtml(r.status) + '</td><td>' + btnExcluir + '</td></tr>';
+        return '<tr style="cursor:pointer;" onclick="wmsAbrirRecebimento(' + r.id + ')"><td>' + escHtml(r.id) + '</td><td>' + escHtml(r.numero_nf || '') + escHtml(vinc) + '</td><td>' + escHtml(r.fornecedor || '') + '</td><td>' + escHtml(r.placa || '') + '</td><td>' + escHtml(r.status) + (orig === 'carreta' ? ' · carreta' : '') + '</td><td>' + btnExcluir + '</td></tr>';
     }).join('') : '<tr><td colspan="6">Nenhum recebimento.</td></tr>';
 }
+
+function wmsLimparPainelNfDescarga() {
+    var info = document.getElementById('wms-rec-nf-info');
+    var wrap = document.getElementById('wms-rec-nf-itens-wrap');
+    var tb = document.getElementById('wms-tbody-rec-nf-itens');
+    var hid = document.getElementById('wms-rec-terceiros-doc-id');
+    var hidA = document.getElementById('wms-rec-terceiros-area');
+    if (info) { info.style.display = 'none'; info.innerHTML = ''; }
+    if (wrap) wrap.style.display = 'none';
+    if (tb) tb.innerHTML = '';
+    if (hid) hid.value = '';
+    if (hidA) hidA.value = '';
+}
+
+function wmsPreencherPainelNfDescarga(doc) {
+    if (!doc) { wmsLimparPainelNfDescarga(); return; }
+    var hid = document.getElementById('wms-rec-terceiros-doc-id');
+    var hidA = document.getElementById('wms-rec-terceiros-area');
+    var forn = document.getElementById('wms-rec-fornecedor');
+    var placa = document.getElementById('wms-rec-placa');
+    if (hid) hid.value = doc.documento_id != null ? String(doc.documento_id) : '';
+    if (hidA) hidA.value = doc.area || '';
+    if (forn && doc.fornecedor) forn.value = doc.fornecedor;
+    if (placa && doc.placa) placa.value = doc.placa;
+    var info = document.getElementById('wms-rec-nf-info');
+    if (info) {
+        var areaLbl = doc.area === 'carreta' ? 'Carreta' : (doc.area || 'Recebimento');
+        var st = doc.recebimento_concluido ? '<span style="color:#e65100;">Recebimento já concluído no módulo descarga</span>' :
+            '<span style="color:#2e7d32;">Pendência de recebimento — receber/endereçar aqui no WMS</span>';
+        info.innerHTML = '<strong>NF ' + escHtml(doc.numero_nf || '') + '</strong>'
+            + (doc.serie_nf ? ' · Série ' + escHtml(doc.serie_nf) : '')
+            + ' · ' + escHtml(areaLbl)
+            + (doc.motorista ? ' · Motorista: ' + escHtml(doc.motorista) : '')
+            + '<br>' + st
+            + ' · ' + escHtml(doc.total_itens || 0) + ' item(ns) · Qtd NF: ' + escHtml(doc.quantidade_total_xml || 0);
+        info.style.display = 'block';
+    }
+    var wrap = document.getElementById('wms-rec-nf-itens-wrap');
+    var tb = document.getElementById('wms-tbody-rec-nf-itens');
+    var itens = doc.itens || [];
+    if (wrap && tb) {
+        wrap.style.display = itens.length ? 'block' : 'none';
+        tb.innerHTML = itens.length ? itens.map(function(it) {
+            return '<tr><td>' + escHtml(it.n_item || '') + '</td><td><strong>' + escHtml(it.sku || '—') + '</strong></td><td>' + escHtml(it.descricao || '') + '</td><td>' + escHtml(it.quantidade_xml) + '</td><td>' + escHtml(it.codigo_ean || '') + '</td></tr>';
+        }).join('') : '';
+    }
+}
+
+function wmsInitRecebimentoIntegracaoNf() {
+    var nfEl = document.getElementById('wms-rec-nf');
+    if (!nfEl || nfEl.dataset.wmsNfBind) return;
+    nfEl.dataset.wmsNfBind = '1';
+    nfEl.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            wmsBuscarNfDescarga();
+        }
+    });
+}
+
+window.wmsBuscarNfDescarga = async function() {
+    var nf = (document.getElementById('wms-rec-nf') || {}).value || '';
+    if (!String(nf).trim()) {
+        showMessage('Informe o número da NF.', 'warning');
+        return;
+    }
+    var data = await fetchAPI('/wms/recebimentos/buscar-nf?numero_nf=' + encodeURIComponent(nf.trim()));
+    if (!data || data.erro || !data.documento) {
+        wmsLimparPainelNfDescarga();
+        showMessage((data && data.erro) || 'NF não encontrada no módulo de descarga.', 'error');
+        return;
+    }
+    wmsPreencherPainelNfDescarga(data.documento);
+    if (data.documento.recebimento_concluido) {
+        showMessage('NF encontrada, mas o recebimento já foi concluído no módulo de descarga.', 'warning');
+    } else {
+        showMessage('NF vinculada — dados carregados do módulo de descarga/recebimento.', 'success');
+    }
+};
 
 window.wmsExcluirRecebimento = async function(btn) {
     var id = btn && btn.getAttribute ? btn.getAttribute('data-wms-rec-id') : btn;
@@ -3477,15 +3561,30 @@ async function loadWmsPickingLista() {
 async function wmsCriarRecebimento() {
     var btn = document.getElementById('btn-wms-novo-recebimento');
     if (btn) btn.disabled = true;
+    var nf = (document.getElementById('wms-rec-nf') || {}).value || '';
+    if (!String(nf).trim()) {
+        if (btn) btn.disabled = false;
+        showMessage('Informe o número da NF.', 'error');
+        return;
+    }
+    var terDoc = (document.getElementById('wms-rec-terceiros-doc-id') || {}).value || '';
+    if (!terDoc) {
+        await wmsBuscarNfDescarga();
+        terDoc = (document.getElementById('wms-rec-terceiros-doc-id') || {}).value || '';
+    }
     var body = {
-        numero_nf: (document.getElementById('wms-rec-nf') || {}).value || '',
+        numero_nf: nf.trim(),
         fornecedor: (document.getElementById('wms-rec-fornecedor') || {}).value || '',
-        placa: (document.getElementById('wms-rec-placa') || {}).value || ''
+        placa: (document.getElementById('wms-rec-placa') || {}).value || '',
+        terceiros_documento_id: terDoc ? parseInt(terDoc, 10) : null,
+        terceiros_area: (document.getElementById('wms-rec-terceiros-area') || {}).value || ''
     };
     var data = await fetchAPI('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) });
     if (btn) btn.disabled = false;
     if (data && data.ok) {
-        showMessage('Recebimento #' + data.id + ' criado.', 'success');
+        var msg = 'Recebimento #' + data.id + ' criado.';
+        if (data.terceiros_documento_id) msg += ' Vinculado à NF do módulo descarga (doc #' + data.terceiros_documento_id + ').';
+        showMessage(msg, 'success');
         wmsAbrirRecebimento(data.id);
         loadWmsRecebimentos();
     } else {
@@ -3527,7 +3626,13 @@ async function wmsFinalizarRecebimento() {
         body: JSON.stringify({ acao: 'finalizar', recebimento_id: parseInt(rid, 10), respostas: [] })
     });
     if (data && data.ok) {
-        showMessage('Recebimento finalizado. Movimentações geradas: ' + (data.movimentacoes_geradas || 0), 'success');
+        var msg = 'Recebimento finalizado. Movimentações geradas: ' + (data.movimentacoes_geradas || 0);
+        if (data.terceiros && data.terceiros.recebimento_concluido) {
+            msg += ' · Pendência de recebimento atualizada no módulo descarga.';
+        } else if (data.terceiros && data.terceiros.erro) {
+            msg += ' · Aviso terceiros: ' + data.terceiros.erro;
+        }
+        showMessage(msg, 'success');
         loadWmsRecebimentos();
         loadWmsMovimentacoes();
         loadWmsPainel();

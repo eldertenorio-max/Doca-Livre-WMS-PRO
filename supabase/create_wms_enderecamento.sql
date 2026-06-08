@@ -160,6 +160,8 @@ CREATE TABLE IF NOT EXISTS public.wms_recebimento (
   origem TEXT NOT NULL DEFAULT 'manual',
   status TEXT NOT NULL DEFAULT 'aguardando',
   check_qualidade_ok BOOLEAN,
+  terceiros_documento_id BIGINT,
+  terceiros_area TEXT,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   criado_por TEXT

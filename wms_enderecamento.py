@@ -303,6 +303,190 @@ def _ensure_produto_planejamento_columns(conn):
             pass
 
 
+def _ensure_wms_recebimento_terceiros_columns(conn):
+    cols = [
+        ('terceiros_documento_id', 'BIGINT' if _is_pg(conn) else 'INTEGER'),
+        ('terceiros_area', 'TEXT'),
+    ]
+    t = _tbl(conn, 'wms_recebimento')
+    if _is_pg(conn):
+        for name, typ in cols:
+            try:
+                conn.execute(f'ALTER TABLE {t} ADD COLUMN IF NOT EXISTS {name} {typ}')
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    else:
+        try:
+            existing = conn.execute('PRAGMA table_info(wms_recebimento)').fetchall()
+            names = {c[1] if not isinstance(c, dict) else c.get('name') for c in (existing or [])}
+            for name, typ in cols:
+                if name not in names:
+                    conn.execute(f'ALTER TABLE wms_recebimento ADD COLUMN {name} {typ}')
+            conn.commit()
+        except Exception:
+            pass
+
+
+def _normalizar_nf_wms(numero_nf):
+    s = ''.join(c for c in str(numero_nf or '').strip() if c.isdigit())
+    return s.lstrip('0') or '0'
+
+
+def _terceiros_bool_sim_local(valor):
+    if valor is True or valor == 1:
+        return True
+    return str(valor or '').strip().lower() in ('1', 'true', 'sim', 's', 'yes', 't')
+
+
+def _tbl_terceiros_doc(conn):
+    return 'public.terceiros_documentos' if _is_pg(conn) else 'terceiros_documentos'
+
+
+def _tbl_terceiros_itens(conn):
+    return 'public.terceiros_documento_itens' if _is_pg(conn) else 'terceiros_documento_itens'
+
+
+def _tbl_terceiros_eventos(conn):
+    return 'public.terceiros_documento_eventos' if _is_pg(conn) else 'terceiros_documento_eventos'
+
+
+def _terceiros_tabelas_existem(conn):
+    try:
+        conn.execute(f'SELECT 1 FROM {_tbl_terceiros_doc(conn)} LIMIT 1')
+        return True
+    except Exception:
+        return False
+
+
+def _sku_terceiros_item(item):
+    d = _row_dict(item) or item or {}
+    for k in ('codigo_produto_base', 'codigo_produto_xml'):
+        v = (d.get(k) or '').strip()
+        if v:
+            return v
+    return ''
+
+
+def _buscar_documento_terceiros_por_nf(conn, numero_nf):
+    """Localiza NF no módulo descarga/recebimento (prioriza carreta em pendência)."""
+    nf_norm = _normalizar_nf_wms(numero_nf)
+    if not nf_norm or nf_norm == '0':
+        return None, 'Informe o número da NF.'
+    if not _terceiros_tabelas_existem(conn):
+        return None, 'Módulo de descarga/recebimento não disponível neste banco.'
+    t_doc = _tbl_terceiros_doc(conn)
+    rows = conn.execute(
+        f'''SELECT id, area, numero_nf, serie_nf, remetente_nome, remetente_cnpj,
+                   placa_carreta, motorista_carreta, recebimento_concluido, previsao_chegada,
+                   chave_nfe, destinatario_nome, criado_em
+            FROM {t_doc}
+            WHERE area IN ('carreta', 'recebimento', 'expedicao')
+            ORDER BY criado_em DESC, id DESC
+            LIMIT 1200'''
+    ).fetchall()
+    matches = []
+    for r in rows or []:
+        rd = _row_dict(r) or {}
+        if _normalizar_nf_wms(rd.get('numero_nf')) == nf_norm:
+            matches.append(rd)
+    if not matches:
+        return None, 'NF não encontrada no módulo de descarga/recebimento (carreta/recebimento).'
+    matches.sort(key=lambda m: (
+        1 if _terceiros_bool_sim_local(m.get('recebimento_concluido')) else 0,
+        0 if (m.get('area') or '').lower() == 'carreta' else (
+            1 if (m.get('area') or '').lower() == 'recebimento' else 2
+        ),
+        -int(m.get('id') or 0),
+    ))
+    doc = matches[0]
+    t_it = _tbl_terceiros_itens(conn)
+    itens_raw = conn.execute(
+        f'''SELECT id, n_item, codigo_produto_xml, codigo_produto_base, descricao_xml, descricao_base,
+                   quantidade_xml, quantidade_bipada, codigo_ean, unidade_xml
+            FROM {t_it} WHERE documento_id = ? ORDER BY n_item, id''',
+        (doc['id'],),
+    ).fetchall()
+    itens = []
+    for it in itens_raw or []:
+        rd = _row_dict(it) or {}
+        q_xml = float(rd.get('quantidade_xml') or 0)
+        q_bip = float(rd.get('quantidade_bipada') or 0)
+        sku = _sku_terceiros_item(rd)
+        itens.append({
+            'id': rd.get('id'),
+            'n_item': rd.get('n_item'),
+            'sku': sku,
+            'descricao': (rd.get('descricao_base') or rd.get('descricao_xml') or '').strip(),
+            'quantidade_xml': q_xml,
+            'quantidade_bipada': q_bip,
+            'codigo_ean': rd.get('codigo_ean') or '',
+            'unidade': rd.get('unidade_xml') or '',
+        })
+    area = (doc.get('area') or '').lower()
+    return {
+        'documento_id': doc['id'],
+        'area': area,
+        'numero_nf': doc.get('numero_nf') or '',
+        'serie_nf': doc.get('serie_nf') or '',
+        'fornecedor': (doc.get('remetente_nome') or '').strip(),
+        'remetente_cnpj': doc.get('remetente_cnpj') or '',
+        'placa': (doc.get('placa_carreta') or '').strip().upper(),
+        'motorista': (doc.get('motorista_carreta') or '').strip(),
+        'previsao_chegada': doc.get('previsao_chegada') or '',
+        'recebimento_concluido': _terceiros_bool_sim_local(doc.get('recebimento_concluido')),
+        'chave_nfe': doc.get('chave_nfe') or '',
+        'itens': itens,
+        'total_itens': len(itens),
+        'quantidade_total_xml': round(sum(i['quantidade_xml'] for i in itens), 3),
+    }, None
+
+
+def _concluir_terceiros_recebimento_wms(conn, documento_id, usuario=None):
+    """Marca recebimento_concluido no módulo terceiros/descarga (sai da pendência)."""
+    if not documento_id or not _terceiros_tabelas_existem(conn):
+        return False, 'Documento terceiros indisponível.'
+    t_doc = _tbl_terceiros_doc(conn)
+    t_ev = _tbl_terceiros_eventos(conn)
+    row = conn.execute(
+        f'SELECT id, recebimento_concluido FROM {t_doc} WHERE id = ?', (int(documento_id),)
+    ).fetchone()
+    if not row:
+        return False, 'Documento terceiros não encontrado.'
+    rd = _row_dict(row) or {}
+    if _terceiros_bool_sim_local(rd.get('recebimento_concluido')):
+        return True, None
+    user = (usuario or _usuario() or 'wms').strip()
+    now = _now_iso()
+    if _is_pg(conn):
+        conn.execute(
+            f'''UPDATE {t_doc} SET recebimento_concluido = TRUE, recebimento_concluido_em = NOW(),
+                recebimento_concluido_por = ?, atualizado_em = NOW(), atualizado_por = ? WHERE id = ?''',
+            (user, user, int(documento_id)),
+        )
+    else:
+        conn.execute(
+            f'''UPDATE {t_doc} SET recebimento_concluido = 1, recebimento_concluido_em = ?,
+                recebimento_concluido_por = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?''',
+            (now, user, now, user, int(documento_id)),
+        )
+    try:
+        conn.execute(
+            f'''INSERT INTO {t_ev} (documento_id, evento, valor_anterior, valor_novo, usuario, criado_em, detalhes)
+                VALUES (?, 'recebimento_concluido', '0', '1', ?, ?, 'via_wms_enderecamento')''',
+            (int(documento_id), user, now),
+        )
+    except Exception:
+        pass
+    return True, None
+
+
 def _pesos_categoria_produtos(conn):
     """Peso de cada categoria pela soma de posições médias (planejamento)."""
     _ensure_produto_planejamento_columns(conn)
@@ -1972,11 +2156,32 @@ def api_wms_pesquisa_sku():
         return jsonify({'erro': str(e)}), 500
 
 
+@bp.route('/recebimentos/buscar-nf', methods=['GET'])
+def api_wms_recebimentos_buscar_nf():
+    """Busca NF no módulo descarga/recebimento (carreta) para preencher recebimento WMS."""
+    numero_nf = (request.args.get('numero_nf') or request.args.get('nf') or '').strip()
+    conn = _db()
+    try:
+        _ensure_wms_recebimento_terceiros_columns(conn)
+        doc, err = _buscar_documento_terceiros_por_nf(conn, numero_nf)
+        conn.close()
+        if err:
+            return jsonify({'erro': err}), 404
+        return jsonify({'ok': True, 'documento': doc})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
 @bp.route('/recebimentos', methods=['GET', 'POST'])
 def api_wms_recebimentos():
     conn = _db()
     ensure_wms_schema(conn)
     _seed_wms_defaults(conn)
+    _ensure_wms_recebimento_terceiros_columns(conn)
     t_rec = _tbl(conn, 'wms_recebimento')
     t_rp = _tbl(conn, 'wms_recebimento_palete')
     t_pal = _tbl(conn, 'wms_palete')
@@ -2269,33 +2474,83 @@ def api_wms_recebimentos():
                     f"UPDATE {t_rec} SET status = 'aguardando_armazenagem', check_qualidade_ok = 1, atualizado_em = ? WHERE id = ?",
                     (now, rid),
                 )
+            rec_vinc = conn.execute(
+                f'SELECT terceiros_documento_id FROM {t_rec} WHERE id = ?', (rid,)
+            ).fetchone()
+            terceiros_sync = None
+            doc_ter = (_row_dict(rec_vinc) or {}).get('terceiros_documento_id')
+            if doc_ter:
+                ok_t, err_t = _concluir_terceiros_recebimento_wms(conn, doc_ter)
+                if ok_t:
+                    terceiros_sync = {
+                        'documento_id': int(doc_ter),
+                        'recebimento_concluido': True,
+                        'mensagem': 'Pendência de recebimento atualizada no módulo de descarga.',
+                    }
+                else:
+                    terceiros_sync = {'documento_id': int(doc_ter), 'erro': err_t}
             conn.commit()
             conn.close()
-            return jsonify({'ok': True, 'movimentacoes_geradas': movs})
+            return jsonify({'ok': True, 'movimentacoes_geradas': movs, 'terceiros': terceiros_sync})
+
+        ter_doc_id = data.get('terceiros_documento_id')
+        ter_area = (data.get('terceiros_area') or '').strip().lower()
+        numero_nf = (data.get('numero_nf') or '').strip()
+        if not ter_doc_id and numero_nf:
+            found, _err_nf = _buscar_documento_terceiros_por_nf(conn, numero_nf)
+            if found and not found.get('recebimento_concluido'):
+                ter_doc_id = found.get('documento_id')
+                ter_area = found.get('area') or ter_area
+        origem = (data.get('origem') or '').strip()
+        if not origem:
+            if ter_area == 'carreta':
+                origem = 'carreta'
+            elif ter_doc_id:
+                origem = 'terceiros'
+            else:
+                origem = 'manual'
+        fornecedor = data.get('fornecedor')
+        placa = data.get('placa')
+        if ter_doc_id and numero_nf:
+            found, _ = _buscar_documento_terceiros_por_nf(conn, numero_nf)
+            if found:
+                if not fornecedor:
+                    fornecedor = found.get('fornecedor')
+                if not placa:
+                    placa = found.get('placa')
+                if not ter_area:
+                    ter_area = found.get('area') or ''
 
         if _is_pg(conn):
             cur = conn.execute(
-                f'''INSERT INTO {t_rec} (numero_nf, fornecedor, placa, doca, origem, status, criado_em, atualizado_em, criado_por)
-                    VALUES (?, ?, ?, ?, ?, 'aguardando', NOW(), NOW(), ?) RETURNING id''',
+                f'''INSERT INTO {t_rec} (numero_nf, fornecedor, placa, doca, origem, status,
+                    terceiros_documento_id, terceiros_area, criado_em, atualizado_em, criado_por)
+                    VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, NOW(), NOW(), ?) RETURNING id''',
                 (
-                    data.get('numero_nf'), data.get('fornecedor'), data.get('placa'), data.get('doca'),
-                    data.get('origem') or 'manual', _usuario(),
+                    numero_nf or data.get('numero_nf'), fornecedor, placa, data.get('doca'),
+                    origem, ter_doc_id, ter_area or None, _usuario(),
                 ),
             )
             new_id = cur.fetchone()['id']
         else:
             conn.execute(
-                f'''INSERT INTO {t_rec} (numero_nf, fornecedor, placa, doca, origem, status, criado_em, atualizado_em, criado_por)
-                    VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, ?)''',
+                f'''INSERT INTO {t_rec} (numero_nf, fornecedor, placa, doca, origem, status,
+                    terceiros_documento_id, terceiros_area, criado_em, atualizado_em, criado_por)
+                    VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, ?, ?, ?)''',
                 (
-                    data.get('numero_nf'), data.get('fornecedor'), data.get('placa'), data.get('doca'),
-                    data.get('origem') or 'manual', now, now, _usuario(),
+                    numero_nf or data.get('numero_nf'), fornecedor, placa, data.get('doca'),
+                    origem, ter_doc_id, ter_area or None, now, now, _usuario(),
                 ),
             )
             new_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
         conn.commit()
         conn.close()
-        return jsonify({'ok': True, 'id': new_id})
+        return jsonify({
+            'ok': True,
+            'id': new_id,
+            'terceiros_documento_id': ter_doc_id,
+            'origem': origem,
+        })
     except Exception as e:
         try:
             conn.rollback()

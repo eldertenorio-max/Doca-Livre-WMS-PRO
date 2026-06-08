@@ -2634,12 +2634,21 @@
                         <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Tipo</th><th>Palete</th><th>Destino</th><th>Prioridade</th><th></th></tr></thead><tbody id="wms-tbody-movimentacoes"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody></table></div>
                     </div>
                     <div id="wms-panel-recebimento" class="wms-inner-panel" hidden>
+                        <p class="info-text" style="margin: 0 0 10px 0; font-size: 13px;">Recebimento de <strong>carreta</strong> pelo WMS: informe a NF — os dados vêm do módulo de descarga/recebimento. Ao finalizar, a NF sai da <strong>2ª aba — Pendência de recebimento</strong>.</p>
                         <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: flex-end;">
-                            <div class="form-group"><label>NF</label><input type="text" id="wms-rec-nf" placeholder="Número NF"></div>
-                            <div class="form-group"><label>Fornecedor</label><input type="text" id="wms-rec-fornecedor"></div>
-                            <div class="form-group"><label>Placa</label><input type="text" id="wms-rec-placa"></div>
+                            <div class="form-group"><label>NF</label><input type="text" id="wms-rec-nf" placeholder="Número NF — Enter para buscar"></div>
+                            <div class="form-group"><label>Fornecedor</label><input type="text" id="wms-rec-fornecedor" placeholder="Preenchido pela NF"></div>
+                            <div class="form-group"><label>Placa</label><input type="text" id="wms-rec-placa" placeholder="Preenchido pela NF"></div>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-buscar-nf">Buscar NF</button>
                             <button type="button" class="btn btn-primary" id="btn-wms-novo-recebimento">Novo recebimento</button>
                             <button type="button" class="btn btn-secondary" id="btn-wms-rec-lista">Atualizar lista</button>
+                        </div>
+                        <input type="hidden" id="wms-rec-terceiros-doc-id">
+                        <input type="hidden" id="wms-rec-terceiros-area">
+                        <div id="wms-rec-nf-info" class="info-text" style="display: none; margin-bottom: 10px; padding: 10px; background: #e3f2fd; border-radius: 8px; border: 1px solid #90caf9;"></div>
+                        <div id="wms-rec-nf-itens-wrap" style="display: none; margin-bottom: 12px;">
+                            <h4 style="margin: 0 0 6px 0; font-size: 14px;">Itens da NF (descarga/recebimento)</h4>
+                            <div class="table-container"><table class="data-table"><thead><tr><th>Item</th><th>SKU</th><th>Descrição</th><th>Qtd NF</th><th>EAN</th></tr></thead><tbody id="wms-tbody-rec-nf-itens"></tbody></table></div>
                         </div>
                         <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>NF</th><th>Fornecedor</th><th>Placa</th><th>Status</th><th>Ações</th></tr></thead><tbody id="wms-tbody-recebimentos"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody></table></div>
                         <div id="wms-recebimento-detalhe" style="margin-top: 16px; display: none; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">
