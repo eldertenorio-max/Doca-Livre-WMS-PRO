@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
 </head>
 <body class="hub-entrada-body">
+    {% include '_stock_system_splash.html' %}
     {% from '_stock_system_logo.html' import stock_system_logo %}
     <div class="ss-page-content">
     <div class="hub-entrada-topstripe" aria-hidden="true"></div>
@@ -37,5 +38,6 @@
         </footer>
     </div>
     </div>
+    <script src="{{ url_for('static', filename='stock-system-intro.js') }}"></script>
 </body>
 </html>

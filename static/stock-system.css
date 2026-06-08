@@ -12,12 +12,13 @@ body.ss-splash-active {
     overflow: hidden;
 }
 
-body.ss-splash-active .ss-page-content {
+body.ss-splash-active .ss-page-content,
+html.ss-splash-pending .ss-page-content {
     visibility: hidden;
 }
 
-html.ss-splash-skip #stock-system-splash {
-    display: none !important;
+html.ss-splash-pending body {
+    overflow: hidden;
 }
 
 .ss-splash {
@@ -56,11 +57,18 @@ html.ss-splash-skip #stock-system-splash {
 
 /* —— Tela 1: logo SVG —— */
 .ss-splash-step--logo .ss-splash-logo-wrap {
-    padding: 16px 22px;
+    padding: 18px 24px;
     background: #fff;
     border-radius: 16px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-    animation: ss-logo-enter 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    border: 3px solid rgba(14, 165, 233, 0.45);
+    animation: ss-logo-enter 0.7s cubic-bezier(0.22, 1, 0.36, 1) both,
+               ss-splash-logo-float 3.2s ease-in-out 0.75s infinite;
+}
+
+@keyframes ss-splash-logo-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
 }
 
 @keyframes ss-logo-enter {
@@ -70,7 +78,7 @@ html.ss-splash-skip #stock-system-splash {
 
 .ss-splash-logo {
     display: block;
-    width: min(300px, 78vw);
+    width: min(320px, 82vw);
     height: auto;
 }
 
@@ -150,4 +158,10 @@ html.ss-splash-skip #stock-system-splash {
     width: 145px;
     max-height: none;
     max-width: min(145px, 46vw);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ss-splash-step--logo .ss-splash-logo-wrap {
+        animation: ss-logo-enter 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
 }
