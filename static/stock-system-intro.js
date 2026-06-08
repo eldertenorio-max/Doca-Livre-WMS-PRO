@@ -1,21 +1,24 @@
 /**
- * Stock System — intro na abertura da página.
+ * Stock System — intro em 2 telas na abertura:
+ *   1) símbolo + logo
+ *   2) título, tagline e barra de carregamento
  *
- * Substitua os arquivos no Canva e salve em static/:
- *   stock-system-logo.png   (recomendado: 560×160 px, fundo transparente)
- *   stock-system-intro.mp4  (opcional: vídeo curto 2–4 s, sem áudio)
+ * Arquivos em static/ (Canva):
+ *   stock-system-symbol.svg  — ícone (já incluso)
+ *   stock-system-logo.png    — logo horizontal (560×160 px, fundo transparente)
  *
- * A intro aparece uma vez por sessão do navegador (sessionStorage).
+ * Uma vez por sessão (sessionStorage).
  */
 (function () {
     'use strict';
 
     var SPLASH_ID = 'stock-system-splash';
-    var STORAGE_KEY = 'stock_system_intro_v1';
-    var MIN_MS = 1800;
-    var MAX_MS = 6000;
+    var STORAGE_KEY = 'stock_system_intro_v2';
+    var LOGO_MS = 2000;
+    var LOAD_MS = 2600;
+    var FADE_MS = 500;
 
-    function qs(sel) { return document.querySelector(sel); }
+    function qs(sel, root) { return (root || document).querySelector(sel); }
 
     function hideSplash(splash) {
         if (!splash) return;
@@ -24,43 +27,62 @@
         try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch (e) {}
         setTimeout(function () {
             if (splash.parentNode) splash.parentNode.removeChild(splash);
-        }, 600);
+        }, FADE_MS + 80);
     }
 
-    function finishSplash(splash, startTs) {
-        var elapsed = Date.now() - startTs;
-        var wait = Math.max(0, MIN_MS - elapsed);
-        setTimeout(function () { hideSplash(splash); }, wait);
+    function goToLoadStep(splash) {
+        var stepLogo = qs('.ss-splash-step--logo', splash);
+        var stepLoad = qs('.ss-splash-step--load', splash);
+        if (!stepLogo || !stepLoad) {
+            hideSplash(splash);
+            return;
+        }
+        stepLogo.classList.remove('ss-splash-step--active');
+        stepLogo.setAttribute('aria-hidden', 'true');
+        stepLoad.classList.add('ss-splash-step--active');
+        stepLoad.setAttribute('aria-hidden', 'false');
+
+        var bar = qs('.ss-splash-loader-bar', splash);
+        var loader = qs('.ss-splash-loader', splash);
+        if (bar) {
+            bar.style.width = '0%';
+            void bar.offsetWidth;
+            bar.classList.add('ss-splash-loader-bar--run');
+        }
+
+        var startLoad = Date.now();
+        var tick = setInterval(function () {
+            if (!loader) return;
+            var pct = Math.min(100, Math.round(((Date.now() - startLoad) / LOAD_MS) * 100));
+            loader.setAttribute('aria-valuenow', String(pct));
+            if (pct >= 100) clearInterval(tick);
+        }, 50);
+
+        setTimeout(function () {
+            clearInterval(tick);
+            hideSplash(splash);
+        }, LOAD_MS);
     }
 
-    function tryVideo(splash, startTs) {
-        var video = qs('#ss-splash-video');
-        if (!video) {
-            finishSplash(splash, startTs);
-            return;
+    function setupLogoStep(splash) {
+        var wrap = qs('.ss-splash-logo-wrap', splash);
+        var logo = qs('.ss-splash-logo', splash);
+        if (!wrap || !logo) return;
+        function apply() {
+            var src = (logo.currentSrc || logo.src || '').toLowerCase();
+            var isPng = src.indexOf('.png') !== -1;
+            if (isPng && logo.naturalWidth > 80) {
+                wrap.classList.add('ss-splash-logo-wrap--full');
+            }
         }
-        var srcMp4 = video.getAttribute('data-src-mp4');
-        if (!srcMp4) {
-            finishSplash(splash, startTs);
-            return;
-        }
-        var probe = document.createElement('video');
-        probe.muted = true;
-        probe.preload = 'metadata';
-        probe.src = srcMp4;
-        probe.onloadeddata = function () {
-            splash.classList.add('ss-splash--video');
-            video.style.display = 'block';
-            video.src = srcMp4;
-            video.muted = true;
-            video.playsInline = true;
-            video.play().catch(function () { finishSplash(splash, startTs); });
-            video.onended = function () { finishSplash(splash, startTs); };
-            setTimeout(function () { hideSplash(splash); }, MAX_MS);
-        };
-        probe.onerror = function () {
-            finishSplash(splash, startTs);
-        };
+        logo.addEventListener('load', apply);
+        if (logo.complete) apply();
+    }
+
+    function runIntro(splash) {
+        document.body.classList.add('ss-splash-active');
+        setupLogoStep(splash);
+        setTimeout(function () { goToLoadStep(splash); }, LOGO_MS);
     }
 
     function initStockSystemIntro(opts) {
@@ -74,12 +96,7 @@
         var splash = document.getElementById(SPLASH_ID);
         if (!splash) return;
 
-        document.body.classList.add('ss-splash-active');
-        var startTs = Date.now();
-        tryVideo(splash, startTs);
-        setTimeout(function () {
-            if (document.getElementById(SPLASH_ID)) hideSplash(splash);
-        }, MAX_MS + 500);
+        runIntro(splash);
     }
 
     window.initStockSystemIntro = initStockSystemIntro;

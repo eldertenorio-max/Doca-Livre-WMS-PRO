@@ -1,19 +1,31 @@
-{# Intro Stock System — substitua logo/vídeo em static/ após exportar do Canva #}
-<div id="stock-system-splash" class="ss-splash" role="dialog" aria-label="Carregando Stock System" aria-live="polite">
-    <div class="ss-splash-inner">
+{# Intro Stock System — 2 telas: (1) símbolo+logo  (2) título+tagline+barra #}
+<div id="stock-system-splash" class="ss-splash" role="dialog" aria-label="Carregando {{ system_name }}" aria-live="polite">
+    {# Tela 1 — marca (ícone + logo) #}
+    <div class="ss-splash-step ss-splash-step--logo ss-splash-step--active" aria-hidden="false">
         <div class="ss-splash-logo-wrap">
+            <img
+                src="{{ url_for('static', filename='stock-system-symbol.svg') }}"
+                alt=""
+                class="ss-splash-symbol"
+                aria-hidden="true"
+            >
             <img
                 src="{{ url_for('static', filename='stock-system-logo.png') }}"
                 alt="{{ system_name }}"
-                class="ss-splash-logo ss-splash-logo--dark-bg"
-                onerror="this.onerror=null;this.src='{{ url_for('static', filename='stock-system-logo.svg') }}';this.classList.remove('ss-splash-logo--dark-bg');"
+                class="ss-splash-logo"
+                onerror="this.onerror=null;this.src='{{ url_for('static', filename='stock-system-logo.svg') }}';var w=this.closest('.ss-splash-logo-wrap');if(w){w.classList.add('ss-splash-logo-wrap--full');var s=w.querySelector('.ss-splash-symbol');if(s)s.style.display='none';}"
             >
         </div>
-        <h1 class="ss-splash-title">{{ system_name }}</h1>
-        <p class="ss-splash-tagline">{{ system_tagline }}</p>
-        <video id="ss-splash-video" class="ss-splash-video" muted playsinline preload="none"
-               data-src-mp4="{{ url_for('static', filename='stock-system-intro.mp4') }}"
-               style="display:none"></video>
-        <div class="ss-splash-loader" aria-hidden="true"><div class="ss-splash-loader-bar"></div></div>
+    </div>
+
+    {# Tela 2 — descrição + carregamento #}
+    <div class="ss-splash-step ss-splash-step--load" aria-hidden="true">
+        <div class="ss-splash-load-inner">
+            <h1 class="ss-splash-title">{{ system_name }}</h1>
+            <p class="ss-splash-tagline">{{ system_tagline }}</p>
+            <div class="ss-splash-loader" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div class="ss-splash-loader-bar"></div>
+            </div>
+        </div>
     </div>
 </div>
