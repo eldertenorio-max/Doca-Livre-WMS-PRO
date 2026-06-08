@@ -22,7 +22,6 @@
             <a href="/entrada" class="header-link-inicio" title="Voltar à tela inicial de módulos">← Tela inicial</a>
             <div class="header-brand">
                 <img src="{{ url_for('static', filename='stock-system-logo.svg') }}" alt="{{ system_name }}" class="ss-brand-logo ss-brand-logo--header">
-                <h1>{{ system_name }}</h1>
             </div>
             <div class="header-alertas-terceiros" id="header-alertas-terceiros">
                 <button type="button" class="header-alertas-btn" id="btn-terceiros-alertas" title="Alertas de NFs paradas">
@@ -3160,7 +3159,6 @@
     <div id="hub-modulos-overlay" class="hub-modulos-overlay" hidden aria-hidden="true" role="dialog" aria-label="Escolha o módulo">
         <div class="hub-entrada-topstripe" aria-hidden="true"></div>
         <div class="hub-entrada-wrap hub-modulos-overlay-inner">
-            <h2 class="hub-entrada-titulo">{{ system_name }}</h2>
             <p class="hub-entrada-subtitulo">{{ system_tagline }}</p>
             <div class="hub-entrada-botoes">
                 <button type="button" class="hub-entrada-btn hub-entrada-btn--1" data-hub-modulo="carregamento">Carga/Expedição</button>

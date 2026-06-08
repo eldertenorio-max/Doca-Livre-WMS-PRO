@@ -180,9 +180,9 @@ body {
 
 .login-logo-img {
     display: block;
-    height: 180px;
+    height: 120px;
     width: auto;
-    max-width: 200px;
+    max-width: 280px;
     margin: 0 auto;
     object-fit: contain;
     filter: drop-shadow(0 2px 12px rgba(54, 96, 146, 0.2));
@@ -197,9 +197,12 @@ body {
     animation: fadeInDown 0.6s ease 0.1s both;
 }
 .login-header p {
-    font-size: 0.95rem;
+    font-size: 0.88rem;
     color: #5a6d82;
     font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 4px;
     animation: fadeInDown 0.6s ease 0.2s both;
 }
 
