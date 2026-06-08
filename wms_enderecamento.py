@@ -24,6 +24,7 @@ def init_wms_enderecamento(get_db_func):
     try:
         conn = get_db_func()
         ensure_wms_schema(conn)
+        _sync_wms_camara_layout(conn)
         conn.close()
     except Exception:
         pass
@@ -86,19 +87,79 @@ def _codigo_endereco(camara, rua, posicao, nivel):
     return f'{int(camara):02d}-{str(rua).strip().upper()}-{int(posicao):02d}-{int(nivel)}'
 
 
+_WMS_CAMARA_TOTAIS_PADRAO = {11: 138, 12: 134, 13: 138, 21: 82}
+
+
 def _layout_camaras_config():
     path = os.path.join(os.path.dirname(__file__), 'data', 'wms_layout_camaras.json')
     if not os.path.isfile(path):
         return {
             'camaras': [
-                {'codigo': 11, 'ruas': ['U', 'V'], 'niveis': 3},
-                {'codigo': 12, 'ruas': ['X', 'Y'], 'niveis': 3},
-                {'codigo': 13, 'ruas': ['W', 'Z'], 'niveis': 3},
-                {'codigo': 21, 'ruas': ['R'], 'niveis': 3},
+                {'codigo': 11, 'ruas': ['U', 'V'], 'niveis': 3, 'total_posicoes': 138},
+                {'codigo': 12, 'ruas': ['X', 'Y'], 'niveis': 3, 'total_posicoes': 134},
+                {'codigo': 13, 'ruas': ['W', 'Z'], 'niveis': 3, 'total_posicoes': 138},
+                {'codigo': 21, 'ruas': ['R'], 'niveis': 3, 'total_posicoes': 82},
             ]
         }
     with open(path, encoding='utf-8') as f:
         return json.load(f)
+
+
+def _total_posicoes_ref(camara, bloco=None):
+    """Capacidade física de referência — não usar COUNT(*) do banco."""
+    if bloco and bloco.get('total_posicoes'):
+        return int(bloco['total_posicoes'])
+    for b in (_layout_camaras_config().get('camaras') or []):
+        if int(b.get('codigo') or 0) == int(camara) and b.get('total_posicoes'):
+            return int(b['total_posicoes'])
+    return int(_WMS_CAMARA_TOTAIS_PADRAO.get(int(camara), 0))
+
+
+def _map_totais_ref_camaras():
+    out = dict(_WMS_CAMARA_TOTAIS_PADRAO)
+    for bloco in (_layout_camaras_config().get('camaras') or []):
+        cod = int(bloco.get('codigo') or 0)
+        if cod and bloco.get('total_posicoes'):
+            out[cod] = int(bloco['total_posicoes'])
+    return out
+
+
+def _limpar_localizacoes_orfas_vazias(conn, camara, codigos_validos):
+    if not codigos_validos:
+        return 0
+    t_loc = _tbl(conn, 'wms_localizacao')
+    ph = ','.join(['?' for _ in codigos_validos])
+    cur = conn.execute(
+        f'''DELETE FROM {t_loc}
+            WHERE camara = ? AND status = 'vazia'
+              AND codigo_endereco NOT IN ({ph})''',
+        (int(camara), *codigos_validos),
+    )
+    return int(getattr(cur, 'rowcount', 0) or 0)
+
+
+def _sync_wms_camara_layout(conn):
+    """Restaura total_posicoes de referência e remove endereços vazios fora do layout."""
+    if not _wms_tabelas_existem(conn):
+        return
+    t_cam = _tbl(conn, 'wms_camara')
+    refs = _map_totais_ref_camaras()
+    removidas = 0
+    for bloco in (_layout_camaras_config().get('camaras') or []):
+        cod = int(bloco['codigo'])
+        total = _total_posicoes_ref(cod, bloco)
+        if total <= 0:
+            continue
+        conn.execute(f'UPDATE {t_cam} SET total_posicoes = ? WHERE codigo = ?', (total, cod))
+        coords = _gerar_coordenadas_camara(cod, bloco.get('ruas'), bloco.get('niveis', 3), total)
+        codigos = {_codigo_endereco(c, r, p, n) for c, r, p, n in coords}
+        removidas += _limpar_localizacoes_orfas_vazias(conn, cod, codigos)
+    try:
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return removidas
 
 
 def _ensure_categoria_zona_column(conn):
@@ -236,16 +297,17 @@ def gerar_layout_enderecos(conn, force=False):
 
     for bloco in cfg.get('camaras') or []:
         cod = int(bloco['codigo'])
-        row_cam = conn.execute(f'SELECT total_posicoes FROM {t_cam} WHERE codigo = ?', (cod,)).fetchone()
-        total = int((row_cam or {}).get('total_posicoes') or 0) if row_cam else 0
+        total = _total_posicoes_ref(cod, bloco)
         if total <= 0:
             continue
         cats = _categorias_camara_zoneamento(conn, cod)
         seq_cat = _distribuir_categorias_em_slots(total, cats, pesos)
         coords = _gerar_coordenadas_camara(cod, bloco.get('ruas'), bloco.get('niveis', 3), total)
+        codigos_validos = []
         for i, (cam, rua, pos, nivel) in enumerate(coords):
             cat_z = seq_cat[i] if i < len(seq_cat) else cats[0]
             cod_end = _codigo_endereco(cam, rua, pos, nivel)
+            codigos_validos.append(cod_end)
             if _is_pg(conn):
                 conn.execute(
                     f'''INSERT INTO {t_loc}
@@ -272,9 +334,9 @@ def gerar_layout_enderecos(conn, force=False):
             inseridas += 1
             por_categoria[cat_z] += 1
 
-        cnt_cam = conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc} WHERE camara = ?', (cod,)).fetchone()
-        c = int((cnt_cam or {}).get('c', 0) if isinstance(cnt_cam, dict) else 0)
-        conn.execute(f'UPDATE {t_cam} SET total_posicoes = ? WHERE codigo = ?', (c, cod))
+        if force:
+            _limpar_localizacoes_orfas_vazias(conn, cod, codigos_validos)
+        conn.execute(f'UPDATE {t_cam} SET total_posicoes = ? WHERE codigo = ?', (total, cod))
 
     try:
         conn.commit()
@@ -657,23 +719,22 @@ def _ocupacao_camara(conn):
             GROUP BY c.codigo, c.descricao, c.total_posicoes
             ORDER BY c.codigo'''
     ).fetchall()
+    refs = _map_totais_ref_camaras()
     out = []
     for r in rows:
         d = _row_dict(r) or {}
+        cod = int(d.get('codigo') or 0)
         cad = int(d.get('cadastradas') or 0)
         ocup = int(d.get('ocupadas') or 0)
         vaz = int(d.get('vazias') or 0)
-        total = int(d.get('total_posicoes') or cad or 1)
-        if cad > 0:
-            vaz_calc = cad - ocup
-            pct = round(100.0 * ocup / cad, 1) if cad else 0
-        else:
-            vaz_calc = max(total - ocup, 0)
-            pct = round(100.0 * ocup / total, 1) if total else 0
+        total_ref = refs.get(cod) or int(d.get('total_posicoes') or cad or 1)
+        base = cad if cad > 0 else total_ref
+        vaz_calc = cad - ocup if cad > 0 else max(total_ref - ocup, 0)
+        pct = round(100.0 * ocup / base, 1) if base else 0
         out.append({
-            'camara': d.get('codigo'),
+            'camara': cod,
             'descricao': d.get('descricao'),
-            'total_posicoes': total,
+            'total_posicoes': total_ref,
             'cadastradas': cad,
             'ocupadas': ocup,
             'vazias': vaz if cad else vaz_calc,
