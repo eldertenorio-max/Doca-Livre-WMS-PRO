@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Etiqueta palete {{ etiqueta }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  @page { size: 100mm 70mm; margin: 3mm; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #eee;
+    padding: 10px;
+    color: #000;
+  }
+  .toolbar {
+    max-width: 100mm; margin: 0 auto 10px;
+    display: flex; gap: 8px;
+  }
+  .toolbar button {
+    flex: 1; padding: 8px; font-size: 13px; cursor: pointer;
+    border: none; border-radius: 6px; background: #1976d2; color: #fff;
+  }
+  .etq {
+    width: 100mm;
+    min-height: 64mm;
+    margin: 0 auto;
+    border: 2px solid #000;
+    padding: 4mm;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+  }
+  .brand {
+    font-size: 8pt;
+    font-weight: bold;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-bottom: 1.5pt solid #000;
+    padding-bottom: 2mm;
+    margin-bottom: 2mm;
+  }
+  .tipo {
+    font-size: 7pt;
+    color: #444;
+    margin-bottom: 1mm;
+  }
+  .bc-wrap { text-align: center; margin: 2mm 0; }
+  .bc-wrap svg { width: 92%; height: 14mm; }
+  .codigo {
+    text-align: center;
+    font-size: 11pt;
+    font-family: Consolas, monospace;
+    font-weight: bold;
+    letter-spacing: 1.5px;
+    margin-bottom: 2mm;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+  }
+  table td {
+    border: 0.5pt solid #000;
+    padding: 1.5mm 2mm;
+    vertical-align: top;
+  }
+  table td.lbl {
+    width: 28%;
+    font-weight: bold;
+    background: #f5f5f5;
+  }
+  .destino {
+    margin-top: 2mm;
+    font-size: 8pt;
+    border: 1pt dashed #666;
+    padding: 2mm;
+    min-height: 10mm;
+  }
+  .destino strong { display: block; font-size: 7pt; margin-bottom: 1mm; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .toolbar { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <button type="button" onclick="window.print()">Imprimir</button>
+</div>
+<div class="etq">
+  <div class="brand">Ultrapão · Stock System WMS</div>
+  <div class="tipo">ETIQUETA DE PALETE — 22 caracteres</div>
+  <div class="bc-wrap">
+    <svg id="bc-palete" data-code="{{ etiqueta }}"></svg>
+  </div>
+  <div class="codigo">{{ etiqueta }}</div>
+  <table>
+    <tr><td class="lbl">SKU</td><td>{{ sku or '—' }}</td></tr>
+    <tr><td class="lbl">Descrição</td><td>{{ descricao or '—' }}</td></tr>
+    <tr><td class="lbl">Lote</td><td>{{ lote or '—' }}</td></tr>
+    <tr><td class="lbl">Dt. produção</td><td>{{ data_producao or '—' }}</td></tr>
+    <tr><td class="lbl">Validade</td><td>{{ data_validade or '—' }}</td></tr>
+    <tr><td class="lbl">Caixas</td><td>{{ qtd if qtd is not none else '—' }}</td></tr>
+  </table>
+  {% if destino %}
+  <div class="destino">
+    <strong>Destino sugerido (putaway)</strong>
+    {{ destino }}
+  </div>
+  {% endif %}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script>
+(function() {
+  var el = document.getElementById('bc-palete');
+  var code = el && el.getAttribute('data-code');
+  if (code) {
+    JsBarcode(el, code, { format: 'CODE128', width: 1.6, height: 44, displayValue: false, margin: 2 });
+  }
+  {% if auto_print %}
+  window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 400); });
+  {% endif %}
+})();
+</script>
+</body>
+</html>

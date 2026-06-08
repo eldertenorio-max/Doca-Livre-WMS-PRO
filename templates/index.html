@@ -25,6 +25,7 @@
             <div class="header-brand">
                 {{ stock_system_logo(class='ss-brand-logo ss-brand-logo--header', grad_id='ssg-header', width='145', height='40') }}
             </div>
+            <div class="header-actions">
             <div class="header-alertas-terceiros" id="header-alertas-terceiros">
                 <button type="button" class="header-alertas-btn" id="btn-terceiros-alertas" title="Alertas de NFs paradas">
                     <span class="header-alertas-icone" aria-hidden="true">🔔</span>
@@ -43,6 +44,7 @@
                 <span class="perfil-usuario" id="perfil-usuario">{{ usuario or '—' }}</span>
             </div>
             <a href="/login?sair=1" class="btn-sair" id="btn-sair" title="Sair">Sair</a>
+            </div>
         </header>
 
         <div id="modulo-carregamento" class="modulo-area modulo-area--ativo">
@@ -2581,6 +2583,7 @@
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="produtos">PRODUTOS</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="movimentacoes">MOVIMENTAÇÕES</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="recebimento">RECEBIMENTO</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="separacao">SEPARAÇÃO</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="inventario">INVENTÁRIO</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="pesquisa">PESQUISA SKU</button>
                 </nav>
@@ -2600,20 +2603,31 @@
                         <div class="table-container"><table class="data-table"><thead><tr><th>Categoria</th><th>Câmara</th><th>Prioridade</th></tr></thead><tbody id="wms-tbody-zoneamento"><tr><td colspan="3" class="loading">Carregando...</td></tr></tbody></table></div>
                     </div>
                     <div id="wms-panel-localizacoes" class="wms-inner-panel" hidden>
-                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: flex-end;">
                             <div class="form-group"><label>Câmara</label><select id="wms-filtro-camara"><option value="">Todas</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="21">21</option></select></div>
                             <div class="form-group"><label>Categoria zona</label><select id="wms-filtro-cat-zona"><option value="">Todas</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div>
                             <div class="form-group"><label>Status</label><select id="wms-filtro-status"><option value="">Todos</option><option value="vazia">Vazia</option><option value="ocupada">Ocupada</option></select></div>
                             <button type="button" class="btn btn-primary" id="btn-wms-localizacoes">Atualizar</button>
                         </div>
-                        <div class="table-container"><table class="data-table"><thead><tr><th>Endereço</th><th>Câmara</th><th>Rua</th><th>Pos</th><th>Nível</th><th>Cat.</th><th>Status</th></tr></thead><tbody id="wms-tbody-localizacoes"><tr><td colspan="7" class="loading">Carregando...</td></tr></tbody></table></div>
+                        <div style="padding: 10px 12px; margin-bottom: 12px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa;">
+                            <strong style="font-size: 13px;">Imprimir etiquetas de coluna</strong>
+                            <p class="info-text" style="margin: 6px 0 10px 0; font-size: 12px;">Modelo para colar no rack: Câm · Rua · Pos · Nív, código de barras, seta PICKING ↓ (nível 1) ou PULMÃO ↑ (nível 2+).</p>
+                            <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end;">
+                                <div class="form-group"><label>Rua (letra)</label><input type="text" id="wms-etq-rua" placeholder="R" maxlength="3" style="width: 56px; text-transform: uppercase;"></div>
+                                <div class="form-group"><label>Posição</label><input type="number" id="wms-etq-pos" placeholder="1" min="1" style="width: 72px;"></div>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-coluna">Imprimir 1 coluna</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-camara">Imprimir câmara inteira</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-demo">Ver modelo (demo)</button>
+                            </div>
+                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>Endereço</th><th>Câmara</th><th>Rua</th><th>Pos</th><th>Nível</th><th>Zona</th><th>Cat.</th><th>Status</th><th></th></tr></thead><tbody id="wms-tbody-localizacoes"><tr><td colspan="9" class="loading">Carregando...</td></tr></tbody></table></div>
                     </div>
                     <div id="wms-panel-produtos" class="wms-inner-panel" hidden>
                         <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
                             <div class="form-group"><label>Categoria</label><select id="wms-filtro-categoria"><option value="">Todas</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div>
                             <button type="button" class="btn btn-primary" id="btn-wms-produtos">Atualizar</button>
                         </div>
-                        <div class="table-container"><table class="data-table"><thead><tr><th>SKU</th><th>Descrição</th><th>Categoria</th><th>Padrão PLT</th><th>Conversão</th></tr></thead><tbody id="wms-tbody-produtos"><tr><td colspan="5" class="loading">Carregando...</td></tr></tbody></table></div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>SKU</th><th>Descrição</th><th>Cat.</th><th>Status</th><th>Pos. plan.</th><th>Estoque</th><th>PLT</th><th>Conv.</th></tr></thead><tbody id="wms-tbody-produtos"><tr><td colspan="8" class="loading">Carregando...</td></tr></tbody></table></div>
                     </div>
                     <div id="wms-panel-movimentacoes" class="wms-inner-panel" hidden>
                         <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Tipo</th><th>Palete</th><th>Destino</th><th>Prioridade</th><th></th></tr></thead><tbody id="wms-tbody-movimentacoes"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody></table></div>
@@ -2628,19 +2642,51 @@
                         </div>
                         <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>NF</th><th>Fornecedor</th><th>Placa</th><th>Status</th></tr></thead><tbody id="wms-tbody-recebimentos"><tr><td colspan="5" class="loading">Carregando...</td></tr></tbody></table></div>
                         <div id="wms-recebimento-detalhe" style="margin-top: 16px; display: none; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">
-                            <h4 style="margin-top: 0;">Conferência cega — palete</h4>
+                            <h4 style="margin-top: 0;">Recebimento — bip palete → produto → imprimir → destino</h4>
                             <input type="hidden" id="wms-rec-detalhe-id">
-                            <div class="form-row" style="flex-wrap: wrap; gap: 8px;">
+                            <input type="hidden" id="wms-rec-palete-id">
+                            <ol style="margin: 0 0 12px 18px; font-size: 13px; line-height: 1.5;">
+                                <li><strong>1 — Palete:</strong> bipe ou gere etiqueta (22 caracteres)</li>
+                                <li><strong>2 — Produto:</strong> SKU, lote, data produção (FIFO) e quantidade</li>
+                                <li><strong>3 — Imprimir</strong> etiqueta do palete</li>
+                                <li><strong>4 — Destino:</strong> putaway categoria A/B/C/D em PULMÃO (nível 2+)</li>
+                            </ol>
+                            <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: flex-end;">
+                                <div class="form-group"><label>Etiqueta palete</label><input type="text" id="wms-bip-etiqueta" placeholder="Bip ou vazio = gerar" maxlength="22"></div>
+                                <button type="button" class="btn btn-primary" id="btn-wms-bip-palete">1 · Bip palete</button>
+                                <span id="wms-rec-palete-info" class="info-text" style="align-self: center;"></span>
+                            </div>
+                            <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: flex-end;">
                                 <div class="form-group"><label>SKU</label><input type="text" id="wms-pal-sku"></div>
                                 <div class="form-group"><label>Lote</label><input type="text" id="wms-pal-lote"></div>
+                                <div class="form-group"><label>Data produção</label><input type="date" id="wms-pal-producao"></div>
                                 <div class="form-group"><label>Validade</label><input type="date" id="wms-pal-validade"></div>
                                 <div class="form-group"><label>Qtd caixas</label><input type="number" id="wms-pal-qtd" min="1" value="1"></div>
                                 <div class="form-group"><label>Estado palete</label><select id="wms-pal-estado"><option value="bom">Bom</option><option value="avaria">Avaria</option><option value="deteriorado">Deteriorado</option></select></div>
-                                <button type="button" class="btn btn-primary" id="btn-wms-conferir-palete">Bipar / conferir palete</button>
-                                <button type="button" class="btn btn-success" id="btn-wms-finalizar-recebimento">Finalizar e gerar movimentações</button>
+                                <button type="button" class="btn btn-primary" id="btn-wms-bip-produto">2 · Bip produto</button>
+                            </div>
+                            <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: flex-end;">
+                                <button type="button" class="btn btn-secondary" id="btn-wms-imprimir-etiqueta">3 · Imprimir etiqueta</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-modelo-palete" onclick="wmsImprimirEtqPaleteModelo()">Ver modelo palete</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-sugerir-destino">Atualizar sugestão</button>
+                            </div>
+                            <div id="wms-sugestao-destino" class="info-text" style="margin-bottom: 10px; padding: 8px; background: #f5f5f5; border-radius: 6px; display: none;"></div>
+                            <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end;">
+                                <div class="form-group"><label>Endereço destino</label><input type="text" id="wms-bip-destino" placeholder="Ex.: 21-R-01-2"></div>
+                                <button type="button" class="btn btn-success" id="btn-wms-confirmar-destino">4 · Confirmar armazenagem</button>
+                                <button type="button" class="btn btn-secondary" id="btn-wms-finalizar-recebimento">Finalizar NF (gerar mov. pendentes)</button>
                             </div>
                             <p id="wms-palete-gerado" class="info-text" style="margin-top: 8px;"></p>
                         </div>
+                    </div>
+                    <div id="wms-panel-separacao" class="wms-inner-panel" hidden>
+                        <p class="info-text" style="margin: 0 0 12px 0;">Informe roteiro + viagem do romaneio. O sistema indica <strong>onde pegar</strong> (PICKING primeiro, depois PULMÃO) com FIFO por data de produção.</p>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: flex-end;">
+                            <div class="form-group"><label>ID Roteiro</label><input type="text" id="wms-pick-roteiro" placeholder="Ex.: 12345"></div>
+                            <div class="form-group"><label>ID Viagem</label><input type="text" id="wms-pick-viagem" placeholder="Ex.: 67890"></div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-picking">Gerar lista de separação</button>
+                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>#</th><th>SKU</th><th>Status</th><th>Qtd sep.</th><th>Endereço</th><th>Local</th><th>Zona</th><th>FIFO prod.</th><th>Palete</th><th></th></tr></thead><tbody id="wms-tbody-separacao"><tr><td colspan="10" class="loading">Informe roteiro e viagem.</td></tr></tbody></table></div>
                     </div>
                     <div id="wms-panel-inventario" class="wms-inner-panel" hidden>
                         <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: flex-end;">

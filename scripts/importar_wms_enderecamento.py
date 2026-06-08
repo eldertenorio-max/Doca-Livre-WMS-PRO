@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Sincroniza WMS endereçamento SEM planilha Excel:
-  1. Produtos + categoria A/B/C/D (TSV em data/)
+  1. Produtos + categoria A/B/C/D + planejamento (TSV em data/)
   2. Layout de endereços + distribuição por categoria (JSON + zoneamento)
 
 Uso:
@@ -56,6 +56,24 @@ class PgConn:
         self._c.close()
 
 
+def _parse_float(v):
+    if v is None or str(v).strip() == '':
+        return None
+    try:
+        return float(str(v).replace(',', '.'))
+    except Exception:
+        return None
+
+
+def _parse_int(v):
+    if v is None or str(v).strip() == '':
+        return None
+    try:
+        return int(float(str(v).replace(',', '.')))
+    except Exception:
+        return None
+
+
 def importar_produtos(conn, tsv_path):
     if not os.path.isfile(tsv_path):
         print('TSV não encontrado:', tsv_path)
@@ -63,49 +81,91 @@ def importar_produtos(conn, tsv_path):
     n = 0
     with open(tsv_path, encoding='utf-8') as f:
         reader = csv.DictReader(f, delimiter='\t')
+        fields = reader.fieldnames or []
+        has_plan = 'status_condicional' in fields
         for row in reader:
             sku = (row.get('sku') or '').strip()
             if not sku:
                 continue
-            cub = row.get('cubagem') or None
-            peso = row.get('peso_cx') or None
-            conv = row.get('conversao') or None
-            try:
-                cub = float(str(cub).replace(',', '.')) if cub else None
-            except Exception:
-                cub = None
-            try:
-                peso = float(str(peso).replace(',', '.')) if peso else None
-            except Exception:
-                peso = None
-            try:
-                conv = int(float(conv)) if conv else None
-            except Exception:
-                conv = None
-            conn.execute(
-                '''INSERT INTO public.wms_produto_enderecamento
-                   (sku, descricao, medida_cx, cubagem, peso_cx, padrao_plt, conversao, categoria)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT (sku) DO UPDATE SET
-                     descricao = EXCLUDED.descricao,
-                     medida_cx = EXCLUDED.medida_cx,
-                     cubagem = EXCLUDED.cubagem,
-                     peso_cx = EXCLUDED.peso_cx,
-                     padrao_plt = EXCLUDED.padrao_plt,
-                     conversao = EXCLUDED.conversao,
-                     categoria = EXCLUDED.categoria,
-                     atualizado_em = NOW()''',
-                (
-                    sku,
-                    row.get('descricao'),
-                    row.get('medida_cx'),
-                    cub,
-                    peso,
-                    row.get('padrao_plt'),
-                    conv,
-                    (row.get('categoria') or 'C').strip().upper()[:1],
-                ),
+            cat = (row.get('categoria') or 'C').strip().upper()[:1]
+            base = (
+                sku,
+                row.get('descricao'),
+                row.get('medida_cx'),
+                _parse_float(row.get('cubagem')),
+                _parse_float(row.get('peso_cx')),
+                row.get('padrao_plt'),
+                _parse_int(row.get('conversao')),
+                cat,
             )
+            if has_plan:
+                conn.execute(
+                    '''INSERT INTO public.wms_produto_enderecamento
+                       (sku, descricao, medida_cx, cubagem, peso_cx, padrao_plt, conversao, categoria,
+                        pedido_med_abril, pedido_max_abril, media_5_dias,
+                        estoque_ideal_max, estoque_ideal_med, estoque_ideal_min,
+                        dias_estoque_max, dias_estoque_med, dias_estoque_min,
+                        posicoes_max, posicoes_med, posicoes_min,
+                        estoque_atual, posicao_atual, status_condicional)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT (sku) DO UPDATE SET
+                         descricao = EXCLUDED.descricao,
+                         medida_cx = EXCLUDED.medida_cx,
+                         cubagem = EXCLUDED.cubagem,
+                         peso_cx = EXCLUDED.peso_cx,
+                         padrao_plt = EXCLUDED.padrao_plt,
+                         conversao = EXCLUDED.conversao,
+                         categoria = EXCLUDED.categoria,
+                         pedido_med_abril = EXCLUDED.pedido_med_abril,
+                         pedido_max_abril = EXCLUDED.pedido_max_abril,
+                         media_5_dias = EXCLUDED.media_5_dias,
+                         estoque_ideal_max = EXCLUDED.estoque_ideal_max,
+                         estoque_ideal_med = EXCLUDED.estoque_ideal_med,
+                         estoque_ideal_min = EXCLUDED.estoque_ideal_min,
+                         dias_estoque_max = EXCLUDED.dias_estoque_max,
+                         dias_estoque_med = EXCLUDED.dias_estoque_med,
+                         dias_estoque_min = EXCLUDED.dias_estoque_min,
+                         posicoes_max = EXCLUDED.posicoes_max,
+                         posicoes_med = EXCLUDED.posicoes_med,
+                         posicoes_min = EXCLUDED.posicoes_min,
+                         estoque_atual = EXCLUDED.estoque_atual,
+                         posicao_atual = EXCLUDED.posicao_atual,
+                         status_condicional = EXCLUDED.status_condicional,
+                         atualizado_em = NOW()''',
+                    base + (
+                        _parse_int(row.get('pedido_med_abril')),
+                        _parse_int(row.get('pedido_max_abril')),
+                        _parse_int(row.get('media_5_dias')),
+                        _parse_int(row.get('estoque_ideal_max')),
+                        _parse_int(row.get('estoque_ideal_med')),
+                        _parse_int(row.get('estoque_ideal_min')),
+                        _parse_int(row.get('dias_estoque_max')),
+                        _parse_int(row.get('dias_estoque_med')),
+                        _parse_int(row.get('dias_estoque_min')),
+                        _parse_int(row.get('posicoes_max')),
+                        _parse_int(row.get('posicoes_med')),
+                        _parse_int(row.get('posicoes_min')),
+                        _parse_int(row.get('estoque_atual')),
+                        _parse_int(row.get('posicao_atual')),
+                        (row.get('status_condicional') or '').strip() or None,
+                    ),
+                )
+            else:
+                conn.execute(
+                    '''INSERT INTO public.wms_produto_enderecamento
+                       (sku, descricao, medida_cx, cubagem, peso_cx, padrao_plt, conversao, categoria)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT (sku) DO UPDATE SET
+                         descricao = EXCLUDED.descricao,
+                         medida_cx = EXCLUDED.medida_cx,
+                         cubagem = EXCLUDED.cubagem,
+                         peso_cx = EXCLUDED.peso_cx,
+                         padrao_plt = EXCLUDED.padrao_plt,
+                         conversao = EXCLUDED.conversao,
+                         categoria = EXCLUDED.categoria,
+                         atualizado_em = NOW()''',
+                    base,
+                )
             n += 1
     conn.commit()
     print(f'Produtos importados/atualizados: {n}')
@@ -114,10 +174,10 @@ def importar_produtos(conn, tsv_path):
 
 def main():
     parser = argparse.ArgumentParser(description='WMS: produtos + layout por categoria (sem Excel)')
-    parser.add_argument(
-        '--tsv',
-        default=os.path.join(ROOT, 'data', 'wms_produtos_categoria.tsv'),
-    )
+    default_tsv = os.path.join(ROOT, 'data', 'wms_produtos_planejamento.tsv')
+    if not os.path.isfile(default_tsv):
+        default_tsv = os.path.join(ROOT, 'data', 'wms_produtos_categoria.tsv')
+    parser.add_argument('--tsv', default=default_tsv)
     parser.add_argument(
         '--force-layout',
         action='store_true',

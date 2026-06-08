@@ -10,7 +10,7 @@ import string
 from collections import Counter
 from datetime import date, datetime, timezone
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, make_response, render_template, request, session
 
 bp = Blueprint('wms_enderecamento', __name__)
 
@@ -185,11 +185,131 @@ def _ensure_categoria_zona_column(conn):
             pass
 
 
+def _ensure_zona_armazenagem_column(conn):
+    _ensure_categoria_zona_column(conn)
+    if _is_pg(conn):
+        try:
+            conn.execute(
+                'ALTER TABLE public.wms_localizacao ADD COLUMN IF NOT EXISTS zona_armazenagem TEXT'
+            )
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    else:
+        try:
+            cols = conn.execute('PRAGMA table_info(wms_localizacao)').fetchall()
+            names = {c[1] if not isinstance(c, dict) else c.get('name') for c in (cols or [])}
+            if 'zona_armazenagem' not in names:
+                conn.execute('ALTER TABLE wms_localizacao ADD COLUMN zona_armazenagem TEXT')
+                conn.commit()
+        except Exception:
+            pass
+    t_loc = _tbl(conn, 'wms_localizacao')
+    try:
+        conn.execute(
+            f"""UPDATE {t_loc} SET zona_armazenagem = CASE
+                WHEN COALESCE(nivel, 0) = 1 THEN 'picking' ELSE 'pulmao' END
+                WHERE zona_armazenagem IS NULL OR TRIM(zona_armazenagem) = ''"""
+        )
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def _zona_por_nivel(nivel):
+    return 'picking' if int(nivel or 0) == 1 else 'pulmao'
+
+
+def _zona_label(zona):
+    return 'PICKING' if (zona or '').lower() == 'picking' else 'PULMÃO'
+
+
+def _format_locacao(loc):
+    d = _row_dict(loc) or {}
+    if not d:
+        return {}
+    zona = (d.get('zona_armazenagem') or _zona_por_nivel(d.get('nivel'))).lower()
+    cam = d.get('camara')
+    rua = d.get('rua')
+    pos = d.get('posicao')
+    niv = d.get('nivel')
+    zl = _zona_label(zona)
+    return {
+        **d,
+        'zona_armazenagem': zona,
+        'zona_label': zl,
+        'texto': f'Câm.{cam} · Rua {rua} · Pos {pos} · Nív {niv} ({zl})',
+    }
+
+
+def _tbl_romaneio(conn):
+    return 'public.romaneio_por_item' if _is_pg(conn) else 'romaneio_por_item'
+
+
+def _filtro_zona_sql(zona, alias=''):
+    p = f'{alias}.' if alias else ''
+    z = (zona or 'pulmao').lower()
+    if z == 'picking':
+        return f"({p}nivel = 1 OR LOWER(COALESCE({p}zona_armazenagem, '')) = 'picking')"
+    return f"({p}nivel >= 2 OR LOWER(COALESCE({p}zona_armazenagem, '')) = 'pulmao')"
+
+
+def _ensure_produto_planejamento_columns(conn):
+    cols_pg = [
+        ('pedido_med_abril', 'INTEGER'),
+        ('pedido_max_abril', 'INTEGER'),
+        ('media_5_dias', 'INTEGER'),
+        ('estoque_ideal_max', 'INTEGER'),
+        ('estoque_ideal_med', 'INTEGER'),
+        ('estoque_ideal_min', 'INTEGER'),
+        ('dias_estoque_max', 'SMALLINT'),
+        ('dias_estoque_med', 'SMALLINT'),
+        ('dias_estoque_min', 'SMALLINT'),
+        ('posicoes_max', 'SMALLINT'),
+        ('posicoes_med', 'SMALLINT'),
+        ('posicoes_min', 'SMALLINT'),
+        ('estoque_atual', 'INTEGER'),
+        ('posicao_atual', 'SMALLINT'),
+        ('status_condicional', 'TEXT'),
+    ]
+    if _is_pg(conn):
+        for name, typ in cols_pg:
+            try:
+                conn.execute(f'ALTER TABLE public.wms_produto_enderecamento ADD COLUMN IF NOT EXISTS {name} {typ}')
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    else:
+        try:
+            existing = conn.execute('PRAGMA table_info(wms_produto_enderecamento)').fetchall()
+            names = {c[1] if not isinstance(c, dict) else c.get('name') for c in (existing or [])}
+            for name, typ in cols_pg:
+                if name not in names:
+                    conn.execute(f'ALTER TABLE wms_produto_enderecamento ADD COLUMN {name} {typ}')
+            conn.commit()
+        except Exception:
+            pass
+
+
 def _pesos_categoria_produtos(conn):
-    """Peso de cada categoria conforme cadastro de produtos (sem Excel)."""
+    """Peso de cada categoria pela soma de posições médias (planejamento)."""
+    _ensure_produto_planejamento_columns(conn)
     t = _tbl(conn, 'wms_produto_enderecamento')
     rows = conn.execute(
-        f'''SELECT UPPER(SUBSTR(categoria, 1, 1)) AS cat, COUNT(*) AS n
+        f'''SELECT UPPER(SUBSTR(categoria, 1, 1)) AS cat,
+                   SUM(COALESCE(NULLIF(posicoes_med, 0), 1)) AS n
             FROM {t}
             WHERE {_ativo_sql(conn)}
             GROUP BY UPPER(SUBSTR(categoria, 1, 1))'''
@@ -199,10 +319,78 @@ def _pesos_categoria_produtos(conn):
         d = _row_dict(r) or {}
         cat = (d.get('cat') or 'C').strip().upper()
         if cat in ('A', 'B', 'C', 'D'):
-            pesos[cat] = int(d.get('n') or 0)
+            pesos[cat] = int(float(d.get('n') or 0))
+    if not pesos:
+        rows = conn.execute(
+            f'''SELECT UPPER(SUBSTR(categoria, 1, 1)) AS cat, COUNT(*) AS n
+                FROM {t} WHERE {_ativo_sql(conn)}
+                GROUP BY UPPER(SUBSTR(categoria, 1, 1))'''
+        ).fetchall()
+        for r in rows:
+            d = _row_dict(r) or {}
+            cat = (d.get('cat') or 'C').strip().upper()
+            if cat in ('A', 'B', 'C', 'D'):
+                pesos[cat] = int(d.get('n') or 0)
     if not pesos:
         pesos = {'A': 1, 'B': 1, 'C': 1, 'D': 1}
     return pesos
+
+
+def _prioridade_status_condicional(status):
+    s = (status or '').strip().lower()
+    if s == 'vermelho':
+        return 0
+    if s == 'amarelo':
+        return 1
+    if s == 'verde':
+        return 2
+    if s == 'excedido':
+        return 3
+    return 2
+
+
+def _metricas_sku_wms(conn, sku):
+    """Posições ocupadas e quantidade total do SKU no estoque endereçado."""
+    t_item = _tbl(conn, 'wms_palete_item')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    row = conn.execute(
+        f'''SELECT COUNT(DISTINCT l.id) AS posicoes,
+                   COALESCE(SUM(i.quantidade_caixas), 0) AS qtd
+            FROM {t_item} i
+            JOIN {t_pal} p ON p.id = i.palete_id
+            JOIN {t_loc} l ON l.id = p.localizacao_id
+            WHERE i.sku = ? AND p.status = 'armazenado'
+              AND l.status = 'ocupada'
+              AND (p.bloqueio_tipo IS NULL OR p.bloqueio_tipo = '')''',
+        (sku,),
+    ).fetchone()
+    d = _row_dict(row) or {}
+    return {
+        'posicoes_wms': int(d.get('posicoes') or 0),
+        'quantidade_wms': int(d.get('qtd') or 0),
+    }
+
+
+def _rua_cluster_sku(conn, sku, cat):
+    """Rua com maior concentração do SKU (adensamento por coluna)."""
+    t_item = _tbl(conn, 'wms_palete_item')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    row = conn.execute(
+        f'''SELECT l.camara, l.rua, COUNT(*) AS n
+            FROM {t_loc} l
+            JOIN {t_pal} p ON p.localizacao_id = l.id
+            JOIN {t_item} i ON i.palete_id = p.id
+            WHERE i.sku = ? AND l.status = 'ocupada'
+              AND UPPER(TRIM(COALESCE(l.categoria_zona, ''))) = ?
+              AND (p.bloqueio_tipo IS NULL OR p.bloqueio_tipo = '')
+            GROUP BY l.camara, l.rua
+            ORDER BY n DESC, l.rua
+            LIMIT 1''',
+        (sku, cat),
+    ).fetchone()
+    return _row_dict(row) or {}
 
 
 def _categorias_camara_zoneamento(conn, camara):
@@ -307,29 +495,32 @@ def gerar_layout_enderecos(conn, force=False):
         for i, (cam, rua, pos, nivel) in enumerate(coords):
             cat_z = seq_cat[i] if i < len(seq_cat) else cats[0]
             cod_end = _codigo_endereco(cam, rua, pos, nivel)
+            zona = _zona_por_nivel(nivel)
             codigos_validos.append(cod_end)
             if _is_pg(conn):
                 conn.execute(
                     f'''INSERT INTO {t_loc}
-                        (camara, rua, posicao, nivel, codigo_endereco, status, area, categoria_zona)
-                        VALUES (?, ?, ?, ?, ?, 'vazia', ?, ?)
+                        (camara, rua, posicao, nivel, codigo_endereco, status, area, categoria_zona, zona_armazenagem)
+                        VALUES (?, ?, ?, ?, ?, 'vazia', ?, ?, ?)
                         ON CONFLICT (codigo_endereco) DO UPDATE SET
                           area = EXCLUDED.area,
                           categoria_zona = EXCLUDED.categoria_zona,
+                          zona_armazenagem = EXCLUDED.zona_armazenagem,
                           atualizado_em = NOW()''',
-                    (cam, rua, pos, nivel, cod_end, cat_z, cat_z),
+                    (cam, rua, pos, nivel, cod_end, cat_z, cat_z, zona),
                 )
             else:
                 conn.execute(
                     f'''INSERT INTO {t_loc}
-                        (camara, rua, posicao, nivel, codigo_endereco, status, area, categoria_zona,
+                        (camara, rua, posicao, nivel, codigo_endereco, status, area, categoria_zona, zona_armazenagem,
                          criado_em, atualizado_em)
-                        VALUES (?, ?, ?, ?, ?, 'vazia', ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, 'vazia', ?, ?, ?, ?, ?)
                         ON CONFLICT (codigo_endereco) DO UPDATE SET
                           area = excluded.area,
                           categoria_zona = excluded.categoria_zona,
+                          zona_armazenagem = excluded.zona_armazenagem,
                           atualizado_em = excluded.atualizado_em''',
-                    (cam, rua, pos, nivel, cod_end, cat_z, cat_z, now, now),
+                    (cam, rua, pos, nivel, cod_end, cat_z, cat_z, zona, now, now),
                 )
             inseridas += 1
             por_categoria[cat_z] += 1
@@ -385,7 +576,8 @@ def ensure_wms_schema(conn):
     if _WMS_SCHEMA_READY:
         return
     if _wms_tabelas_existem(conn):
-        _ensure_categoria_zona_column(conn)
+        _ensure_zona_armazenagem_column(conn)
+        _ensure_produto_planejamento_columns(conn)
         _WMS_SCHEMA_READY = True
         return
     if _is_pg(conn):
@@ -617,6 +809,7 @@ def ensure_wms_schema(conn):
         except Exception:
             pass
     _ensure_categoria_zona_column(conn)
+    _ensure_produto_planejamento_columns(conn)
     _WMS_SCHEMA_READY = True
 
 
@@ -743,16 +936,38 @@ def _ocupacao_camara(conn):
     return out
 
 
-def _sugerir_putaway(conn, sku, lote=None):
-    """Regras simplificadas de putaway conforme documento WYMS."""
+def _sugerir_putaway(conn, sku, lote=None, data_producao=None, zona='pulmao'):
+    """Putaway por categoria A/B/C/D + planejamento + zona + FIFO."""
     t_prod = _tbl(conn, 'wms_produto_enderecamento')
     t_z = _tbl(conn, 'wms_zoneamento')
     t_loc = _tbl(conn, 'wms_localizacao')
     t_pal = _tbl(conn, 'wms_palete')
     t_item = _tbl(conn, 'wms_palete_item')
+    _ensure_zona_armazenagem_column(conn)
+    _ensure_produto_planejamento_columns(conn)
 
     prod = conn.execute(f'SELECT * FROM {t_prod} WHERE sku = ? AND {_ativo_sql(conn)}', (sku,)).fetchone()
-    cat = (prod['categoria'] if prod else 'C') or 'C'
+    pd = _row_dict(prod) or {}
+    cat = (pd.get('categoria') or 'C').strip().upper()
+    zona = (zona or 'pulmao').lower()
+    status = (pd.get('status_condicional') or '').strip()
+    metricas = _metricas_sku_wms(conn, sku)
+    pos_wms = metricas['posicoes_wms']
+    pos_max = int(pd.get('posicoes_max') or 0)
+    pos_med = int(pd.get('posicoes_med') or 0)
+    alerta = None
+
+    motivo = [f'Categoria {cat}', f'Zona {_zona_label(zona)}']
+    if status:
+        motivo.append(f'Status planejamento: {status}')
+    if pos_med:
+        motivo.append(f'Posições ref.: {pos_wms}/{pos_med} (média planejada)')
+    if status == 'Vermelho':
+        motivo.append('Prioridade reposição — estoque abaixo do ideal')
+    elif status == 'Excedido':
+        motivo.append('Atenção — estoque acima do ideal')
+        if pos_max and pos_wms >= pos_max:
+            alerta = 'capacidade_posicoes_excedida'
 
     camaras = conn.execute(
         f'''SELECT camara FROM {t_z}
@@ -764,43 +979,331 @@ def _sugerir_putaway(conn, sku, lote=None):
     if not cam_list:
         cam_list = [11, 12, 13]
 
-    motivo = []
-
     if lote:
         row = conn.execute(
-            f'''SELECT l.id, l.codigo_endereco, l.camara
+            f'''SELECT l.id, l.codigo_endereco, l.camara, l.rua, l.posicao, l.nivel, l.zona_armazenagem
                 FROM {t_loc} l
                 JOIN {t_pal} p ON p.localizacao_id = l.id
                 JOIN {t_item} i ON i.palete_id = p.id
                 WHERE i.sku = ? AND i.lote = ? AND l.status = 'ocupada'
+                  AND UPPER(TRIM(COALESCE(l.categoria_zona, ''))) = ?
                   AND (p.bloqueio_tipo IS NULL OR p.bloqueio_tipo = '')
                 LIMIT 1''',
-            (sku, lote),
+            (sku, lote, cat),
         ).fetchone()
         if row:
-            motivo.append('Mesmo produto e lote em posição existente (adensamento)')
-            return {'localizacao_id': row['id'], 'codigo_endereco': row['codigo_endereco'], 'camara': row['camara'], 'motivo': motivo}
+            motivo.append('Adensamento: mesmo SKU e lote')
+            loc = _format_locacao(row)
+            return {
+                'localizacao_id': loc.get('id'),
+                'codigo_endereco': loc.get('codigo_endereco'),
+                'camara': loc.get('camara'),
+                'zona_armazenagem': loc.get('zona_armazenagem'),
+                'zona_label': loc.get('zona_label'),
+                'texto': loc.get('texto'),
+                'motivo': motivo,
+                'status_condicional': status,
+                'posicoes_wms': pos_wms,
+                'posicoes_planejadas': pos_med,
+                'alerta': alerta,
+            }
+
+    fifo_ref = None
+    try:
+        if data_producao:
+            fifo_ref = date.fromisoformat(str(data_producao)[:10])
+    except Exception:
+        fifo_ref = None
+
+    if fifo_ref:
+        old_row = conn.execute(
+            f'''SELECT l.rua, l.posicao, l.camara
+                FROM {t_loc} l
+                JOIN {t_pal} p ON p.localizacao_id = l.id
+                JOIN {t_item} i ON i.palete_id = p.id
+                WHERE i.sku = ? AND l.status = 'ocupada'
+                  AND UPPER(TRIM(COALESCE(l.categoria_zona, ''))) = ?
+                  AND i.data_producao IS NOT NULL
+                  AND (p.bloqueio_tipo IS NULL OR p.bloqueio_tipo = '')
+                ORDER BY i.data_producao ASC, l.rua, l.posicao, l.nivel
+                LIMIT 1''',
+            (sku, cat),
+        ).fetchone()
+        if old_row:
+            od = _row_dict(old_row) or {}
+            motivo.append(f'FIFO: estoque mais antigo em Rua {od.get("rua")} Pos {od.get("posicao")}')
+
+    cluster = _rua_cluster_sku(conn, sku, cat)
+    zona_sql = _filtro_zona_sql(zona, 'l')
+    order_cluster = ''
+    params_extra = []
+    if cluster.get('camara') and cluster.get('rua'):
+        order_cluster = 'CASE WHEN l.camara = ? AND UPPER(TRIM(l.rua)) = ? THEN 0 ELSE 1 END, '
+        params_extra = [cluster['camara'], str(cluster['rua']).upper()]
+        motivo.append(f'Cluster: preferir Rua {cluster["rua"]} (Câm {cluster["camara"]})')
 
     for cam in cam_list:
         row = conn.execute(
-            f'''SELECT id, codigo_endereco, camara FROM {t_loc}
-                WHERE camara = ? AND status = 'vazia'
-                  AND UPPER(TRIM(COALESCE(categoria_zona, ''))) = ?
-                  AND (bloqueio_entrada IS FALSE OR bloqueio_entrada = 0)
-                ORDER BY rua, posicao, nivel LIMIT 1''',
-            (cam, cat),
+            f'''SELECT l.id, l.codigo_endereco, l.camara, l.rua, l.posicao, l.nivel, l.zona_armazenagem
+                FROM {t_loc} l
+                WHERE l.camara = ? AND l.status = 'vazia'
+                  AND UPPER(TRIM(COALESCE(l.categoria_zona, ''))) = ?
+                  AND {zona_sql}
+                  AND (l.bloqueio_entrada IS FALSE OR l.bloqueio_entrada = 0)
+                ORDER BY {order_cluster}l.rua, l.posicao, l.nivel
+                LIMIT 1''',
+            tuple([cam, cat, *params_extra]),
         ).fetchone()
         if row:
-            motivo.append(f'Zona categoria {cat} na câmara {cam}')
+            motivo.append(f'Câmara {cam} — posição vazia compatível')
+            loc = _format_locacao(row)
             return {
-                'localizacao_id': row['id'],
-                'codigo_endereco': row['codigo_endereco'],
-                'camara': row['camara'],
+                'localizacao_id': loc.get('id'),
+                'codigo_endereco': loc.get('codigo_endereco'),
+                'camara': loc.get('camara'),
+                'zona_armazenagem': loc.get('zona_armazenagem'),
+                'zona_label': loc.get('zona_label'),
+                'texto': loc.get('texto'),
                 'motivo': motivo,
+                'status_condicional': status,
+                'posicoes_wms': pos_wms,
+                'posicoes_planejadas': pos_med,
+                'alerta': alerta,
             }
 
     motivo.append('Nenhuma posição vazia nas câmaras do zoneamento')
-    return {'localizacao_id': None, 'codigo_endereco': None, 'camara': None, 'motivo': motivo}
+    return {
+        'localizacao_id': None,
+        'codigo_endereco': None,
+        'camara': None,
+        'zona_label': _zona_label(zona),
+        'texto': None,
+        'motivo': motivo,
+        'status_condicional': status,
+        'posicoes_wms': pos_wms,
+        'posicoes_planejadas': pos_med,
+        'alerta': alerta,
+    }
+
+
+def _estoque_fifo_por_sku(conn, sku, qtd_necessaria=0, preferir_picking=True):
+    """Paletes/endereços do SKU ordenados FIFO (data produção mais antiga primeiro)."""
+    t_item = _tbl(conn, 'wms_palete_item')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    _ensure_zona_armazenagem_column(conn)
+    zona_pick = _filtro_zona_sql('picking', 'l')
+    zona_pul = _filtro_zona_sql('pulmao', 'l')
+    order_fifo = 'i.data_producao ASC NULLS LAST, i.data_validade ASC NULLS LAST, l.rua, l.posicao, l.nivel'
+    if not _is_pg(conn):
+        order_fifo = 'i.data_producao ASC, i.data_validade ASC, l.rua, l.posicao, l.nivel'
+    sql = f'''SELECT i.sku, i.lote, i.data_producao, i.data_validade, i.quantidade_caixas,
+                     p.id AS palete_id, p.etiqueta, p.status AS palete_status,
+                     l.id AS localizacao_id, l.codigo_endereco, l.camara, l.rua, l.posicao, l.nivel,
+                     l.zona_armazenagem
+              FROM {t_item} i
+              JOIN {t_pal} p ON p.id = i.palete_id
+              JOIN {t_loc} l ON l.id = p.localizacao_id
+              WHERE i.sku = ? AND p.status = 'armazenado'
+                AND (p.bloqueio_tipo IS NULL OR p.bloqueio_tipo = '')
+                AND l.status = 'ocupada'
+                AND (l.bloqueio_saida IS FALSE OR l.bloqueio_saida = 0)'''
+    params = [sku]
+    if preferir_picking:
+        sql += f' ORDER BY CASE WHEN {zona_pick} THEN 0 ELSE 1 END, {order_fifo}'
+    else:
+        sql += f' ORDER BY {order_fifo}'
+    rows = conn.execute(sql, tuple(params)).fetchall()
+    out = []
+    acum = 0
+    for r in rows:
+        rd = _row_dict(r) or {}
+        item = {
+            **_format_locacao(rd),
+            'quantidade_caixas': int(rd.get('quantidade_caixas') or 0),
+            'lote': rd.get('lote'),
+            'data_producao': rd.get('data_producao'),
+            'data_validade': rd.get('data_validade'),
+            'etiqueta': rd.get('etiqueta'),
+            'palete_id': rd.get('palete_id'),
+        }
+        out.append(item)
+        acum += item['quantidade_caixas']
+        if qtd_necessaria and acum >= qtd_necessaria:
+            break
+    return out
+
+
+def _lista_picking_roteiro(conn, id_roteiro, id_viagem):
+    t_rom = _tbl_romaneio(conn)
+    try:
+        conn.execute(f'SELECT 1 FROM {t_rom} LIMIT 1')
+    except Exception:
+        return [], 'Tabela romaneio_por_item não encontrada.'
+    rows = conn.execute(
+        f'''SELECT codigo_produto AS sku,
+                   SUM(COALESCE(quantidade, 0)) AS quantidade
+            FROM {t_rom}
+            WHERE id_roteiro = ? AND id_viagem = ?
+            GROUP BY codigo_produto
+            HAVING SUM(COALESCE(quantidade, 0)) > 0
+            ORDER BY codigo_produto''',
+        (str(id_roteiro).strip(), str(id_viagem).strip()),
+    ).fetchall()
+    if not rows:
+        return [], 'Nenhum item no romaneio para este roteiro/viagem.'
+    t_prod = _tbl(conn, 'wms_produto_enderecamento')
+    _ensure_produto_planejamento_columns(conn)
+
+    def _info_sku(sku):
+        pr = conn.execute(
+            f'''SELECT categoria, status_condicional, estoque_atual, estoque_ideal_min,
+                       posicoes_med, descricao
+                FROM {t_prod} WHERE sku = ? AND {_ativo_sql(conn)} LIMIT 1''',
+            (sku,),
+        ).fetchone()
+        return _row_dict(pr) or {}
+
+    rom_itens = []
+    for r in rows:
+        rd = _row_dict(r) or {}
+        sku = (rd.get('sku') or '').strip()
+        qtd = int(rd.get('quantidade') or 0)
+        if not sku or qtd <= 0:
+            continue
+        info = _info_sku(sku)
+        rom_itens.append({
+            'sku': sku,
+            'quantidade': qtd,
+            'status_condicional': info.get('status_condicional') or '',
+            'categoria': info.get('categoria') or '',
+            'descricao': info.get('descricao') or '',
+            'prioridade': _prioridade_status_condicional(info.get('status_condicional')),
+        })
+    rom_itens.sort(key=lambda x: (x['prioridade'], x['sku']))
+
+    lista = []
+    seq = 0
+    for item_rom in rom_itens:
+        sku = item_rom['sku']
+        qtd = item_rom['quantidade']
+        status = item_rom['status_condicional']
+        estoque = _estoque_fifo_por_sku(conn, sku, qtd, preferir_picking=True)
+        if not estoque:
+            seq += 1
+            lista.append({
+                'sequencia': seq,
+                'sku': sku,
+                'descricao': item_rom.get('descricao'),
+                'categoria': item_rom.get('categoria'),
+                'status_condicional': status,
+                'quantidade_romaneio': qtd,
+                'quantidade_atendida': 0,
+                'endereco': None,
+                'texto': 'Sem estoque endereçado',
+                'zona_label': '—',
+                'data_producao': None,
+                'etiqueta': None,
+                'alerta': 'sem_estoque',
+            })
+            continue
+        restante = qtd
+        for e in estoque:
+            if restante <= 0:
+                break
+            q_palete = min(restante, int(e.get('quantidade_caixas') or 0))
+            seq += 1
+            lista.append({
+                'sequencia': seq,
+                'sku': sku,
+                'descricao': item_rom.get('descricao'),
+                'categoria': item_rom.get('categoria'),
+                'status_condicional': status,
+                'quantidade_romaneio': qtd,
+                'quantidade_separar': q_palete,
+                'quantidade_atendida': q_palete,
+                'endereco': e.get('codigo_endereco'),
+                'texto': e.get('texto'),
+                'camara': e.get('camara'),
+                'rua': e.get('rua'),
+                'posicao': e.get('posicao'),
+                'nivel': e.get('nivel'),
+                'zona_label': e.get('zona_label'),
+                'data_producao': e.get('data_producao'),
+                'etiqueta': e.get('etiqueta'),
+                'palete_id': e.get('palete_id'),
+                'alerta': None,
+            })
+            restante -= q_palete
+        if restante > 0:
+            seq += 1
+            lista.append({
+                'sequencia': seq,
+                'sku': sku,
+                'descricao': item_rom.get('descricao'),
+                'categoria': item_rom.get('categoria'),
+                'status_condicional': status,
+                'quantidade_romaneio': qtd,
+                'quantidade_separar': restante,
+                'quantidade_atendida': qtd - restante,
+                'endereco': None,
+                'texto': f'Faltam {restante} caixas no estoque WMS',
+                'zona_label': '—',
+                'alerta': 'quantidade_insuficiente',
+            })
+    return lista, None
+
+
+def _confirmar_armazenagem_palete(conn, palete_id, codigo_endereco):
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    t_mov = _tbl(conn, 'wms_movimentacao')
+    now = _now_iso()
+    pal = conn.execute(f'SELECT * FROM {t_pal} WHERE id = ?', (palete_id,)).fetchone()
+    if not pal:
+        return None, 'Palete não encontrado.'
+    loc = conn.execute(
+        f'''SELECT * FROM {t_loc} WHERE codigo_endereco = ? OR codigo_endereco = ?''',
+        (codigo_endereco, codigo_endereco.upper()),
+    ).fetchone()
+    if not loc:
+        return None, 'Endereço não encontrado.'
+    ld = _row_dict(loc) or {}
+    if ld.get('status') != 'vazia':
+        return None, 'Endereço não está vazio.'
+    pid = pal['id'] if isinstance(pal, dict) else pal[0]
+    dest_id = ld.get('id')
+    orig = pal.get('localizacao_id') if isinstance(pal, dict) else None
+    obs = f'Armazenagem confirmada em {ld.get("codigo_endereco")}'
+    if _is_pg(conn):
+        conn.execute(
+            f'''INSERT INTO {t_mov} (tipo, palete_id, origem_localizacao_id, destino_localizacao_id,
+                status, prioridade, observacao, criado_em, criado_por, concluida_em, concluida_por)
+                VALUES ('putaway', ?, ?, ?, 'concluida', 1, ?, NOW(), ?, NOW(), ?)''',
+            (pid, orig, dest_id, obs, _usuario(), _usuario()),
+        )
+        conn.execute(f"UPDATE {t_loc} SET status = 'ocupada', atualizado_em = NOW() WHERE id = ?", (dest_id,))
+        if orig:
+            conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = NOW() WHERE id = ?", (orig,))
+        conn.execute(
+            f"UPDATE {t_pal} SET localizacao_id = ?, status = 'armazenado', atualizado_em = NOW() WHERE id = ?",
+            (dest_id, pid),
+        )
+    else:
+        conn.execute(
+            f'''INSERT INTO {t_mov} (tipo, palete_id, origem_localizacao_id, destino_localizacao_id,
+                status, prioridade, observacao, criado_em, criado_por, concluida_em, concluida_por)
+                VALUES ('putaway', ?, ?, ?, 'concluida', 1, ?, ?, ?, ?, ?)''',
+            (pid, orig, dest_id, obs, now, _usuario(), now, _usuario()),
+        )
+        conn.execute(f"UPDATE {t_loc} SET status = 'ocupada', atualizado_em = ? WHERE id = ?", (now, dest_id))
+        if orig:
+            conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = ? WHERE id = ?", (now, orig))
+        conn.execute(
+            f"UPDATE {t_pal} SET localizacao_id = ?, status = 'armazenado', atualizado_em = ? WHERE id = ?",
+            (dest_id, now, pid),
+        )
+    return _format_locacao(loc), None
 
 
 def _aplicar_bloqueios_palete(conn, palete_id, estado_fisico, data_validade, temperatura):
@@ -855,11 +1358,26 @@ def api_wms_painel():
         inv_ativos = conn.execute(
             f"SELECT COUNT(*) AS c FROM {t_inv} WHERE status = 'ativo'"
         ).fetchone()
+        _ensure_produto_planejamento_columns(conn)
+        t_prod = _tbl(conn, 'wms_produto_enderecamento')
+        resumo_status = conn.execute(
+            f'''SELECT COALESCE(NULLIF(TRIM(status_condicional), ''), 'Sem status') AS st, COUNT(*) AS n
+                FROM {t_prod} WHERE {_ativo_sql(conn)}
+                GROUP BY COALESCE(NULLIF(TRIM(status_condicional), ''), 'Sem status')'''
+        ).fetchall()
+        pesos_pos = conn.execute(
+            f'''SELECT UPPER(SUBSTR(categoria, 1, 1)) AS cat,
+                       SUM(COALESCE(NULLIF(posicoes_med, 0), 1)) AS posicoes
+                FROM {t_prod} WHERE {_ativo_sql(conn)}
+                GROUP BY UPPER(SUBSTR(categoria, 1, 1))'''
+        ).fetchall()
         conn.close()
         return jsonify({
             'camaras': camaras,
             'distribuicao_categoria': dist_cat,
             'pesos_categoria': pesos,
+            'pesos_posicoes_categoria': {(_row_dict(r) or {}).get('cat'): int((_row_dict(r) or {}).get('posicoes') or 0) for r in pesos_pos},
+            'resumo_status_planejamento': {(_row_dict(r) or {}).get('st'): int((_row_dict(r) or {}).get('n') or 0) for r in resumo_status},
             'movimentacoes_pendentes': _int_col(pendentes),
             'recebimentos_abertos': _int_col(rec_abertos),
             'inventarios_ativos': _int_col(inv_ativos),
@@ -1124,7 +1642,9 @@ def api_wms_movimentacoes():
         palete_id = data.get('palete_id')
         sku = (data.get('sku') or '').strip()
         lote = (data.get('lote') or '').strip() or None
-        sugestao = _sugerir_putaway(conn, sku, lote) if sku else {}
+        dp = (data.get('data_producao') or '').strip() or None
+        zona = (data.get('zona') or 'pulmao').strip().lower()
+        sugestao = _sugerir_putaway(conn, sku, lote, dp, zona) if sku else {}
         dest_id = data.get('destino_localizacao_id') or sugestao.get('localizacao_id')
         if not palete_id or not dest_id:
             conn.close()
@@ -1181,7 +1701,13 @@ def api_wms_putaway_sugerir():
     conn = _db()
     ensure_wms_schema(conn)
     try:
-        sug = _sugerir_putaway(conn, sku, (data.get('lote') or '').strip() or None)
+        sug = _sugerir_putaway(
+            conn,
+            sku,
+            (data.get('lote') or '').strip() or None,
+            (data.get('data_producao') or '').strip() or None,
+            (data.get('zona') or 'pulmao').strip().lower(),
+        )
         conn.close()
         return jsonify(sug)
     except Exception as e:
@@ -1281,6 +1807,117 @@ def api_wms_recebimentos():
     now = _now_iso()
 
     try:
+        if acao == 'bip_palete':
+            rid = data.get('recebimento_id')
+            etiqueta = (data.get('etiqueta') or '').strip()
+            if etiqueta and len(etiqueta) != 22:
+                conn.close()
+                return jsonify({'erro': 'Etiqueta deve ter 22 caracteres.'}), 400
+            if not etiqueta:
+                etiqueta = _gerar_etiqueta_palete()
+            existente = conn.execute(f'SELECT * FROM {t_pal} WHERE etiqueta = ?', (etiqueta,)).fetchone()
+            if existente:
+                pid = existente['id'] if isinstance(existente, dict) else existente[0]
+                if _is_pg(conn):
+                    conn.execute(f"UPDATE {t_pal} SET recebimento_id = ?, atualizado_em = NOW() WHERE id = ?", (rid, pid))
+                else:
+                    conn.execute(f'UPDATE {t_pal} SET recebimento_id = ?, atualizado_em = ? WHERE id = ?', (rid, now, pid))
+            else:
+                if _is_pg(conn):
+                    cur = conn.execute(
+                        f'''INSERT INTO {t_pal} (etiqueta, status, estado_fisico, recebimento_id, criado_em, atualizado_em, criado_por)
+                            VALUES (?, 'em_conferencia', 'bom', ?, NOW(), NOW(), ?) RETURNING id''',
+                        (etiqueta, rid, _usuario()),
+                    )
+                    pid = cur.fetchone()['id']
+                else:
+                    conn.execute(
+                        f'''INSERT INTO {t_pal} (etiqueta, status, estado_fisico, recebimento_id, criado_em, atualizado_em, criado_por)
+                            VALUES (?, 'em_conferencia', 'bom', ?, ?, ?, ?)''',
+                        (etiqueta, rid, now, now, _usuario()),
+                    )
+                    pid = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+            vinc = conn.execute(
+                f'SELECT 1 FROM {t_rp} WHERE recebimento_id = ? AND palete_id = ?', (rid, pid)
+            ).fetchone()
+            if not vinc:
+                conn.execute(
+                    f'INSERT INTO {t_rp} (recebimento_id, palete_id, estado_palete, conferencia_cega) VALUES (?, ?, ?, 1)',
+                    (rid, pid, 'bom'),
+                )
+            if _is_pg(conn):
+                conn.execute(f"UPDATE {t_rec} SET status = 'em_conferencia', atualizado_em = NOW() WHERE id = ?", (rid,))
+            else:
+                conn.execute(f"UPDATE {t_rec} SET status = 'em_conferencia', atualizado_em = ? WHERE id = ?", (now, rid))
+            conn.commit()
+            conn.close()
+            return jsonify({'ok': True, 'palete_id': pid, 'etiqueta': etiqueta})
+
+        if acao == 'bip_produto':
+            pid = data.get('palete_id')
+            if not pid:
+                conn.close()
+                return jsonify({'erro': 'Informe palete_id (bipe o palete primeiro).'}), 400
+            item = data.get('item') or {}
+            sku = (item.get('sku') or '').strip()
+            if not sku:
+                conn.close()
+                return jsonify({'erro': 'Informe SKU do produto.'}), 400
+            estado = data.get('estado_palete') or 'bom'
+            dp = (item.get('data_producao') or '').strip() or None
+            lote = (item.get('lote') or '').strip() or None
+            conn.execute(
+                f'''INSERT INTO {t_item}
+                    (palete_id, sku, descricao, lote, data_producao, data_validade, sif,
+                     quantidade_caixas, peso_liquido, rg_caixa, criado_em)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (
+                    pid, sku, item.get('descricao'), lote, dp,
+                    item.get('data_validade'), item.get('sif'),
+                    int(item.get('quantidade_caixas') or 0), item.get('peso_liquido'),
+                    item.get('rg_caixa'), now,
+                ),
+            )
+            bloqueios = _aplicar_bloqueios_palete(conn, pid, estado, item.get('data_validade'), item.get('temperatura'))
+            sug = _sugerir_putaway(conn, sku, lote, dp, 'pulmao')
+            pal = conn.execute(f'SELECT etiqueta FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
+            etiqueta = (pal['etiqueta'] if isinstance(pal, dict) else pal[0]) if pal else None
+            conn.commit()
+            conn.close()
+            return jsonify({'ok': True, 'palete_id': pid, 'etiqueta': etiqueta, 'bloqueios': bloqueios, 'sugestao': sug})
+
+        if acao == 'sugerir_destino':
+            pid = data.get('palete_id')
+            it = conn.execute(
+                f'SELECT sku, lote, data_producao FROM {t_item} WHERE palete_id = ? ORDER BY id DESC LIMIT 1',
+                (pid,),
+            ).fetchone()
+            if not it:
+                conn.close()
+                return jsonify({'erro': 'Palete sem produto conferido.'}), 400
+            rd = _row_dict(it) or {}
+            sug = _sugerir_putaway(conn, rd.get('sku'), rd.get('lote'), rd.get('data_producao'), 'pulmao')
+            conn.close()
+            return jsonify(sug)
+
+        if acao == 'confirmar_armazenagem':
+            pid = data.get('palete_id')
+            cod = (data.get('codigo_endereco') or '').strip()
+            if not pid or not cod:
+                conn.close()
+                return jsonify({'erro': 'Informe palete_id e codigo_endereco.'}), 400
+            loc, err = _confirmar_armazenagem_palete(conn, pid, cod)
+            if err:
+                try:
+                    conn.rollback()
+                    conn.close()
+                except Exception:
+                    pass
+                return jsonify({'erro': err}), 400
+            conn.commit()
+            conn.close()
+            return jsonify({'ok': True, 'localizacao': loc})
+
         if acao == 'conferir_palete':
             rid = data.get('recebimento_id')
             etiqueta = (data.get('etiqueta') or '').strip() or _gerar_etiqueta_palete()
@@ -1343,23 +1980,29 @@ def api_wms_recebimentos():
             movs = 0
             for pr in pals:
                 pid = pr['palete_id'] if isinstance(pr, dict) else pr[0]
-                it = conn.execute(f'SELECT sku, lote FROM {t_item} WHERE palete_id = ? LIMIT 1', (pid,)).fetchone()
+                it = conn.execute(
+                    f'SELECT sku, lote, data_producao FROM {t_item} WHERE palete_id = ? LIMIT 1', (pid,)
+                ).fetchone()
                 if not it:
                     continue
-                sku = it['sku'] if isinstance(it, dict) else it[0]
-                lote = it['lote'] if isinstance(it, dict) else it[1]
-                sug = _sugerir_putaway(conn, sku, lote)
+                rd = _row_dict(it) or {}
+                sku = rd.get('sku')
+                lote = rd.get('lote')
+                dp = rd.get('data_producao')
+                sug = _sugerir_putaway(conn, sku, lote, dp, 'pulmao')
                 if sug.get('localizacao_id'):
-                    conn.execute(
-                        f'''INSERT INTO {t_mov} (tipo, palete_id, destino_localizacao_id, status, prioridade, observacao, criado_em, criado_por)
-                            VALUES ('putaway', ?, ?, 'pendente', 3, ?, ?, ?)''',
-                        (pid, sug['localizacao_id'], '; '.join(sug.get('motivo') or []), now, _usuario()),
-                    )
+                    obs = '; '.join(sug.get('motivo') or [])
                     if _is_pg(conn):
                         conn.execute(
                             f'''INSERT INTO {t_mov} (tipo, palete_id, destino_localizacao_id, status, prioridade, observacao, criado_em, criado_por)
                                 VALUES ('putaway', ?, ?, 'pendente', 3, ?, NOW(), ?)''',
-                            (pid, sug['localizacao_id'], '; '.join(sug.get('motivo') or []), _usuario()),
+                            (pid, sug['localizacao_id'], obs, _usuario()),
+                        )
+                    else:
+                        conn.execute(
+                            f'''INSERT INTO {t_mov} (tipo, palete_id, destino_localizacao_id, status, prioridade, observacao, criado_em, criado_por)
+                                VALUES ('putaway', ?, ?, 'pendente', 3, ?, ?, ?)''',
+                            (pid, sug['localizacao_id'], obs, now, _usuario()),
                         )
                     movs += 1
             if _is_pg(conn):
@@ -1521,6 +2164,265 @@ def api_wms_zoneamento():
         ).fetchall()
         conn.close()
         return jsonify({'zoneamento': [dict(r) for r in rows]})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+def _loc_etiqueta_data(loc):
+    """Dados para template de etiqueta de endereço (formato 21-R-01-1)."""
+    d = _row_dict(loc) or {}
+    cam = int(d.get('camara') or 0)
+    rua = str(d.get('rua') or '').strip().upper()
+    pos = int(d.get('posicao') or 0)
+    niv = int(d.get('nivel') or 1)
+    cod = (d.get('codigo_endereco') or _codigo_endereco(cam, rua, pos, niv)).upper()
+    picking = niv == 1 or (d.get('zona_armazenagem') or '').lower() == 'picking'
+    return {
+        'camara': f'{cam:02d}',
+        'rua': rua,
+        'posicao': f'{pos:02d}',
+        'nivel': str(niv),
+        'codigo': cod,
+        'barcode': cod,
+        'dotted': f'{cam:02d}.{rua}.{pos:02d}.{niv}',
+        'picking': picking,
+        'zona': 'PICKING' if picking else 'PULMÃO',
+        'cat': (d.get('categoria_zona') or d.get('area') or '').strip().upper(),
+    }
+
+
+def _agrupar_etiquetas_faixas(loc_rows):
+    """Agrupa localizações em faixas (coluna = mesma câmara+rua+posição, níveis ordenados)."""
+    grupos = {}
+    for loc in loc_rows:
+        e = _loc_etiqueta_data(loc)
+        chave = (e['camara'], e['rua'], e['posicao'])
+        grupos.setdefault(chave, []).append(e)
+    faixas = []
+    for (cam, rua, pos), etiquetas in sorted(grupos.items(), key=lambda x: (x[0][0], x[0][1], x[0][2])):
+        etiquetas.sort(key=lambda x: int(x['nivel']))
+        faixas.append({
+            'titulo': f'Câm {cam} · Rua {rua} · Pos {pos}',
+            'etiquetas': etiquetas,
+        })
+    total = sum(len(f['etiquetas']) for f in faixas)
+    return faixas, total
+
+
+def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, auto_print=False):
+    _ensure_zona_armazenagem_column(conn)
+    t_loc = _tbl(conn, 'wms_localizacao')
+    if codigo:
+        row = conn.execute(
+            f'SELECT * FROM {t_loc} WHERE codigo_endereco = ? OR codigo_endereco = ?',
+            (codigo, codigo.upper()),
+        ).fetchone()
+        rows = [row] if row else []
+    else:
+        sql = f'SELECT * FROM {t_loc} WHERE 1=1'
+        params = []
+        if camara:
+            sql += ' AND camara = ?'
+            params.append(int(camara))
+        if rua:
+            sql += ' AND UPPER(TRIM(rua)) = ?'
+            params.append(str(rua).strip().upper())
+        if posicao:
+            sql += ' AND posicao = ?'
+            params.append(int(posicao))
+        sql += ' ORDER BY camara, rua, posicao, nivel'
+        rows = conn.execute(sql, tuple(params)).fetchall()
+    if not rows:
+        return None, 'Nenhum endereço encontrado para imprimir.'
+    faixas, total = _agrupar_etiquetas_faixas(rows)
+    titulo = codigo or f'Câm {camara or "todas"}'
+    html = render_template(
+        'wms/etiquetas_endereco.html',
+        faixas=faixas,
+        total=total,
+        titulo=titulo,
+        auto_print=auto_print,
+    )
+    return html, None
+
+
+def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=None, data_producao=None, data_validade=None, destino=None, auto_print=True):
+    return render_template(
+        'wms/etiqueta_palete.html',
+        etiqueta=etiqueta,
+        sku=sku,
+        lote=lote,
+        qtd=qtd,
+        descricao=descricao,
+        data_producao=data_producao,
+        data_validade=data_validade,
+        destino=destino,
+        auto_print=auto_print,
+    )
+
+
+@bp.route('/etiqueta', methods=['GET'])
+def api_wms_etiqueta():
+    etiqueta = (request.args.get('etiqueta') or '').strip()
+    if not etiqueta:
+        return jsonify({'erro': 'Informe etiqueta.'}), 400
+    conn = _db()
+    ensure_wms_schema(conn)
+    t_pal = _tbl(conn, 'wms_palete')
+    t_item = _tbl(conn, 'wms_palete_item')
+    try:
+        pal = conn.execute(f'SELECT id FROM {t_pal} WHERE etiqueta = ?', (etiqueta,)).fetchone()
+        sku = lote = descricao = data_producao = data_validade = None
+        qtd = None
+        if pal:
+            pid = pal['id'] if isinstance(pal, dict) else pal[0]
+            it = conn.execute(
+                f'''SELECT sku, descricao, lote, data_producao, data_validade, quantidade_caixas
+                    FROM {t_item} WHERE palete_id = ? ORDER BY id DESC LIMIT 1''',
+                (pid,),
+            ).fetchone()
+            if it:
+                rd = _row_dict(it) or {}
+                sku = rd.get('sku')
+                lote = rd.get('lote')
+                qtd = rd.get('quantidade_caixas')
+                descricao = rd.get('descricao')
+                data_producao = rd.get('data_producao')
+                data_validade = rd.get('data_validade')
+        auto_print = request.args.get('auto_print', '1') != '0'
+        conn.close()
+        html = _html_etiqueta_palete(
+            etiqueta, sku, lote, qtd, descricao, data_producao, data_validade,
+            auto_print=auto_print,
+        )
+        return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/etiqueta/modelo', methods=['GET'])
+def api_wms_etiqueta_modelo():
+    """Preview dos modelos de etiqueta (sem depender do banco)."""
+    tipo = (request.args.get('tipo') or 'endereco').strip().lower()
+    if tipo == 'palete':
+        html = _html_etiqueta_palete(
+            'UP12345678901234567890',
+            sku='1234567',
+            lote='L202501',
+            qtd=48,
+            descricao='Pão de forma integral 500g',
+            data_producao='2025-06-01',
+            data_validade='2025-12-01',
+            destino='21-R-01-2 (PULMÃO · Cat. C)',
+            auto_print=False,
+        )
+        return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+    faixas = [{
+        'titulo': 'Câm 21 · Rua R · Pos 01 — exemplo',
+        'etiquetas': [
+            {
+                'camara': '21', 'rua': 'R', 'posicao': '01', 'nivel': '1',
+                'barcode': '21-R-01-1', 'dotted': '21.R.01.1',
+                'picking': True, 'zona': 'PICKING', 'cat': 'C',
+            },
+            {
+                'camara': '21', 'rua': 'R', 'posicao': '01', 'nivel': '2',
+                'barcode': '21-R-01-2', 'dotted': '21.R.01.2',
+                'picking': False, 'zona': 'PULMÃO', 'cat': 'C',
+            },
+            {
+                'camara': '21', 'rua': 'R', 'posicao': '01', 'nivel': '3',
+                'barcode': '21-R-01-3', 'dotted': '21.R.01.3',
+                'picking': False, 'zona': 'PULMÃO', 'cat': 'C',
+            },
+        ],
+    }]
+    html = render_template(
+        'wms/etiquetas_endereco.html',
+        faixas=faixas,
+        total=3,
+        titulo='Modelo',
+        auto_print=False,
+    )
+    return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+
+
+@bp.route('/etiqueta/endereco', methods=['GET'])
+def api_wms_etiqueta_endereco():
+    codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip()
+    if not codigo:
+        return jsonify({'erro': 'Informe codigo/endereco (ex.: 21-R-01-1).'}), 400
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        auto_print = request.args.get('auto_print', '0') == '1'
+        html, err = _render_etiquetas_endereco(conn, codigo=codigo, auto_print=auto_print)
+        conn.close()
+        if err:
+            return jsonify({'erro': err}), 404
+        return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/etiqueta/enderecos', methods=['GET'])
+def api_wms_etiqueta_enderecos():
+    """Impressão em lote: câmara inteira, ou coluna (câmara+rua+posição)."""
+    conn = _db()
+    ensure_wms_schema(conn)
+    camara = request.args.get('camara', type=int)
+    rua = (request.args.get('rua') or '').strip() or None
+    posicao = request.args.get('posicao', type=int)
+    if not camara and not rua and not posicao:
+        return jsonify({'erro': 'Informe ao menos camara (ex.: ?camara=21).'}), 400
+    try:
+        auto_print = request.args.get('auto_print', '0') == '1'
+        html, err = _render_etiquetas_endereco(
+            conn, camara=camara, rua=rua, posicao=posicao, auto_print=auto_print,
+        )
+        conn.close()
+        if err:
+            return jsonify({'erro': err}), 404
+        return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/picking', methods=['GET'])
+def api_wms_picking():
+    id_roteiro = (request.args.get('id_roteiro') or '').strip()
+    id_viagem = (request.args.get('id_viagem') or '').strip()
+    if not id_roteiro or not id_viagem:
+        return jsonify({'erro': 'Informe id_roteiro e id_viagem.'}), 400
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        lista, err = _lista_picking_roteiro(conn, id_roteiro, id_viagem)
+        conn.close()
+        if err:
+            return jsonify({'erro': err, 'itens': lista}), 404 if not lista else 200
+        return jsonify({
+            'id_roteiro': id_roteiro,
+            'id_viagem': id_viagem,
+            'itens': lista,
+            'total_linhas': len(lista),
+        })
     except Exception as e:
         try:
             conn.close()

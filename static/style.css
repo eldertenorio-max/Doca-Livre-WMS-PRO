@@ -30,10 +30,11 @@ body {
     padding: 20px 30px;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 20px;
+    justify-content: flex-end;
+    gap: 12px;
     flex-wrap: wrap;
     position: relative;
+    min-height: 72px;
 }
 
 .header-link-inicio {
@@ -108,15 +109,16 @@ body.hub-modulos-aberto .container {
 }
 
 @media (min-width: 769px) {
-    .header:has(.header-link-inicio) {
-        padding-left: 200px;
+    .header-actions {
+        margin-left: auto;
     }
 }
 
 @media (max-width: 768px) {
-    .header:has(.header-link-inicio) {
+    .header {
         padding-left: 20px;
         padding-right: 20px;
+        justify-content: center;
     }
 
     .header-link-inicio {
@@ -129,6 +131,8 @@ body.hub-modulos-aberto .container {
     }
 
     .header-brand {
+        position: static;
+        transform: none;
         flex: 1 1 100%;
         order: 0;
         margin: 6px 0 4px;
@@ -138,6 +142,12 @@ body.hub-modulos-aberto .container {
         height: 38px;
         width: 138px;
         max-width: min(138px, 72vw);
+    }
+
+    .header-actions {
+        width: 100%;
+        justify-content: center;
+        margin-left: 0;
     }
 }
 
@@ -149,13 +159,33 @@ body.hub-modulos-aberto .container {
 }
 
 .header-brand {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 12px;
     flex-wrap: wrap;
-    justify-content: center;
     flex: 0 0 auto;
     min-width: 145px;
+    z-index: 10;
+    pointer-events: none;
+}
+
+.header-brand .ss-brand-logo--header {
+    pointer-events: auto;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 20;
 }
 
 .header-brand .ss-brand-logo--header {
@@ -178,8 +208,8 @@ body.hub-modulos-aberto .container {
 }
 
 .header .btn-atualizar-aba {
-    margin-left: auto;
-    margin-right: 12px;
+    margin-left: 0;
+    margin-right: 0;
     padding: 10px 18px;
     background: rgba(255,255,255,0.2);
     border: 1px solid rgba(255,255,255,0.5);
@@ -332,7 +362,7 @@ body.hub-modulos-aberto .container {
 .header .btn-sair {
     display: inline-block;
     text-decoration: none;
-    margin-left: 12px;
+    margin-left: 0;
     padding: 10px 20px;
     background: rgba(255,255,255,0.2);
     border: 1px solid rgba(255,255,255,0.5);
