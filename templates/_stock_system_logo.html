@@ -1,6 +1,6 @@
 {# Logo Stock System inline — evita falha de carregamento do SVG externo em img #}
-{% macro stock_system_logo(class='', grad_id='ssg') %}
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 88" role="img" aria-label="{{ system_name }}"{% if class %} class="{{ class }}"{% endif %}>
+{% macro stock_system_logo(class='', grad_id='ssg', width='', height='') %}
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 88" role="img" aria-label="{{ system_name }}"{% if class %} class="{{ class }}"{% endif %}{% if width %} width="{{ width }}"{% endif %}{% if height %} height="{{ height }}"{% endif %}>
   <defs>
     <linearGradient id="{{ grad_id }}" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#0ea5e9"/>

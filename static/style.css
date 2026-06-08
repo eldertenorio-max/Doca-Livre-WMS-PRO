@@ -119,6 +119,18 @@ body.hub-modulos-aberto .container {
         text-align: center;
         margin-bottom: 4px;
     }
+
+    .header-brand {
+        flex: 1 1 100%;
+        order: 0;
+        margin: 6px 0 4px;
+    }
+
+    .header-brand .ss-brand-logo--header {
+        height: 38px;
+        width: 138px;
+        max-width: min(138px, 72vw);
+    }
 }
 
 .header-logo {
@@ -134,12 +146,15 @@ body.hub-modulos-aberto .container {
     gap: 12px;
     flex-wrap: wrap;
     justify-content: center;
+    flex: 0 0 auto;
+    min-width: 145px;
 }
 
 .header-brand .ss-brand-logo--header {
     background: #fff;
     padding: 4px 10px;
     border-radius: 8px;
+    box-sizing: content-box;
 }
 
 .header h1 {
