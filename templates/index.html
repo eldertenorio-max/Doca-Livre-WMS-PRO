@@ -2479,6 +2479,7 @@
 
         <div id="modulo-estoque-sp" class="modulo-area modulo-devolucoes" hidden aria-label="Estoque SP em tempo real">
             <div class="devolucoes-conteudo">
+                <div class="estoque-sp-ui-estoque-real">
                 <div class="painel-titulo">
                     <span class="painel-titulo-icon">📦</span>
                     <h2 class="painel-titulo-texto">Estoque SP em tempo real</h2>
@@ -2496,13 +2497,20 @@
                     <button type="button" class="btn btn-primary" id="btn-estoque-sp-atualizar">🔄 Atualizar</button>
                 </div>
                 <p id="estoque-sp-atualizado-em" class="info-text estoque-sp-atualizado-em" style="margin: 0 0 12px 0; display: none;"></p>
-                <nav class="tabs devolucoes-subtabs" aria-label="Abas Estoque SP em tempo real">
+                <nav class="tabs devolucoes-subtabs estoque-sp-nav-estoque" aria-label="Abas Estoque SP em tempo real">
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab active" data-estoque-tab="estoque-atual">ESTOQUE ATUAL</button>
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="saida">SAÍDA</button>
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="entrada-devolucao">ENTRADA (DEVOLUÇÕES)</button>
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="entrada-terceiros">ENTRADA TERCEIROS</button>
-                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="enderecamento-wms">ENDEREÇAMENTO WMS</button>
+                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab estoque-sp-subtab--wms" data-estoque-tab="enderecamento-wms">ENDEREÇAMENTO WMS</button>
                 </nav>
+                </div>
+                <div id="estoque-sp-cabecalho-wms" class="painel-titulo painel-titulo--wms" hidden>
+                    <span class="painel-titulo-icon">🏭</span>
+                    <h2 class="painel-titulo-texto">Endereçamento WMS</h2>
+                    <p class="painel-titulo-sub">Localizações, recebimento, putaway e inventário por categoria A/B/C/D</p>
+                    <button type="button" class="btn btn-secondary btn-sm estoque-sp-voltar-estoque" id="btn-estoque-sp-voltar-estoque">← Estoque SP em tempo real</button>
+                </div>
                 <div id="estoque-sp-panel-estoque-atual" class="devolucoes-panel devolucoes-panel-active">
                     <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Saldo = devoluções + recebimento terceiros (sem MG/consumível) − expedição bipada. Atualização automática a cada 30 segundos.</p>
                     <div class="stats-grid" style="margin-bottom: 16px;">

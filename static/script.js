@@ -2854,6 +2854,8 @@ function initEstoqueSp() {
     var pWms = document.getElementById('estoque-sp-panel-enderecamento-wms');
     var filtrosData = document.getElementById('estoque-sp-filtros-data');
     var lblAtualizado = document.getElementById('estoque-sp-atualizado-em');
+    var modEst = document.getElementById('modulo-estoque-sp');
+    var cabWms = document.getElementById('estoque-sp-cabecalho-wms');
     if (!botoes.length) return;
 
     function mostrar(tab) {
@@ -2867,7 +2869,9 @@ function initEstoqueSp() {
         if (pWms) pWms.classList.toggle('devolucoes-panel-active', tab === 'enderecamento-wms');
         var ehAtual = tab === 'estoque-atual';
         var ehWms = tab === 'enderecamento-wms';
-        if (filtrosData) filtrosData.style.display = (ehAtual || ehWms) ? 'none' : 'flex';
+        if (modEst) modEst.classList.toggle('estoque-sp-modo-wms', ehWms);
+        if (cabWms) cabWms.hidden = !ehWms;
+        if (filtrosData) filtrosData.style.display = ehAtual ? 'none' : (ehWms ? 'none' : 'flex');
         if (lblAtualizado) lblAtualizado.style.display = ehAtual ? 'block' : 'none';
         if (ehAtual) {
             loadEstoqueSpTempoReal();
@@ -2888,6 +2892,8 @@ function initEstoqueSp() {
     });
     var btnAt = document.getElementById('btn-estoque-sp-atualizar');
     if (btnAt) btnAt.addEventListener('click', function() { loadEstoqueSpResumo(); });
+    var btnVoltarEst = document.getElementById('btn-estoque-sp-voltar-estoque');
+    if (btnVoltarEst) btnVoltarEst.addEventListener('click', function() { mostrar('estoque-atual'); });
     var params = new URLSearchParams(window.location.search);
     var abaInicial = params.get('aba') || '';
     if (params.get('modulo') === 'enderecamento-wms') abaInicial = 'enderecamento-wms';

@@ -381,6 +381,28 @@ body.hub-modulos-aberto .container {
     font-style: italic;
 }
 
+/* Modo WMS — oculta cabeçalho/abas de estoque em tempo real */
+#modulo-estoque-sp.estoque-sp-modo-wms .estoque-sp-ui-estoque-real {
+    display: none !important;
+}
+
+#modulo-estoque-sp .painel-titulo--wms {
+    display: none;
+}
+
+#modulo-estoque-sp.estoque-sp-modo-wms .painel-titulo--wms {
+    display: block;
+}
+
+.painel-titulo--wms .estoque-sp-voltar-estoque {
+    margin-top: 10px;
+}
+
+.estoque-sp-subtab--wms.active {
+    color: #0369a1;
+    border-bottom-color: #0ea5e9;
+}
+
 .devolucoes-subtabs {
     margin-bottom: 16px;
 }
