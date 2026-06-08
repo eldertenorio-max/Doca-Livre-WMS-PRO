@@ -3,14 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestão de Processos de Estoque e Armazenagem — Módulos</title>
+    <title>{{ system_name }} — Módulos</title>
+    <link rel="icon" href="{{ url_for('static', filename='stock-system-logo.svg') }}" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
 </head>
 <body class="hub-entrada-body">
+    {% include '_stock_system_splash.html' %}
+    <div class="ss-page-content">
     <div class="hub-entrada-topstripe" aria-hidden="true"></div>
 
     <div class="hub-entrada-wrap">
-        <h1 class="hub-entrada-titulo">Gestão de Processos de Estoque e Armazenagem</h1>
+        <div class="hub-entrada-logo">
+            <img src="{{ url_for('static', filename='stock-system-logo.png') }}" alt="{{ system_name }}"
+                 onerror="this.onerror=null;this.src='{{ url_for('static', filename='stock-system-logo.svg') }}';">
+        </div>
+        <h1 class="hub-entrada-titulo">{{ system_name }}</h1>
+        <p class="hub-entrada-subtitulo">{{ system_tagline }}</p>
 
         <div class="hub-entrada-botoes">
             <a class="hub-entrada-btn hub-entrada-btn--1" href="{{ url_for('painel') }}?modulo=carregamento">Carga/Expedição</a>
@@ -25,5 +37,7 @@
             <a href="/login?sair=1">Sair</a>
         </footer>
     </div>
+    </div>
+    <script src="{{ url_for('static', filename='stock-system-intro.js') }}"></script>
 </body>
 </html>

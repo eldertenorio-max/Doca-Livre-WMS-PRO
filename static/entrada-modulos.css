@@ -32,7 +32,7 @@ body.hub-entrada-body {
 
 .hub-entrada-topstripe {
     height: 8px;
-    background: linear-gradient(135deg, #366092 0%, #4a7ba7 100%);
+    background: linear-gradient(135deg, #0369a1 0%, #0ea5e9 100%);
 }
 
 .hub-entrada-wrap {
@@ -52,7 +52,7 @@ body.hub-entrada-body {
     width: min(210px, 44vw);
     max-width: 100%;
     border-radius: 14px;
-    border: 3px solid #366092;
+    border: 3px solid #0369a1;
     overflow: hidden;
     background: #fff;
     box-shadow: 0 6px 24px rgba(54, 96, 146, 0.22);
@@ -72,12 +72,22 @@ body.hub-entrada-body {
     height: auto;
 }
 
+.hub-entrada-subtitulo {
+    margin: -8px 0 0;
+    font-size: clamp(0.9rem, 2.2vw, 1.05rem);
+    text-align: center;
+    color: #64748b;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    animation: hub-fade-up 0.65s ease 0.15s both;
+}
+
 .hub-entrada-titulo {
     margin: 0;
     font-size: clamp(1.45rem, 3.8vw, 2rem);
     font-weight: 700;
     text-align: center;
-    color: #366092;
+    color: #0369a1;
     line-height: 1.2;
     opacity: 0;
     animation: hub-fade-up 0.65s ease-out 0.12s forwards;
@@ -102,7 +112,7 @@ body.hub-entrada-body {
 }
 
 .hub-entrada-desc strong {
-    color: #366092;
+    color: #0369a1;
     font-weight: 700;
 }
 
@@ -180,7 +190,7 @@ body.hub-entrada-body {
 }
 
 .hub-entrada-rodape a {
-    color: #366092;
+    color: #0369a1;
     font-weight: 600;
     text-decoration: none;
     transition: color 0.2s ease;

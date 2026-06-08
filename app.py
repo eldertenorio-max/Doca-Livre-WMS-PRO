@@ -92,6 +92,17 @@ if load_dotenv:
 app = Flask(__name__)
 app.config['SECRET_KEY'] = (os.environ.get('SECRET_KEY') or 'ultrapao-secret-key-2024')
 
+SYSTEM_NAME = 'Stock System'
+SYSTEM_TAGLINE = 'WMS · Gestão de estoque e armazenagem'
+
+
+@app.context_processor
+def _inject_stock_system_branding():
+    return {
+        'system_name': SYSTEM_NAME,
+        'system_tagline': SYSTEM_TAGLINE,
+    }
+
 # Atualização em tempo real: quando alguém bipa, todos os clientes (127.0.0.1 e 192.168.x.x) recebem e atualizam
 _sse_queues = []
 _sse_lock = threading.Lock()
@@ -860,6 +871,14 @@ class CompatConn:
 
     def close(self):
         return self._conn.close()
+
+
+try:
+    from wms_enderecamento import bp as wms_enderecamento_bp, init_wms_enderecamento
+    init_wms_enderecamento(get_db)
+    app.register_blueprint(wms_enderecamento_bp, url_prefix='/api/wms')
+except Exception as _wms_import_err:
+    print('Aviso: módulo WMS endereçamento não carregado:', _wms_import_err)
 
 
 def _ensure_pg_tabela_geral_dados(conn):
@@ -13871,7 +13890,7 @@ if __name__ == '__main__':
     sync_usuarios_from_config()
     port = int(os.environ.get('PORT', '5000'))
     print("=" * 60)
-    print("CONTROLE DE CARREGAMENTO ULTRAPÃO")
+    print(SYSTEM_NAME.upper() + " — WMS")
     print("=" * 60)
     print(f"\nServidor iniciado em: http://127.0.0.1:{port}")
     print("\nPressione Ctrl+C para parar o servidor")

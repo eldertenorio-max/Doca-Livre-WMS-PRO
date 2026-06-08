@@ -25,7 +25,7 @@ body {
 }
 
 .header {
-    background: linear-gradient(135deg, #366092 0%, #4a7ba7 100%);
+    background: linear-gradient(135deg, #0f172a 0%, #0369a1 55%, #0ea5e9 100%);
     color: white;
     padding: 20px 30px;
     display: flex;
@@ -128,10 +128,30 @@ body.hub-modulos-aberto .container {
     border-radius: 8px;
 }
 
+.header-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.header-brand .ss-brand-logo--header {
+    background: #fff;
+    padding: 4px 10px;
+    border-radius: 8px;
+}
+
 .header h1 {
     font-size: 26px;
     font-weight: bold;
     margin: 0;
+}
+
+.header-brand h1 {
+    font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
 }
 
 .header .btn-atualizar-aba {

@@ -107,7 +107,7 @@ pip install psycopg[binary] python-dotenv
 
 $env:PGSSLMODE = "require"
 $env:DATABASE_URL_ORIGEM = "postgresql://postgres.[PROJETO_ANTIGO]:SENHA@....supabase.com:5432/postgres"
-$env:DATABASE_URL_DESTINO = "postgresql://postgres.ndfjetskugqsrrmulcyz:SENHA@aws-0-us-west-2.pooler.supabase.com:5432/postgres"
+$env:DATABASE_URL_DESTINO = "postgresql://postgres.ndfjetskugqsrrmulcyz:SENHA@aws-1-us-west-2.pooler.supabase.com:6543/postgres"
 
 # Simular (só conta linhas)
 python scripts/migrar_supabase_para_supabase.py --dry-run

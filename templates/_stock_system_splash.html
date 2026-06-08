@@ -1,0 +1,19 @@
+{# Intro Stock System — substitua logo/vídeo em static/ após exportar do Canva #}
+<div id="stock-system-splash" class="ss-splash" role="dialog" aria-label="Carregando Stock System" aria-live="polite">
+    <div class="ss-splash-inner">
+        <div class="ss-splash-logo-wrap">
+            <img
+                src="{{ url_for('static', filename='stock-system-logo.png') }}"
+                alt="{{ system_name }}"
+                class="ss-splash-logo ss-splash-logo--dark-bg"
+                onerror="this.onerror=null;this.src='{{ url_for('static', filename='stock-system-logo.svg') }}';this.classList.remove('ss-splash-logo--dark-bg');"
+            >
+        </div>
+        <h1 class="ss-splash-title">{{ system_name }}</h1>
+        <p class="ss-splash-tagline">{{ system_tagline }}</p>
+        <video id="ss-splash-video" class="ss-splash-video" muted playsinline preload="none"
+               data-src-mp4="{{ url_for('static', filename='stock-system-intro.mp4') }}"
+               style="display:none"></video>
+        <div class="ss-splash-loader" aria-hidden="true"><div class="ss-splash-loader-bar"></div></div>
+    </div>
+</div>

@@ -1324,6 +1324,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initDevolucoesTabs();
     initDevolucaoNfFlow();
     initEstoqueSp();
+    initWmsEnderecamento();
     initTerceirosTabs();
     void _terceirosGarantirPrefetchLista();
     initTerceirosAlertasHeader();
@@ -2838,6 +2839,7 @@ function initEstoqueSp() {
     var pSaida = document.getElementById('estoque-sp-panel-saida');
     var pDev = document.getElementById('estoque-sp-panel-entrada-devolucao');
     var pTer = document.getElementById('estoque-sp-panel-entrada-terceiros');
+    var pWms = document.getElementById('estoque-sp-panel-enderecamento-wms');
     var filtrosData = document.getElementById('estoque-sp-filtros-data');
     var lblAtualizado = document.getElementById('estoque-sp-atualizado-em');
     if (!botoes.length) return;
@@ -2850,11 +2852,16 @@ function initEstoqueSp() {
         if (pSaida) pSaida.classList.toggle('devolucoes-panel-active', tab === 'saida');
         if (pDev) pDev.classList.toggle('devolucoes-panel-active', tab === 'entrada-devolucao');
         if (pTer) pTer.classList.toggle('devolucoes-panel-active', tab === 'entrada-terceiros');
+        if (pWms) pWms.classList.toggle('devolucoes-panel-active', tab === 'enderecamento-wms');
         var ehAtual = tab === 'estoque-atual';
-        if (filtrosData) filtrosData.style.display = ehAtual ? 'none' : 'flex';
+        var ehWms = tab === 'enderecamento-wms';
+        if (filtrosData) filtrosData.style.display = (ehAtual || ehWms) ? 'none' : 'flex';
         if (lblAtualizado) lblAtualizado.style.display = ehAtual ? 'block' : 'none';
         if (ehAtual) {
             loadEstoqueSpTempoReal();
+        } else if (ehWms) {
+            _estoqueSpPararTimer();
+            if (typeof loadWmsPainel === 'function') loadWmsPainel();
         } else {
             loadEstoqueSpResumo();
         }
@@ -2951,6 +2958,298 @@ async function loadEstoqueSpResumo() {
     paint('saida', 'estoque-sp-tbody-saida', 'estoque-sp-saida-linhas', 'estoque-sp-saida-qtd');
     paint('entrada_devolucao', 'estoque-sp-tbody-dev', 'estoque-sp-dev-linhas', 'estoque-sp-dev-qtd');
     paint('entrada_terceiros', 'estoque-sp-tbody-ter', 'estoque-sp-ter-linhas', 'estoque-sp-ter-qtd');
+}
+
+function _wmsMostrarSubtab(tab) {
+    tab = tab || 'painel';
+    document.querySelectorAll('.wms-subtab[data-wms-tab]').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-wms-tab') === tab);
+    });
+    document.querySelectorAll('.wms-inner-panel').forEach(function(p) {
+        var id = p.id || '';
+        var show = id === 'wms-panel-' + tab;
+        p.hidden = !show;
+        p.classList.toggle('wms-inner-panel-active', show);
+    });
+    if (tab === 'painel') loadWmsPainel();
+    else if (tab === 'localizacoes') loadWmsLocalizacoes();
+    else if (tab === 'produtos') loadWmsProdutos();
+    else if (tab === 'movimentacoes') loadWmsMovimentacoes();
+    else if (tab === 'recebimento') loadWmsRecebimentos();
+    else if (tab === 'inventario') loadWmsInventarios();
+}
+
+function initWmsEnderecamento() {
+    if (!document.getElementById('estoque-sp-panel-enderecamento-wms')) return;
+    document.querySelectorAll('.wms-subtab[data-wms-tab]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            _wmsMostrarSubtab(btn.getAttribute('data-wms-tab') || 'painel');
+        });
+    });
+    var bLoc = document.getElementById('btn-wms-localizacoes');
+    if (bLoc) bLoc.addEventListener('click', loadWmsLocalizacoes);
+    var bProd = document.getElementById('btn-wms-produtos');
+    if (bProd) bProd.addEventListener('click', loadWmsProdutos);
+    var bPesq = document.getElementById('btn-wms-pesquisa');
+    if (bPesq) bPesq.addEventListener('click', loadWmsPesquisaSku);
+    var bRec = document.getElementById('btn-wms-novo-recebimento');
+    if (bRec) bRec.addEventListener('click', wmsCriarRecebimento);
+    var bRecL = document.getElementById('btn-wms-rec-lista');
+    if (bRecL) bRecL.addEventListener('click', loadWmsRecebimentos);
+    var bConf = document.getElementById('btn-wms-conferir-palete');
+    if (bConf) bConf.addEventListener('click', wmsConferirPalete);
+    var bFin = document.getElementById('btn-wms-finalizar-recebimento');
+    if (bFin) bFin.addEventListener('click', wmsFinalizarRecebimento);
+    var bInv = document.getElementById('btn-wms-novo-inventario');
+    if (bInv) bInv.addEventListener('click', wmsCriarInventario);
+    var bRedis = document.getElementById('btn-wms-redistribuir');
+    if (bRedis) bRedis.addEventListener('click', wmsRedistribuirLayout);
+}
+
+async function wmsRedistribuirLayout() {
+    if (!confirm('Recalcular a distribuição de categorias em todos os endereços?')) return;
+    var data = await fetchAPI('/wms/layout/gerar', { method: 'POST', body: JSON.stringify({ force: true }) });
+    if (data && data.ok) {
+        showMessage('Distribuição atualizada: ' + (data.geradas || 0) + ' endereços.', 'success');
+        loadWmsPainel();
+        loadWmsLocalizacoes();
+    } else {
+        showMessage((data && data.erro) || 'Erro ao recalcular.', 'error');
+    }
+}
+
+async function loadWmsPainel() {
+    var data = await fetchAPI('/wms/painel?_=' + Date.now());
+    if (!data || data.erro) {
+        showMessage((data && data.erro) || 'Erro ao carregar painel WMS.', 'error');
+        return;
+    }
+    var elM = document.getElementById('wms-stat-mov-pend');
+    var elR = document.getElementById('wms-stat-rec-abertos');
+    var elI = document.getElementById('wms-stat-inv-ativos');
+    if (elM) elM.textContent = String(data.movimentacoes_pendentes || 0);
+    if (elR) elR.textContent = String(data.recebimentos_abertos || 0);
+    if (elI) elI.textContent = String(data.inventarios_ativos || 0);
+    var box = document.getElementById('wms-camaras-barras');
+    if (box) {
+        var cams = data.camaras || [];
+        box.innerHTML = cams.map(function(c) {
+            var pct = Number(c.ocupacao_pct) || 0;
+            var vaz = c.vazias != null ? c.vazias : '—';
+            var ocup = c.ocupadas != null ? c.ocupadas : '—';
+            var tot = c.total_posicoes || c.cadastradas || 0;
+            return '<div style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;"><strong>Câmara ' + escHtml(c.camara) + '</strong><span>' + escHtml(ocup) + ' ocup. · ' + escHtml(vaz) + ' vaz. · ' + pct + '%</span></div><div style="background:#e0e0e0;border-radius:4px;height:10px;overflow:hidden;"><div style="width:' + Math.min(pct, 100) + '%;background:#1976d2;height:100%;"></div></div><div style="font-size:11px;color:#666;margin-top:2px;">Total ref.: ' + escHtml(tot) + ' posições</div></div>';
+        }).join('') || '<p class="info-text">Nenhuma câmara cadastrada.</p>';
+    }
+    var info = document.getElementById('wms-layout-info');
+    if (info) {
+        var pesos = data.pesos_categoria || {};
+        var parts = ['A', 'B', 'C', 'D'].filter(function(k) { return pesos[k]; }).map(function(k) {
+            return k + ': ' + pesos[k] + ' prod.';
+        });
+        info.textContent = 'Proporção pelo cadastro: ' + (parts.join(' · ') || 'padrão') + '. Putaway só usa endereço da mesma categoria.';
+    }
+    var dtb = document.getElementById('wms-tbody-dist-categoria');
+    if (dtb) {
+        var dist = data.distribuicao_categoria || [];
+        dtb.innerHTML = dist.length ? dist.map(function(d) {
+            return '<tr><td><strong>' + escHtml(d.categoria) + '</strong></td><td>' + escHtml(d.camara) + '</td><td>' + escHtml(d.total) + '</td><td>' + escHtml(d.vazias) + '</td><td>' + escHtml(d.ocupadas) + '</td></tr>';
+        }).join('') : '<tr><td colspan="5">Sem distribuição — abra o painel novamente para gerar.</td></tr>';
+    }
+    var zData = await fetchAPI('/wms/zoneamento');
+    var ztb = document.getElementById('wms-tbody-zoneamento');
+    if (ztb && zData && zData.zoneamento) {
+        ztb.innerHTML = zData.zoneamento.map(function(z) {
+            return '<tr><td>' + escHtml(z.categoria) + '</td><td>' + escHtml(z.camara) + ' — ' + escHtml(z.camara_descricao || '') + '</td><td>' + escHtml(z.prioridade) + '</td></tr>';
+        }).join('') || '<tr><td colspan="3">Sem zoneamento.</td></tr>';
+    }
+}
+
+async function loadWmsLocalizacoes() {
+    var cam = document.getElementById('wms-filtro-camara');
+    var cat = document.getElementById('wms-filtro-cat-zona');
+    var st = document.getElementById('wms-filtro-status');
+    var q = [];
+    if (cam && cam.value) q.push('camara=' + encodeURIComponent(cam.value));
+    if (cat && cat.value) q.push('categoria=' + encodeURIComponent(cat.value));
+    if (st && st.value) q.push('status=' + encodeURIComponent(st.value));
+    var data = await fetchAPI('/wms/localizacoes' + (q.length ? '?' + q.join('&') : ''));
+    var tb = document.getElementById('wms-tbody-localizacoes');
+    if (!tb) return;
+    if (!data || data.erro) {
+        tb.innerHTML = '<tr><td colspan="7" class="loading">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
+        return;
+    }
+    var rows = data.localizacoes || [];
+    tb.innerHTML = rows.length ? rows.map(function(r) {
+        return '<tr><td>' + escHtml(r.codigo_endereco) + '</td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(r.categoria_zona || r.area || '—') + '</strong></td><td>' + escHtml(r.status) + '</td></tr>';
+    }).join('') : '<tr><td colspan="7">Nenhuma localização gerada.</td></tr>';
+}
+
+async function loadWmsProdutos() {
+    var cat = document.getElementById('wms-filtro-categoria');
+    var url = '/wms/produtos';
+    if (cat && cat.value) url += '?categoria=' + encodeURIComponent(cat.value);
+    var data = await fetchAPI(url);
+    var tb = document.getElementById('wms-tbody-produtos');
+    if (!tb) return;
+    if (!data || data.erro) {
+        tb.innerHTML = '<tr><td colspan="5">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
+        return;
+    }
+    var rows = data.produtos || [];
+    tb.innerHTML = rows.length ? rows.map(function(p) {
+        return '<tr><td>' + escHtml(p.sku) + '</td><td>' + escHtml(p.descricao || '') + '</td><td><strong>' + escHtml(p.categoria) + '</strong></td><td>' + escHtml(p.padrao_plt || '') + '</td><td>' + escHtml(p.conversao || '') + '</td></tr>';
+    }).join('') : '<tr><td colspan="5">Importe data/wms_produtos_categoria.tsv</td></tr>';
+}
+
+async function loadWmsMovimentacoes() {
+    var data = await fetchAPI('/wms/movimentacoes?status=pendente');
+    var tb = document.getElementById('wms-tbody-movimentacoes');
+    if (!tb) return;
+    if (!data || data.erro) {
+        tb.innerHTML = '<tr><td colspan="6">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
+        return;
+    }
+    var rows = data.movimentacoes || [];
+    tb.innerHTML = rows.length ? rows.map(function(m) {
+        return '<tr><td>' + escHtml(m.id) + '</td><td>' + escHtml(m.tipo) + '</td><td>' + escHtml(m.etiqueta) + '</td><td>' + escHtml(m.destino || '') + '</td><td>' + escHtml(m.prioridade) + '</td><td><button type="button" class="btn btn-sm btn-success" onclick="wmsConcluirMovimentacao(' + m.id + ')">Concluir</button></td></tr>';
+    }).join('') : '<tr><td colspan="6">Nenhuma movimentação pendente.</td></tr>';
+}
+
+window.wmsConcluirMovimentacao = async function(id) {
+    var data = await fetchAPI('/wms/movimentacoes', { method: 'POST', body: JSON.stringify({ acao: 'concluir', id: id }) });
+    if (data && data.ok) {
+        showMessage('Movimentação concluída.', 'success');
+        loadWmsMovimentacoes();
+        loadWmsPainel();
+    } else {
+        showMessage((data && data.erro) || 'Erro ao concluir.', 'error');
+    }
+};
+
+async function loadWmsRecebimentos() {
+    var data = await fetchAPI('/wms/recebimentos');
+    var tb = document.getElementById('wms-tbody-recebimentos');
+    if (!tb) return;
+    if (!data || data.erro) {
+        tb.innerHTML = '<tr><td colspan="5">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
+        return;
+    }
+    var rows = data.recebimentos || [];
+    tb.innerHTML = rows.length ? rows.map(function(r) {
+        return '<tr style="cursor:pointer;" onclick="wmsAbrirRecebimento(' + r.id + ')"><td>' + escHtml(r.id) + '</td><td>' + escHtml(r.numero_nf || '') + '</td><td>' + escHtml(r.fornecedor || '') + '</td><td>' + escHtml(r.placa || '') + '</td><td>' + escHtml(r.status) + '</td></tr>';
+    }).join('') : '<tr><td colspan="5">Nenhum recebimento.</td></tr>';
+}
+
+window.wmsAbrirRecebimento = function(id) {
+    var det = document.getElementById('wms-recebimento-detalhe');
+    var hid = document.getElementById('wms-rec-detalhe-id');
+    if (det) det.style.display = 'block';
+    if (hid) hid.value = String(id);
+};
+
+async function wmsCriarRecebimento() {
+    var body = {
+        numero_nf: (document.getElementById('wms-rec-nf') || {}).value || '',
+        fornecedor: (document.getElementById('wms-rec-fornecedor') || {}).value || '',
+        placa: (document.getElementById('wms-rec-placa') || {}).value || ''
+    };
+    var data = await fetchAPI('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) });
+    if (data && data.ok) {
+        showMessage('Recebimento #' + data.id + ' criado.', 'success');
+        wmsAbrirRecebimento(data.id);
+        loadWmsRecebimentos();
+    } else {
+        showMessage((data && data.erro) || 'Erro ao criar recebimento.', 'error');
+    }
+}
+
+async function wmsConferirPalete() {
+    var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value;
+    if (!rid) { showMessage('Selecione um recebimento.', 'error'); return; }
+    var body = {
+        acao: 'conferir_palete',
+        recebimento_id: parseInt(rid, 10),
+        estado_palete: (document.getElementById('wms-pal-estado') || {}).value || 'bom',
+        item: {
+            sku: (document.getElementById('wms-pal-sku') || {}).value || '',
+            lote: (document.getElementById('wms-pal-lote') || {}).value || '',
+            data_validade: (document.getElementById('wms-pal-validade') || {}).value || '',
+            quantidade_caixas: parseInt((document.getElementById('wms-pal-qtd') || {}).value || '1', 10)
+        }
+    };
+    var data = await fetchAPI('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) });
+    var msg = document.getElementById('wms-palete-gerado');
+    if (data && data.ok) {
+        var txt = 'Palete ' + data.etiqueta + ' (' + data.etiqueta.length + ' chars)';
+        if (data.bloqueios && data.bloqueios.length) txt += ' — Bloqueios: ' + data.bloqueios.join(', ');
+        if (msg) msg.textContent = txt;
+        showMessage('Palete conferido.', 'success');
+    } else {
+        showMessage((data && data.erro) || 'Erro na conferência.', 'error');
+    }
+}
+
+async function wmsFinalizarRecebimento() {
+    var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value;
+    if (!rid) return;
+    var data = await fetchAPI('/wms/recebimentos', {
+        method: 'POST',
+        body: JSON.stringify({ acao: 'finalizar', recebimento_id: parseInt(rid, 10), respostas: [] })
+    });
+    if (data && data.ok) {
+        showMessage('Recebimento finalizado. Movimentações geradas: ' + (data.movimentacoes_geradas || 0), 'success');
+        loadWmsRecebimentos();
+        loadWmsMovimentacoes();
+        loadWmsPainel();
+    } else {
+        showMessage((data && data.erro) || 'Erro ao finalizar.', 'error');
+    }
+}
+
+async function wmsCriarInventario() {
+    var body = {
+        tipo: (document.getElementById('wms-inv-tipo') || {}).value || 'localizacao',
+        camara: (document.getElementById('wms-inv-camara') || {}).value || null,
+        descricao: (document.getElementById('wms-inv-desc') || {}).value || ''
+    };
+    var data = await fetchAPI('/wms/inventarios', { method: 'POST', body: JSON.stringify(body) });
+    if (data && data.ok) {
+        showMessage('Inventário #' + data.id + ' com ' + data.linhas + ' posições.', 'success');
+        loadWmsInventarios();
+    } else {
+        showMessage((data && data.erro) || 'Erro ao criar inventário.', 'error');
+    }
+}
+
+async function loadWmsInventarios() {
+    var data = await fetchAPI('/wms/inventarios');
+    var tb = document.getElementById('wms-tbody-inventarios');
+    if (!tb) return;
+    if (!data || data.erro) {
+        tb.innerHTML = '<tr><td colspan="4">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
+        return;
+    }
+    var rows = data.inventarios || [];
+    tb.innerHTML = rows.length ? rows.map(function(i) {
+        return '<tr><td>' + escHtml(i.id) + '</td><td>' + escHtml(i.tipo) + '</td><td>' + escHtml(i.descricao) + '</td><td>' + escHtml(i.status) + '</td></tr>';
+    }).join('') : '<tr><td colspan="4">Nenhum inventário.</td></tr>';
+}
+
+async function loadWmsPesquisaSku() {
+    var q = (document.getElementById('wms-pesq-q') || {}).value || '';
+    var data = await fetchAPI('/wms/pesquisa-sku?q=' + encodeURIComponent(q));
+    var tb = document.getElementById('wms-tbody-pesquisa');
+    if (!tb) return;
+    if (!data || data.erro) {
+        tb.innerHTML = '<tr><td colspan="7">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
+        return;
+    }
+    var rows = data.resultados || [];
+    tb.innerHTML = rows.length ? rows.map(function(r) {
+        return '<tr><td>' + escHtml(r.sku) + '</td><td>' + escHtml(r.lote || '') + '</td><td>' + escHtml(r.data_validade || '') + '</td><td>' + escHtml(r.etiqueta || '') + '</td><td>' + escHtml(r.codigo_endereco || '') + '</td><td>' + escHtml(r.bloqueio_tipo || '') + '</td><td>' + escHtml(r.quantidade_caixas) + '</td></tr>';
+    }).join('') : '<tr><td colspan="7">Nenhum resultado.</td></tr>';
 }
 
 function initTerceirosTabs() {

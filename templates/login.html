@@ -3,16 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Controle de Carregamento</title>
+    <title>Login — {{ system_name }}</title>
+    <link rel="icon" href="{{ url_for('static', filename='stock-system-logo.svg') }}" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../static/login.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}">
     <script>
       window.API_BASE = window.API_BASE || localStorage.getItem('api_base') || '/api';
     </script>
 </head>
 <body>
+    {% include '_stock_system_splash.html' %}
+    <div class="ss-page-content login-page-root">
     <div class="login-wrap">
         <div class="login-bg">
             <div class="login-bg-shape login-bg-shape-1"></div>
@@ -23,10 +27,11 @@
             <div class="login-card-inner">
                 <div class="login-header">
                     <div class="login-logo-wrap">
-                        <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo Ultra Pão" class="login-logo-img">
+                        <img src="{{ url_for('static', filename='stock-system-logo.png') }}" alt="{{ system_name }}" class="login-logo-img"
+                             onerror="this.onerror=null;this.src='{{ url_for('static', filename='stock-system-logo.svg') }}';">
                     </div>
-                    <h1>Controle de Carregamento</h1>
-                    <p>Entre com sua conta para acessar o painel</p>
+                    <h1>{{ system_name }}</h1>
+                    <p>{{ system_tagline }}</p>
                 </div>
                 {% if usuario %}
                 <div class="login-ja-logado" style="margin-bottom:20px;padding:16px;background:#e3f2fd;border-radius:12px;text-align:center;">
@@ -62,10 +67,11 @@
             <div class="login-card-inner">
                 <div class="login-header">
                     <div class="login-logo-wrap">
-                        <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo Ultra Pão" class="login-logo-img">
+                        <img src="{{ url_for('static', filename='stock-system-logo.png') }}" alt="{{ system_name }}" class="login-logo-img"
+                             onerror="this.onerror=null;this.src='{{ url_for('static', filename='stock-system-logo.svg') }}';">
                     </div>
                     <h1>Criar conta</h1>
-                    <p>Preencha os dados para se cadastrar</p>
+                    <p>Preencha os dados para se cadastrar no {{ system_name }}</p>
                 </div>
                 <form id="form-cadastro" class="login-form" autocomplete="on">
                     <div class="form-group form-group-anim">
@@ -85,7 +91,7 @@
                     <div class="form-group form-group-anim">
                         <label for="cad-confirmar">Confirmar senha</label>
                         <div class="input-senha-wrap">
-                            <input type="password" id="cad-confirmar" name="confirmar_senha" placeholder="Repita a senha" autocomplete="new-password" required>
+                            <input type="password" id="cad-confirmar" name="confirmar_senha" placeholder="Repita a senha" autocomplete="new-password" required minlength="4">
                             <button type="button" class="btn-toggle-senha" id="toggle-cad-confirmar" aria-label="Mostrar senha" title="Mostrar senha">
                                 <svg class="icon-eye icon-eye-open" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                 <svg class="icon-eye icon-eye-closed" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -93,17 +99,18 @@
                         </div>
                     </div>
                     <div id="msg-erro-cadastro" class="msg-erro" role="alert" hidden></div>
-                    <button type="submit" class="btn btn-primary" id="btn-cadastrar">Cadastrar</button>
+                    <button type="submit" class="btn btn-primary btn-entrar" id="btn-cadastrar">Cadastrar</button>
                 </form>
                 <p class="login-footer">
-                    Já tem conta? <button type="button" class="link-btn" id="voltar-login">Fazer login</button>
+                    Já tem conta? <button type="button" class="link-btn" id="mostrar-login">Fazer login</button>
                 </p>
             </div>
         </div>
     </div>
+    </div>
+    <script src="{{ url_for('static', filename='stock-system-intro.js') }}"></script>
     <script>
 (function () {
-    // Se veio do botão Sair, encerra sessão no servidor em segundo plano (não bloqueia a tela)
     if (window.location.search.indexOf('sair=1') !== -1) {
         var apiBase = window.API_BASE || '/api';
         fetch(apiBase + '/logout', { method: 'POST' }).catch(function() {});
@@ -135,7 +142,7 @@
         mostrarErro(msgErroCadastro);
         showCard(cardCadastro, cardLogin);
     });
-    document.getElementById('voltar-login').addEventListener('click', function () {
+    document.getElementById('mostrar-login').addEventListener('click', function () {
         mostrarErro(msgErroLogin);
         showCard(cardLogin, cardCadastro);
     });

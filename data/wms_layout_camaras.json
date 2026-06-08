@@ -1,0 +1,9 @@
+{
+  "descricao": "Layout físico CD Guarulhos — sem Excel. Totais por câmara vêm de wms_camara.total_posicoes.",
+  "camaras": [
+    { "codigo": 11, "ruas": ["U", "V"], "niveis": 3 },
+    { "codigo": 12, "ruas": ["X", "Y"], "niveis": 3 },
+    { "codigo": 13, "ruas": ["W", "Z"], "niveis": 3 },
+    { "codigo": 21, "ruas": ["R"], "niveis": 3 }
+  ]
+}

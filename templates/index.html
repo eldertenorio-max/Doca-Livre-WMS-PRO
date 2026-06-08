@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONTROLE DE CARREGAMENTO ULTRAPÃO</title>
+    <title>{{ system_name }} — WMS</title>
+    <link rel="icon" href="{{ url_for('static', filename='stock-system-logo.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="../static/style.css">
+    <link rel="stylesheet" href="../static/stock-system.css">
     <link rel="stylesheet" href="../static/entrada-modulos.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
@@ -18,7 +20,11 @@
         <!-- Cabeçalho -->
         <header class="header">
             <a href="/entrada" class="header-link-inicio" title="Voltar à tela inicial de módulos">← Tela inicial</a>
-            <h1>CONTROLE DE CARREGAMENTO ULTRAPÃO</h1>
+            <div class="header-brand">
+                <img src="{{ url_for('static', filename='stock-system-logo.png') }}" alt="{{ system_name }}" class="ss-brand-logo ss-brand-logo--header"
+                     onerror="this.onerror=null;this.src='{{ url_for('static', filename='stock-system-logo.svg') }}';">
+                <h1>{{ system_name }}</h1>
+            </div>
             <div class="header-alertas-terceiros" id="header-alertas-terceiros">
                 <button type="button" class="header-alertas-btn" id="btn-terceiros-alertas" title="Alertas de NFs paradas">
                     <span class="header-alertas-icone" aria-hidden="true">🔔</span>
@@ -2496,6 +2502,7 @@
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="saida">SAÍDA</button>
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="entrada-devolucao">ENTRADA (DEVOLUÇÕES)</button>
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="entrada-terceiros">ENTRADA TERCEIROS</button>
+                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="enderecamento-wms">ENDEREÇAMENTO WMS</button>
                 </nav>
                 <div id="estoque-sp-panel-estoque-atual" class="devolucoes-panel devolucoes-panel-active">
                     <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Saldo = devoluções + recebimento terceiros (sem MG/consumível) − expedição bipada. Atualização automática a cada 30 segundos.</p>
@@ -2556,6 +2563,92 @@
                             <thead><tr><th>Cód. produto</th><th>Produto</th><th>Cód. barras</th><th>Qtd. bipada</th><th>NFs</th></tr></thead>
                             <tbody id="estoque-sp-tbody-ter"><tr><td colspan="5" class="loading">Clique em Atualizar.</td></tr></tbody>
                         </table>
+                    </div>
+                </div>
+                <div id="estoque-sp-panel-enderecamento-wms" class="devolucoes-panel" aria-label="Endereçamento WMS">
+                    <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Endereços gerados automaticamente por <strong>categoria A/B/C/D</strong> (cadastro de produtos + zoneamento). Não depende de planilha Excel.</p>
+                    <nav class="tabs devolucoes-subtabs" style="margin-bottom: 12px;" aria-label="Sub-abas WMS">
+                        <button type="button" class="tab-button devolucoes-subtab wms-subtab active" data-wms-tab="painel">PAINEL</button>
+                        <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="localizacoes">LOCALIZAÇÕES</button>
+                        <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="produtos">PRODUTOS</button>
+                        <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="movimentacoes">MOVIMENTAÇÕES</button>
+                        <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="recebimento">RECEBIMENTO</button>
+                        <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="inventario">INVENTÁRIO</button>
+                        <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="pesquisa">PESQUISA SKU</button>
+                    </nav>
+                    <div id="wms-panel-painel" class="wms-inner-panel wms-inner-panel-active">
+                        <div class="stats-grid" style="margin-bottom: 16px;">
+                            <div class="stat-card"><h3>Mov. pendentes</h3><p class="stat-number" id="wms-stat-mov-pend">0</p></div>
+                            <div class="stat-card"><h3>Receb. abertos</h3><p class="stat-number" id="wms-stat-rec-abertos">0</p></div>
+                            <div class="stat-card"><h3>Inventários ativos</h3><p class="stat-number" id="wms-stat-inv-ativos">0</p></div>
+                        </div>
+                        <h3 style="margin: 0 0 12px 0;">Detalhe por câmara</h3>
+                        <div id="wms-camaras-barras"></div>
+                        <h3 style="margin: 20px 0 8px 0;">Distribuição por categoria (posições reservadas)</h3>
+                        <p id="wms-layout-info" class="info-text" style="margin: 0 0 8px 0; font-size: 12px;"></p>
+                        <div class="table-container" style="margin-bottom: 12px;"><table class="data-table"><thead><tr><th>Categoria</th><th>Câmara</th><th>Total</th><th>Vazias</th><th>Ocupadas</th></tr></thead><tbody id="wms-tbody-dist-categoria"><tr><td colspan="5" class="loading">Carregando...</td></tr></tbody></table></div>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-redistribuir">Recalcular distribuição por categoria</button>
+                        <h3 style="margin: 20px 0 8px 0;">Zoneamento (categoria → câmara)</h3>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>Categoria</th><th>Câmara</th><th>Prioridade</th></tr></thead><tbody id="wms-tbody-zoneamento"><tr><td colspan="3" class="loading">Carregando...</td></tr></tbody></table></div>
+                    </div>
+                    <div id="wms-panel-localizacoes" class="wms-inner-panel" hidden>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                            <div class="form-group"><label>Câmara</label><select id="wms-filtro-camara"><option value="">Todas</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="21">21</option></select></div>
+                            <div class="form-group"><label>Categoria zona</label><select id="wms-filtro-cat-zona"><option value="">Todas</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div>
+                            <div class="form-group"><label>Status</label><select id="wms-filtro-status"><option value="">Todos</option><option value="vazia">Vazia</option><option value="ocupada">Ocupada</option></select></div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-localizacoes">Atualizar</button>
+                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>Endereço</th><th>Câmara</th><th>Rua</th><th>Pos</th><th>Nível</th><th>Cat.</th><th>Status</th></tr></thead><tbody id="wms-tbody-localizacoes"><tr><td colspan="7" class="loading">Carregando...</td></tr></tbody></table></div>
+                    </div>
+                    <div id="wms-panel-produtos" class="wms-inner-panel" hidden>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                            <div class="form-group"><label>Categoria</label><select id="wms-filtro-categoria"><option value="">Todas</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-produtos">Atualizar</button>
+                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>SKU</th><th>Descrição</th><th>Categoria</th><th>Padrão PLT</th><th>Conversão</th></tr></thead><tbody id="wms-tbody-produtos"><tr><td colspan="5" class="loading">Carregando...</td></tr></tbody></table></div>
+                    </div>
+                    <div id="wms-panel-movimentacoes" class="wms-inner-panel" hidden>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Tipo</th><th>Palete</th><th>Destino</th><th>Prioridade</th><th></th></tr></thead><tbody id="wms-tbody-movimentacoes"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody></table></div>
+                    </div>
+                    <div id="wms-panel-recebimento" class="wms-inner-panel" hidden>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: flex-end;">
+                            <div class="form-group"><label>NF</label><input type="text" id="wms-rec-nf" placeholder="Número NF"></div>
+                            <div class="form-group"><label>Fornecedor</label><input type="text" id="wms-rec-fornecedor"></div>
+                            <div class="form-group"><label>Placa</label><input type="text" id="wms-rec-placa"></div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-novo-recebimento">Novo recebimento</button>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-rec-lista">Atualizar lista</button>
+                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>NF</th><th>Fornecedor</th><th>Placa</th><th>Status</th></tr></thead><tbody id="wms-tbody-recebimentos"><tr><td colspan="5" class="loading">Carregando...</td></tr></tbody></table></div>
+                        <div id="wms-recebimento-detalhe" style="margin-top: 16px; display: none; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">
+                            <h4 style="margin-top: 0;">Conferência cega — palete</h4>
+                            <input type="hidden" id="wms-rec-detalhe-id">
+                            <div class="form-row" style="flex-wrap: wrap; gap: 8px;">
+                                <div class="form-group"><label>SKU</label><input type="text" id="wms-pal-sku"></div>
+                                <div class="form-group"><label>Lote</label><input type="text" id="wms-pal-lote"></div>
+                                <div class="form-group"><label>Validade</label><input type="date" id="wms-pal-validade"></div>
+                                <div class="form-group"><label>Qtd caixas</label><input type="number" id="wms-pal-qtd" min="1" value="1"></div>
+                                <div class="form-group"><label>Estado palete</label><select id="wms-pal-estado"><option value="bom">Bom</option><option value="avaria">Avaria</option><option value="deteriorado">Deteriorado</option></select></div>
+                                <button type="button" class="btn btn-primary" id="btn-wms-conferir-palete">Bipar / conferir palete</button>
+                                <button type="button" class="btn btn-success" id="btn-wms-finalizar-recebimento">Finalizar e gerar movimentações</button>
+                            </div>
+                            <p id="wms-palete-gerado" class="info-text" style="margin-top: 8px;"></p>
+                        </div>
+                    </div>
+                    <div id="wms-panel-inventario" class="wms-inner-panel" hidden>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: flex-end;">
+                            <div class="form-group"><label>Tipo</label><select id="wms-inv-tipo"><option value="localizacao">Localização</option><option value="vazio_ocupado_vazio">Diário / Vazio</option><option value="vazio_ocupado_ocupado">Diário / Ocupado</option></select></div>
+                            <div class="form-group"><label>Câmara</label><select id="wms-inv-camara"><option value="">Todas</option><option value="11">11</option><option value="12">12</option><option value="13">13</option></select></div>
+                            <div class="form-group"><label>Descrição</label><input type="text" id="wms-inv-desc" placeholder="Inventário março"></div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-novo-inventario">Criar inventário</button>
+                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Tipo</th><th>Descrição</th><th>Status</th></tr></thead><tbody id="wms-tbody-inventarios"><tr><td colspan="4" class="loading">Carregando...</td></tr></tbody></table></div>
+                    </div>
+                    <div id="wms-panel-pesquisa" class="wms-inner-panel" hidden>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: flex-end;">
+                            <div class="form-group"><label>SKU / etiqueta / RG</label><input type="text" id="wms-pesq-q" placeholder="Buscar..."></div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-pesquisa">Pesquisar</button>
+                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>SKU</th><th>Lote</th><th>Validade</th><th>Palete</th><th>Endereço</th><th>Bloqueio</th><th>Qtd</th></tr></thead><tbody id="wms-tbody-pesquisa"><tr><td colspan="7" class="loading">Informe um termo e clique em Pesquisar.</td></tr></tbody></table></div>
                     </div>
                 </div>
             </div>
@@ -3061,7 +3154,8 @@
     <div id="hub-modulos-overlay" class="hub-modulos-overlay" hidden aria-hidden="true" role="dialog" aria-label="Escolha o módulo">
         <div class="hub-entrada-topstripe" aria-hidden="true"></div>
         <div class="hub-entrada-wrap hub-modulos-overlay-inner">
-            <h2 class="hub-entrada-titulo">Gestão de Processos de Estoque e Armazenagem</h2>
+            <h2 class="hub-entrada-titulo">{{ system_name }}</h2>
+            <p class="hub-entrada-subtitulo">{{ system_tagline }}</p>
             <div class="hub-entrada-botoes">
                 <button type="button" class="hub-entrada-btn hub-entrada-btn--1" data-hub-modulo="carregamento">Carga/Expedição</button>
                 <button type="button" class="hub-entrada-btn hub-entrada-btn--2" data-hub-modulo="devolucoes">Retorno</button>
