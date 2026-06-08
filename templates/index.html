@@ -2479,7 +2479,6 @@
 
         <div id="modulo-estoque-sp" class="modulo-area modulo-devolucoes" hidden aria-label="Estoque SP em tempo real">
             <div class="devolucoes-conteudo">
-                <div class="estoque-sp-ui-estoque-real">
                 <div class="painel-titulo">
                     <span class="painel-titulo-icon">📦</span>
                     <h2 class="painel-titulo-texto">Estoque SP em tempo real</h2>
@@ -2497,20 +2496,12 @@
                     <button type="button" class="btn btn-primary" id="btn-estoque-sp-atualizar">🔄 Atualizar</button>
                 </div>
                 <p id="estoque-sp-atualizado-em" class="info-text estoque-sp-atualizado-em" style="margin: 0 0 12px 0; display: none;"></p>
-                <nav class="tabs devolucoes-subtabs estoque-sp-nav-estoque" aria-label="Abas Estoque SP em tempo real">
+                <nav class="tabs devolucoes-subtabs" aria-label="Abas Estoque SP em tempo real">
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab active" data-estoque-tab="estoque-atual">ESTOQUE ATUAL</button>
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="saida">SAÍDA</button>
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="entrada-devolucao">ENTRADA (DEVOLUÇÕES)</button>
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="entrada-terceiros">ENTRADA TERCEIROS</button>
-                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab estoque-sp-subtab--wms" data-estoque-tab="enderecamento-wms">ENDEREÇAMENTO WMS</button>
                 </nav>
-                </div>
-                <div id="estoque-sp-cabecalho-wms" class="painel-titulo painel-titulo--wms" hidden>
-                    <span class="painel-titulo-icon">🏭</span>
-                    <h2 class="painel-titulo-texto">Endereçamento WMS</h2>
-                    <p class="painel-titulo-sub">Localizações, recebimento, putaway e inventário por categoria A/B/C/D</p>
-                    <button type="button" class="btn btn-secondary btn-sm estoque-sp-voltar-estoque" id="btn-estoque-sp-voltar-estoque">← Estoque SP em tempo real</button>
-                </div>
                 <div id="estoque-sp-panel-estoque-atual" class="devolucoes-panel devolucoes-panel-active">
                     <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Saldo = devoluções + recebimento terceiros (sem MG/consumível) − expedição bipada. Atualização automática a cada 30 segundos.</p>
                     <div class="stats-grid" style="margin-bottom: 16px;">
@@ -2572,18 +2563,27 @@
                         </table>
                     </div>
                 </div>
-                <div id="estoque-sp-panel-enderecamento-wms" class="devolucoes-panel" aria-label="Endereçamento WMS">
-                    <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Endereços gerados automaticamente por <strong>categoria A/B/C/D</strong> (cadastro de produtos + zoneamento). Não depende de planilha Excel.</p>
-                    <nav class="tabs devolucoes-subtabs" style="margin-bottom: 12px;" aria-label="Sub-abas WMS">
-                        <button type="button" class="tab-button devolucoes-subtab wms-subtab active" data-wms-tab="painel">PAINEL</button>
-                        <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="localizacoes">LOCALIZAÇÕES</button>
-                        <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="produtos">PRODUTOS</button>
-                        <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="movimentacoes">MOVIMENTAÇÕES</button>
-                        <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="recebimento">RECEBIMENTO</button>
-                        <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="inventario">INVENTÁRIO</button>
-                        <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="pesquisa">PESQUISA SKU</button>
-                    </nav>
-                    <div id="wms-panel-painel" class="wms-inner-panel wms-inner-panel-active">
+            </div>
+        </div>
+
+        <div id="modulo-enderecamento-wms" class="modulo-area modulo-devolucoes" hidden aria-label="Endereçamento WMS">
+            <div class="devolucoes-conteudo">
+                <div class="painel-titulo">
+                    <span class="painel-titulo-icon">🏭</span>
+                    <h2 class="painel-titulo-texto">Endereçamento WMS</h2>
+                    <p class="painel-titulo-sub">Localizações, recebimento, putaway e inventário por categoria A/B/C/D</p>
+                </div>
+                <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Endereços gerados automaticamente por <strong>categoria A/B/C/D</strong> (cadastro de produtos + zoneamento). Não depende de planilha Excel.</p>
+                <nav class="tabs devolucoes-subtabs" style="margin-bottom: 12px;" aria-label="Sub-abas WMS">
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab active" data-wms-tab="painel">PAINEL</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="localizacoes">LOCALIZAÇÕES</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="produtos">PRODUTOS</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="movimentacoes">MOVIMENTAÇÕES</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="recebimento">RECEBIMENTO</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="inventario">INVENTÁRIO</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="pesquisa">PESQUISA SKU</button>
+                </nav>
+                <div id="wms-panel-painel" class="wms-inner-panel wms-inner-panel-active">
                         <div class="stats-grid" style="margin-bottom: 16px;">
                             <div class="stat-card"><h3>Mov. pendentes</h3><p class="stat-number" id="wms-stat-mov-pend">0</p></div>
                             <div class="stat-card"><h3>Receb. abertos</h3><p class="stat-number" id="wms-stat-rec-abertos">0</p></div>
@@ -2657,7 +2657,6 @@
                         </div>
                         <div class="table-container"><table class="data-table"><thead><tr><th>SKU</th><th>Lote</th><th>Validade</th><th>Palete</th><th>Endereço</th><th>Bloqueio</th><th>Qtd</th></tr></thead><tbody id="wms-tbody-pesquisa"><tr><td colspan="7" class="loading">Informe um termo e clique em Pesquisar.</td></tr></tbody></table></div>
                     </div>
-                </div>
             </div>
         </div>
     </div>

@@ -2504,6 +2504,7 @@ function initModulos() {
     var dev = document.getElementById('modulo-devolucoes');
     var ter = document.getElementById('modulo-terceiros');
     var est = document.getElementById('modulo-estoque-sp');
+    var wms = document.getElementById('modulo-enderecamento-wms');
     if (!carreg) return;
 
     var botoes = document.querySelectorAll('.modulo-button');
@@ -2511,18 +2512,16 @@ function initModulos() {
     function mostrarModulo(id, opts) {
         opts = opts || {};
         var estoqueAba = opts.estoqueAba || null;
-        if (id === 'enderecamento-wms') {
-            id = 'estoque-sp';
-            estoqueAba = 'enderecamento-wms';
-        }
         carreg.hidden = id !== 'carregamento';
         if (dev) dev.hidden = id !== 'devolucoes';
         if (ter) ter.hidden = id !== 'terceiros';
         if (est) est.hidden = id !== 'estoque-sp';
+        if (wms) wms.hidden = id !== 'enderecamento-wms';
         carreg.classList.toggle('modulo-area--ativo', id === 'carregamento');
         if (dev) dev.classList.toggle('modulo-area--ativo', id === 'devolucoes');
         if (ter) ter.classList.toggle('modulo-area--ativo', id === 'terceiros');
         if (est) est.classList.toggle('modulo-area--ativo', id === 'estoque-sp');
+        if (wms) wms.classList.toggle('modulo-area--ativo', id === 'enderecamento-wms');
         botoes.forEach(function(b) {
             b.classList.toggle('active', b.getAttribute('data-modulo') === id);
         });
@@ -2546,6 +2545,10 @@ function initModulos() {
             _estoqueSpIniciarTempoReal();
             if (estoqueAba && typeof window._estoqueSpMostrarAba === 'function') {
                 window._estoqueSpMostrarAba(estoqueAba);
+            }
+        } else if (id === 'enderecamento-wms') {
+            if (typeof window._wmsIniciarModulo === 'function') {
+                window._wmsIniciarModulo(opts.wmsTab);
             }
         } else if (id === 'terceiros') {
             void _terceirosGarantirPrefetchLista();
@@ -2577,7 +2580,7 @@ function initModulos() {
     var modUrl = params.get('modulo');
     var abaUrl = params.get('aba');
     if (modUrl === 'enderecamento-wms') {
-        mostrarModulo('enderecamento-wms');
+        mostrarModulo('enderecamento-wms', { wmsTab: abaUrl });
     } else if (modUrl && ['carregamento', 'devolucoes', 'terceiros', 'estoque-sp'].indexOf(modUrl) !== -1) {
         mostrarModulo(modUrl, { estoqueAba: abaUrl });
     }
@@ -2851,11 +2854,8 @@ function initEstoqueSp() {
     var pSaida = document.getElementById('estoque-sp-panel-saida');
     var pDev = document.getElementById('estoque-sp-panel-entrada-devolucao');
     var pTer = document.getElementById('estoque-sp-panel-entrada-terceiros');
-    var pWms = document.getElementById('estoque-sp-panel-enderecamento-wms');
     var filtrosData = document.getElementById('estoque-sp-filtros-data');
     var lblAtualizado = document.getElementById('estoque-sp-atualizado-em');
-    var modEst = document.getElementById('modulo-estoque-sp');
-    var cabWms = document.getElementById('estoque-sp-cabecalho-wms');
     if (!botoes.length) return;
 
     function mostrar(tab) {
@@ -2866,19 +2866,11 @@ function initEstoqueSp() {
         if (pSaida) pSaida.classList.toggle('devolucoes-panel-active', tab === 'saida');
         if (pDev) pDev.classList.toggle('devolucoes-panel-active', tab === 'entrada-devolucao');
         if (pTer) pTer.classList.toggle('devolucoes-panel-active', tab === 'entrada-terceiros');
-        if (pWms) pWms.classList.toggle('devolucoes-panel-active', tab === 'enderecamento-wms');
         var ehAtual = tab === 'estoque-atual';
-        var ehWms = tab === 'enderecamento-wms';
-        if (modEst) modEst.classList.toggle('estoque-sp-modo-wms', ehWms);
-        if (cabWms) cabWms.hidden = !ehWms;
-        if (filtrosData) filtrosData.style.display = ehAtual ? 'none' : (ehWms ? 'none' : 'flex');
+        if (filtrosData) filtrosData.style.display = ehAtual ? 'none' : 'flex';
         if (lblAtualizado) lblAtualizado.style.display = ehAtual ? 'block' : 'none';
         if (ehAtual) {
             loadEstoqueSpTempoReal();
-        } else if (ehWms) {
-            _estoqueSpPararTimer();
-            if (typeof _wmsMostrarSubtab === 'function') _wmsMostrarSubtab('painel');
-            else if (typeof loadWmsPainel === 'function') loadWmsPainel();
         } else {
             loadEstoqueSpResumo();
         }
@@ -2892,14 +2884,14 @@ function initEstoqueSp() {
     });
     var btnAt = document.getElementById('btn-estoque-sp-atualizar');
     if (btnAt) btnAt.addEventListener('click', function() { loadEstoqueSpResumo(); });
-    var btnVoltarEst = document.getElementById('btn-estoque-sp-voltar-estoque');
-    if (btnVoltarEst) btnVoltarEst.addEventListener('click', function() { mostrar('estoque-atual'); });
     var params = new URLSearchParams(window.location.search);
     var abaInicial = params.get('aba') || '';
-    if (params.get('modulo') === 'enderecamento-wms') abaInicial = 'enderecamento-wms';
-    var abasValidas = ['estoque-atual', 'saida', 'entrada-devolucao', 'entrada-terceiros', 'enderecamento-wms'];
+    var abasValidas = ['estoque-atual', 'saida', 'entrada-devolucao', 'entrada-terceiros'];
+    if (params.get('modulo') === 'estoque-sp' && abasValidas.indexOf(abaInicial) === -1) abaInicial = 'estoque-atual';
     if (abasValidas.indexOf(abaInicial) === -1) abaInicial = 'estoque-atual';
-    mostrar(abaInicial);
+    if (params.get('modulo') !== 'enderecamento-wms') {
+        mostrar(abaInicial);
+    }
 }
 
 function _estoqueSpFmtNum(n) {
@@ -3015,7 +3007,7 @@ function _wmsMostrarSubtab(tab) {
 }
 
 function initWmsEnderecamento() {
-    if (!document.getElementById('estoque-sp-panel-enderecamento-wms')) return;
+    if (!document.getElementById('modulo-enderecamento-wms')) return;
     document.querySelectorAll('.wms-subtab[data-wms-tab]').forEach(function(btn) {
         btn.addEventListener('click', function() {
             _wmsMostrarSubtab(btn.getAttribute('data-wms-tab') || 'painel');
@@ -3039,6 +3031,13 @@ function initWmsEnderecamento() {
     if (bInv) bInv.addEventListener('click', wmsCriarInventario);
     var bRedis = document.getElementById('btn-wms-redistribuir');
     if (bRedis) bRedis.addEventListener('click', wmsRedistribuirLayout);
+
+    window._wmsIniciarModulo = function(tab) {
+        var abasWms = ['painel', 'localizacoes', 'produtos', 'movimentacoes', 'recebimento', 'inventario', 'pesquisa'];
+        var t = (tab || 'painel').trim();
+        if (abasWms.indexOf(t) === -1) t = 'painel';
+        _wmsMostrarSubtab(t);
+    };
 }
 
 async function wmsRedistribuirLayout() {
