@@ -10,11 +10,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
+    <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
 </head>
 <body class="hub-entrada-body">
-    {% include '_stock_system_splash.html' %}
     {% from '_stock_system_logo.html' import stock_system_logo %}
-    <div class="ss-page-content">
     <div class="hub-entrada-topstripe" aria-hidden="true"></div>
 
     <div class="hub-entrada-wrap">
@@ -37,7 +36,5 @@
             <a href="/login?sair=1">Sair</a>
         </footer>
     </div>
-    </div>
-    <script src="{{ url_for('static', filename='stock-system-intro.js') }}"></script>
 </body>
 </html>

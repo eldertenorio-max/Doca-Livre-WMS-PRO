@@ -1,19 +1,18 @@
 /**
- * Stock System — intro em 2 telas:
+ * Stock System — intro em 2 telas (apenas /login):
  *   1) logo
  *   2) tagline + barra de carregamento
  *
- * Exibida a cada recarregamento da página (sem sessionStorage de "já vi").
- * Handoff único: após login redirecionar para /entrada sem repetir a intro.
+ * Exibida sempre que /login é aberto ou recarregado (F5).
  */
 (function () {
     'use strict';
 
     var SPLASH_ID = 'stock-system-splash';
-    var NAV_SKIP_KEY = 'stock_system_intro_nav';
     var LOGO_MS = 2000;
     var LOAD_MS = 2600;
     var FADE_MS = 500;
+    var _introRunning = false;
 
     function qs(sel, root) { return (root || document).querySelector(sel); }
 
@@ -33,17 +32,10 @@
         splash.classList.add('ss-splash--out');
         document.body.classList.remove('ss-splash-active');
         clearSplashPending();
-        setTimeout(function () { removeSplash(splash); }, FADE_MS + 80);
-    }
-
-    function shouldSkipHandoffOnce() {
-        try {
-            if (sessionStorage.getItem(NAV_SKIP_KEY) === '1') {
-                sessionStorage.removeItem(NAV_SKIP_KEY);
-                return true;
-            }
-        } catch (e) {}
-        return false;
+        setTimeout(function () {
+            removeSplash(splash);
+            _introRunning = false;
+        }, FADE_MS + 80);
     }
 
     function resetSplashSteps(splash) {
@@ -103,6 +95,8 @@
     }
 
     function runIntro(splash) {
+        if (_introRunning) return;
+        _introRunning = true;
         resetSplashSteps(splash);
         clearSplashPending();
         document.body.classList.add('ss-splash-active');
@@ -117,22 +111,25 @@
             return;
         }
 
-        if (!opts.force && shouldSkipHandoffOnce()) {
-            removeSplash(splash);
-            return;
-        }
-
+        if (opts.force) _introRunning = false;
         runIntro(splash);
     }
 
+    function bootIntro(force) {
+        initStockSystemIntro(force ? { force: true } : {});
+    }
+
     window.initStockSystemIntro = initStockSystemIntro;
-    window.markStockSystemIntroNavHandoff = function () {
-        try { sessionStorage.setItem(NAV_SKIP_KEY, '1'); } catch (e) {}
-    };
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () { initStockSystemIntro(); });
+        document.addEventListener('DOMContentLoaded', function () { bootIntro(false); });
     } else {
-        initStockSystemIntro();
+        bootIntro(false);
     }
+
+    window.addEventListener('pageshow', function (ev) {
+        if (ev.persisted) {
+            bootIntro(true);
+        }
+    });
 })();
