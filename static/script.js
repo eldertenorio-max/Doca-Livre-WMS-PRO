@@ -3110,8 +3110,8 @@ async function loadWmsPainel() {
         ['Vermelho', 'Amarelo', 'Verde', 'Excedido'].forEach(function(k) {
             if (rs[k]) stParts.push(k + ' ' + rs[k]);
         });
-        info.textContent = 'Posições médias por cat.: ' + (parts.join(' · ') || 'padrão') +
-            (stParts.length ? ' · Planejamento: ' + stParts.join(', ') : '');
+        info.textContent = 'Posições médias (metas): ' + (parts.join(' · ') || 'padrão') +
+            (stParts.length ? ' · Status WMS real: ' + stParts.join(', ') : ' · Status WMS real');
     }
     var dtb = document.getElementById('wms-tbody-dist-categoria');
     if (dtb) {
@@ -3219,9 +3219,10 @@ async function loadWmsProdutos() {
     var rows = data.produtos || [];
     tb.innerHTML = rows.length ? rows.map(function(p) {
         var bg = corStatus(p.status_condicional);
-        var est = p.estoque_atual != null ? p.estoque_atual : '—';
-        if (p.estoque_ideal_min != null) est += ' / min ' + p.estoque_ideal_min;
-        return '<tr style="' + (bg ? 'background:' + bg + ';' : '') + '"><td>' + escHtml(p.sku) + '</td><td>' + escHtml(p.descricao || '') + '</td><td><strong>' + escHtml(p.categoria) + '</strong></td><td><strong>' + escHtml(p.status_condicional || '—') + '</strong></td><td>' + escHtml(p.posicoes_med != null ? p.posicoes_med : '—') + '</td><td>' + escHtml(est) + '</td><td>' + escHtml(p.padrao_plt || '') + '</td><td>' + escHtml(p.conversao || '') + '</td></tr>';
+        var est = p.estoque_atual != null ? p.estoque_atual : '0';
+        var pos = p.posicao_atual != null ? p.posicao_atual : '0';
+        var posPlan = p.posicoes_med != null ? ' / plan ' + p.posicoes_med : '';
+        return '<tr style="' + (bg ? 'background:' + bg + ';' : '') + '"><td>' + escHtml(p.sku) + '</td><td>' + escHtml(p.descricao || '') + '</td><td><strong>' + escHtml(p.categoria) + '</strong></td><td><strong>' + escHtml(p.status_condicional || 'Verde') + '</strong></td><td>' + escHtml(pos + posPlan) + '</td><td>' + escHtml(est) + '</td><td>' + escHtml(p.padrao_plt || '') + '</td><td>' + escHtml(p.conversao || '') + '</td></tr>';
     }).join('') : '<tr><td colspan="8">Importe data/wms_produtos_planejamento.tsv</td></tr>';
 }
 
@@ -3321,6 +3322,10 @@ async function wmsBipPalete() {
 async function wmsBipProduto() {
     var pid = (document.getElementById('wms-rec-palete-id') || {}).value;
     if (!pid) { showMessage('Bipe o palete primeiro (passo 1).', 'error'); return; }
+    var dp = (document.getElementById('wms-pal-producao') || {}).value || '';
+    var dv = (document.getElementById('wms-pal-validade') || {}).value || '';
+    if (!dp) { showMessage('Informe a data de produção na bipagem.', 'error'); return; }
+    if (!dv) { showMessage('Informe a data de validade na bipagem.', 'error'); return; }
     var body = {
         acao: 'bip_produto',
         palete_id: parseInt(pid, 10),
@@ -3328,8 +3333,8 @@ async function wmsBipProduto() {
         item: {
             sku: (document.getElementById('wms-pal-sku') || {}).value || '',
             lote: (document.getElementById('wms-pal-lote') || {}).value || '',
-            data_producao: (document.getElementById('wms-pal-producao') || {}).value || '',
-            data_validade: (document.getElementById('wms-pal-validade') || {}).value || '',
+            data_producao: dp,
+            data_validade: dv,
             quantidade_caixas: parseInt((document.getElementById('wms-pal-qtd') || {}).value || '1', 10)
         }
     };
@@ -3340,7 +3345,7 @@ async function wmsBipProduto() {
         if (data.bloqueios && data.bloqueios.length) txt += ' — Bloqueios: ' + data.bloqueios.join(', ');
         if (msg) msg.textContent = txt;
         _wmsMostrarSugestao(data.sugestao);
-        showMessage('Produto bipado. Imprima a etiqueta e confirme o destino.', 'success');
+        showMessage('Produto bipado. Imprima a etiqueta, confirme destino — status atualiza ao armazenar.', 'success');
     } else {
         showMessage((data && data.erro) || 'Erro ao bipar produto.', 'error');
     }
@@ -3380,8 +3385,12 @@ async function wmsConfirmarDestino() {
         body: JSON.stringify({ acao: 'confirmar_armazenagem', palete_id: parseInt(pid, 10), codigo_endereco: cod.trim() })
     });
     if (data && data.ok) {
-        showMessage('Armazenado em ' + (data.localizacao && data.localizacao.codigo_endereco || cod), 'success');
+        var st = data.status_atualizado || {};
+        var stTxt = Object.keys(st).map(function(k) { return k + ': ' + st[k]; }).join(' · ');
+        showMessage('Armazenado em ' + (data.localizacao && data.localizacao.codigo_endereco || cod) +
+            (stTxt ? ' · Status: ' + stTxt : ''), 'success');
         loadWmsPainel();
+        loadWmsProdutos();
         var pidEl = document.getElementById('wms-rec-palete-id');
         if (pidEl) pidEl.value = '';
         var dest = document.getElementById('wms-bip-destino');
@@ -3537,10 +3546,17 @@ async function loadWmsPesquisaSku() {
         tb.innerHTML = '<tr><td colspan="7">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
         return;
     }
+    var res = data.resumo_estoque_real;
+    var head = '';
+    if (res && res.sku) {
+        head = '<tr style="background:#e3f2fd;font-weight:bold;"><td colspan="7">Estoque real WMS — ' +
+            escHtml(res.sku) + ': ' + escHtml(res.estoque_atual) + ' cx · ' + escHtml(res.posicao_atual) +
+            ' pos. · Status ' + escHtml(res.status_condicional || 'Verde') + '</td></tr>';
+    }
     var rows = data.resultados || [];
-    tb.innerHTML = rows.length ? rows.map(function(r) {
+    tb.innerHTML = head + (rows.length ? rows.map(function(r) {
         return '<tr><td>' + escHtml(r.sku) + '</td><td>' + escHtml(r.lote || '') + '</td><td>' + escHtml(r.data_validade || '') + '</td><td>' + escHtml(r.etiqueta || '') + '</td><td>' + escHtml(r.codigo_endereco || '') + '</td><td>' + escHtml(r.bloqueio_tipo || '') + '</td><td>' + escHtml(r.quantidade_caixas) + '</td></tr>';
-    }).join('') : '<tr><td colspan="7">Nenhum resultado.</td></tr>';
+    }).join('') : (head ? '' : '<tr><td colspan="7">Nenhum resultado.</td></tr>'));
 }
 
 function initTerceirosTabs() {

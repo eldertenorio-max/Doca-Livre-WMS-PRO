@@ -15,5 +15,9 @@ ALTER TABLE public.wms_produto_enderecamento ADD COLUMN IF NOT EXISTS estoque_at
 ALTER TABLE public.wms_produto_enderecamento ADD COLUMN IF NOT EXISTS posicao_atual SMALLINT;
 ALTER TABLE public.wms_produto_enderecamento ADD COLUMN IF NOT EXISTS status_condicional TEXT;
 
+COMMENT ON COLUMN public.wms_produto_enderecamento.estoque_atual IS 'Cache: caixas no WMS (paletes armazenados). Recalculado do estoque real.';
+COMMENT ON COLUMN public.wms_produto_enderecamento.posicao_atual IS 'Cache: posições WMS ocupadas pelo SKU. Recalculado do estoque real.';
+COMMENT ON COLUMN public.wms_produto_enderecamento.status_condicional IS 'Cache: Verde/Amarelo/Vermelho/Excedido calculado vs metas planejadas.';
+
 CREATE INDEX IF NOT EXISTS idx_wms_prod_status ON public.wms_produto_enderecamento (status_condicional);
 CREATE INDEX IF NOT EXISTS idx_wms_prod_posicoes ON public.wms_produto_enderecamento (categoria, posicoes_med);

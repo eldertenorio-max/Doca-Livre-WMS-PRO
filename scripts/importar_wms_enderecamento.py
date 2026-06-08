@@ -82,7 +82,7 @@ def importar_produtos(conn, tsv_path):
     with open(tsv_path, encoding='utf-8') as f:
         reader = csv.DictReader(f, delimiter='\t')
         fields = reader.fieldnames or []
-        has_plan = 'status_condicional' in fields
+        has_plan = 'posicoes_med' in fields
         for row in reader:
             sku = (row.get('sku') or '').strip()
             if not sku:
@@ -105,9 +105,8 @@ def importar_produtos(conn, tsv_path):
                         pedido_med_abril, pedido_max_abril, media_5_dias,
                         estoque_ideal_max, estoque_ideal_med, estoque_ideal_min,
                         dias_estoque_max, dias_estoque_med, dias_estoque_min,
-                        posicoes_max, posicoes_med, posicoes_min,
-                        estoque_atual, posicao_atual, status_condicional)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        posicoes_max, posicoes_med, posicoes_min)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT (sku) DO UPDATE SET
                          descricao = EXCLUDED.descricao,
                          medida_cx = EXCLUDED.medida_cx,
@@ -128,9 +127,6 @@ def importar_produtos(conn, tsv_path):
                          posicoes_max = EXCLUDED.posicoes_max,
                          posicoes_med = EXCLUDED.posicoes_med,
                          posicoes_min = EXCLUDED.posicoes_min,
-                         estoque_atual = EXCLUDED.estoque_atual,
-                         posicao_atual = EXCLUDED.posicao_atual,
-                         status_condicional = EXCLUDED.status_condicional,
                          atualizado_em = NOW()''',
                     base + (
                         _parse_int(row.get('pedido_med_abril')),
@@ -145,9 +141,6 @@ def importar_produtos(conn, tsv_path):
                         _parse_int(row.get('posicoes_max')),
                         _parse_int(row.get('posicoes_med')),
                         _parse_int(row.get('posicoes_min')),
-                        _parse_int(row.get('estoque_atual')),
-                        _parse_int(row.get('posicao_atual')),
-                        (row.get('status_condicional') or '').strip() or None,
                     ),
                 )
             else:
@@ -169,6 +162,13 @@ def importar_produtos(conn, tsv_path):
             n += 1
     conn.commit()
     print(f'Produtos importados/atualizados: {n}')
+    try:
+        from wms_enderecamento import _sync_all_produtos_estoque_cache
+        synced = _sync_all_produtos_estoque_cache(conn)
+        conn.commit()
+        print(f'Cache estoque real WMS recalculado: {synced} SKUs')
+    except Exception as e:
+        print('Aviso: não foi possível recalcular estoque real:', e)
     return n
 
 

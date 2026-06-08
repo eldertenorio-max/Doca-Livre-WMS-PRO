@@ -336,6 +336,146 @@ def _pesos_categoria_produtos(conn):
     return pesos
 
 
+def _calcular_status_condicional(pos_wms, pos_min, pos_med, pos_max, qtd_wms=0, est_min=0, est_med=0, est_max=0):
+    """Status Verde/Amarelo/Vermelho/Excedido a partir do estoque WMS vs metas planejadas."""
+    pos_wms = int(pos_wms or 0)
+    pos_min = int(pos_min or 0)
+    pos_med = int(pos_med or 0)
+    pos_max = int(pos_max or 0)
+    if pos_max > 0 or pos_med > 0 or pos_min > 0:
+        if pos_max > 0 and pos_wms > pos_max:
+            return 'Excedido'
+        if pos_min > 0 and pos_wms < pos_min:
+            return 'Vermelho'
+        if pos_med > 0 and pos_wms < pos_med:
+            return 'Amarelo'
+        return 'Verde'
+    qtd = int(qtd_wms or 0)
+    est_min = int(est_min or 0)
+    est_med = int(est_med or 0)
+    est_max = int(est_max or 0)
+    if est_max > 0 and qtd > est_max:
+        return 'Excedido'
+    if est_min > 0 and qtd < est_min:
+        return 'Vermelho'
+    if est_med > 0 and qtd < est_med:
+        return 'Amarelo'
+    return 'Verde' if qtd > 0 else 'Verde'
+
+
+def _info_produto_wms(conn, sku, prod=None):
+    """Fonte única de verdade: estoque/posições/status sempre do WMS endereçado (paletes armazenados)."""
+    _ensure_produto_planejamento_columns(conn)
+    t_prod = _tbl(conn, 'wms_produto_enderecamento')
+    if prod is None:
+        prod = conn.execute(
+            f'SELECT * FROM {t_prod} WHERE sku = ? AND {_ativo_sql(conn)} LIMIT 1',
+            (sku,),
+        ).fetchone()
+    pd = _row_dict(prod) or {}
+    metricas = _metricas_sku_wms(conn, sku)
+    pos_wms = metricas['posicoes_wms']
+    qtd_wms = metricas['quantidade_wms']
+    status = _calcular_status_condicional(
+        pos_wms,
+        pd.get('posicoes_min'),
+        pd.get('posicoes_med'),
+        pd.get('posicoes_max'),
+        qtd_wms,
+        pd.get('estoque_ideal_min'),
+        pd.get('estoque_ideal_med'),
+        pd.get('estoque_ideal_max'),
+    )
+    return {
+        **pd,
+        'sku': sku,
+        'estoque_atual': qtd_wms,
+        'posicao_atual': pos_wms,
+        'status_condicional': status,
+        'posicoes_wms': pos_wms,
+        'quantidade_wms': qtd_wms,
+    }
+
+
+def _sync_all_produtos_estoque_cache(conn):
+    """Recalcula cache de todos os SKUs a partir do estoque WMS real."""
+    t_prod = _tbl(conn, 'wms_produto_enderecamento')
+    rows = conn.execute(f'SELECT sku FROM {t_prod} WHERE {_ativo_sql(conn)}').fetchall()
+    n = 0
+    for r in rows:
+        sku = (_row_dict(r) or {}).get('sku') or (r[0] if not isinstance(r, dict) else None)
+        if sku:
+            _sync_produto_estoque_cache(conn, str(sku).strip())
+            n += 1
+    return n
+
+
+def _aplicar_estoque_real_dict(conn, d, sku=None):
+    """Substitui estoque/status no dict pelos valores reais do WMS."""
+    sku = (sku or d.get('sku') or '').strip()
+    if not sku:
+        d['fonte_estoque'] = 'wms'
+        return d
+    info = _info_produto_wms(conn, sku)
+    d['estoque_atual'] = info.get('estoque_atual', 0)
+    d['posicao_atual'] = info.get('posicao_atual', 0)
+    d['status_condicional'] = info.get('status_condicional')
+    d['quantidade_wms'] = info.get('quantidade_wms', 0)
+    d['posicoes_wms'] = info.get('posicoes_wms', 0)
+    d['fonte_estoque'] = 'wms'
+    return d
+
+
+def _sync_produto_estoque_cache(conn, sku):
+    """Grava cache de estoque/status após bipagem + armazenagem."""
+    t_prod = _tbl(conn, 'wms_produto_enderecamento')
+    existe = conn.execute(f'SELECT sku FROM {t_prod} WHERE sku = ? LIMIT 1', (sku,)).fetchone()
+    info = _info_produto_wms(conn, sku)
+    if not existe:
+        return info
+    now = _now_iso()
+    if _is_pg(conn):
+        conn.execute(
+            f'''UPDATE {t_prod} SET estoque_atual = ?, posicao_atual = ?, status_condicional = ?,
+                atualizado_em = NOW() WHERE sku = ?''',
+            (info['estoque_atual'], info['posicao_atual'], info['status_condicional'], sku),
+        )
+    else:
+        conn.execute(
+            f'''UPDATE {t_prod} SET estoque_atual = ?, posicao_atual = ?, status_condicional = ?,
+                atualizado_em = ? WHERE sku = ?''',
+            (info['estoque_atual'], info['posicao_atual'], info['status_condicional'], now, sku),
+        )
+    return info
+
+
+def _skus_do_palete(conn, palete_id):
+    t_item = _tbl(conn, 'wms_palete_item')
+    rows = conn.execute(
+        f'SELECT DISTINCT sku FROM {t_item} WHERE palete_id = ? AND sku IS NOT NULL',
+        (palete_id,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        s = (_row_dict(r) or {}).get('sku') or (r[0] if not isinstance(r, dict) else None)
+        if s and str(s).strip():
+            out.append(str(s).strip())
+    return out
+
+
+def _resumo_status_planejamento(conn):
+    t_prod = _tbl(conn, 'wms_produto_enderecamento')
+    rows = conn.execute(f'SELECT sku FROM {t_prod} WHERE {_ativo_sql(conn)}').fetchall()
+    out = {}
+    for r in rows:
+        sku = (_row_dict(r) or {}).get('sku') or (r[0] if not isinstance(r, dict) else None)
+        if not sku:
+            continue
+        st = _info_produto_wms(conn, sku)['status_condicional']
+        out[st] = out.get(st, 0) + 1
+    return out
+
+
 def _prioridade_status_condicional(status):
     s = (status or '').strip().lower()
     if s == 'vermelho':
@@ -947,12 +1087,12 @@ def _sugerir_putaway(conn, sku, lote=None, data_producao=None, zona='pulmao'):
     _ensure_produto_planejamento_columns(conn)
 
     prod = conn.execute(f'SELECT * FROM {t_prod} WHERE sku = ? AND {_ativo_sql(conn)}', (sku,)).fetchone()
-    pd = _row_dict(prod) or {}
+    info = _info_produto_wms(conn, sku, prod)
+    pd = info
     cat = (pd.get('categoria') or 'C').strip().upper()
     zona = (zona or 'pulmao').lower()
-    status = (pd.get('status_condicional') or '').strip()
-    metricas = _metricas_sku_wms(conn, sku)
-    pos_wms = metricas['posicoes_wms']
+    status = info.get('status_condicional') or ''
+    pos_wms = info.get('posicoes_wms') or 0
     pos_max = int(pd.get('posicoes_max') or 0)
     pos_med = int(pd.get('posicoes_med') or 0)
     alerta = None
@@ -1157,12 +1297,11 @@ def _lista_picking_roteiro(conn, id_roteiro, id_viagem):
 
     def _info_sku(sku):
         pr = conn.execute(
-            f'''SELECT categoria, status_condicional, estoque_atual, estoque_ideal_min,
-                       posicoes_med, descricao
-                FROM {t_prod} WHERE sku = ? AND {_ativo_sql(conn)} LIMIT 1''',
+            f'''SELECT * FROM {t_prod} WHERE sku = ? AND {_ativo_sql(conn)} LIMIT 1''',
             (sku,),
         ).fetchone()
-        return _row_dict(pr) or {}
+        info = _info_produto_wms(conn, sku, pr)
+        return info
 
     rom_itens = []
     for r in rows:
@@ -1360,11 +1499,12 @@ def api_wms_painel():
         ).fetchone()
         _ensure_produto_planejamento_columns(conn)
         t_prod = _tbl(conn, 'wms_produto_enderecamento')
-        resumo_status = conn.execute(
-            f'''SELECT COALESCE(NULLIF(TRIM(status_condicional), ''), 'Sem status') AS st, COUNT(*) AS n
-                FROM {t_prod} WHERE {_ativo_sql(conn)}
-                GROUP BY COALESCE(NULLIF(TRIM(status_condicional), ''), 'Sem status')'''
-        ).fetchall()
+        _sync_all_produtos_estoque_cache(conn)
+        try:
+            conn.commit()
+        except Exception:
+            pass
+        resumo_status = _resumo_status_planejamento(conn)
         pesos_pos = conn.execute(
             f'''SELECT UPPER(SUBSTR(categoria, 1, 1)) AS cat,
                        SUM(COALESCE(NULLIF(posicoes_med, 0), 1)) AS posicoes
@@ -1377,7 +1517,8 @@ def api_wms_painel():
             'distribuicao_categoria': dist_cat,
             'pesos_categoria': pesos,
             'pesos_posicoes_categoria': {(_row_dict(r) or {}).get('cat'): int((_row_dict(r) or {}).get('posicoes') or 0) for r in pesos_pos},
-            'resumo_status_planejamento': {(_row_dict(r) or {}).get('st'): int((_row_dict(r) or {}).get('n') or 0) for r in resumo_status},
+            'resumo_status_planejamento': resumo_status,
+            'fonte_estoque': 'wms',
             'movimentacoes_pendentes': _int_col(pendentes),
             'recebimentos_abertos': _int_col(rec_abertos),
             'inventarios_ativos': _int_col(inv_ativos),
@@ -1463,8 +1604,15 @@ def api_wms_produtos():
     sql += ' ORDER BY categoria, sku LIMIT 1000'
     try:
         rows = conn.execute(sql, tuple(params)).fetchall()
+        produtos = []
+        for r in rows:
+            d = dict(r)
+            sku = (d.get('sku') or '').strip()
+            if sku:
+                _aplicar_estoque_real_dict(conn, d, sku)
+            produtos.append(d)
         conn.close()
-        return jsonify({'produtos': [dict(r) for r in rows]})
+        return jsonify({'produtos': produtos, 'fonte_estoque': 'wms'})
     except Exception as e:
         try:
             conn.close()
@@ -1635,6 +1783,9 @@ def api_wms_movimentacoes():
                         f'UPDATE {t_pal} SET localizacao_id = ?, status = ?, atualizado_em = ? WHERE id = ?',
                         (dest, 'armazenado', now, pid),
                     )
+                if pid:
+                    for sku in _skus_do_palete(conn, pid):
+                        _sync_produto_estoque_cache(conn, sku)
             conn.commit()
             conn.close()
             return jsonify({'ok': True})
@@ -1746,8 +1897,21 @@ def api_wms_pesquisa_sku():
     sql += ' ORDER BY i.data_validade ASC NULLS LAST LIMIT 500' if _is_pg(conn) else ' ORDER BY i.data_validade ASC LIMIT 500'
     try:
         rows = conn.execute(sql, tuple(params)).fetchall()
+        resultados = [dict(r) for r in rows]
+        resumo = None
+        if q and len(q) >= 3:
+            sku_exato = None
+            for r in resultados:
+                s = (r.get('sku') or '').strip()
+                if s and s.upper() == q.upper():
+                    sku_exato = s
+                    break
+            if not sku_exato and resultados:
+                sku_exato = (resultados[0].get('sku') or '').strip()
+            if sku_exato:
+                resumo = _aplicar_estoque_real_dict(conn, {'sku': sku_exato}, sku_exato)
         conn.close()
-        return jsonify({'resultados': [dict(r) for r in rows]})
+        return jsonify({'resultados': resultados, 'resumo_estoque_real': resumo, 'fonte_estoque': 'wms'})
     except Exception as e:
         try:
             conn.close()
@@ -1863,8 +2027,15 @@ def api_wms_recebimentos():
             if not sku:
                 conn.close()
                 return jsonify({'erro': 'Informe SKU do produto.'}), 400
-            estado = data.get('estado_palete') or 'bom'
             dp = (item.get('data_producao') or '').strip() or None
+            dv = (item.get('data_validade') or '').strip() or None
+            if not dp:
+                conn.close()
+                return jsonify({'erro': 'Informe a data de produção na bipagem (FIFO).'}), 400
+            if not dv:
+                conn.close()
+                return jsonify({'erro': 'Informe a data de validade na bipagem.'}), 400
+            estado = data.get('estado_palete') or 'bom'
             lote = (item.get('lote') or '').strip() or None
             conn.execute(
                 f'''INSERT INTO {t_item}
@@ -1873,18 +2044,25 @@ def api_wms_recebimentos():
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (
                     pid, sku, item.get('descricao'), lote, dp,
-                    item.get('data_validade'), item.get('sif'),
+                    dv, item.get('sif'),
                     int(item.get('quantidade_caixas') or 0), item.get('peso_liquido'),
                     item.get('rg_caixa'), now,
                 ),
             )
-            bloqueios = _aplicar_bloqueios_palete(conn, pid, estado, item.get('data_validade'), item.get('temperatura'))
+            bloqueios = _aplicar_bloqueios_palete(conn, pid, estado, dv, item.get('temperatura'))
             sug = _sugerir_putaway(conn, sku, lote, dp, 'pulmao')
             pal = conn.execute(f'SELECT etiqueta FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
             etiqueta = (pal['etiqueta'] if isinstance(pal, dict) else pal[0]) if pal else None
             conn.commit()
             conn.close()
-            return jsonify({'ok': True, 'palete_id': pid, 'etiqueta': etiqueta, 'bloqueios': bloqueios, 'sugestao': sug})
+            return jsonify({
+                'ok': True,
+                'palete_id': pid,
+                'etiqueta': etiqueta,
+                'bloqueios': bloqueios,
+                'sugestao': sug,
+                'mensagem': 'Datas registradas na bipagem. Status será atualizado após confirmar armazenagem.',
+            })
 
         if acao == 'sugerir_destino':
             pid = data.get('palete_id')
@@ -1914,9 +2092,16 @@ def api_wms_recebimentos():
                 except Exception:
                     pass
                 return jsonify({'erro': err}), 400
+            status_skus = {}
+            for sku in _skus_do_palete(conn, pid):
+                status_skus[sku] = _sync_produto_estoque_cache(conn, sku)
             conn.commit()
             conn.close()
-            return jsonify({'ok': True, 'localizacao': loc})
+            return jsonify({
+                'ok': True,
+                'localizacao': loc,
+                'status_atualizado': {k: v.get('status_condicional') for k, v in status_skus.items()},
+            })
 
         if acao == 'conferir_palete':
             rid = data.get('recebimento_id')
@@ -2422,6 +2607,7 @@ def api_wms_picking():
             'id_viagem': id_viagem,
             'itens': lista,
             'total_linhas': len(lista),
+            'fonte_estoque': 'wms',
         })
     except Exception as e:
         try:

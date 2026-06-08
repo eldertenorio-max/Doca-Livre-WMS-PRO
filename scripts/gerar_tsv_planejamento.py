@@ -16,7 +16,6 @@ HEADER_OUT = [
     'estoque_ideal_max', 'estoque_ideal_med', 'estoque_ideal_min',
     'dias_estoque_max', 'dias_estoque_med', 'dias_estoque_min',
     'posicoes_max', 'posicoes_med', 'posicoes_min',
-    'estoque_atual', 'posicao_atual', 'status_condicional',
 ]
 
 
@@ -72,9 +71,6 @@ def parse_row(parts):
         'posicoes_max': _int(parts[17]),
         'posicoes_med': _int(parts[18]),
         'posicoes_min': _int(parts[19]),
-        'estoque_atual': _int(parts[20]),
-        'posicao_atual': _int(parts[21]),
-        'status_condicional': parts[22].strip(),
     }
 
 

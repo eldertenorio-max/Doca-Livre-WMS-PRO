@@ -2574,7 +2574,7 @@
                 <div class="painel-titulo">
                     <span class="painel-titulo-icon">🏭</span>
                     <h2 class="painel-titulo-texto">Endereçamento WMS</h2>
-                    <p class="painel-titulo-sub">Localizações, recebimento, putaway e inventário por categoria A/B/C/D</p>
+                    <p class="painel-titulo-sub">Estoque, status e separação sempre com base no <strong>estoque real WMS</strong> (bipagem + armazenagem). Planilha só traz metas (categoria, posições ideais).</p>
                 </div>
                 <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Endereços gerados automaticamente por <strong>categoria A/B/C/D</strong> (cadastro de produtos + zoneamento). Não depende de planilha Excel.</p>
                 <nav class="tabs devolucoes-subtabs" style="margin-bottom: 12px;" aria-label="Sub-abas WMS">
@@ -2627,7 +2627,8 @@
                             <div class="form-group"><label>Categoria</label><select id="wms-filtro-categoria"><option value="">Todas</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div>
                             <button type="button" class="btn btn-primary" id="btn-wms-produtos">Atualizar</button>
                         </div>
-                        <div class="table-container"><table class="data-table"><thead><tr><th>SKU</th><th>Descrição</th><th>Cat.</th><th>Status</th><th>Pos. plan.</th><th>Estoque</th><th>PLT</th><th>Conv.</th></tr></thead><tbody id="wms-tbody-produtos"><tr><td colspan="8" class="loading">Carregando...</td></tr></tbody></table></div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>SKU</th><th>Descrição</th><th>Cat.</th><th>Status</th><th>Pos. WMS</th><th>Caixas WMS</th><th>PLT</th><th>Conv.</th></tr></thead><tbody id="wms-tbody-produtos"><tr><td colspan="8" class="loading">Carregando...</td></tr></tbody></table></div>
+                        <p class="info-text" style="font-size:12px;margin-top:8px;">Estoque e status = sempre do WMS real (paletes armazenados). Metas vêm do cadastro.</p>
                     </div>
                     <div id="wms-panel-movimentacoes" class="wms-inner-panel" hidden>
                         <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Tipo</th><th>Palete</th><th>Destino</th><th>Prioridade</th><th></th></tr></thead><tbody id="wms-tbody-movimentacoes"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody></table></div>
@@ -2647,9 +2648,9 @@
                             <input type="hidden" id="wms-rec-palete-id">
                             <ol style="margin: 0 0 12px 18px; font-size: 13px; line-height: 1.5;">
                                 <li><strong>1 — Palete:</strong> bipe ou gere etiqueta (22 caracteres)</li>
-                                <li><strong>2 — Produto:</strong> SKU, lote, data produção (FIFO) e quantidade</li>
+                                <li><strong>2 — Produto:</strong> SKU, lote, <strong>data produção</strong> e <strong>validade</strong> (obrigatórias na bipagem)</li>
                                 <li><strong>3 — Imprimir</strong> etiqueta do palete</li>
-                                <li><strong>4 — Destino:</strong> putaway categoria A/B/C/D em PULMÃO (nível 2+)</li>
+                                <li><strong>4 — Destino:</strong> putaway — após armazenar, o <strong>status</strong> (Verde/Vermelho/…) é calculado automaticamente</li>
                             </ol>
                             <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: flex-end;">
                                 <div class="form-group"><label>Etiqueta palete</label><input type="text" id="wms-bip-etiqueta" placeholder="Bip ou vazio = gerar" maxlength="22"></div>
@@ -2659,8 +2660,8 @@
                             <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: flex-end;">
                                 <div class="form-group"><label>SKU</label><input type="text" id="wms-pal-sku"></div>
                                 <div class="form-group"><label>Lote</label><input type="text" id="wms-pal-lote"></div>
-                                <div class="form-group"><label>Data produção</label><input type="date" id="wms-pal-producao"></div>
-                                <div class="form-group"><label>Validade</label><input type="date" id="wms-pal-validade"></div>
+                                <div class="form-group"><label>Data produção *</label><input type="date" id="wms-pal-producao" required></div>
+                                <div class="form-group"><label>Validade *</label><input type="date" id="wms-pal-validade" required></div>
                                 <div class="form-group"><label>Qtd caixas</label><input type="number" id="wms-pal-qtd" min="1" value="1"></div>
                                 <div class="form-group"><label>Estado palete</label><select id="wms-pal-estado"><option value="bom">Bom</option><option value="avaria">Avaria</option><option value="deteriorado">Deteriorado</option></select></div>
                                 <button type="button" class="btn btn-primary" id="btn-wms-bip-produto">2 · Bip produto</button>
