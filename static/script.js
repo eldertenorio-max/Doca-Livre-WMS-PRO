@@ -3253,19 +3253,48 @@ window.wmsConcluirMovimentacao = async function(id) {
 };
 
 async function loadWmsRecebimentos() {
-    _wmsSetTbody('wms-tbody-recebimentos', 5, '<span class="loading">Carregando...</span>');
+    _wmsSetTbody('wms-tbody-recebimentos', 6, '<span class="loading">Carregando...</span>');
     var data = await fetchAPI('/wms/recebimentos');
     var tb = document.getElementById('wms-tbody-recebimentos');
     if (!tb) return;
     if (!data || data.erro) {
-        tb.innerHTML = '<tr><td colspan="5">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar recebimentos.')) + '</td></tr>';
+        tb.innerHTML = '<tr><td colspan="6">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar recebimentos.')) + '</td></tr>';
         return;
     }
     var rows = data.recebimentos || [];
     tb.innerHTML = rows.length ? rows.map(function(r) {
-        return '<tr style="cursor:pointer;" onclick="wmsAbrirRecebimento(' + r.id + ')"><td>' + escHtml(r.id) + '</td><td>' + escHtml(r.numero_nf || '') + '</td><td>' + escHtml(r.fornecedor || '') + '</td><td>' + escHtml(r.placa || '') + '</td><td>' + escHtml(r.status) + '</td></tr>';
-    }).join('') : '<tr><td colspan="5">Nenhum recebimento.</td></tr>';
+        var nf = r.numero_nf || '—';
+        var btnExcluir = '<button type="button" class="btn btn-sm" style="background:#c62828;color:#fff;" '
+            + 'data-wms-rec-id="' + escHtml(String(r.id)) + '" data-wms-rec-nf="' + escHtml(String(nf)) + '" '
+            + 'onclick="event.stopPropagation(); wmsExcluirRecebimento(this)" title="Excluir recebimento">Excluir</button>';
+        return '<tr style="cursor:pointer;" onclick="wmsAbrirRecebimento(' + r.id + ')"><td>' + escHtml(r.id) + '</td><td>' + escHtml(r.numero_nf || '') + '</td><td>' + escHtml(r.fornecedor || '') + '</td><td>' + escHtml(r.placa || '') + '</td><td>' + escHtml(r.status) + '</td><td>' + btnExcluir + '</td></tr>';
+    }).join('') : '<tr><td colspan="6">Nenhum recebimento.</td></tr>';
 }
+
+window.wmsExcluirRecebimento = async function(btn) {
+    var id = btn && btn.getAttribute ? btn.getAttribute('data-wms-rec-id') : btn;
+    var nf = (btn && btn.getAttribute ? btn.getAttribute('data-wms-rec-nf') : '') || '—';
+    var label = nf && nf !== '—' ? ('NF ' + nf) : ('recebimento #' + id);
+    if (!confirm('Excluir ' + label + '?\n\nPaletes em conferência serão removidos. Não é possível excluir se algum palete já foi armazenado no WMS.')) return;
+    var data = await fetchAPI('/wms/recebimentos', {
+        method: 'POST',
+        body: JSON.stringify({ acao: 'excluir', recebimento_id: parseInt(id, 10) })
+    });
+    if (data && data.ok) {
+        showMessage('Recebimento excluído.', 'success');
+        var hid = document.getElementById('wms-rec-detalhe-id');
+        if (hid && String(hid.value) === String(id)) {
+            var det = document.getElementById('wms-recebimento-detalhe');
+            if (det) det.style.display = 'none';
+            hid.value = '';
+        }
+        loadWmsRecebimentos();
+        loadWmsPainel();
+        loadWmsMovimentacoes();
+    } else {
+        showMessage((data && data.erro) || 'Erro ao excluir recebimento.', 'error');
+    }
+};
 
 window.wmsAbrirRecebimento = function(id) {
     var det = document.getElementById('wms-recebimento-detalhe');

@@ -1393,6 +1393,58 @@ def _lista_picking_roteiro(conn, id_roteiro, id_viagem):
     return lista, None
 
 
+def _excluir_recebimento_wms(conn, recebimento_id):
+    """Remove recebimento e paletes em conferência. Bloqueia se houver palete armazenado (estoque real)."""
+    t_rec = _tbl(conn, 'wms_recebimento')
+    t_rp = _tbl(conn, 'wms_recebimento_palete')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_item = _tbl(conn, 'wms_palete_item')
+    t_mov = _tbl(conn, 'wms_movimentacao')
+    t_cqr = _tbl(conn, 'wms_check_qualidade_resposta')
+
+    rec = conn.execute(f'SELECT id FROM {t_rec} WHERE id = ?', (recebimento_id,)).fetchone()
+    if not rec:
+        return None, 'Recebimento não encontrado.'
+
+    pals = conn.execute(
+        f'''SELECT DISTINCT p.id, p.etiqueta, p.status
+            FROM {t_pal} p
+            WHERE p.recebimento_id = ?
+               OR p.id IN (SELECT palete_id FROM {t_rp} WHERE recebimento_id = ?)''',
+        (recebimento_id, recebimento_id),
+    ).fetchall()
+
+    armazenados = []
+    palete_ids = []
+    for p in pals:
+        rd = _row_dict(p) or {}
+        pid = rd.get('id')
+        if pid:
+            palete_ids.append(pid)
+        if (rd.get('status') or '').lower() == 'armazenado':
+            armazenados.append(rd.get('etiqueta') or str(pid))
+
+    if armazenados:
+        lista = ', '.join(str(x) for x in armazenados[:5])
+        extra = f' (+{len(armazenados) - 5})' if len(armazenados) > 5 else ''
+        return None, (
+            'Não é possível excluir: há palete(s) já armazenado(s) no WMS '
+            f'({lista}{extra}). O estoque real não pode ser removido por exclusão de recebimento.'
+        )
+
+    for pid in palete_ids:
+        conn.execute(f'DELETE FROM {t_mov} WHERE palete_id = ?', (pid,))
+        conn.execute(f'DELETE FROM {t_item} WHERE palete_id = ?', (pid,))
+
+    conn.execute(f'DELETE FROM {t_rp} WHERE recebimento_id = ?', (recebimento_id,))
+    for pid in palete_ids:
+        conn.execute(f'DELETE FROM {t_pal} WHERE id = ?', (pid,))
+    conn.execute(f'DELETE FROM {t_cqr} WHERE recebimento_id = ?', (recebimento_id,))
+    conn.execute(f'DELETE FROM {t_rec} WHERE id = ?', (recebimento_id,))
+
+    return {'ok': True, 'paletes_removidos': len(palete_ids)}, None
+
+
 def _confirmar_armazenagem_palete(conn, palete_id, codigo_endereco):
     t_pal = _tbl(conn, 'wms_palete')
     t_loc = _tbl(conn, 'wms_localizacao')
@@ -2150,6 +2202,23 @@ def api_wms_recebimentos():
             conn.commit()
             conn.close()
             return jsonify({'ok': True, 'palete_id': pid, 'etiqueta': etiqueta, 'bloqueios': bloqueios})
+
+        if acao == 'excluir':
+            rid = data.get('recebimento_id')
+            if not rid:
+                conn.close()
+                return jsonify({'erro': 'Informe recebimento_id.'}), 400
+            result, err = _excluir_recebimento_wms(conn, int(rid))
+            if err:
+                try:
+                    conn.rollback()
+                    conn.close()
+                except Exception:
+                    pass
+                return jsonify({'erro': err}), 400
+            conn.commit()
+            conn.close()
+            return jsonify(result)
 
         if acao == 'finalizar':
             rid = data.get('recebimento_id')
