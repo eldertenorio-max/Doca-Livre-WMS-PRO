@@ -12,12 +12,13 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
 </head>
 <body class="hub-entrada-body">
+    {% from '_stock_system_logo.html' import stock_system_logo %}
     <div class="ss-page-content">
     <div class="hub-entrada-topstripe" aria-hidden="true"></div>
 
     <div class="hub-entrada-wrap">
         <div class="hub-entrada-logo">
-            <img src="{{ url_for('static', filename='stock-system-logo.svg') }}" alt="{{ system_name }}">
+            {{ stock_system_logo(grad_id='ssg-hub') }}
         </div>
         <p class="hub-entrada-subtitulo">{{ system_tagline }}</p>
 

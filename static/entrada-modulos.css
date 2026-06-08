@@ -66,7 +66,8 @@ body.hub-entrada-body {
     box-shadow: 0 10px 32px rgba(54, 96, 146, 0.32);
 }
 
-.hub-entrada-logo img {
+.hub-entrada-logo img,
+.hub-entrada-logo svg {
     display: block;
     width: 100%;
     height: auto;

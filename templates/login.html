@@ -15,6 +15,7 @@
     </script>
 </head>
 <body>
+    {% from '_stock_system_logo.html' import stock_system_logo %}
     {% include '_stock_system_splash.html' %}
     <div class="ss-page-content login-page-root">
     <div class="login-wrap">
@@ -27,7 +28,7 @@
             <div class="login-card-inner">
                 <div class="login-header">
                     <div class="login-logo-wrap">
-                        <img src="{{ url_for('static', filename='stock-system-logo.svg') }}" alt="{{ system_name }}" class="login-logo-img">
+                        {{ stock_system_logo(class='login-logo-img', grad_id='ssg-login') }}
                     </div>
                     <p>{{ system_tagline }}</p>
                 </div>
@@ -65,7 +66,7 @@
             <div class="login-card-inner">
                 <div class="login-header">
                     <div class="login-logo-wrap">
-                        <img src="{{ url_for('static', filename='stock-system-logo.svg') }}" alt="{{ system_name }}" class="login-logo-img">
+                        {{ stock_system_logo(class='login-logo-img', grad_id='ssg-login') }}
                     </div>
                     <h1>Criar conta</h1>
                     <p>Preencha os dados para se cadastrar no {{ system_name }}</p>
