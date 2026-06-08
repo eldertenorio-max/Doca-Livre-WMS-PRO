@@ -3077,7 +3077,7 @@ async function wmsRedistribuirLayout() {
 async function loadWmsPainel() {
     _wmsSetTbody('wms-tbody-dist-categoria', 5, '<span class="loading">Carregando...</span>');
     _wmsSetTbody('wms-tbody-zoneamento', 3, '<span class="loading">Carregando...</span>');
-    var data = await fetchAPI('/wms/painel?_=' + Date.now());
+    var data = await fetchAPIComTimeout('/wms/painel?_=' + Date.now(), {}, 45000);
     if (!data || data.erro) {
         var err = _wmsErroMsg(data, 'Erro ao carregar painel WMS.');
         showMessage(err, 'error');
@@ -3137,7 +3137,8 @@ async function loadWmsPainel() {
 }
 
 async function loadWmsLocalizacoes() {
-    _wmsSetTbody('wms-tbody-localizacoes', 9, '<span class="loading">Carregando...</span>');
+    _wmsSetTbody('wms-tbody-localizacoes', 9, '<span class="loading">Carregando endereços...</span>');
+    var tb = document.getElementById('wms-tbody-localizacoes');
     var cam = document.getElementById('wms-filtro-camara');
     var cat = document.getElementById('wms-filtro-cat-zona');
     var st = document.getElementById('wms-filtro-status');
@@ -3145,22 +3146,30 @@ async function loadWmsLocalizacoes() {
     if (cam && cam.value) q.push('camara=' + encodeURIComponent(cam.value));
     if (cat && cat.value) q.push('categoria=' + encodeURIComponent(cat.value));
     if (st && st.value) q.push('status=' + encodeURIComponent(st.value));
-    var data = await fetchAPI('/wms/localizacoes' + (q.length ? '?' + q.join('&') : ''));
-    var tb = document.getElementById('wms-tbody-localizacoes');
-    if (!tb) return;
-    if (!data || data.erro) {
-        tb.innerHTML = '<tr><td colspan="9" class="loading">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
-        return;
+    q.push('_=' + Date.now());
+    try {
+        var data = await fetchAPIComTimeout('/wms/localizacoes' + (q.length ? '?' + q.join('&') : ''), {}, 60000);
+        if (!tb) return;
+        if (!data || data.erro) {
+            tb.innerHTML = '<tr><td colspan="9">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar localizações.')) + '</td></tr>';
+            if (data && data.erro) showMessage(data.erro, 'error');
+            return;
+        }
+        var rows = data.localizacoes || [];
+        tb.innerHTML = rows.length ? rows.map(function(r) {
+            var niv = parseInt(r.nivel, 10);
+            var zona = r.zona_armazenagem || (niv === 1 ? 'picking' : 'pulmao');
+            var zl = zona === 'picking' ? 'PICKING' : 'PULMÃO';
+            var cod = escHtml(r.codigo_endereco || '');
+            var codJs = String(r.codigo_endereco || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            return '<tr><td>' + cod + '</td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(r.categoria_zona || r.area || '—') + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Etiqueta</button></td></tr>';
+        }).join('') : '<tr><td colspan="9">Nenhuma localização. Clique em Atualizar ou use o painel para recalcular o layout.</td></tr>';
+    } catch (e) {
+        if (tb) {
+            tb.innerHTML = '<tr><td colspan="9">' + escHtml((e && e.message) || 'Erro ao carregar localizações.') + '</td></tr>';
+        }
+        showMessage('Erro ao carregar localizações WMS.', 'error');
     }
-    var rows = data.localizacoes || [];
-    tb.innerHTML = rows.length ? rows.map(function(r) {
-        var niv = parseInt(r.nivel, 10);
-        var zona = r.zona_armazenagem || (niv === 1 ? 'picking' : 'pulmao');
-        var zl = zona === 'picking' ? 'PICKING' : 'PULMÃO';
-        var cod = escHtml(r.codigo_endereco || '');
-        var codJs = String(r.codigo_endereco || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        return '<tr><td>' + cod + '</td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(r.categoria_zona || r.area || '—') + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Etiqueta</button></td></tr>';
-    }).join('') : '<tr><td colspan="9">Nenhuma localização gerada.</td></tr>';
 }
 
 function _wmsAbrirEtiquetaUrl(url) {

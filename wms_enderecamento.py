@@ -24,7 +24,6 @@ def init_wms_enderecamento(get_db_func):
     try:
         conn = get_db_func()
         ensure_wms_schema(conn)
-        _sync_wms_camara_layout(conn)
         conn.close()
     except Exception:
         pass
@@ -648,15 +647,18 @@ def _skus_do_palete(conn, palete_id):
 
 
 def _resumo_status_planejamento(conn):
+    """Resumo rápido a partir do cache (status recalculado na armazenagem)."""
     t_prod = _tbl(conn, 'wms_produto_enderecamento')
-    rows = conn.execute(f'SELECT sku FROM {t_prod} WHERE {_ativo_sql(conn)}').fetchall()
+    rows = conn.execute(
+        f'''SELECT COALESCE(NULLIF(TRIM(status_condicional), ''), 'Verde') AS st, COUNT(*) AS c
+            FROM {t_prod} WHERE {_ativo_sql(conn)}
+            GROUP BY COALESCE(NULLIF(TRIM(status_condicional), ''), 'Verde')'''
+    ).fetchall()
     out = {}
     for r in rows:
-        sku = (_row_dict(r) or {}).get('sku') or (r[0] if not isinstance(r, dict) else None)
-        if not sku:
-            continue
-        st = _info_produto_wms(conn, sku)['status_condicional']
-        out[st] = out.get(st, 0) + 1
+        rd = _row_dict(r) or {}
+        st = rd.get('st') or 'Verde'
+        out[st] = int(rd.get('c') or 0)
     return out
 
 
@@ -1735,11 +1737,6 @@ def api_wms_painel():
         ).fetchone()
         _ensure_produto_planejamento_columns(conn)
         t_prod = _tbl(conn, 'wms_produto_enderecamento')
-        _sync_all_produtos_estoque_cache(conn)
-        try:
-            conn.commit()
-        except Exception:
-            pass
         resumo_status = _resumo_status_planejamento(conn)
         pesos_pos = conn.execute(
             f'''SELECT UPPER(SUBSTR(categoria, 1, 1)) AS cat,
@@ -1790,32 +1787,46 @@ def api_wms_layout_gerar():
 def api_wms_localizacoes():
     conn = _db()
     ensure_wms_schema(conn)
+    _seed_wms_defaults(conn)
     camara = request.args.get('camara', type=int)
     status = (request.args.get('status') or '').strip()
     categoria = (request.args.get('categoria') or '').strip().upper()
     q = (request.args.get('q') or '').strip()
     t = _tbl(conn, 'wms_localizacao')
-    sql = f'SELECT * FROM {t} WHERE 1=1'
-    params = []
-    if camara:
-        sql += ' AND camara = ?'
-        params.append(camara)
-    if categoria:
-        sql += ' AND UPPER(TRIM(categoria_zona)) = ?'
-        params.append(categoria)
-    if status:
-        sql += ' AND status = ?'
-        params.append(status)
-    if q:
-        sql += ' AND (codigo_endereco ILIKE ? OR rua ILIKE ?)' if _is_pg(conn) else ' AND (codigo_endereco LIKE ? OR rua LIKE ?)'
-        params.extend([f'%{q}%', f'%{q}%'])
-    sql += ' ORDER BY camara, rua, posicao, nivel LIMIT 500'
     try:
+        total_row = conn.execute(f'SELECT COUNT(*) AS c FROM {t}').fetchone()
+        total_loc = _int_col(total_row, 'c')
+        if total_loc == 0 and request.args.get('auto_layout', '1') != '0':
+            gerar_layout_enderecos(conn, force=False)
+            try:
+                conn.commit()
+            except Exception:
+                conn.rollback()
+        sql = f'SELECT id, camara, rua, posicao, nivel, codigo_endereco, status, area, categoria_zona, zona_armazenagem FROM {t} WHERE 1=1'
+        params = []
+        if camara:
+            sql += ' AND camara = ?'
+            params.append(camara)
+        if categoria:
+            sql += ' AND UPPER(TRIM(categoria_zona)) = ?'
+            params.append(categoria)
+        if status:
+            sql += ' AND status = ?'
+            params.append(status)
+        if q:
+            sql += ' AND (codigo_endereco ILIKE ? OR rua ILIKE ?)' if _is_pg(conn) else ' AND (codigo_endereco LIKE ? OR rua LIKE ?)'
+            params.extend([f'%{q}%', f'%{q}%'])
+        sql += ' ORDER BY camara, rua, posicao, nivel LIMIT 500'
         rows = conn.execute(sql, tuple(params)).fetchall()
         conn.close()
-        return jsonify({'localizacoes': [dict(r) for r in rows]})
+        locs = []
+        for r in rows:
+            d = _row_dict(r) or {}
+            locs.append(d)
+        return jsonify({'localizacoes': locs, 'total': len(locs)})
     except Exception as e:
         try:
+            conn.rollback()
             conn.close()
         except Exception:
             pass
