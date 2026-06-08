@@ -2873,7 +2873,8 @@ function initEstoqueSp() {
             loadEstoqueSpTempoReal();
         } else if (ehWms) {
             _estoqueSpPararTimer();
-            if (typeof loadWmsPainel === 'function') loadWmsPainel();
+            if (typeof _wmsMostrarSubtab === 'function') _wmsMostrarSubtab('painel');
+            else if (typeof loadWmsPainel === 'function') loadWmsPainel();
         } else {
             loadEstoqueSpResumo();
         }
@@ -2977,6 +2978,17 @@ async function loadEstoqueSpResumo() {
     paint('entrada_terceiros', 'estoque-sp-tbody-ter', 'estoque-sp-ter-linhas', 'estoque-sp-ter-qtd');
 }
 
+function _wmsErroMsg(data, fallback) {
+    if (data && data.erro) return String(data.erro);
+    if (data === null) return 'Falha de conexão com o servidor.';
+    return fallback || 'Erro ao carregar dados WMS.';
+}
+
+function _wmsSetTbody(id, cols, html) {
+    var tb = document.getElementById(id);
+    if (tb) tb.innerHTML = '<tr><td colspan="' + cols + '">' + html + '</td></tr>';
+}
+
 function _wmsMostrarSubtab(tab) {
     tab = tab || 'painel';
     document.querySelectorAll('.wms-subtab[data-wms-tab]').forEach(function(b) {
@@ -3036,9 +3048,14 @@ async function wmsRedistribuirLayout() {
 }
 
 async function loadWmsPainel() {
+    _wmsSetTbody('wms-tbody-dist-categoria', 5, '<span class="loading">Carregando...</span>');
+    _wmsSetTbody('wms-tbody-zoneamento', 3, '<span class="loading">Carregando...</span>');
     var data = await fetchAPI('/wms/painel?_=' + Date.now());
     if (!data || data.erro) {
-        showMessage((data && data.erro) || 'Erro ao carregar painel WMS.', 'error');
+        var err = _wmsErroMsg(data, 'Erro ao carregar painel WMS.');
+        showMessage(err, 'error');
+        _wmsSetTbody('wms-tbody-dist-categoria', 5, escHtml(err));
+        _wmsSetTbody('wms-tbody-zoneamento', 3, escHtml(err));
         return;
     }
     var elM = document.getElementById('wms-stat-mov-pend');
@@ -3075,14 +3092,19 @@ async function loadWmsPainel() {
     }
     var zData = await fetchAPI('/wms/zoneamento');
     var ztb = document.getElementById('wms-tbody-zoneamento');
-    if (ztb && zData && zData.zoneamento) {
-        ztb.innerHTML = zData.zoneamento.map(function(z) {
-            return '<tr><td>' + escHtml(z.categoria) + '</td><td>' + escHtml(z.camara) + ' — ' + escHtml(z.camara_descricao || '') + '</td><td>' + escHtml(z.prioridade) + '</td></tr>';
-        }).join('') || '<tr><td colspan="3">Sem zoneamento.</td></tr>';
+    if (!ztb) return;
+    if (!zData || zData.erro) {
+        ztb.innerHTML = '<tr><td colspan="3">' + escHtml(_wmsErroMsg(zData, 'Erro ao carregar zoneamento.')) + '</td></tr>';
+        return;
     }
+    var zona = zData.zoneamento || [];
+    ztb.innerHTML = zona.length ? zona.map(function(z) {
+        return '<tr><td>' + escHtml(z.categoria) + '</td><td>' + escHtml(z.camara) + ' — ' + escHtml(z.camara_descricao || '') + '</td><td>' + escHtml(z.prioridade) + '</td></tr>';
+    }).join('') : '<tr><td colspan="3">Sem zoneamento.</td></tr>';
 }
 
 async function loadWmsLocalizacoes() {
+    _wmsSetTbody('wms-tbody-localizacoes', 7, '<span class="loading">Carregando...</span>');
     var cam = document.getElementById('wms-filtro-camara');
     var cat = document.getElementById('wms-filtro-cat-zona');
     var st = document.getElementById('wms-filtro-status');
@@ -3104,6 +3126,7 @@ async function loadWmsLocalizacoes() {
 }
 
 async function loadWmsProdutos() {
+    _wmsSetTbody('wms-tbody-produtos', 5, '<span class="loading">Carregando...</span>');
     var cat = document.getElementById('wms-filtro-categoria');
     var url = '/wms/produtos';
     if (cat && cat.value) url += '?categoria=' + encodeURIComponent(cat.value);
@@ -3121,6 +3144,7 @@ async function loadWmsProdutos() {
 }
 
 async function loadWmsMovimentacoes() {
+    _wmsSetTbody('wms-tbody-movimentacoes', 6, '<span class="loading">Carregando...</span>');
     var data = await fetchAPI('/wms/movimentacoes?status=pendente');
     var tb = document.getElementById('wms-tbody-movimentacoes');
     if (!tb) return;
@@ -3146,11 +3170,12 @@ window.wmsConcluirMovimentacao = async function(id) {
 };
 
 async function loadWmsRecebimentos() {
+    _wmsSetTbody('wms-tbody-recebimentos', 5, '<span class="loading">Carregando...</span>');
     var data = await fetchAPI('/wms/recebimentos');
     var tb = document.getElementById('wms-tbody-recebimentos');
     if (!tb) return;
     if (!data || data.erro) {
-        tb.innerHTML = '<tr><td colspan="5">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
+        tb.innerHTML = '<tr><td colspan="5">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar recebimentos.')) + '</td></tr>';
         return;
     }
     var rows = data.recebimentos || [];
@@ -3167,12 +3192,15 @@ window.wmsAbrirRecebimento = function(id) {
 };
 
 async function wmsCriarRecebimento() {
+    var btn = document.getElementById('btn-wms-novo-recebimento');
+    if (btn) btn.disabled = true;
     var body = {
         numero_nf: (document.getElementById('wms-rec-nf') || {}).value || '',
         fornecedor: (document.getElementById('wms-rec-fornecedor') || {}).value || '',
         placa: (document.getElementById('wms-rec-placa') || {}).value || ''
     };
     var data = await fetchAPI('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) });
+    if (btn) btn.disabled = false;
     if (data && data.ok) {
         showMessage('Recebimento #' + data.id + ' criado.', 'success');
         wmsAbrirRecebimento(data.id);
@@ -3241,6 +3269,7 @@ async function wmsCriarInventario() {
 }
 
 async function loadWmsInventarios() {
+    _wmsSetTbody('wms-tbody-inventarios', 4, '<span class="loading">Carregando...</span>');
     var data = await fetchAPI('/wms/inventarios');
     var tb = document.getElementById('wms-tbody-inventarios');
     if (!tb) return;

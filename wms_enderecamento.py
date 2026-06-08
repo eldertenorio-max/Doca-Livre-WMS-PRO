@@ -15,11 +15,18 @@ from flask import Blueprint, jsonify, request, session
 bp = Blueprint('wms_enderecamento', __name__)
 
 _get_db = None
+_WMS_SCHEMA_READY = False
 
 
 def init_wms_enderecamento(get_db_func):
     global _get_db
     _get_db = get_db_func
+    try:
+        conn = get_db_func()
+        ensure_wms_schema(conn)
+        conn.close()
+    except Exception:
+        pass
 
 
 def _db():
@@ -46,6 +53,29 @@ def _ativo_sql(conn, alias=''):
     if _is_pg(conn):
         return f'({p}ativo IS TRUE)'
     return f'({p}ativo = 1)'
+
+
+def _int_col(row, key='c', default=0):
+    d = _row_dict(row)
+    if not d:
+        return default
+    try:
+        return int(d.get(key) if d.get(key) is not None else default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _wms_tabelas_existem(conn):
+    t = _tbl(conn, 'wms_localizacao')
+    try:
+        conn.execute(f'SELECT 1 FROM {t} LIMIT 1')
+        return True
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
 
 
 def _now_iso():
@@ -288,7 +318,14 @@ def _gerar_etiqueta_palete():
 
 
 def ensure_wms_schema(conn):
-    """Cria tabelas WMS (Postgres ou SQLite)."""
+    """Cria tabelas WMS (Postgres ou SQLite). Executa no máximo uma vez por processo."""
+    global _WMS_SCHEMA_READY
+    if _WMS_SCHEMA_READY:
+        return
+    if _wms_tabelas_existem(conn):
+        _ensure_categoria_zona_column(conn)
+        _WMS_SCHEMA_READY = True
+        return
     if _is_pg(conn):
         sql_path = os.path.join(os.path.dirname(__file__), 'supabase', 'create_wms_enderecamento.sql')
         if os.path.isfile(sql_path):
@@ -517,6 +554,8 @@ def ensure_wms_schema(conn):
             conn.rollback()
         except Exception:
             pass
+    _ensure_categoria_zona_column(conn)
+    _WMS_SCHEMA_READY = True
 
 
 def _seed_wms_defaults(conn):
@@ -740,7 +779,7 @@ def api_wms_painel():
     ensure_wms_schema(conn)
     _seed_wms_defaults(conn)
     try:
-        layout_info = gerar_layout_enderecos(conn, force=False)
+        pesos = _pesos_categoria_produtos(conn)
         camaras = _ocupacao_camara(conn)
         dist_cat = _distribuicao_categoria(conn)
         t_mov = _tbl(conn, 'wms_movimentacao')
@@ -759,11 +798,10 @@ def api_wms_painel():
         return jsonify({
             'camaras': camaras,
             'distribuicao_categoria': dist_cat,
-            'layout': layout_info,
-            'pesos_categoria': _pesos_categoria_produtos(conn),
-            'movimentacoes_pendentes': int((pendentes or {}).get('c', 0) if isinstance(pendentes, dict) else 0),
-            'recebimentos_abertos': int((rec_abertos or {}).get('c', 0) if isinstance(rec_abertos, dict) else 0),
-            'inventarios_ativos': int((inv_ativos or {}).get('c', 0) if isinstance(inv_ativos, dict) else 0),
+            'pesos_categoria': pesos,
+            'movimentacoes_pendentes': _int_col(pendentes),
+            'recebimentos_abertos': _int_col(rec_abertos),
+            'inventarios_ativos': _int_col(inv_ativos),
         })
     except Exception as e:
         try:
@@ -796,7 +834,6 @@ def api_wms_layout_gerar():
 def api_wms_localizacoes():
     conn = _db()
     ensure_wms_schema(conn)
-    gerar_layout_enderecos(conn, force=False)
     camara = request.args.get('camara', type=int)
     status = (request.args.get('status') or '').strip()
     categoria = (request.args.get('categoria') or '').strip().upper()
@@ -997,7 +1034,7 @@ def api_wms_movimentacoes():
                     f'''UPDATE {t_mov} SET status = 'concluida', concluida_em = ?, concluida_por = ? WHERE id = ?''',
                     (now, _usuario(), mov_id),
                 )
-            mov = conn.execute(f'SELECT * FROM {t_mov} WHERE id = ?', (mov_id,)).fetchone()
+            mov = _row_dict(conn.execute(f'SELECT * FROM {t_mov} WHERE id = ?', (mov_id,)).fetchone())
             if mov and mov.get('destino_localizacao_id'):
                 dest = mov['destino_localizacao_id']
                 pid = mov['palete_id']
@@ -1223,9 +1260,10 @@ def api_wms_recebimentos():
                 ),
             )
             bloqueios = _aplicar_bloqueios_palete(conn, pid, estado, item.get('data_validade'), item.get('temperatura'))
-            conn.execute(f"UPDATE {t_rec} SET status = 'em_conferencia', atualizado_em = ? WHERE id = ?", (now, rid))
             if _is_pg(conn):
                 conn.execute(f"UPDATE {t_rec} SET status = 'em_conferencia', atualizado_em = NOW() WHERE id = ?", (rid,))
+            else:
+                conn.execute(f"UPDATE {t_rec} SET status = 'em_conferencia', atualizado_em = ? WHERE id = ?", (now, rid))
             conn.commit()
             conn.close()
             return jsonify({'ok': True, 'palete_id': pid, 'etiqueta': etiqueta, 'bloqueios': bloqueios})
@@ -1263,14 +1301,15 @@ def api_wms_recebimentos():
                             (pid, sug['localizacao_id'], '; '.join(sug.get('motivo') or []), _usuario()),
                         )
                     movs += 1
-            conn.execute(
-                f"UPDATE {t_rec} SET status = 'aguardando_armazenagem', check_qualidade_ok = TRUE, atualizado_em = ? WHERE id = ?",
-                (now, rid),
-            )
             if _is_pg(conn):
                 conn.execute(
                     f"UPDATE {t_rec} SET status = 'aguardando_armazenagem', check_qualidade_ok = TRUE, atualizado_em = NOW() WHERE id = ?",
                     (rid,),
+                )
+            else:
+                conn.execute(
+                    f"UPDATE {t_rec} SET status = 'aguardando_armazenagem', check_qualidade_ok = 1, atualizado_em = ? WHERE id = ?",
+                    (now, rid),
                 )
             conn.commit()
             conn.close()
@@ -1387,10 +1426,11 @@ def api_wms_inventarios():
             sql_loc += " AND status = 'ocupada'"
         locs = conn.execute(sql_loc, tuple(params)).fetchall()
         for loc in locs:
+            ld = _row_dict(loc) or {}
             conn.execute(
                 f'''INSERT INTO {t_lin} (inventario_id, localizacao_id, status_esperado)
                     VALUES (?, ?, ?)''',
-                (iid, loc['id'], loc['status']),
+                (iid, ld.get('id'), ld.get('status')),
             )
         conn.commit()
         conn.close()
