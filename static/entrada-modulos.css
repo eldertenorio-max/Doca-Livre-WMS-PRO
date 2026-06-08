@@ -3,11 +3,31 @@
 @keyframes hub-logo-in {
     from {
         opacity: 0;
-        transform: scale(0.88) translateY(12px);
+        transform: scale(0.82) translateY(20px);
     }
     to {
         opacity: 1;
         transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes hub-logo-float {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+@keyframes hub-logo-glow {
+    0%, 100% {
+        border-color: #0369a1;
+        box-shadow: 0 8px 28px rgba(54, 96, 146, 0.24);
+    }
+    50% {
+        border-color: #0ea5e9;
+        box-shadow: 0 14px 40px rgba(14, 165, 233, 0.35);
     }
 }
 
@@ -49,21 +69,25 @@ body.hub-entrada-body {
 }
 
 .hub-entrada-logo {
-    width: min(210px, 44vw);
+    width: min(360px, 88vw);
     max-width: 100%;
-    border-radius: 14px;
+    padding: 14px 18px;
+    border-radius: 16px;
     border: 3px solid #0369a1;
     overflow: hidden;
     background: #fff;
-    box-shadow: 0 6px 24px rgba(54, 96, 146, 0.22);
-    animation: hub-logo-in 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    box-shadow: 0 8px 28px rgba(54, 96, 146, 0.24);
+    opacity: 0;
     transform-origin: center top;
+    animation:
+        hub-logo-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards,
+        hub-logo-glow 3.2s ease-in-out 0.95s infinite;
     transition: transform 0.35s ease, box-shadow 0.35s ease;
 }
 
 .hub-entrada-logo:hover {
-    transform: scale(1.04);
-    box-shadow: 0 10px 32px rgba(54, 96, 146, 0.32);
+    transform: scale(1.03);
+    box-shadow: 0 12px 36px rgba(54, 96, 146, 0.34);
 }
 
 .hub-entrada-logo img,
@@ -71,6 +95,11 @@ body.hub-entrada-body {
     display: block;
     width: 100%;
     height: auto;
+    animation: hub-logo-float 3.6s ease-in-out 1s infinite;
+}
+
+.hub-entrada-logo:hover svg {
+    animation-play-state: paused;
 }
 
 .hub-entrada-subtitulo {
@@ -206,8 +235,7 @@ body.hub-entrada-body {
     text-decoration: underline;
 }
 
-/* Sem animações (usuário pediu remover) */
-.hub-entrada-logo,
+/* Botões e textos sem animação de entrada (resposta mais direta) */
 .hub-entrada-titulo,
 .hub-entrada-desc,
 .hub-entrada-btn,
@@ -226,6 +254,10 @@ body.hub-entrada-body {
         animation: none;
         opacity: 1;
         transform: none;
+    }
+
+    .hub-entrada-logo svg {
+        animation: none;
     }
 
     .hub-entrada-btn {

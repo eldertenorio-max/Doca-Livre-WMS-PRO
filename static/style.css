@@ -89,8 +89,16 @@ body.hub-modulos-aberto .container {
     visibility: hidden;
 }
 
-/* Overlay na mesma página: sem animação de entrada (resposta instantânea) */
-.hub-modulos-overlay .hub-entrada-logo,
+/* Overlay: logo com animação suave; botões sem delay de entrada */
+.hub-modulos-overlay .hub-entrada-logo {
+    opacity: 1 !important;
+    animation: hub-logo-glow 3.2s ease-in-out infinite !important;
+}
+
+.hub-modulos-overlay .hub-entrada-logo svg {
+    animation: hub-logo-float 3.6s ease-in-out infinite;
+}
+
 .hub-modulos-overlay .hub-entrada-titulo,
 .hub-modulos-overlay .hub-entrada-desc,
 .hub-modulos-overlay .hub-entrada-btn {
