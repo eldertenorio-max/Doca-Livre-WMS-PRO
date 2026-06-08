@@ -16,10 +16,15 @@ body.ss-splash-active .ss-page-content {
     visibility: hidden;
 }
 
+html.ss-splash-skip #stock-system-splash {
+    display: none !important;
+}
+
 .ss-splash {
     position: fixed;
     inset: 0;
     z-index: 100000;
+    display: block;
     background: radial-gradient(ellipse 120% 80% at 50% 35%, #1a3a5c 0%, #0c1929 55%, #060d18 100%);
     transition: opacity 0.5s ease, visibility 0.5s ease;
 }
@@ -49,22 +54,13 @@ body.ss-splash-active .ss-page-content {
     pointer-events: auto;
 }
 
-/* —— Tela 1: símbolo + logo —— */
+/* —— Tela 1: logo SVG —— */
 .ss-splash-step--logo .ss-splash-logo-wrap {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    padding: 24px;
+    padding: 16px 22px;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
     animation: ss-logo-enter 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@media (max-width: 380px) {
-    .ss-splash-step--logo .ss-splash-logo-wrap:not(.ss-splash-logo-wrap--full) {
-        flex-direction: column;
-        gap: 18px;
-    }
 }
 
 @keyframes ss-logo-enter {
@@ -72,37 +68,10 @@ body.ss-splash-active .ss-page-content {
     to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.ss-splash-symbol {
-    width: min(88px, 22vw);
-    height: auto;
-    filter: drop-shadow(0 10px 24px rgba(14, 165, 233, 0.35));
-    animation: ss-symbol-pop 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s both;
-}
-
-@keyframes ss-symbol-pop {
-    from { opacity: 0; transform: scale(0.6); }
-    to { opacity: 1; transform: scale(1); }
-}
-
 .ss-splash-logo {
     display: block;
-    width: min(240px, 62vw);
+    width: min(300px, 78vw);
     height: auto;
-    filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.25));
-    animation: ss-logo-fade 0.55s ease 0.25s both;
-}
-
-.ss-splash-logo-wrap--full .ss-splash-logo {
-    width: min(320px, 82vw);
-}
-
-.ss-splash-logo-wrap--full .ss-splash-symbol {
-    display: none;
-}
-
-@keyframes ss-logo-fade {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
 }
 
 /* —— Tela 2: título + tagline + barra —— */

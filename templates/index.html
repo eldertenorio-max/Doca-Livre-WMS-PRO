@@ -21,8 +21,7 @@
         <header class="header">
             <a href="/entrada" class="header-link-inicio" title="Voltar à tela inicial de módulos">← Tela inicial</a>
             <div class="header-brand">
-                <img src="{{ url_for('static', filename='stock-system-logo.png') }}" alt="{{ system_name }}" class="ss-brand-logo ss-brand-logo--header"
-                     onerror="this.onerror=null;this.src='{{ url_for('static', filename='stock-system-logo.svg') }}';">
+                <img src="{{ url_for('static', filename='stock-system-logo.svg') }}" alt="{{ system_name }}" class="ss-brand-logo ss-brand-logo--header">
                 <h1>{{ system_name }}</h1>
             </div>
             <div class="header-alertas-terceiros" id="header-alertas-terceiros">
@@ -3161,6 +3160,7 @@
                 <button type="button" class="hub-entrada-btn hub-entrada-btn--2" data-hub-modulo="devolucoes">Retorno</button>
                 <button type="button" class="hub-entrada-btn hub-entrada-btn--3" data-hub-modulo="terceiros">Descarga/Recebimento</button>
                 <button type="button" class="hub-entrada-btn hub-entrada-btn--4" data-hub-modulo="estoque-sp">Estoque</button>
+                <button type="button" class="hub-entrada-btn hub-entrada-btn--5" data-hub-modulo="enderecamento-wms">Endereçamento WMS</button>
             </div>
         </div>
     </div>

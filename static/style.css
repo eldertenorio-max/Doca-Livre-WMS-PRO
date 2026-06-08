@@ -389,6 +389,16 @@ body.hub-modulos-aberto .container {
     text-transform: uppercase;
 }
 
+.estoque-sp-subtab[data-estoque-tab="enderecamento-wms"] {
+    color: #0369a1;
+    font-weight: 700;
+}
+
+.estoque-sp-subtab[data-estoque-tab="enderecamento-wms"].active {
+    color: #0369a1;
+    border-bottom-color: #0ea5e9;
+}
+
 .devolucoes-titulo-principal {
     font-size: 1.05rem;
     color: #366092;

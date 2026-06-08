@@ -12,14 +12,12 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
 </head>
 <body class="hub-entrada-body">
-    {% include '_stock_system_splash.html' %}
     <div class="ss-page-content">
     <div class="hub-entrada-topstripe" aria-hidden="true"></div>
 
     <div class="hub-entrada-wrap">
         <div class="hub-entrada-logo">
-            <img src="{{ url_for('static', filename='stock-system-logo.png') }}" alt="{{ system_name }}"
-                 onerror="this.onerror=null;this.src='{{ url_for('static', filename='stock-system-logo.svg') }}';">
+            <img src="{{ url_for('static', filename='stock-system-logo.svg') }}" alt="{{ system_name }}">
         </div>
         <h1 class="hub-entrada-titulo">{{ system_name }}</h1>
         <p class="hub-entrada-subtitulo">{{ system_tagline }}</p>
@@ -29,6 +27,7 @@
             <a class="hub-entrada-btn hub-entrada-btn--2" href="{{ url_for('painel') }}?modulo=devolucoes">Retorno</a>
             <a class="hub-entrada-btn hub-entrada-btn--3" href="{{ url_for('painel') }}?modulo=terceiros">Descarga/Recebimento</a>
             <a class="hub-entrada-btn hub-entrada-btn--4" href="{{ url_for('painel') }}?modulo=estoque-sp">Estoque</a>
+            <a class="hub-entrada-btn hub-entrada-btn--5" href="{{ url_for('painel') }}?modulo=enderecamento-wms">Endereçamento WMS</a>
         </div>
 
         <footer class="hub-entrada-rodape">
@@ -38,6 +37,5 @@
         </footer>
     </div>
     </div>
-    <script src="{{ url_for('static', filename='stock-system-intro.js') }}"></script>
 </body>
 </html>

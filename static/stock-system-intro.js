@@ -1,13 +1,9 @@
 /**
  * Stock System — intro em 2 telas na abertura:
- *   1) símbolo + logo
+ *   1) logo SVG (stock-system-logo.svg)
  *   2) título, tagline e barra de carregamento
  *
- * Arquivos em static/ (Canva):
- *   stock-system-symbol.svg  — ícone (já incluso)
- *   stock-system-logo.png    — logo horizontal (560×160 px, fundo transparente)
- *
- * Uma vez por sessão (sessionStorage).
+ * Apenas na tela de login, uma vez por sessão (sessionStorage).
  */
 (function () {
     'use strict';
@@ -20,14 +16,28 @@
 
     function qs(sel, root) { return (root || document).querySelector(sel); }
 
+    function removeSplash(splash) {
+        if (!splash) return;
+        document.body.classList.remove('ss-splash-active');
+        if (splash.parentNode) splash.parentNode.removeChild(splash);
+    }
+
     function hideSplash(splash) {
         if (!splash) return;
         splash.classList.add('ss-splash--out');
         document.body.classList.remove('ss-splash-active');
         try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch (e) {}
-        setTimeout(function () {
-            if (splash.parentNode) splash.parentNode.removeChild(splash);
-        }, FADE_MS + 80);
+        setTimeout(function () { removeSplash(splash); }, FADE_MS + 80);
+    }
+
+    function skipSplashIfSeen() {
+        try {
+            if (sessionStorage.getItem(STORAGE_KEY) !== '1') return false;
+        } catch (e) {
+            return false;
+        }
+        removeSplash(document.getElementById(SPLASH_ID));
+        return true;
     }
 
     function goToLoadStep(splash) {
@@ -64,42 +74,25 @@
         }, LOAD_MS);
     }
 
-    function setupLogoStep(splash) {
-        var wrap = qs('.ss-splash-logo-wrap', splash);
-        var logo = qs('.ss-splash-logo', splash);
-        if (!wrap || !logo) return;
-        function apply() {
-            var src = (logo.currentSrc || logo.src || '').toLowerCase();
-            var isPng = src.indexOf('.png') !== -1;
-            if (isPng && logo.naturalWidth > 80) {
-                wrap.classList.add('ss-splash-logo-wrap--full');
-            }
-        }
-        logo.addEventListener('load', apply);
-        if (logo.complete) apply();
-    }
-
     function runIntro(splash) {
         document.body.classList.add('ss-splash-active');
-        setupLogoStep(splash);
         setTimeout(function () { goToLoadStep(splash); }, LOGO_MS);
     }
 
     function initStockSystemIntro(opts) {
         opts = opts || {};
-        if (!opts.force) {
-            try {
-                if (sessionStorage.getItem(STORAGE_KEY) === '1') return;
-            } catch (e) {}
-        }
-
         var splash = document.getElementById(SPLASH_ID);
         if (!splash) return;
+
+        if (!opts.force && skipSplashIfSeen()) return;
 
         runIntro(splash);
     }
 
     window.initStockSystemIntro = initStockSystemIntro;
+    window.skipStockSystemSplashIfSeen = skipSplashIfSeen;
+
+    skipSplashIfSeen();
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () { initStockSystemIntro(); });

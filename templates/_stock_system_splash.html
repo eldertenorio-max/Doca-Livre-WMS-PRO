@@ -1,24 +1,16 @@
-{# Intro Stock System — 2 telas: (1) símbolo+logo  (2) título+tagline+barra #}
+{# Intro Stock System — 2 telas: (1) logo SVG  (2) título+tagline+barra #}
+<script>try{if(sessionStorage.getItem('stock_system_intro_v2')==='1'){document.documentElement.classList.add('ss-splash-skip');}}catch(e){}</script>
 <div id="stock-system-splash" class="ss-splash" role="dialog" aria-label="Carregando {{ system_name }}" aria-live="polite">
-    {# Tela 1 — marca (ícone + logo) #}
     <div class="ss-splash-step ss-splash-step--logo ss-splash-step--active" aria-hidden="false">
         <div class="ss-splash-logo-wrap">
             <img
-                src="{{ url_for('static', filename='stock-system-symbol.svg') }}"
-                alt=""
-                class="ss-splash-symbol"
-                aria-hidden="true"
-            >
-            <img
-                src="{{ url_for('static', filename='stock-system-logo.png') }}"
+                src="{{ url_for('static', filename='stock-system-logo.svg') }}"
                 alt="{{ system_name }}"
                 class="ss-splash-logo"
-                onerror="this.onerror=null;this.src='{{ url_for('static', filename='stock-system-logo.svg') }}';var w=this.closest('.ss-splash-logo-wrap');if(w){w.classList.add('ss-splash-logo-wrap--full');var s=w.querySelector('.ss-splash-symbol');if(s)s.style.display='none';}"
             >
         </div>
     </div>
 
-    {# Tela 2 — descrição + carregamento #}
     <div class="ss-splash-step ss-splash-step--load" aria-hidden="true">
         <div class="ss-splash-load-inner">
             <h1 class="ss-splash-title">{{ system_name }}</h1>

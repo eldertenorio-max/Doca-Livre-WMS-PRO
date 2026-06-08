@@ -2508,7 +2508,13 @@ function initModulos() {
 
     var botoes = document.querySelectorAll('.modulo-button');
 
-    function mostrarModulo(id) {
+    function mostrarModulo(id, opts) {
+        opts = opts || {};
+        var estoqueAba = opts.estoqueAba || null;
+        if (id === 'enderecamento-wms') {
+            id = 'estoque-sp';
+            estoqueAba = 'enderecamento-wms';
+        }
         carreg.hidden = id !== 'carregamento';
         if (dev) dev.hidden = id !== 'devolucoes';
         if (ter) ter.hidden = id !== 'terceiros';
@@ -2538,6 +2544,9 @@ function initModulos() {
             }
         } else if (id === 'estoque-sp') {
             _estoqueSpIniciarTempoReal();
+            if (estoqueAba && typeof window._estoqueSpMostrarAba === 'function') {
+                window._estoqueSpMostrarAba(estoqueAba);
+            }
         } else if (id === 'terceiros') {
             void _terceirosGarantirPrefetchLista();
             var painelTer = document.getElementById('terceiros-panel-painel');
@@ -2566,8 +2575,11 @@ function initModulos() {
 
     var params = new URLSearchParams(window.location.search);
     var modUrl = params.get('modulo');
-    if (modUrl && ['carregamento', 'devolucoes', 'terceiros', 'estoque-sp'].indexOf(modUrl) !== -1) {
-        mostrarModulo(modUrl);
+    var abaUrl = params.get('aba');
+    if (modUrl === 'enderecamento-wms') {
+        mostrarModulo('enderecamento-wms');
+    } else if (modUrl && ['carregamento', 'devolucoes', 'terceiros', 'estoque-sp'].indexOf(modUrl) !== -1) {
+        mostrarModulo(modUrl, { estoqueAba: abaUrl });
     }
 
     window.controleMostrarModulo = mostrarModulo;
@@ -2875,7 +2887,12 @@ function initEstoqueSp() {
     });
     var btnAt = document.getElementById('btn-estoque-sp-atualizar');
     if (btnAt) btnAt.addEventListener('click', function() { loadEstoqueSpResumo(); });
-    mostrar('estoque-atual');
+    var params = new URLSearchParams(window.location.search);
+    var abaInicial = params.get('aba') || '';
+    if (params.get('modulo') === 'enderecamento-wms') abaInicial = 'enderecamento-wms';
+    var abasValidas = ['estoque-atual', 'saida', 'entrada-devolucao', 'entrada-terceiros', 'enderecamento-wms'];
+    if (abasValidas.indexOf(abaInicial) === -1) abaInicial = 'estoque-atual';
+    mostrar(abaInicial);
 }
 
 function _estoqueSpFmtNum(n) {
