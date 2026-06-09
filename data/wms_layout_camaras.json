@@ -1,9 +1,9 @@
 {
   "descricao": "Layout físico CD Guarulhos — capacidade fixa por câmara (total_posicoes).",
   "camaras": [
-    { "codigo": 11, "ruas": ["U", "V"], "niveis": 3, "total_posicoes": 138 },
-    { "codigo": 12, "ruas": ["X", "Y"], "niveis": 3, "total_posicoes": 134 },
-    { "codigo": 13, "ruas": ["W", "Z"], "niveis": 3, "total_posicoes": 138 },
-    { "codigo": 21, "ruas": ["R"], "niveis": 3, "total_posicoes": 82 }
+    { "codigo": 11, "ruas": ["U", "V"], "niveis": 5, "total_posicoes": 138 },
+    { "codigo": 12, "ruas": ["X", "Y"], "niveis": 5, "total_posicoes": 134 },
+    { "codigo": 13, "ruas": ["W", "Z"], "niveis": 5, "total_posicoes": 138 },
+    { "codigo": 21, "ruas": ["R"], "niveis": 5, "total_posicoes": 82 }
   ]
 }

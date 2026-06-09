@@ -141,10 +141,10 @@ def _layout_camaras_config():
     if not os.path.isfile(path):
         return {
             'camaras': [
-                {'codigo': 11, 'ruas': ['U', 'V'], 'niveis': 3, 'total_posicoes': 138},
-                {'codigo': 12, 'ruas': ['X', 'Y'], 'niveis': 3, 'total_posicoes': 134},
-                {'codigo': 13, 'ruas': ['W', 'Z'], 'niveis': 3, 'total_posicoes': 138},
-                {'codigo': 21, 'ruas': ['R'], 'niveis': 3, 'total_posicoes': 82},
+                {'codigo': 11, 'ruas': ['U', 'V'], 'niveis': 5, 'total_posicoes': 138},
+                {'codigo': 12, 'ruas': ['X', 'Y'], 'niveis': 5, 'total_posicoes': 134},
+                {'codigo': 13, 'ruas': ['W', 'Z'], 'niveis': 5, 'total_posicoes': 138},
+                {'codigo': 21, 'ruas': ['R'], 'niveis': 5, 'total_posicoes': 82},
             ]
         }
     with open(path, encoding='utf-8') as f:
@@ -4011,18 +4011,18 @@ def api_wms_etiqueta_modelo():
         )
         return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
     faixas = [{
-        'titulo': 'Rua 21 · Prédio 13 · Apto 1 — exemplo (coluna 6 níveis)',
+        'titulo': 'Rua 21 · Prédio 13 · Apto 1 — exemplo (5 níveis: 1 PICKING + 4 PULMÃO)',
         'etiquetas': [
             {'rua_num': '21', 'predio': '13', 'nivel': str(n), 'apto': '1',
              'barcode': f'21.13.{n}.1', 'dotted': f'21.13.{n}.1',
              'picking': n == 1, 'zona': 'PICKING' if n == 1 else 'PULMÃO'}
-            for n in range(1, 7)
+            for n in range(1, 6)
         ],
     }]
     html = render_template(
         'wms/etiquetas_endereco.html',
         faixas=faixas,
-        total=6,
+        total=5,
         titulo='Modelo',
         auto_print=False,
     )
