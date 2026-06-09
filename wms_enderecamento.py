@@ -881,7 +881,43 @@ def _distribuicao_categoria(conn):
             GROUP BY categoria_zona, camara
             ORDER BY categoria_zona, camara'''
     ).fetchall()
-    return [dict(r) for r in rows]
+    return [_row_dict(r) or {} for r in rows]
+
+
+def _listar_zoneamento(conn):
+    t = _tbl(conn, 'wms_zoneamento')
+    rows = conn.execute(
+        f'''SELECT z.categoria, z.camara, z.prioridade, c.descricao AS camara_descricao
+            FROM {t} z
+            LEFT JOIN {_tbl(conn, "wms_camara")} c ON c.codigo = z.camara
+            WHERE {_ativo_sql(conn, 'z')}
+            ORDER BY z.categoria, z.prioridade'''
+    ).fetchall()
+    out = []
+    for r in rows:
+        rd = _row_dict(r) or {}
+        out.append({
+            'categoria': rd.get('categoria'),
+            'camara': rd.get('camara'),
+            'prioridade': rd.get('prioridade'),
+            'camara_descricao': rd.get('camara_descricao'),
+        })
+    return out
+
+
+def _ensure_layout_enderecos(conn):
+    """Gera endereços se ainda não existirem (primeira carga do WMS)."""
+    t_loc = _tbl(conn, 'wms_localizacao')
+    total = _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
+    if total > 0:
+        return total
+    gerar_layout_enderecos(conn, force=False)
+    try:
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
 
 
 def _gerar_etiqueta_palete():
@@ -904,6 +940,7 @@ def ensure_wms_schema(conn):
     if _wms_tabelas_existem(conn):
         _ensure_zona_armazenagem_column(conn)
         _ensure_produto_planejamento_columns(conn)
+        _ensure_wms_recebimento_terceiros_columns(conn)
         _WMS_SCHEMA_READY = True
         return
     if _is_pg(conn):
@@ -1723,6 +1760,7 @@ def api_wms_painel():
         pesos = _pesos_categoria_produtos(conn)
         camaras = _ocupacao_camara(conn)
         dist_cat = _distribuicao_categoria(conn)
+        zoneamento = _listar_zoneamento(conn)
         t_mov = _tbl(conn, 'wms_movimentacao')
         t_rec = _tbl(conn, 'wms_recebimento')
         t_inv = _tbl(conn, 'wms_inventario')
@@ -1748,6 +1786,7 @@ def api_wms_painel():
         return jsonify({
             'camaras': camaras,
             'distribuicao_categoria': dist_cat,
+            'zoneamento': zoneamento,
             'pesos_categoria': pesos,
             'pesos_posicoes_categoria': {(_row_dict(r) or {}).get('cat'): int((_row_dict(r) or {}).get('posicoes') or 0) for r in pesos_pos},
             'resumo_status_planejamento': resumo_status,
@@ -1797,11 +1836,7 @@ def api_wms_localizacoes():
         total_row = conn.execute(f'SELECT COUNT(*) AS c FROM {t}').fetchone()
         total_loc = _int_col(total_row, 'c')
         if total_loc == 0 and request.args.get('auto_layout', '1') != '0':
-            gerar_layout_enderecos(conn, force=False)
-            try:
-                conn.commit()
-            except Exception:
-                conn.rollback()
+            _ensure_layout_enderecos(conn)
         sql = f'SELECT id, camara, rua, posicao, nivel, codigo_endereco, status, area, categoria_zona, zona_armazenagem FROM {t} WHERE 1=1'
         params = []
         if camara:
@@ -1839,8 +1874,12 @@ def api_wms_produtos():
     ensure_wms_schema(conn)
     cat = (request.args.get('categoria') or '').strip().upper()
     q = (request.args.get('q') or '').strip()
+    sync = (request.args.get('sync') or '').strip().lower() in ('1', 'sim', 'true', 'yes')
     t = _tbl(conn, 'wms_produto_enderecamento')
-    sql = f'SELECT * FROM {t} WHERE {_ativo_sql(conn)}'
+    sql = f'''SELECT sku, descricao, categoria, medida_cx, padrao_plt, conversao,
+                     posicoes_min, posicoes_med, posicoes_max,
+                     estoque_atual, posicao_atual, status_condicional
+              FROM {t} WHERE {_ativo_sql(conn)}'''
     params = []
     if cat:
         sql += ' AND categoria = ?'
@@ -1850,14 +1889,14 @@ def api_wms_produtos():
         params.extend([f'%{q}%', f'%{q}%'])
     sql += ' ORDER BY categoria, sku LIMIT 1000'
     try:
+        if sync:
+            _sync_all_produtos_estoque_cache(conn)
+            try:
+                conn.commit()
+            except Exception:
+                conn.rollback()
         rows = conn.execute(sql, tuple(params)).fetchall()
-        produtos = []
-        for r in rows:
-            d = dict(r)
-            sku = (d.get('sku') or '').strip()
-            if sku:
-                _aplicar_estoque_real_dict(conn, d, sku)
-            produtos.append(d)
+        produtos = [_row_dict(r) or {} for r in rows]
         conn.close()
         return jsonify({'produtos': produtos, 'fonte_estoque': 'wms'})
     except Exception as e:
@@ -2673,17 +2712,10 @@ def api_wms_zoneamento():
     conn = _db()
     ensure_wms_schema(conn)
     _seed_wms_defaults(conn)
-    t = _tbl(conn, 'wms_zoneamento')
     try:
-        rows = conn.execute(
-            f'''SELECT z.*, c.descricao AS camara_descricao
-                FROM {t} z
-                LEFT JOIN {_tbl(conn, "wms_camara")} c ON c.codigo = z.camara
-                WHERE {_ativo_sql(conn, 'z')}
-                ORDER BY z.categoria, z.prioridade'''
-        ).fetchall()
+        zona = _listar_zoneamento(conn)
         conn.close()
-        return jsonify({'zoneamento': [dict(r) for r in rows]})
+        return jsonify({'zoneamento': zona})
     except Exception as e:
         try:
             conn.close()

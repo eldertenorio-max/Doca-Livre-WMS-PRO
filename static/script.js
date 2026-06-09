@@ -2977,9 +2977,15 @@ async function loadEstoqueSpResumo() {
 }
 
 function _wmsErroMsg(data, fallback) {
+    if (data && data._timeout) return 'Tempo esgotado ao carregar WMS. Tente novamente em alguns segundos.';
     if (data && data.erro) return String(data.erro);
     if (data === null) return 'Falha de conexão com o servidor.';
     return fallback || 'Erro ao carregar dados WMS.';
+}
+
+async function _wmsFetchGet(path, timeoutMs) {
+    var sep = path.indexOf('?') >= 0 ? '&' : '?';
+    return fetchAPIComTimeout(path + sep + '_=' + Date.now(), {}, timeoutMs || 45000);
 }
 
 function _wmsSetTbody(id, cols, html) {
@@ -3077,63 +3083,66 @@ async function wmsRedistribuirLayout() {
 async function loadWmsPainel() {
     _wmsSetTbody('wms-tbody-dist-categoria', 5, '<span class="loading">Carregando...</span>');
     _wmsSetTbody('wms-tbody-zoneamento', 3, '<span class="loading">Carregando...</span>');
-    var data = await fetchAPIComTimeout('/wms/painel?_=' + Date.now(), {}, 45000);
-    if (!data || data.erro) {
-        var err = _wmsErroMsg(data, 'Erro ao carregar painel WMS.');
-        showMessage(err, 'error');
-        _wmsSetTbody('wms-tbody-dist-categoria', 5, escHtml(err));
-        _wmsSetTbody('wms-tbody-zoneamento', 3, escHtml(err));
-        return;
+    try {
+        var data = await _wmsFetchGet('/wms/painel', 60000);
+        if (!data || data.erro) {
+            var err = _wmsErroMsg(data, 'Erro ao carregar painel WMS.');
+            showMessage(err, 'error');
+            _wmsSetTbody('wms-tbody-dist-categoria', 5, escHtml(err));
+            _wmsSetTbody('wms-tbody-zoneamento', 3, escHtml(err));
+            return;
+        }
+        var elM = document.getElementById('wms-stat-mov-pend');
+        var elR = document.getElementById('wms-stat-rec-abertos');
+        var elI = document.getElementById('wms-stat-inv-ativos');
+        if (elM) elM.textContent = String(data.movimentacoes_pendentes || 0);
+        if (elR) elR.textContent = String(data.recebimentos_abertos || 0);
+        if (elI) elI.textContent = String(data.inventarios_ativos || 0);
+        var box = document.getElementById('wms-camaras-barras');
+        if (box) {
+            var cams = data.camaras || [];
+            box.innerHTML = cams.map(function(c) {
+                var pct = Number(c.ocupacao_pct) || 0;
+                var vaz = c.vazias != null ? c.vazias : '—';
+                var ocup = c.ocupadas != null ? c.ocupadas : '—';
+                var tot = c.total_posicoes || c.cadastradas || 0;
+                return '<div style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;"><strong>Câmara ' + escHtml(c.camara) + '</strong><span>' + escHtml(ocup) + ' ocup. · ' + escHtml(vaz) + ' vaz. · ' + pct + '%</span></div><div style="background:#e0e0e0;border-radius:4px;height:10px;overflow:hidden;"><div style="width:' + Math.min(pct, 100) + '%;background:#1976d2;height:100%;"></div></div><div style="font-size:11px;color:#666;margin-top:2px;">Total ref.: ' + escHtml(tot) + ' posições</div></div>';
+            }).join('') || '<p class="info-text">Nenhuma câmara cadastrada.</p>';
+        }
+        var info = document.getElementById('wms-layout-info');
+        if (info) {
+            var pesosPos = data.pesos_posicoes_categoria || data.pesos_categoria || {};
+            var parts = ['A', 'B', 'C', 'D'].filter(function(k) { return pesosPos[k]; }).map(function(k) {
+                return k + ': ' + pesosPos[k] + ' pos.';
+            });
+            var stParts = [];
+            var rs = data.resumo_status_planejamento || {};
+            ['Vermelho', 'Amarelo', 'Verde', 'Excedido'].forEach(function(k) {
+                if (rs[k]) stParts.push(k + ' ' + rs[k]);
+            });
+            info.textContent = 'Posições médias (metas): ' + (parts.join(' · ') || 'padrão') +
+                (stParts.length ? ' · Status WMS real: ' + stParts.join(', ') : ' · Status WMS real');
+        }
+        var dtb = document.getElementById('wms-tbody-dist-categoria');
+        if (dtb) {
+            var dist = data.distribuicao_categoria || [];
+            dtb.innerHTML = dist.length ? dist.map(function(d) {
+                return '<tr><td><strong>' + escHtml(d.categoria) + '</strong></td><td>' + escHtml(d.camara) + '</td><td>' + escHtml(d.total) + '</td><td>' + escHtml(d.vazias) + '</td><td>' + escHtml(d.ocupadas) + '</td></tr>';
+            }).join('') : '<tr><td colspan="5">Sem distribuição — clique em Recalcular distribuição.</td></tr>';
+        }
+        var ztb = document.getElementById('wms-tbody-zoneamento');
+        if (ztb) {
+            var zona = data.zoneamento || [];
+            ztb.innerHTML = zona.length ? zona.map(function(z) {
+                return '<tr><td>' + escHtml(z.categoria) + '</td><td>' + escHtml(z.camara) + ' — ' + escHtml(z.camara_descricao || '') + '</td><td>' + escHtml(z.prioridade) + '</td></tr>';
+            }).join('') : '<tr><td colspan="3">Sem zoneamento.</td></tr>';
+        }
+    } catch (e) {
+        var msg = (e && e.message) || 'Erro ao carregar painel WMS.';
+        _wmsSetTbody('wms-tbody-dist-categoria', 5, escHtml(msg));
+        _wmsSetTbody('wms-tbody-zoneamento', 3, escHtml(msg));
+        showMessage(msg, 'error');
     }
-    var elM = document.getElementById('wms-stat-mov-pend');
-    var elR = document.getElementById('wms-stat-rec-abertos');
-    var elI = document.getElementById('wms-stat-inv-ativos');
-    if (elM) elM.textContent = String(data.movimentacoes_pendentes || 0);
-    if (elR) elR.textContent = String(data.recebimentos_abertos || 0);
-    if (elI) elI.textContent = String(data.inventarios_ativos || 0);
-    var box = document.getElementById('wms-camaras-barras');
-    if (box) {
-        var cams = data.camaras || [];
-        box.innerHTML = cams.map(function(c) {
-            var pct = Number(c.ocupacao_pct) || 0;
-            var vaz = c.vazias != null ? c.vazias : '—';
-            var ocup = c.ocupadas != null ? c.ocupadas : '—';
-            var tot = c.total_posicoes || c.cadastradas || 0;
-            return '<div style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;"><strong>Câmara ' + escHtml(c.camara) + '</strong><span>' + escHtml(ocup) + ' ocup. · ' + escHtml(vaz) + ' vaz. · ' + pct + '%</span></div><div style="background:#e0e0e0;border-radius:4px;height:10px;overflow:hidden;"><div style="width:' + Math.min(pct, 100) + '%;background:#1976d2;height:100%;"></div></div><div style="font-size:11px;color:#666;margin-top:2px;">Total ref.: ' + escHtml(tot) + ' posições</div></div>';
-        }).join('') || '<p class="info-text">Nenhuma câmara cadastrada.</p>';
-    }
-    var info = document.getElementById('wms-layout-info');
-    if (info) {
-        var pesosPos = data.pesos_posicoes_categoria || data.pesos_categoria || {};
-        var parts = ['A', 'B', 'C', 'D'].filter(function(k) { return pesosPos[k]; }).map(function(k) {
-            return k + ': ' + pesosPos[k] + ' pos.';
-        });
-        var stParts = [];
-        var rs = data.resumo_status_planejamento || {};
-        ['Vermelho', 'Amarelo', 'Verde', 'Excedido'].forEach(function(k) {
-            if (rs[k]) stParts.push(k + ' ' + rs[k]);
-        });
-        info.textContent = 'Posições médias (metas): ' + (parts.join(' · ') || 'padrão') +
-            (stParts.length ? ' · Status WMS real: ' + stParts.join(', ') : ' · Status WMS real');
-    }
-    var dtb = document.getElementById('wms-tbody-dist-categoria');
-    if (dtb) {
-        var dist = data.distribuicao_categoria || [];
-        dtb.innerHTML = dist.length ? dist.map(function(d) {
-            return '<tr><td><strong>' + escHtml(d.categoria) + '</strong></td><td>' + escHtml(d.camara) + '</td><td>' + escHtml(d.total) + '</td><td>' + escHtml(d.vazias) + '</td><td>' + escHtml(d.ocupadas) + '</td></tr>';
-        }).join('') : '<tr><td colspan="5">Sem distribuição — abra o painel novamente para gerar.</td></tr>';
-    }
-    var zData = await fetchAPI('/wms/zoneamento');
-    var ztb = document.getElementById('wms-tbody-zoneamento');
-    if (!ztb) return;
-    if (!zData || zData.erro) {
-        ztb.innerHTML = '<tr><td colspan="3">' + escHtml(_wmsErroMsg(zData, 'Erro ao carregar zoneamento.')) + '</td></tr>';
-        return;
-    }
-    var zona = zData.zoneamento || [];
-    ztb.innerHTML = zona.length ? zona.map(function(z) {
-        return '<tr><td>' + escHtml(z.categoria) + '</td><td>' + escHtml(z.camara) + ' — ' + escHtml(z.camara_descricao || '') + '</td><td>' + escHtml(z.prioridade) + '</td></tr>';
-    }).join('') : '<tr><td colspan="3">Sem zoneamento.</td></tr>';
 }
 
 async function loadWmsLocalizacoes() {
@@ -3146,9 +3155,9 @@ async function loadWmsLocalizacoes() {
     if (cam && cam.value) q.push('camara=' + encodeURIComponent(cam.value));
     if (cat && cat.value) q.push('categoria=' + encodeURIComponent(cat.value));
     if (st && st.value) q.push('status=' + encodeURIComponent(st.value));
-    q.push('_=' + Date.now());
+    var path = '/wms/localizacoes' + (q.length ? '?' + q.join('&') : '');
     try {
-        var data = await fetchAPIComTimeout('/wms/localizacoes' + (q.length ? '?' + q.join('&') : ''), {}, 60000);
+        var data = await _wmsFetchGet(path, 60000);
         if (!tb) return;
         if (!data || data.erro) {
             tb.innerHTML = '<tr><td colspan="9">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar localizações.')) + '</td></tr>';
@@ -3210,47 +3219,57 @@ window.wmsImprimirEtqPaleteModelo = function() {
 
 async function loadWmsProdutos() {
     _wmsSetTbody('wms-tbody-produtos', 8, '<span class="loading">Carregando...</span>');
-    var cat = document.getElementById('wms-filtro-categoria');
-    var url = '/wms/produtos';
-    if (cat && cat.value) url += '?categoria=' + encodeURIComponent(cat.value);
-    var data = await fetchAPI(url);
     var tb = document.getElementById('wms-tbody-produtos');
-    if (!tb) return;
-    if (!data || data.erro) {
-        tb.innerHTML = '<tr><td colspan="8">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
-        return;
+    try {
+        var cat = document.getElementById('wms-filtro-categoria');
+        var path = '/wms/produtos';
+        if (cat && cat.value) path += '?categoria=' + encodeURIComponent(cat.value);
+        var data = await _wmsFetchGet(path, 45000);
+        if (!tb) return;
+        if (!data || data.erro) {
+            tb.innerHTML = '<tr><td colspan="8">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar produtos.')) + '</td></tr>';
+            return;
+        }
+        function corStatus(st) {
+            st = (st || '').toLowerCase();
+            if (st === 'vermelho') return '#ffcdd2';
+            if (st === 'amarelo') return '#fff9c4';
+            if (st === 'excedido') return '#ffe0b2';
+            if (st === 'verde') return '#e8f5e9';
+            return '';
+        }
+        var rows = data.produtos || [];
+        tb.innerHTML = rows.length ? rows.map(function(p) {
+            var bg = corStatus(p.status_condicional);
+            var est = p.estoque_atual != null ? p.estoque_atual : '0';
+            var pos = p.posicao_atual != null ? p.posicao_atual : '0';
+            var posPlan = p.posicoes_med != null ? ' / plan ' + p.posicoes_med : '';
+            return '<tr style="' + (bg ? 'background:' + bg + ';' : '') + '"><td>' + escHtml(p.sku) + '</td><td>' + escHtml(p.descricao || '') + '</td><td><strong>' + escHtml(p.categoria) + '</strong></td><td><strong>' + escHtml(p.status_condicional || 'Verde') + '</strong></td><td>' + escHtml(pos + posPlan) + '</td><td>' + escHtml(est) + '</td><td>' + escHtml(p.padrao_plt || '') + '</td><td>' + escHtml(p.conversao || '') + '</td></tr>';
+        }).join('') : '<tr><td colspan="8">Importe data/wms_produtos_planejamento.tsv</td></tr>';
+    } catch (e) {
+        if (tb) tb.innerHTML = '<tr><td colspan="8">' + escHtml((e && e.message) || 'Erro ao carregar produtos.') + '</td></tr>';
+        showMessage('Erro ao carregar produtos WMS.', 'error');
     }
-    function corStatus(st) {
-        st = (st || '').toLowerCase();
-        if (st === 'vermelho') return '#ffcdd2';
-        if (st === 'amarelo') return '#fff9c4';
-        if (st === 'excedido') return '#ffe0b2';
-        if (st === 'verde') return '#e8f5e9';
-        return '';
-    }
-    var rows = data.produtos || [];
-    tb.innerHTML = rows.length ? rows.map(function(p) {
-        var bg = corStatus(p.status_condicional);
-        var est = p.estoque_atual != null ? p.estoque_atual : '0';
-        var pos = p.posicao_atual != null ? p.posicao_atual : '0';
-        var posPlan = p.posicoes_med != null ? ' / plan ' + p.posicoes_med : '';
-        return '<tr style="' + (bg ? 'background:' + bg + ';' : '') + '"><td>' + escHtml(p.sku) + '</td><td>' + escHtml(p.descricao || '') + '</td><td><strong>' + escHtml(p.categoria) + '</strong></td><td><strong>' + escHtml(p.status_condicional || 'Verde') + '</strong></td><td>' + escHtml(pos + posPlan) + '</td><td>' + escHtml(est) + '</td><td>' + escHtml(p.padrao_plt || '') + '</td><td>' + escHtml(p.conversao || '') + '</td></tr>';
-    }).join('') : '<tr><td colspan="8">Importe data/wms_produtos_planejamento.tsv</td></tr>';
 }
 
 async function loadWmsMovimentacoes() {
     _wmsSetTbody('wms-tbody-movimentacoes', 6, '<span class="loading">Carregando...</span>');
-    var data = await fetchAPI('/wms/movimentacoes?status=pendente');
     var tb = document.getElementById('wms-tbody-movimentacoes');
-    if (!tb) return;
-    if (!data || data.erro) {
-        tb.innerHTML = '<tr><td colspan="6">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
-        return;
+    try {
+        var data = await _wmsFetchGet('/wms/movimentacoes?status=pendente', 45000);
+        if (!tb) return;
+        if (!data || data.erro) {
+            tb.innerHTML = '<tr><td colspan="6">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar movimentações.')) + '</td></tr>';
+            return;
+        }
+        var rows = data.movimentacoes || [];
+        tb.innerHTML = rows.length ? rows.map(function(m) {
+            return '<tr><td>' + escHtml(m.id) + '</td><td>' + escHtml(m.tipo) + '</td><td>' + escHtml(m.etiqueta) + '</td><td>' + escHtml(m.destino || '') + '</td><td>' + escHtml(m.prioridade) + '</td><td><button type="button" class="btn btn-sm btn-success" onclick="wmsConcluirMovimentacao(' + m.id + ')">Concluir</button></td></tr>';
+        }).join('') : '<tr><td colspan="6">Nenhuma movimentação pendente.</td></tr>';
+    } catch (e) {
+        if (tb) tb.innerHTML = '<tr><td colspan="6">' + escHtml((e && e.message) || 'Erro ao carregar movimentações.') + '</td></tr>';
+        showMessage('Erro ao carregar movimentações WMS.', 'error');
     }
-    var rows = data.movimentacoes || [];
-    tb.innerHTML = rows.length ? rows.map(function(m) {
-        return '<tr><td>' + escHtml(m.id) + '</td><td>' + escHtml(m.tipo) + '</td><td>' + escHtml(m.etiqueta) + '</td><td>' + escHtml(m.destino || '') + '</td><td>' + escHtml(m.prioridade) + '</td><td><button type="button" class="btn btn-sm btn-success" onclick="wmsConcluirMovimentacao(' + m.id + ')">Concluir</button></td></tr>';
-    }).join('') : '<tr><td colspan="6">Nenhuma movimentação pendente.</td></tr>';
 }
 
 window.wmsConcluirMovimentacao = async function(id) {
@@ -3266,23 +3285,28 @@ window.wmsConcluirMovimentacao = async function(id) {
 
 async function loadWmsRecebimentos() {
     _wmsSetTbody('wms-tbody-recebimentos', 6, '<span class="loading">Carregando...</span>');
-    var data = await fetchAPI('/wms/recebimentos');
     var tb = document.getElementById('wms-tbody-recebimentos');
-    if (!tb) return;
-    if (!data || data.erro) {
-        tb.innerHTML = '<tr><td colspan="6">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar recebimentos.')) + '</td></tr>';
-        return;
+    try {
+        var data = await _wmsFetchGet('/wms/recebimentos', 45000);
+        if (!tb) return;
+        if (!data || data.erro) {
+            tb.innerHTML = '<tr><td colspan="6">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar recebimentos.')) + '</td></tr>';
+            return;
+        }
+        var rows = data.recebimentos || [];
+        tb.innerHTML = rows.length ? rows.map(function(r) {
+            var nf = r.numero_nf || '—';
+            var orig = (r.origem || '').toLowerCase();
+            var vinc = r.terceiros_documento_id ? ' · Doc #' + r.terceiros_documento_id : '';
+            var btnExcluir = '<button type="button" class="btn btn-sm" style="background:#c62828;color:#fff;" '
+                + 'data-wms-rec-id="' + escHtml(String(r.id)) + '" data-wms-rec-nf="' + escHtml(String(nf)) + '" '
+                + 'onclick="event.stopPropagation(); wmsExcluirRecebimento(this)" title="Excluir recebimento">Excluir</button>';
+            return '<tr style="cursor:pointer;" onclick="wmsAbrirRecebimento(' + r.id + ')"><td>' + escHtml(r.id) + '</td><td>' + escHtml(r.numero_nf || '') + escHtml(vinc) + '</td><td>' + escHtml(r.fornecedor || '') + '</td><td>' + escHtml(r.placa || '') + '</td><td>' + escHtml(r.status) + (orig === 'carreta' ? ' · carreta' : '') + '</td><td>' + btnExcluir + '</td></tr>';
+        }).join('') : '<tr><td colspan="6">Nenhum recebimento.</td></tr>';
+    } catch (e) {
+        if (tb) tb.innerHTML = '<tr><td colspan="6">' + escHtml((e && e.message) || 'Erro ao carregar recebimentos.') + '</td></tr>';
+        showMessage('Erro ao carregar recebimentos WMS.', 'error');
     }
-    var rows = data.recebimentos || [];
-    tb.innerHTML = rows.length ? rows.map(function(r) {
-        var nf = r.numero_nf || '—';
-        var orig = (r.origem || '').toLowerCase();
-        var vinc = r.terceiros_documento_id ? ' · Doc #' + r.terceiros_documento_id : '';
-        var btnExcluir = '<button type="button" class="btn btn-sm" style="background:#c62828;color:#fff;" '
-            + 'data-wms-rec-id="' + escHtml(String(r.id)) + '" data-wms-rec-nf="' + escHtml(String(nf)) + '" '
-            + 'onclick="event.stopPropagation(); wmsExcluirRecebimento(this)" title="Excluir recebimento">Excluir</button>';
-        return '<tr style="cursor:pointer;" onclick="wmsAbrirRecebimento(' + r.id + ')"><td>' + escHtml(r.id) + '</td><td>' + escHtml(r.numero_nf || '') + escHtml(vinc) + '</td><td>' + escHtml(r.fornecedor || '') + '</td><td>' + escHtml(r.placa || '') + '</td><td>' + escHtml(r.status) + (orig === 'carreta' ? ' · carreta' : '') + '</td><td>' + btnExcluir + '</td></tr>';
-    }).join('') : '<tr><td colspan="6">Nenhum recebimento.</td></tr>';
 }
 
 function wmsLimparPainelNfDescarga() {
@@ -3536,35 +3560,41 @@ async function loadWmsPickingLista() {
         return;
     }
     _wmsSetTbody('wms-tbody-separacao', 10, '<span class="loading">Carregando romaneio + estoque WMS...</span>');
-    var data = await fetchAPI('/wms/picking?id_roteiro=' + encodeURIComponent(roteiro.trim()) + '&id_viagem=' + encodeURIComponent(viagem.trim()));
     var tb = document.getElementById('wms-tbody-separacao');
-    if (!tb) return;
-    if (!data || data.erro) {
-        tb.innerHTML = '<tr><td colspan="10">' + escHtml(_wmsErroMsg(data, 'Erro ao gerar picking.')) + '</td></tr>';
-        if (data && data.erro) showMessage(data.erro, 'error');
-        return;
+    try {
+        var path = '/wms/picking?id_roteiro=' + encodeURIComponent(roteiro.trim()) + '&id_viagem=' + encodeURIComponent(viagem.trim());
+        var data = await _wmsFetchGet(path, 60000);
+        if (!tb) return;
+        if (!data || data.erro) {
+            tb.innerHTML = '<tr><td colspan="10">' + escHtml(_wmsErroMsg(data, 'Erro ao gerar picking.')) + '</td></tr>';
+            if (data && data.erro) showMessage(data.erro, 'error');
+            return;
+        }
+        var itens = data.itens || [];
+        if (!itens.length) {
+            tb.innerHTML = '<tr><td colspan="10">Nenhum item para separar.</td></tr>';
+            return;
+        }
+        function corStatus(st) {
+            st = (st || '').toLowerCase();
+            if (st === 'vermelho') return '#ffcdd2';
+            if (st === 'amarelo') return '#fff9c4';
+            if (st === 'excedido') return '#ffe0b2';
+            if (st === 'verde') return '#e8f5e9';
+            return '';
+        }
+        tb.innerHTML = itens.map(function(it) {
+            var alerta = it.alerta ? ' style="background:#fff3e0;"' : '';
+            var bg = corStatus(it.status_condicional);
+            if (bg && !it.alerta) alerta = ' style="background:' + bg + ';"';
+            var qtd = it.quantidade_separar != null ? it.quantidade_separar : it.quantidade_romaneio;
+            return '<tr' + alerta + '><td>' + escHtml(it.sequencia) + '</td><td><strong>' + escHtml(it.sku) + '</strong></td><td><strong>' + escHtml(it.status_condicional || '—') + '</strong></td><td>' + escHtml(qtd) + '</td><td>' + escHtml(it.endereco || '—') + '</td><td>' + escHtml(it.texto || it.alerta || '—') + '</td><td>' + escHtml(it.zona_label || '—') + '</td><td>' + escHtml(it.data_producao || '—') + '</td><td>' + escHtml(it.etiqueta || '—') + '</td><td>' + (it.alerta ? escHtml(it.alerta) : '') + '</td></tr>';
+        }).join('');
+        showMessage('Lista de separação: ' + itens.length + ' linha(s). Vermelho primeiro.', 'success');
+    } catch (e) {
+        if (tb) tb.innerHTML = '<tr><td colspan="10">' + escHtml((e && e.message) || 'Erro ao gerar picking.') + '</td></tr>';
+        showMessage('Erro ao gerar lista de separação WMS.', 'error');
     }
-    var itens = data.itens || [];
-    if (!itens.length) {
-        tb.innerHTML = '<tr><td colspan="10">Nenhum item para separar.</td></tr>';
-        return;
-    }
-    function corStatus(st) {
-        st = (st || '').toLowerCase();
-        if (st === 'vermelho') return '#ffcdd2';
-        if (st === 'amarelo') return '#fff9c4';
-        if (st === 'excedido') return '#ffe0b2';
-        if (st === 'verde') return '#e8f5e9';
-        return '';
-    }
-    tb.innerHTML = itens.map(function(it) {
-        var alerta = it.alerta ? ' style="background:#fff3e0;"' : '';
-        var bg = corStatus(it.status_condicional);
-        if (bg && !it.alerta) alerta = ' style="background:' + bg + ';"';
-        var qtd = it.quantidade_separar != null ? it.quantidade_separar : it.quantidade_romaneio;
-        return '<tr' + alerta + '><td>' + escHtml(it.sequencia) + '</td><td><strong>' + escHtml(it.sku) + '</strong></td><td><strong>' + escHtml(it.status_condicional || '—') + '</strong></td><td>' + escHtml(qtd) + '</td><td>' + escHtml(it.endereco || '—') + '</td><td>' + escHtml(it.texto || it.alerta || '—') + '</td><td>' + escHtml(it.zona_label || '—') + '</td><td>' + escHtml(it.data_producao || '—') + '</td><td>' + escHtml(it.etiqueta || '—') + '</td><td>' + (it.alerta ? escHtml(it.alerta) : '') + '</td></tr>';
-    }).join('');
-    showMessage('Lista de separação: ' + itens.length + ' linha(s). Vermelho primeiro.', 'success');
 }
 
 async function wmsCriarRecebimento() {
@@ -3667,39 +3697,50 @@ async function wmsCriarInventario() {
 
 async function loadWmsInventarios() {
     _wmsSetTbody('wms-tbody-inventarios', 4, '<span class="loading">Carregando...</span>');
-    var data = await fetchAPI('/wms/inventarios');
     var tb = document.getElementById('wms-tbody-inventarios');
-    if (!tb) return;
-    if (!data || data.erro) {
-        tb.innerHTML = '<tr><td colspan="4">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
-        return;
+    try {
+        var data = await _wmsFetchGet('/wms/inventarios', 45000);
+        if (!tb) return;
+        if (!data || data.erro) {
+            tb.innerHTML = '<tr><td colspan="4">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar inventários.')) + '</td></tr>';
+            return;
+        }
+        var rows = data.inventarios || [];
+        tb.innerHTML = rows.length ? rows.map(function(i) {
+            return '<tr><td>' + escHtml(i.id) + '</td><td>' + escHtml(i.tipo) + '</td><td>' + escHtml(i.descricao) + '</td><td>' + escHtml(i.status) + '</td></tr>';
+        }).join('') : '<tr><td colspan="4">Nenhum inventário.</td></tr>';
+    } catch (e) {
+        if (tb) tb.innerHTML = '<tr><td colspan="4">' + escHtml((e && e.message) || 'Erro ao carregar inventários.') + '</td></tr>';
+        showMessage('Erro ao carregar inventários WMS.', 'error');
     }
-    var rows = data.inventarios || [];
-    tb.innerHTML = rows.length ? rows.map(function(i) {
-        return '<tr><td>' + escHtml(i.id) + '</td><td>' + escHtml(i.tipo) + '</td><td>' + escHtml(i.descricao) + '</td><td>' + escHtml(i.status) + '</td></tr>';
-    }).join('') : '<tr><td colspan="4">Nenhum inventário.</td></tr>';
 }
 
 async function loadWmsPesquisaSku() {
-    var q = (document.getElementById('wms-pesq-q') || {}).value || '';
-    var data = await fetchAPI('/wms/pesquisa-sku?q=' + encodeURIComponent(q));
     var tb = document.getElementById('wms-tbody-pesquisa');
-    if (!tb) return;
-    if (!data || data.erro) {
-        tb.innerHTML = '<tr><td colspan="7">' + escHtml((data && data.erro) || 'Erro') + '</td></tr>';
-        return;
+    var q = (document.getElementById('wms-pesq-q') || {}).value || '';
+    if (tb) tb.innerHTML = '<tr><td colspan="7"><span class="loading">Carregando...</span></td></tr>';
+    try {
+        var data = await _wmsFetchGet('/wms/pesquisa-sku?q=' + encodeURIComponent(q), 45000);
+        if (!tb) return;
+        if (!data || data.erro) {
+            tb.innerHTML = '<tr><td colspan="7">' + escHtml(_wmsErroMsg(data, 'Erro na pesquisa.')) + '</td></tr>';
+            return;
+        }
+        var res = data.resumo_estoque_real;
+        var head = '';
+        if (res && res.sku) {
+            head = '<tr style="background:#e3f2fd;font-weight:bold;"><td colspan="7">Estoque real WMS — ' +
+                escHtml(res.sku) + ': ' + escHtml(res.estoque_atual) + ' cx · ' + escHtml(res.posicao_atual) +
+                ' pos. · Status ' + escHtml(res.status_condicional || 'Verde') + '</td></tr>';
+        }
+        var rows = data.resultados || [];
+        tb.innerHTML = head + (rows.length ? rows.map(function(r) {
+            return '<tr><td>' + escHtml(r.sku) + '</td><td>' + escHtml(r.lote || '') + '</td><td>' + escHtml(r.data_validade || '') + '</td><td>' + escHtml(r.etiqueta || '') + '</td><td>' + escHtml(r.codigo_endereco || '') + '</td><td>' + escHtml(r.bloqueio_tipo || '') + '</td><td>' + escHtml(r.quantidade_caixas) + '</td></tr>';
+        }).join('') : (head ? '' : '<tr><td colspan="7">Nenhum resultado.</td></tr>'));
+    } catch (e) {
+        if (tb) tb.innerHTML = '<tr><td colspan="7">' + escHtml((e && e.message) || 'Erro na pesquisa.') + '</td></tr>';
+        showMessage('Erro na pesquisa WMS.', 'error');
     }
-    var res = data.resumo_estoque_real;
-    var head = '';
-    if (res && res.sku) {
-        head = '<tr style="background:#e3f2fd;font-weight:bold;"><td colspan="7">Estoque real WMS — ' +
-            escHtml(res.sku) + ': ' + escHtml(res.estoque_atual) + ' cx · ' + escHtml(res.posicao_atual) +
-            ' pos. · Status ' + escHtml(res.status_condicional || 'Verde') + '</td></tr>';
-    }
-    var rows = data.resultados || [];
-    tb.innerHTML = head + (rows.length ? rows.map(function(r) {
-        return '<tr><td>' + escHtml(r.sku) + '</td><td>' + escHtml(r.lote || '') + '</td><td>' + escHtml(r.data_validade || '') + '</td><td>' + escHtml(r.etiqueta || '') + '</td><td>' + escHtml(r.codigo_endereco || '') + '</td><td>' + escHtml(r.bloqueio_tipo || '') + '</td><td>' + escHtml(r.quantidade_caixas) + '</td></tr>';
-    }).join('') : (head ? '' : '<tr><td colspan="7">Nenhum resultado.</td></tr>'));
 }
 
 function initTerceirosTabs() {
