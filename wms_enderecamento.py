@@ -447,6 +447,122 @@ def _buscar_documento_terceiros_por_nf(conn, numero_nf):
     }, None
 
 
+def _buscar_recebimento_wms_por_nf(conn, documento_id=None, numero_nf=None):
+    t_rec = _tbl(conn, 'wms_recebimento')
+    if documento_id:
+        row = conn.execute(
+            f'''SELECT id, status, numero_nf FROM {t_rec}
+                WHERE terceiros_documento_id = ?
+                ORDER BY id DESC LIMIT 1''',
+            (int(documento_id),),
+        ).fetchone()
+        if row:
+            return _row_dict(row) or {}
+    nf = (numero_nf or '').strip()
+    if nf:
+        row = conn.execute(
+            f'''SELECT id, status, numero_nf FROM {t_rec}
+                WHERE numero_nf = ?
+                ORDER BY id DESC LIMIT 1''',
+            (nf,),
+        ).fetchone()
+        if row:
+            return _row_dict(row) or {}
+    return None
+
+
+def _quantidades_wms_recebimento(conn, recebimento_id):
+    if not recebimento_id:
+        return {}
+    t_rp = _tbl(conn, 'wms_recebimento_palete')
+    t_item = _tbl(conn, 'wms_palete_item')
+    rows = conn.execute(
+        f'''SELECT i.sku, SUM(COALESCE(i.quantidade_caixas, 0)) AS qtd
+            FROM {t_rp} rp
+            JOIN {t_item} i ON i.palete_id = rp.palete_id
+            WHERE rp.recebimento_id = ?
+            GROUP BY i.sku''',
+        (int(recebimento_id),),
+    ).fetchall()
+    out = {}
+    for r in rows or []:
+        rd = _row_dict(r) or {}
+        sku = (rd.get('sku') or '').strip()
+        if sku:
+            out[sku.upper()] = float(rd.get('qtd') or 0)
+    return out
+
+
+def _enriquecer_documento_nf_wms(conn, doc):
+    if not doc:
+        return doc
+    rec = _buscar_recebimento_wms_por_nf(conn, doc.get('documento_id'), doc.get('numero_nf'))
+    doc = dict(doc)
+    doc['recebimento_wms_id'] = rec.get('id') if rec else None
+    doc['recebimento_wms_status'] = rec.get('status') if rec else None
+    qtd_wms = _quantidades_wms_recebimento(conn, doc.get('recebimento_wms_id'))
+    itens = []
+    for it in doc.get('itens') or []:
+        rd = dict(it)
+        sku = (rd.get('sku') or '').strip()
+        q_wms = qtd_wms.get(sku.upper(), 0) if sku else 0
+        rd['quantidade_wms'] = q_wms
+        rd['pendente_wms'] = max(float(rd.get('quantidade_xml') or 0) - q_wms, 0)
+        rd['status_wms'] = 'ok' if q_wms >= float(rd.get('quantidade_xml') or 0) and float(rd.get('quantidade_xml') or 0) > 0 else (
+            'parcial' if q_wms > 0 else 'pendente'
+        )
+        itens.append(rd)
+    doc['itens'] = itens
+    return doc
+
+
+def _codigo_barras_produto_nf(item):
+    ean = ''.join(c for c in str((item or {}).get('codigo_ean') or '').strip() if c.isdigit())
+    sku = (item or {}).get('sku') or ''
+    if len(ean) in (8, 12, 13, 14):
+        fmt = 'EAN13' if len(ean) == 13 else ('EAN8' if len(ean) == 8 else 'CODE128')
+        return ean, fmt
+    if sku:
+        return str(sku).strip(), 'CODE128'
+    return ean or '0', 'CODE128'
+
+
+def _itens_para_etiquetas_nf(doc, sku_filtro=None, n_item_filtro=None):
+    itens_out = []
+    for it in doc.get('itens') or []:
+        sku = (it.get('sku') or '').strip()
+        n_item = it.get('n_item')
+        if sku_filtro and sku.upper() != str(sku_filtro).strip().upper():
+            continue
+        if n_item_filtro is not None and str(n_item) != str(n_item_filtro):
+            continue
+        cod, fmt = _codigo_barras_produto_nf(it)
+        q = float(it.get('quantidade_xml') or 0)
+        itens_out.append({
+            'n_item': n_item,
+            'sku': sku,
+            'descricao': it.get('descricao') or '',
+            'codigo_ean': it.get('codigo_ean') or '',
+            'codigo_barras': cod,
+            'formato_barras': fmt,
+            'quantidade_xml_fmt': int(q) if q == int(q) else q,
+            'unidade': it.get('unidade') or 'UN',
+        })
+    return itens_out
+
+
+def _html_etiquetas_produto_nf(doc, auto_print=True, sku_filtro=None, n_item_filtro=None):
+    itens = _itens_para_etiquetas_nf(doc, sku_filtro=sku_filtro, n_item_filtro=n_item_filtro)
+    return render_template(
+        'wms/etiquetas_produto_nf.html',
+        numero_nf=doc.get('numero_nf') or '',
+        fornecedor=doc.get('fornecedor') or '',
+        itens=itens,
+        total=len(itens),
+        auto_print=auto_print,
+    )
+
+
 def _concluir_terceiros_recebimento_wms(conn, documento_id, usuario=None):
     """Marca recebimento_concluido no módulo terceiros/descarga (sai da pendência)."""
     if not documento_id or not _terceiros_tabelas_existem(conn):
@@ -2214,9 +2330,11 @@ def api_wms_recebimentos_buscar_nf():
     try:
         _ensure_wms_recebimento_terceiros_columns(conn)
         doc, err = _buscar_documento_terceiros_por_nf(conn, numero_nf)
-        conn.close()
         if err:
+            conn.close()
             return jsonify({'erro': err}), 404
+        doc = _enriquecer_documento_nf_wms(conn, doc)
+        conn.close()
         return jsonify({'ok': True, 'documento': doc})
     except Exception as e:
         try:
@@ -2947,6 +3065,50 @@ def api_wms_etiqueta_enderecos():
         conn.close()
         if err:
             return jsonify({'erro': err}), 404
+        return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/etiqueta/nf-itens', methods=['GET'])
+def api_wms_etiqueta_nf_itens():
+    """Etiquetas de produto (SKU/EAN) dos itens da NF — impressão Zebra antes da bipagem."""
+    documento_id = request.args.get('documento_id', type=int)
+    numero_nf = (request.args.get('numero_nf') or request.args.get('nf') or '').strip()
+    sku = (request.args.get('sku') or '').strip() or None
+    n_item = request.args.get('n_item')
+    auto_print = request.args.get('auto_print', '1') != '0'
+    if not documento_id and not numero_nf:
+        return jsonify({'erro': 'Informe documento_id ou numero_nf.'}), 400
+    conn = _db()
+    try:
+        _ensure_wms_recebimento_terceiros_columns(conn)
+        if documento_id:
+            t_doc = _tbl_terceiros_doc(conn)
+            row = conn.execute(
+                f'''SELECT id, area, numero_nf, serie_nf, remetente_nome, recebimento_concluido
+                    FROM {t_doc} WHERE id = ?''',
+                (int(documento_id),),
+            ).fetchone()
+            if not row:
+                conn.close()
+                return jsonify({'erro': 'Documento não encontrado.'}), 404
+            doc, err = _buscar_documento_terceiros_por_nf(conn, (_row_dict(row) or {}).get('numero_nf') or numero_nf)
+        else:
+            doc, err = _buscar_documento_terceiros_por_nf(conn, numero_nf)
+        if err or not doc:
+            conn.close()
+            return jsonify({'erro': err or 'NF não encontrada.'}), 404
+        itens = _itens_para_etiquetas_nf(doc, sku_filtro=sku, n_item_filtro=n_item)
+        if not itens:
+            conn.close()
+            return jsonify({'erro': 'Nenhum item para imprimir.'}), 404
+        conn.close()
+        html = _html_etiquetas_produto_nf(doc, auto_print=auto_print, sku_filtro=sku, n_item_filtro=n_item)
         return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
     except Exception as e:
         try:

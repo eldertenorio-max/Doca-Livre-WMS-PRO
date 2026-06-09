@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Etiquetas NF {{ numero_nf }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  @page { size: auto; margin: 2mm; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #e8e8e8;
+    padding: 6px;
+    color: #000;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .toolbar {
+    position: sticky; top: 0; z-index: 9;
+    background: #fff; border: 1px solid #ccc; border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 12px;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  }
+  .toolbar p { font-size: 13px; color: #444; flex: 1; min-width: 200px; }
+  .toolbar button {
+    padding: 8px 16px; font-size: 14px; cursor: pointer;
+    border: none; border-radius: 6px; background: #1976d2; color: #fff;
+  }
+  .grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3mm;
+  }
+  .etq {
+    width: 50mm;
+    height: 76mm;
+    border: 1.2pt solid #000;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    page-break-inside: avoid;
+    padding: 2.5mm;
+  }
+  .brand {
+    font-size: 6pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 0.8pt solid #000;
+    padding-bottom: 1.5mm;
+    margin-bottom: 1.5mm;
+  }
+  .nf-lbl {
+    font-size: 7pt;
+    font-weight: 700;
+    margin-bottom: 1mm;
+  }
+  .sku {
+    font-size: 16pt;
+    font-weight: 900;
+    line-height: 1.05;
+    margin-bottom: 1mm;
+    word-break: break-all;
+  }
+  .desc {
+    font-size: 7pt;
+    line-height: 1.25;
+    min-height: 10mm;
+    max-height: 14mm;
+    overflow: hidden;
+    margin-bottom: 1.5mm;
+  }
+  .bc-wrap { text-align: center; margin: 1mm 0; flex: 1; display: flex; align-items: center; justify-content: center; }
+  .bc-wrap svg { width: 96%; max-height: 16mm; }
+  .ean-txt {
+    text-align: center;
+    font-size: 8pt;
+    font-family: Consolas, monospace;
+    font-weight: bold;
+    margin-bottom: 1.5mm;
+  }
+  .meta {
+    border-top: 0.8pt solid #000;
+    padding-top: 1.5mm;
+    font-size: 7pt;
+    display: flex;
+    justify-content: space-between;
+    gap: 2mm;
+  }
+  .meta strong { font-size: 8pt; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .toolbar { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <p><strong>{{ total }}</strong> etiqueta(s) · NF <strong>{{ numero_nf }}</strong>{% if fornecedor %} · {{ fornecedor }}{% endif %} · 50×76 mm · Zebra</p>
+  <button type="button" onclick="window.print()">Imprimir</button>
+</div>
+<div class="grid">
+{% for it in itens %}
+  <div class="etq">
+    <div class="brand">Ultrapão · Recebimento WMS</div>
+    <div class="nf-lbl">NF {{ numero_nf }}{% if it.n_item %} · Item {{ it.n_item }}{% endif %}</div>
+    <div class="sku">{{ it.sku or '—' }}</div>
+    <div class="desc">{{ it.descricao or '—' }}</div>
+    <div class="bc-wrap">
+      <svg class="bc" data-code="{{ it.codigo_barras }}" data-fmt="{{ it.formato_barras }}"></svg>
+    </div>
+    <div class="ean-txt">{{ it.codigo_barras or it.sku or '—' }}</div>
+    <div class="meta">
+      <span>Qtd NF: <strong>{{ it.quantidade_xml_fmt }}</strong></span>
+      <span>{{ it.unidade or 'UN' }}</span>
+    </div>
+  </div>
+{% endfor %}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script>
+(function() {
+  document.querySelectorAll('.bc').forEach(function(el) {
+    var code = el.getAttribute('data-code');
+    if (!code) return;
+    var fmt = el.getAttribute('data-fmt') || 'CODE128';
+    try {
+      JsBarcode(el, code, { format: fmt, width: 1.4, height: 40, displayValue: false, margin: 1 });
+    } catch (e) {
+      try {
+        JsBarcode(el, code, { format: 'CODE128', width: 1.4, height: 40, displayValue: false, margin: 1 });
+      } catch (e2) {}
+    }
+  });
+  {% if auto_print %}
+  window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 500); });
+  {% endif %}
+})();
+</script>
+</body>
+</html>
