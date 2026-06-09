@@ -2809,9 +2809,9 @@ function _habilitarBlocosDevolucao(sim) {
 async function loadConferenciaDevolucaoNf(nfId) {
     var idViagem = _devolucaoGetIdViagemAtivo();
     if (!idViagem || !nfId) return;
-    var conferencia = await fetchAPI('/devolucoes/conferencia/' + encodeURIComponent(idViagem) + '?devolucao_nf_id=' + encodeURIComponent(nfId) + '&_=' + Date.now());
+    var conferencia = await _modFetchGet('/devolucoes/conferencia/' + encodeURIComponent(idViagem) + '?devolucao_nf_id=' + encodeURIComponent(nfId), 90000);
     if (!conferencia || conferencia.erro) {
-        showMessage((conferencia && conferencia.erro) || 'Erro ao carregar itens da NF.', 'error');
+        showMessage(_modErroMsg(conferencia, 'Erro ao carregar itens da NF.'), 'error');
         return;
     }
     if (conferencia.placa !== undefined) {
@@ -2905,14 +2905,15 @@ async function loadEstoqueSpTempoReal(silencioso) {
     if (!silencioso && tbody) {
         tbody.innerHTML = '<tr><td colspan="7" class="loading">Carregando estoque atual...</td></tr>';
     }
-    var data = await fetchAPI('/estoque-sp/tempo-real?_=' + Date.now());
-    if (!data || data.erro) {
-        if (!silencioso) {
-            showMessage((data && data.erro) || 'Erro ao carregar estoque em tempo real.', 'error');
+    try {
+        var data = await _modFetchGet('/estoque-sp/tempo-real', 60000);
+        if (!data || data.erro) {
+            if (!silencioso) {
+                showMessage(_modErroMsg(data, 'Erro ao carregar estoque em tempo real.'), 'error');
+            }
+            if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading" style="color:#c62828;">' + escHtml(_modErroMsg(data, 'Erro ao carregar.')) + '</td></tr>';
+            return;
         }
-        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading" style="color:#c62828;">' + escHtml((data && data.erro) || 'Erro ao carregar.') + '</td></tr>';
-        return;
-    }
     var ea = data.estoque_atual || {};
     var elL = document.getElementById('estoque-sp-atual-linhas');
     var elS = document.getElementById('estoque-sp-atual-saldo');
@@ -2939,20 +2940,35 @@ async function loadEstoqueSpTempoReal(silencioso) {
         var cls = saldo < 0 ? ' style="color:#c62828;font-weight:bold;"' : (saldo > 0 ? ' style="color:#2e7d32;font-weight:bold;"' : '');
         return '<tr><td>' + escHtml(it.codigo_produto || '-') + '</td><td>' + escHtml(it.produto || '-') + '</td><td>' + escHtml(it.codigo_barras || '-') + '</td><td>' + escHtml(_estoqueSpFmtNum(it.qtd_saida)) + '</td><td>' + escHtml(_estoqueSpFmtNum(it.qtd_entrada_devolucao)) + '</td><td>' + escHtml(_estoqueSpFmtNum(it.qtd_entrada_terceiros)) + '</td><td' + cls + '>' + escHtml(_estoqueSpFmtNum(saldo)) + '</td></tr>';
     }).join('');
+    } catch (e) {
+        if (!silencioso && tbody) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading" style="color:#c62828;">' + escHtml((e && e.message) || 'Erro ao carregar estoque.') + '</td></tr>';
+        }
+    }
 }
 
 async function loadEstoqueSpResumo() {
+    var tbIds = ['estoque-sp-tbody-saida', 'estoque-sp-tbody-dev', 'estoque-sp-tbody-ter'];
+    tbIds.forEach(function(id) {
+        var tb = document.getElementById(id);
+        if (tb) tb.innerHTML = '<tr><td colspan="5" class="loading">Carregando...</td></tr>';
+    });
     var di = document.getElementById('estoque-sp-data-inicio');
     var df = document.getElementById('estoque-sp-data-fim');
     var q = [];
     if (di && di.value) q.push('data_inicio=' + encodeURIComponent(di.value));
     if (df && df.value) q.push('data_fim=' + encodeURIComponent(df.value));
     var url = '/estoque-sp/resumo' + (q.length ? '?' + q.join('&') : '');
-    var data = await fetchAPI(url);
-    if (!data || data.erro) {
-        showMessage((data && data.erro) || 'Erro ao carregar Estoque SP.', 'error');
-        return;
-    }
+    try {
+        var data = await _modFetchGet(url, 60000);
+        if (!data || data.erro) {
+            showMessage(_modErroMsg(data, 'Erro ao carregar Estoque SP.'), 'error');
+            tbIds.forEach(function(id) {
+                var tb = document.getElementById(id);
+                if (tb) tb.innerHTML = '<tr><td colspan="5" class="loading" style="color:#c62828;">' + escHtml(_modErroMsg(data, 'Erro ao carregar.')) + '</td></tr>';
+            });
+            return;
+        }
     function paint(sec, tbodyId, linhasId, qtdId) {
         var secData = data[sec];
         if (!secData) return;
@@ -2974,18 +2990,21 @@ async function loadEstoqueSpResumo() {
     paint('saida', 'estoque-sp-tbody-saida', 'estoque-sp-saida-linhas', 'estoque-sp-saida-qtd');
     paint('entrada_devolucao', 'estoque-sp-tbody-dev', 'estoque-sp-dev-linhas', 'estoque-sp-dev-qtd');
     paint('entrada_terceiros', 'estoque-sp-tbody-ter', 'estoque-sp-ter-linhas', 'estoque-sp-ter-qtd');
+    } catch (e) {
+        showMessage('Erro ao carregar Estoque SP: ' + ((e && e.message) || 'tente novamente.'), 'error');
+        tbIds.forEach(function(id) {
+            var tb = document.getElementById(id);
+            if (tb) tb.innerHTML = '<tr><td colspan="5" class="loading" style="color:#c62828;">' + escHtml((e && e.message) || 'Erro ao carregar.') + '</td></tr>';
+        });
+    }
 }
 
 function _wmsErroMsg(data, fallback) {
-    if (data && data._timeout) return 'Tempo esgotado ao carregar WMS. Tente novamente em alguns segundos.';
-    if (data && data.erro) return String(data.erro);
-    if (data === null) return 'Falha de conexão com o servidor.';
-    return fallback || 'Erro ao carregar dados WMS.';
+    return _modErroMsg(data, fallback || 'Erro ao carregar dados WMS.');
 }
 
 async function _wmsFetchGet(path, timeoutMs) {
-    var sep = path.indexOf('?') >= 0 ? '&' : '?';
-    return fetchAPIComTimeout(path + sep + '_=' + Date.now(), {}, timeoutMs || 45000);
+    return _modFetchGet(path, timeoutMs || 45000);
 }
 
 function _wmsSetTbody(id, cols, html) {
@@ -3978,6 +3997,21 @@ async function restaurarTerceirosUltimaNotaSeSessao() {
 }
 
 // Sistema de Abas
+function _carregErroMsg(data, fallback) {
+    if (data && data._timeout) return 'Tempo esgotado ao carregar. Tente novamente em alguns segundos.';
+    if (data && data.erro) return String(data.erro);
+    if (data === null) return 'Falha de conexão com o servidor.';
+    return fallback || 'Erro ao carregar dados.';
+}
+
+async function _carregFetchGet(path, timeoutMs) {
+    var sep = path.indexOf('?') >= 0 ? '&' : '?';
+    return fetchAPIComTimeout(path + sep + '_=' + Date.now(), {}, timeoutMs || 60000);
+}
+
+var _modErroMsg = _carregErroMsg;
+var _modFetchGet = _carregFetchGet;
+
 function initTabs() {
     const tabButtons = document.querySelectorAll('.tab-button');
     const tabContents = document.querySelectorAll('.tab-content');
@@ -4292,10 +4326,11 @@ async function loadBaixadosRavex(scope, opts) {
     }
     var usuariosOk = window._baixadosRavexUsuariosCarregados && window._baixadosRavexUsuariosCarregados[scope];
     try {
-        const resp = await fetchAPI('/ravex/importacoes' + qs + (usuariosOk ? '&usuarios=0' : '&usuarios=1'));
+        var path = '/ravex/importacoes' + qs + (usuariosOk ? '&usuarios=0' : '&usuarios=1');
+        const resp = await _carregFetchGet(path, 60000);
         if (!resp || resp.erro) {
             if (!cached) {
-                tbody.innerHTML = '<tr><td colspan="9" class="loading" style="color:#c62828;">' + (resp && resp.erro ? escapeHtml(resp.erro) : 'Erro ao carregar histórico') + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="loading" style="color:#c62828;">' + escapeHtml(_carregErroMsg(resp, 'Erro ao carregar histórico')) + '</td></tr>';
             }
             return;
         }
@@ -4530,24 +4565,58 @@ function loadAllData() {
 }
 
 async function loadPainelDevolucoes() {
-    const data = await fetchAPI('/devolucoes/painel');
-    if (!data) return;
+    var tabelasPainel = [['dev-tbody-painel-viagens', 7], ['dev-tbody-painel-itens', 3], ['dev-tbody-painel-veiculos', 3], ['dev-tbody-painel-docas', 3], ['dev-tbody-painel-usuarios', 3]];
+    var statIds = ['dev-stat-bipados', 'dev-stat-soma-quantidades', 'dev-stat-unicos', 'dev-stat-viagens', 'dev-stat-docas', 'dev-stat-usuarios'];
+    tabelasPainel.forEach(function(pair) {
+        var tb = document.getElementById(pair[0]);
+        if (tb) tb.innerHTML = '<tr><td colspan="' + pair[1] + '" class="loading">Carregando painel...</td></tr>';
+    });
+    statIds.forEach(function(sid) {
+        var el = document.getElementById(sid);
+        if (el) el.textContent = '…';
+    });
+    try {
+    const data = await _modFetchGet('/devolucoes/painel', 60000);
+    if (!data) {
+        var msgFalha = 'Não foi possível carregar o painel. Use «Atualizar aba» e tente novamente.';
+        statIds.forEach(function(sid) {
+            var el = document.getElementById(sid);
+            if (el) el.textContent = '—';
+        });
+        tabelasPainel.forEach(function(pair) {
+            var tb = document.getElementById(pair[0]);
+            if (tb) tb.innerHTML = '<tr><td colspan="' + pair[1] + '" class="loading" style="color:#c62828;">' + escapeHtml(msgFalha) + '</td></tr>';
+        });
+        destroyPainelDevolucoesCharts();
+        return;
+    }
     if (data.erro) {
         if (data._falhaGateway) {
             console.warn('Painel de devoluções: servidor indisponível (proxy/gateway).');
             var msgInd = 'Não foi possível carregar o painel no momento. Use o botão «Atualizar aba» no topo e tente de novo.';
-            ['dev-stat-bipados', 'dev-stat-soma-quantidades', 'dev-stat-unicos', 'dev-stat-viagens', 'dev-stat-docas', 'dev-stat-usuarios'].forEach(function(sid) {
+            statIds.forEach(function(sid) {
                 var el = document.getElementById(sid);
                 if (el) el.textContent = '—';
             });
-            [['dev-tbody-painel-viagens', 7], ['dev-tbody-painel-itens', 3], ['dev-tbody-painel-veiculos', 3], ['dev-tbody-painel-docas', 3], ['dev-tbody-painel-usuarios', 3]].forEach(function(pair) {
+            tabelasPainel.forEach(function(pair) {
                 var tb = document.getElementById(pair[0]);
                 if (tb) tb.innerHTML = '<tr><td colspan="' + pair[1] + '" class="loading">' + escapeHtml(msgInd) + '</td></tr>';
             });
             destroyPainelDevolucoesCharts();
             return;
         }
-        showMessage('Painel de devoluções: ' + data.erro, 'error');
+        var msgErro = _modErroMsg(data, 'Erro ao carregar painel de devoluções.');
+        showMessage('Painel de devoluções: ' + msgErro, 'error');
+        statIds.forEach(function(sid) {
+            var el = document.getElementById(sid);
+            if (el) el.textContent = '—';
+        });
+        tabelasPainel.forEach(function(pair) {
+            var tb = document.getElementById(pair[0]);
+            if (tb) tb.innerHTML = '<tr><td colspan="' + pair[1] + '" class="loading" style="color:#c62828;">' + escapeHtml(msgErro) + '</td></tr>';
+        });
+        destroyPainelDevolucoesCharts();
+        return;
     }
 
     const stats = data.estatisticas || {};
@@ -4618,6 +4687,19 @@ async function loadPainelDevolucoes() {
     });
 
     renderPainelDevolucoesCharts(data);
+    } catch (e) {
+        console.error('loadPainelDevolucoes:', e);
+        var msgExc = _modErroMsg(null, (e && e.message) || 'Erro ao carregar painel de devoluções.');
+        statIds.forEach(function(sid) {
+            var el = document.getElementById(sid);
+            if (el) el.textContent = '—';
+        });
+        tabelasPainel.forEach(function(pair) {
+            var tb = document.getElementById(pair[0]);
+            if (tb) tb.innerHTML = '<tr><td colspan="' + pair[1] + '" class="loading" style="color:#c62828;">' + escapeHtml(msgExc) + '</td></tr>';
+        });
+        destroyPainelDevolucoesCharts();
+    }
 }
 
 let terChartEtapas = null;
@@ -5178,8 +5260,21 @@ async function loadPainelTerceiros(opcoes) {
     }
 
     var seq = ++_terceirosPainelFetchSeq;
-    var data = await fetchAPIComTimeout('/terceiros/painel', {}, 15000);
-    if (!data || seq !== _terceirosPainelFetchSeq) return;
+    var data;
+    try {
+        data = await fetchAPIComTimeout('/terceiros/painel', {}, 15000);
+    } catch (ePainel) {
+        if (!renderizouLocal) {
+            _terceirosRenderPainelTerceirosData({ erro: _modErroMsg(null, (ePainel && ePainel.message) || 'Erro ao carregar painel de terceiros.') });
+        }
+        return;
+    }
+    if (!data || seq !== _terceirosPainelFetchSeq) {
+        if (!renderizouLocal && !data) {
+            _terceirosRenderPainelTerceirosData({ erro: _modErroMsg(null, 'Falha de conexão com o servidor.') });
+        }
+        return;
+    }
     if (data.erro && renderizouLocal) {
         console.error('loadPainelTerceiros:', data.erro);
         return;
@@ -8628,10 +8723,11 @@ async function loadTerceirosDocumentos(dataPreloaded) {
 async function loadTerceirosFornecedoresRecebidos(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-fornecedores-recebidos');
     if (!tbody) return;
+    try {
     const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
     void atualizarAlertasTerceirosHeader(_terceirosMesclarRecebidosLocaisNasRows(data.rows || []));
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(data, data.erro)) + '</td></tr>';
         _terceirosDestacarDocIdAposCarga = null;
         return;
     }
@@ -8648,6 +8744,11 @@ async function loadTerceirosFornecedoresRecebidos(dataPreloaded) {
     bindTerceirosExcluirButtons('[data-ter-excluir-fornecedor-doc]');
     bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
     aplicarDestaqueLinhaTerceirosDoc(tbody);
+    } catch (e) {
+        console.error('loadTerceirosFornecedoresRecebidos:', e);
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(null, (e && e.message) || 'Erro ao carregar a lista.')) + '</td></tr>';
+        _terceirosDestacarDocIdAposCarga = null;
+    }
 }
 
 function removerDocumentoDaPendenciaRecebimentoLocal(documentoId) {
@@ -8822,14 +8923,15 @@ async function loadTerceirosPendentesLancamento(dataPreloaded) {
     if (!tbodyMg || !tbodySp) return;
     var cols = TERCEIROS_COLS_LISTA_FLUXO;
     var msgErro = function(erro) {
-        var html = '<tr><td colspan="' + cols + '" class="loading">' + escapeHtml(erro) + '</td></tr>';
+        var html = '<tr><td colspan="' + cols + '" class="loading" style="color:#c62828;">' + escapeHtml(erro) + '</td></tr>';
         tbodyMg.innerHTML = html;
         tbodySp.innerHTML = html;
         if (tbodyOutras) tbodyOutras.innerHTML = html;
     };
+    try {
     const data = await _terceirosResolverDadosLista(dataPreloaded, tbodyMg, cols);
     if (data.erro) {
-        msgErro(data.erro);
+        msgErro(_modErroMsg(data, data.erro));
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'pendentes-lancamento');
@@ -8855,6 +8957,10 @@ async function loadTerceirosPendentesLancamento(dataPreloaded) {
     if (tbodyOutras) _terceirosPreencherTbodyPendenteLancamento(tbodyOutras, grupos.OUTRAS, 'OUTRAS');
     var painel = document.getElementById('terceiros-panel-pendentes-lancamento');
     if (painel) aplicarDestaqueLinhaTerceirosDoc(painel);
+    } catch (e) {
+        console.error('loadTerceirosPendentesLancamento:', e);
+        msgErro(_modErroMsg(null, (e && e.message) || 'Erro ao carregar a lista.'));
+    }
 }
 
 function renderTerceirosNotasLancadasRowHtml(row) {
@@ -8900,9 +9006,10 @@ function bindTerceirosEnviarMgNotasLancadas(tbody) {
 async function loadTerceirosNotasLancadas(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-notas-lancadas');
     if (!tbody) return;
+    try {
     const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(data, data.erro)) + '</td></tr>';
         return;
     }
     const rows = getTerceirosRowsNotasLancadasComHistorico(data.rows);
@@ -8943,14 +9050,19 @@ async function loadTerceirosNotasLancadas(dataPreloaded) {
         });
     });
     aplicarDestaqueLinhaTerceirosDoc(tbody);
+    } catch (e) {
+        console.error('loadTerceirosNotasLancadas:', e);
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(null, (e && e.message) || 'Erro ao carregar a lista.')) + '</td></tr>';
+    }
 }
 
 async function loadTerceirosNotasEnviadasMg(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-notas-enviadas-mg');
     if (!tbody) return;
+    try {
     const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(data, data.erro)) + '</td></tr>';
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'notas-enviadas-mg');
@@ -8974,14 +9086,19 @@ async function loadTerceirosNotasEnviadasMg(dataPreloaded) {
     bindTerceirosExcluirButtons('[data-ter-excluir-enviada-doc]');
     bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
     aplicarDestaqueLinhaTerceirosDoc(tbody);
+    } catch (e) {
+        console.error('loadTerceirosNotasEnviadasMg:', e);
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(null, (e && e.message) || 'Erro ao carregar a lista.')) + '</td></tr>';
+    }
 }
 
 async function loadTerceirosRecebimentosMg(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-recebimentos-mg');
     if (!tbody) return;
+    try {
     const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(data, data.erro)) + '</td></tr>';
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'recebimentos-mg');
@@ -9026,14 +9143,19 @@ async function loadTerceirosRecebimentosMg(dataPreloaded) {
         });
     });
     aplicarDestaqueLinhaTerceirosDoc(tbody);
+    } catch (e) {
+        console.error('loadTerceirosRecebimentosMg:', e);
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(null, (e && e.message) || 'Erro ao carregar a lista.')) + '</td></tr>';
+    }
 }
 
 async function loadTerceirosPendenciasMg(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-pendencias-mg');
     if (!tbody) return;
+    try {
     const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(data, data.erro)) + '</td></tr>';
         return;
     }
     const rows = getTerceirosRowsPorEtapa(data.rows, 'pendencias-mg');
@@ -9103,14 +9225,19 @@ async function loadTerceirosPendenciasMg(dataPreloaded) {
     });
     bindTerceirosSalvarMotoristaPlacaLista(tbody, 'pend-mg');
     aplicarDestaqueLinhaTerceirosDoc(tbody);
+    } catch (e) {
+        console.error('loadTerceirosPendenciasMg:', e);
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(null, (e && e.message) || 'Erro ao carregar a lista.')) + '</td></tr>';
+    }
 }
 
 async function loadTerceirosHistorico(dataPreloaded) {
     var tbody = document.getElementById('ter-tbody-historico');
     if (!tbody) return;
+    try {
     const data = await _terceirosResolverDadosLista(dataPreloaded, tbody, TERCEIROS_COLS_LISTA_FLUXO);
     if (data.erro) {
-        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading">' + escapeHtml(data.erro) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(data, data.erro)) + '</td></tr>';
         return;
     }
     var rowsMerged = _terceirosMesclarRecebidosLocaisNasRows(data.rows || []);
@@ -9145,6 +9272,10 @@ async function loadTerceirosHistorico(dataPreloaded) {
     bindTerceirosExcluirButtons('[data-ter-excluir-historico-doc]');
     bindTerceirosComprovanteButtons('[data-ter-comprovante-doc]');
     aplicarDestaqueLinhaTerceirosDoc(tbody);
+    } catch (e) {
+        console.error('loadTerceirosHistorico:', e);
+        tbody.innerHTML = '<tr><td colspan="' + TERCEIROS_COLS_LISTA_FLUXO + '" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(null, (e && e.message) || 'Erro ao carregar a lista.')) + '</td></tr>';
+    }
 }
 
 /** Incorpora NFs recém-enviadas no cache local (sem baixar todas as notas de novo). */
@@ -12643,8 +12774,12 @@ window.ravexLoadingShowCancelavel = function(msg, onCancel) {
 
 // Carregar Estatísticas (usado após bip, etc.)
 async function loadEstatisticas() {
-    const stats = await fetchAPI('/estatisticas');
-    if (stats) paintEstatisticas(stats);
+    try {
+        const stats = await _modFetchGet('/estatisticas', 30000);
+        if (stats && !stats.erro) paintEstatisticas(stats);
+    } catch (e) {
+        console.error('loadEstatisticas:', e);
+    }
 }
 
 function paintEstatisticas(stats) {
@@ -12839,15 +12974,22 @@ function initPainelPlacasFiltroData() {
 // Um único request: painel inteiro (estatísticas + viagens + gráficos) = carregamento instantâneo na rede
 async function loadPainelCompleto() {
     initPainelPlacasFiltroData();
+    var tbodyPlacas = document.getElementById('tbody-painel-placas-dia');
+    var tbodyViagens = document.getElementById('tbody-painel-viagens');
+    if (tbodyPlacas) tbodyPlacas.innerHTML = '<tr><td colspan="8" class="loading">Carregando placas do dia...</td></tr>';
+    if (tbodyViagens) tbodyViagens.innerHTML = '<tr><td colspan="6" class="loading">Carregando viagens...</td></tr>';
     var dataInput = document.getElementById('painel-placas-data');
     var qs = '';
     if (dataInput && dataInput.value) {
         qs = '?data=' + encodeURIComponent(dataInput.value);
     }
     try {
-    const data = await fetchAPI('/painel-completo' + qs);
+    const data = await _carregFetchGet('/painel-completo' + qs, 90000);
     if (!data) {
-        showMessage('Não foi possível carregar o painel.', 'error');
+        var err0 = _carregErroMsg(null, 'Não foi possível carregar o painel.');
+        showMessage(err0, 'error');
+        if (tbodyPlacas) tbodyPlacas.innerHTML = '<tr><td colspan="8" class="loading" style="color:#c62828;">' + escapeHtml(err0) + '</td></tr>';
+        if (tbodyViagens) tbodyViagens.innerHTML = '<tr><td colspan="6" class="loading" style="color:#c62828;">' + escapeHtml(err0) + '</td></tr>';
         return;
     }
     if (data.estatisticas) paintEstatisticas(data.estatisticas);
@@ -12962,7 +13104,10 @@ async function loadPainelCompleto() {
     }
     } catch (e) {
         console.error('loadPainelCompleto', e);
-        showMessage('Erro ao carregar o painel: ' + (e && e.message ? e.message : 'tente recarregar a página'), 'error');
+        var errP = (e && e.message) || 'Erro ao carregar o painel.';
+        showMessage('Erro ao carregar o painel: ' + errP, 'error');
+        if (tbodyPlacas) tbodyPlacas.innerHTML = '<tr><td colspan="8" class="loading" style="color:#c62828;">' + escapeHtml(errP) + '</td></tr>';
+        if (tbodyViagens) tbodyViagens.innerHTML = '<tr><td colspan="6" class="loading" style="color:#c62828;">' + escapeHtml(errP) + '</td></tr>';
     }
 }
 
@@ -13283,12 +13428,15 @@ function renderPainelDevolucoesCharts(data) {
 
 async function loadPainelGraficos() {
     const tbody = document.getElementById('tbody-painel-viagens');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="loading">Carregando gráficos...</td></tr>';
+    try {
     const [data, extras] = await Promise.all([
-        fetchAPI('/painel-graficos'),
-        fetchAPI('/painel-graficos-extras')
+        _modFetchGet('/painel-graficos', 60000),
+        _modFetchGet('/painel-graficos-extras', 60000)
     ]);
-    if (!data || !data.viagens) {
-        if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="loading">Nenhuma viagem com bipagem ainda.</td></tr>';
+    if (!data || data.erro || !data.viagens) {
+        var msgGraf = (data && data.erro) ? _modErroMsg(data, data.erro) : 'Nenhuma viagem com bipagem ainda.';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="loading"' + (data && data.erro ? ' style="color:#c62828;"' : '') + '>' + escapeHtml(msgGraf) + '</td></tr>';
         destroyCharts();
         return;
     }
@@ -13434,6 +13582,11 @@ async function loadPainelGraficos() {
             });
         }
     }
+    } catch (e) {
+        console.error('loadPainelGraficos:', e);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(null, (e && e.message) || 'Erro ao carregar gráficos.')) + '</td></tr>';
+        destroyCharts();
+    }
 }
 
 // Carregar BASE da Planilha (todas as colunas, com filtros)
@@ -13474,7 +13627,7 @@ async function loadBasePlanilha(showLoadingState) {
     if (unidade) params.set('unidade', unidade);
     const url = '/base-planilha' + (params.toString() ? '?' + params.toString() : '');
     try {
-        const data = await fetchAPI(url);
+        const data = await _carregFetchGet(url, 60000);
 
         if (!thead || !tbody) return;
 
@@ -13509,7 +13662,12 @@ async function loadBasePlanilha(showLoadingState) {
             }
         } else if (data === null || (data && data.erro)) {
             thead.innerHTML = '<tr><th>Erro</th></tr>';
-            tbody.innerHTML = '<tr><td class="loading">' + (data && data.erro ? escapeHtml(data.erro) : 'Erro ao carregar dados. Configure DATABASE_URL para usar as tabelas.') + '</td></tr>';
+            tbody.innerHTML = '<tr><td class="loading" style="color:#c62828;">' + escapeHtml(_carregErroMsg(data, 'Erro ao carregar dados. Configure DATABASE_URL para usar as tabelas.')) + '</td></tr>';
+        }
+    } catch (e) {
+        if (thead && tbody) {
+            thead.innerHTML = '<tr><th>Erro</th></tr>';
+            tbody.innerHTML = '<tr><td class="loading" style="color:#c62828;">' + escapeHtml((e && e.message) || 'Erro ao carregar base de produtos.') + '</td></tr>';
         }
     } finally {
         // Sem overlay: usuário pode trocar de aba enquanto carrega
@@ -15426,7 +15584,7 @@ async function loadConferencia(idViagem = null, opts) {
         } else if (isDev && window._devolucaoNfAtiva && window._devolucaoNfAtiva.id) {
             var fetchOptsNf = {};
             if (opts.signal) fetchOptsNf.signal = opts.signal;
-            conferencia = await fetchAPI('/devolucoes/conferencia/' + encodeURIComponent(idViagem) + '?devolucao_nf_id=' + encodeURIComponent(window._devolucaoNfAtiva.id) + '&_=' + Date.now(), fetchOptsNf);
+            conferencia = await _modFetchGet('/devolucoes/conferencia/' + encodeURIComponent(idViagem) + '?devolucao_nf_id=' + encodeURIComponent(window._devolucaoNfAtiva.id), 90000);
         } else if (isDev) {
             conferencia = { lista: [], id_viagem: idViagem };
         } else {
@@ -15435,7 +15593,7 @@ async function loadConferencia(idViagem = null, opts) {
         if (isDev) q += (q.indexOf('?') >= 0 ? '&' : '?') + 'fluxo=devolucao';
         var fetchOpts = {};
         if (opts.signal) fetchOpts.signal = opts.signal;
-        conferencia = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + q, fetchOpts);
+        conferencia = await fetchAPIComTimeout('/conferencia/' + encodeURIComponent(idViagem) + q, fetchOpts, 90000);
         }
         if (seq !== window._conferenciaLoadSeq) return;
         if (conferencia && conferencia._cancelado) {
@@ -16605,7 +16763,13 @@ async function loadExtrato(idViagemOpcional, opts) {
     }
     var qConf = '/conferencia/' + encodeURIComponent(idViagem) + '?limit=2000';
     if (fluxo === 'devolucao') qConf += '&fluxo=devolucao';
-    var extratoResp = await fetchAPI(qConf);
+    var extratoResp = await _carregFetchGet(qConf, 90000);
+    if (!extratoResp || extratoResp.erro) {
+        if (!pintouCache) {
+            tbody.innerHTML = '<tr><td colspan="11" class="loading" style="color:#c62828;">' + escapeHtml(_carregErroMsg(extratoResp, 'Erro ao carregar extrato.')) + '</td></tr>';
+        }
+        return;
+    }
     if (extratoResp && !extratoResp.erro) _cacheExtratoSalvar(idViagem, fluxo, extratoResp);
     var meta = _extratoMetaDeResp(extratoResp);
     _preencherExtratoTela(idViagem, _extratoListaDeResp(extratoResp), extratoResp, meta.viagemInfo, meta.periodo);
@@ -16640,7 +16804,8 @@ async function loadExtratoDevolucao(idViagemOpcional) {
     tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando extrato de devoluções...</td></tr>';
     if (resumoEl) resumoEl.style.display = 'none';
 
-    const extratoResp = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '?fluxo=devolucao&limit=2000');
+    try {
+    const extratoResp = await _modFetchGet('/conferencia/' + encodeURIComponent(idViagem) + '?fluxo=devolucao&limit=2000', 90000);
     if (extratoResp && !extratoResp.erro) _cacheExtratoSalvar(idViagem, 'devolucao', extratoResp);
     var metaDev = _extratoMetaDeResp(extratoResp);
     var periodo = metaDev.periodo;
@@ -16649,7 +16814,14 @@ async function loadExtratoDevolucao(idViagemOpcional) {
     const extrato = (extratoResp && extratoResp.lista_ja_agregada)
         ? extratoListaDev
         : ((typeof agruparConferenciaPorCodigoProduto === 'function') ? agruparConferenciaPorCodigoProduto(extratoListaDev) : extratoListaDev);
-    if (!extratoResp || extratoResp.erro || extrato.length === 0) {
+    if (!extratoResp || extratoResp.erro) {
+        var msgExtratoErro = _modErroMsg(extratoResp, 'Erro ao carregar extrato de devoluções.');
+        tbody.innerHTML = '<tr><td colspan="11" class="loading" style="color:#c62828;">' + escapeHtml(msgExtratoErro) + '</td></tr>';
+        if (resumoEl) resumoEl.style.display = 'none';
+        _extratoAtualizarItensBipadosMais([], 'devolucao');
+        return;
+    }
+    if (extrato.length === 0) {
         tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhum item encontrado para esta viagem no fluxo de devoluções.</td></tr>';
         if (resumoEl) resumoEl.style.display = 'none';
         _extratoAtualizarItensBipadosMais([], 'devolucao');
@@ -16691,6 +16863,12 @@ async function loadExtratoDevolucao(idViagemOpcional) {
         return _htmlLinhaExtratoTabela(item);
     }).join('');
     _extratoAtualizarItensBipadosMais(extrato, 'devolucao');
+    } catch (e) {
+        console.error('loadExtratoDevolucao:', e);
+        tbody.innerHTML = '<tr><td colspan="11" class="loading" style="color:#c62828;">' + escapeHtml(_modErroMsg(null, (e && e.message) || 'Erro ao carregar extrato.')) + '</td></tr>';
+        if (resumoEl) resumoEl.style.display = 'none';
+        _extratoAtualizarItensBipadosMais([], 'devolucao');
+    }
 }
 
 // Carregar Romaneio da Planilha (todas as colunas, com filtros por id_viagem, id_roteiro, codigo_cliente, codigo_produto, endereco, cidade)
@@ -16719,11 +16897,11 @@ async function loadRomaneio(showLoadingState) {
     if (cidade) params.set('cidade', cidade);
     const url = '/romaneio' + (params.toString() ? '?' + params.toString() : '');
     try {
-        const resp = await fetchAPI(url);
+        const resp = await _carregFetchGet(url, 60000);
         if (!thead || !tbody) return;
         if (!resp || resp.erro) {
             thead.innerHTML = '<tr><th>Erro</th></tr>';
-            tbody.innerHTML = '<tr><td colspan="10" class="loading">' + (resp && resp.erro ? resp.erro : 'Erro ao carregar. Configure DATABASE_URL para usar as tabelas.') + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" class="loading" style="color:#c62828;">' + escapeHtml(_carregErroMsg(resp, 'Erro ao carregar. Configure DATABASE_URL para usar as tabelas.')) + '</td></tr>';
             return;
         }
         const headers = resp.headers || [];
@@ -16741,6 +16919,11 @@ async function loadRomaneio(showLoadingState) {
                 return '<td>' + txt.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</td>';
             }).join('') + '</tr>';
         }).join('');
+    } catch (e) {
+        if (thead && tbody) {
+            thead.innerHTML = '<tr><th>Erro</th></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" class="loading" style="color:#c62828;">' + escapeHtml((e && e.message) || 'Erro ao carregar romaneio.') + '</td></tr>';
+        }
     } finally {
         // Sem overlay: usuário pode trocar de aba enquanto carrega
     }
@@ -16810,17 +16993,17 @@ async function loadDivergencias(force) {
         divergencias = await fetchAPIComTimeout('/divergencias?limit_viagens=50', {}, 120000);
     } catch (e) {
         divergenciasJaCarregado = false;
-        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">Erro ao carregar. Clique em Atualizar para tentar novamente.</p>';
+        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">' + escapeHtml(_modErroMsg(null, (e && e.message) || 'Erro ao carregar.')) + ' Clique em Atualizar para tentar novamente.</p>';
         return;
     }
     if (!divergencias) {
         divergenciasJaCarregado = false;
-        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">Não foi possível contactar o servidor. Verifique a conexão e clique em Atualizar.</p>';
+        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">' + escapeHtml(_modErroMsg(null, 'Não foi possível contactar o servidor. Verifique a conexão e clique em Atualizar.')) + '</p>';
         return;
     }
     if (divergencias && divergencias.erro) {
         divergenciasJaCarregado = false;
-        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">' + escapeHtml(divergencias.erro) + '</p>';
+        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">' + escapeHtml(_modErroMsg(divergencias, divergencias.erro)) + '</p>';
         return;
     }
     if (!Array.isArray(divergencias)) divergencias = [];
@@ -16847,8 +17030,8 @@ async function loadDivergencias(force) {
         let periodo = {};
         try {
             const [info, per] = await Promise.all([
-                fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/info'),
-                fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/periodo')
+                fetchAPIComTimeout('/viagem/' + encodeURIComponent(idViagem) + '/info', {}, 20000),
+                fetchAPIComTimeout('/viagem/' + encodeURIComponent(idViagem) + '/periodo', {}, 20000)
             ]);
             viagemInfo = info || {};
             periodo = per || {};
@@ -16948,17 +17131,17 @@ async function loadDivergenciasDevolucao(force) {
         divergencias = await fetchAPIComTimeout('/divergencias?fluxo=devolucao&limit_viagens=50', {}, 120000);
     } catch (e) {
         divergenciasDevolucaoJaCarregado = false;
-        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">Erro ao carregar. Clique em Atualizar para tentar novamente.</p>';
+        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">' + escapeHtml(_modErroMsg(null, (e && e.message) || 'Erro ao carregar.')) + ' Clique em Atualizar para tentar novamente.</p>';
         return;
     }
     if (!divergencias) {
         divergenciasDevolucaoJaCarregado = false;
-        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">Não foi possível contactar o servidor.</p>';
+        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">' + escapeHtml(_modErroMsg(null, 'Não foi possível contactar o servidor.')) + '</p>';
         return;
     }
     if (divergencias && divergencias.erro) {
         divergenciasDevolucaoJaCarregado = false;
-        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">' + escapeHtml(divergencias.erro) + '</p>';
+        conteudoEl.innerHTML = '<p class="loading" style="color: #c62828;">' + escapeHtml(_modErroMsg(divergencias, divergencias.erro)) + '</p>';
         return;
     }
     if (!Array.isArray(divergencias)) divergencias = [];
@@ -16985,8 +17168,8 @@ async function loadDivergenciasDevolucao(force) {
         let periodo = {};
         try {
             const dados = await Promise.all([
-                fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/info'),
-                fetchAPI('/viagem/' + encodeURIComponent(idViagem) + '/periodo?fluxo=devolucao')
+                fetchAPIComTimeout('/viagem/' + encodeURIComponent(idViagem) + '/info', {}, 20000),
+                fetchAPIComTimeout('/viagem/' + encodeURIComponent(idViagem) + '/periodo?fluxo=devolucao', {}, 20000)
             ]);
             viagemInfo = dados[0] || {};
             periodo = dados[1] || {};

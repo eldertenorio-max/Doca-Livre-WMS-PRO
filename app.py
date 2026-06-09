@@ -2932,7 +2932,7 @@ def _formatar_data_celula(val):
     return s
 
 
-def _get_viagem_info_planilha(id_viagem):
+def _get_viagem_info_planilha(id_viagem, conn=None):
     """Busca data expedição, placa, motorista, id_roteiro, identificador_rota: do banco. Sem planilha."""
     id_viagem = (id_viagem or '').strip()
     result = {'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': '', 'id_roteiro': '', 'id_viagem': id_viagem}
@@ -2940,7 +2940,9 @@ def _get_viagem_info_planilha(id_viagem):
         return result
     id_norm = _normalizar_id_viagem(id_viagem)
     if _usa_banco_para_dados():
-        conn = get_db()
+        own_conn = conn is None
+        if own_conn:
+            conn = get_db()
         try:
             if getattr(conn, 'kind', None) == 'pg':
                 rp = conn.execute(
@@ -2979,12 +2981,14 @@ def _get_viagem_info_planilha(id_viagem):
                                 result['id_roteiro'] = str(row_ir.get('id_roteiro') if hasattr(row_ir, 'get') else (row_ir[0] if len(row_ir) > 0 else '') or '').strip()
                             if not result['identificador_rota']:
                                 result['identificador_rota'] = str(row_ir.get('identificador_rota') if hasattr(row_ir, 'get') else (row_ir[1] if len(row_ir) > 1 else '') or '').strip()
-            conn.close()
-        except Exception:
-            try:
+            if own_conn:
                 conn.close()
-            except Exception:
-                pass
+        except Exception:
+            if own_conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
         return result
     return result
 
@@ -9047,8 +9051,14 @@ def _estatisticas_romaneio_por_item_banco(conn):
         ).fetchall()
         rows_peso = conn.execute(
             """SELECT COALESCE(NULLIF(TRIM(placa), ''), 'Sem placa') AS placa_eff,
-                      quantidade, peso_bruto
-               FROM romaneio_por_item WHERE dataset_id = ?""",
+                      SUM(
+                        CASE WHEN peso_bruto IS NOT NULL AND TRIM(COALESCE(peso_bruto::text, '')) != ''
+                        THEN (REPLACE(TRIM(peso_bruto::text), ',', '.')::numeric)
+                             * GREATEST(1, COALESCE(quantidade, 1))
+                        ELSE 0 END
+                      ) AS peso_total
+               FROM romaneio_por_item WHERE dataset_id = ?
+               GROUP BY COALESCE(NULLIF(TRIM(placa), ''), 'Sem placa')""",
             (ds_s,),
         ).fetchall()
     except Exception:
@@ -9081,19 +9091,11 @@ def _estatisticas_romaneio_por_item_banco(conn):
     for r in rows_peso or []:
         placa_eff = (r.get('placa_eff') or 'Sem placa').strip() or 'Sem placa'
         try:
-            qtd = int(r.get('quantidade') or 0)
-        except (TypeError, ValueError):
-            qtd = 0
-        try:
-            peso_val = r.get('peso_bruto')
-            if peso_val is None:
-                p = 0.0
-            else:
-                p = float(str(peso_val).replace(',', '.').strip() or 0)
+            p = float(r.get('peso_total') or 0)
         except (TypeError, ValueError):
             p = 0.0
-        peso_por_placa[placa_eff] = peso_por_placa.get(placa_eff, 0.0) + p * max(1, qtd)
-        peso_total += p * max(1, qtd)
+        peso_por_placa[placa_eff] = peso_por_placa.get(placa_eff, 0.0) + p
+        peso_total += p
     out['qtd_roteiros'] = qtd_roteiros
     out['qtd_veiculos'] = qtd_veiculos
     out['itens_total_por_codigo'] = itens_por_codigo
@@ -9633,7 +9635,7 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None):
         placa = placa_override.get(vid) or vb.get('placa') or ''
         id_roteiro = vb.get('id_roteiro') or ''
         if not placa or not id_roteiro:
-            info = _get_viagem_info_planilha(vid)
+            info = _get_viagem_info_planilha(vid, conn=conn)
             if not placa:
                 placa = (info.get('placa') or '').strip()
             if not id_roteiro:
