@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>Etiquetas endereço WMS{% if titulo %} — {{ titulo }}{% endif %}</title>
+<title>Etiquetas longarina WMS{% if titulo %} — {{ titulo }}{% endif %}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   @page { size: auto; margin: 2mm; }
@@ -29,9 +29,20 @@
   .toolbar button.sec { background: #555; }
 
   .bloco-faixa { margin-bottom: 16px; page-break-inside: avoid; font-family: Arial, Helvetica, sans-serif; }
-  .faixa-titulo {
-    font-size: 11px; color: #555; padding: 0 0 6px 2px;
+  .bloco-camara {
+    margin-bottom: 24px;
+    page-break-after: always;
   }
+  .bloco-camara:last-child { page-break-after: auto; }
+  .camara-titulo {
+    font-size: 13px;
+    font-weight: 800;
+    color: #1565c0;
+    padding: 8px 4px 10px;
+    border-bottom: 2px solid #1565c0;
+    margin-bottom: 10px;
+  }
+  .faixa-titulo { font-size: 11px; color: #555; padding: 0 0 6px 2px; }
   .faixa {
     display: flex;
     flex-direction: row;
@@ -40,7 +51,7 @@
     width: fit-content;
   }
 
-  /* 50 × 76 mm — formato comum em Zebra (2" × 3") */
+  /* 50 × 76 mm — etiqueta colada na longarina do rack */
   .etq-loc {
     width: 50mm;
     height: 76mm;
@@ -72,10 +83,10 @@
     line-height: 1;
   }
   .addr-table .val {
-    font-size: 19pt;
+    font-size: 20pt;
     font-weight: 900;
     line-height: 1;
-    padding: 2.2mm 0 2mm;
+    padding: 2.4mm 0 2.2mm;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.3px;
   }
@@ -116,7 +127,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 1.5mm 2mm 1mm;
+    padding: 2mm 2mm 1mm;
     border-top: 0.8pt solid #000;
   }
   .bc-wrap {
@@ -127,28 +138,21 @@
   .bc-wrap svg {
     width: 44mm;
     max-width: 100%;
-    height: 12mm;
+    height: 13mm;
   }
   .code-line {
-    margin-top: 2mm;
-    font-size: 9pt;
+    margin-top: 2.2mm;
+    font-size: 9.5pt;
     font-weight: 700;
     font-family: 'Courier New', Consolas, monospace;
-    letter-spacing: 0.8px;
+    letter-spacing: 0.6px;
     text-align: center;
     line-height: 1.2;
-  }
-  .cat-badge {
-    margin-top: 1.5mm;
-    font-size: 8pt;
-    font-weight: 900;
-    text-align: center;
-    letter-spacing: 0.5px;
   }
 
   .foot {
     border-top: 0.8pt solid #000;
-    padding: 1.5mm 2mm;
+    padding: 1.8mm 2mm;
     font-size: 5.5pt;
     font-weight: 700;
     font-family: Arial, Helvetica, sans-serif;
@@ -160,42 +164,75 @@
 
   @media print {
     body { background: #fff; padding: 0; margin: 0; }
-    .toolbar, .faixa-titulo { display: none !important; }
+    .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
     .faixa { gap: 0; }
-    .etq-loc {
-      border: 1pt solid #000;
-      margin: 0;
-    }
+    .etq-loc { border: 1pt solid #000; margin: 0; }
     .bloco-faixa { margin-bottom: 0; }
   }
 </style>
 </head>
 <body>
 <div class="toolbar">
-  <p><strong>{{ total }}</strong> etiqueta(s) · <strong>50×76 mm</strong> · Zebra · Formato <strong>21-R-01-1</strong> · Nível 1 = PICKING ↓ · Nível 2+ = PULMÃO ↑</p>
+  <p><strong>{{ total }}</strong> etiqueta(s) longarina · <strong>50×76 mm</strong> · Zebra · Bipagem: <strong>21.13.1.1</strong> · Cole na longarina/pilar do rack · Nível 1 = PICKING ↓ · Nível 2+ = PULMÃO ↑</p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
 </div>
 
+{% if agrupado_por_camara %}
+{% for bloco in agrupado_por_camara %}
+<div class="bloco-camara">
+  <div class="camara-titulo">Câmara {{ bloco.camara }} — {{ bloco.faixas|length }} coluna(s) · {{ bloco.total_niveis }} etiqueta(s)</div>
+  {% for faixa in bloco.faixas %}
+  <div class="bloco-faixa">
+    <div class="faixa-titulo">Coluna {{ faixa.titulo }} — {{ faixa.etiquetas|length }} nível(is)</div>
+    <div class="faixa">
+      {% for e in faixa.etiquetas %}
+      <div class="etq-loc">
+        <table class="addr-table" aria-label="Endereço {{ e.dotted }}">
+          <colgroup><col><col><col><col><col style="width: 12mm"></colgroup>
+          <tr>
+            <td class="lbl">Rua</td><td class="lbl">Prédio</td><td class="lbl">Nível</td><td class="lbl">Apto</td>
+            <td class="zone-col" rowspan="2">
+              <div class="zone-stack {{ 'picking' if e.picking else 'pulmao' }}">
+                {% if e.picking %}<div class="zone-txt">PICKING</div><div class="arrow down" aria-hidden="true"></div>
+                {% else %}<div class="arrow up" aria-hidden="true"></div><div class="zone-txt">PULMÃO</div>{% endif %}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="val">{{ e.rua_num }}</td><td class="val">{{ e.predio }}</td>
+            <td class="val">{{ e.nivel }}</td><td class="val">{{ e.apto }}</td>
+          </tr>
+        </table>
+        <div class="etq-mid">
+          <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
+          <div class="code-line">{{ e.dotted }}</div>
+        </div>
+        <div class="foot">intercollector.com.br</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+{% else %}
 {% for faixa in faixas %}
 <div class="bloco-faixa">
   <div class="faixa-titulo">Coluna {{ faixa.titulo }} — {{ faixa.etiquetas|length }} nível(is)</div>
   <div class="faixa">
     {% for e in faixa.etiquetas %}
     <div class="etq-loc">
-      <table class="addr-table" aria-label="Endereço {{ e.codigo }}">
+      <table class="addr-table" aria-label="Endereço {{ e.dotted }}">
         <colgroup>
-          <col>
-          <col>
-          <col>
-          <col>
+          <col><col><col><col>
           <col style="width: 12mm">
         </colgroup>
         <tr>
-          <td class="lbl">Câm</td>
           <td class="lbl">Rua</td>
-          <td class="lbl">Pos</td>
-          <td class="lbl">Nív</td>
+          <td class="lbl">Prédio</td>
+          <td class="lbl">Nível</td>
+          <td class="lbl">Apto</td>
           <td class="zone-col" rowspan="2">
             <div class="zone-stack {{ 'picking' if e.picking else 'pulmao' }}">
               {% if e.picking %}
@@ -209,10 +246,10 @@
           </td>
         </tr>
         <tr>
-          <td class="val">{{ e.camara }}</td>
-          <td class="val">{{ e.rua }}</td>
-          <td class="val">{{ e.posicao }}</td>
+          <td class="val">{{ e.rua_num }}</td>
+          <td class="val">{{ e.predio }}</td>
           <td class="val">{{ e.nivel }}</td>
+          <td class="val">{{ e.apto }}</td>
         </tr>
       </table>
       <div class="etq-mid">
@@ -220,14 +257,14 @@
           <svg class="bc" data-code="{{ e.barcode }}"></svg>
         </div>
         <div class="code-line">{{ e.dotted }}</div>
-        {% if e.cat %}<div class="cat-badge">Cat. {{ e.cat }}</div>{% endif %}
       </div>
-      <div class="foot">ULTRAPÃO · STOCK SYSTEM WMS</div>
+      <div class="foot">intercollector.com.br</div>
     </div>
     {% endfor %}
   </div>
 </div>
 {% endfor %}
+{% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
@@ -238,8 +275,8 @@
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
-        width: 1.15,
-        height: 34,
+        width: 1.2,
+        height: 36,
         displayValue: false,
         margin: 0,
         lineColor: '#000000',

@@ -447,6 +447,103 @@ body.hub-modulos-aberto .container {
     border-bottom-color: #0ea5e9;
 }
 
+/* Recebimento WMS — fases e tipos de código */
+.wms-rec-fase {
+    margin-bottom: 16px;
+    border: 1px solid #d0d7de;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+}
+.wms-rec-fase-titulo {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: #1a365d;
+    border-bottom: 1px solid #e8ecf0;
+}
+.wms-rec-fase-num {
+    flex-shrink: 0;
+    min-width: 28px;
+    height: 28px;
+    line-height: 28px;
+    text-align: center;
+    border-radius: 50%;
+    background: #1976d2;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 800;
+}
+.wms-rec-fase-corpo {
+    padding: 12px 14px 14px;
+}
+.wms-rec-fase-desc {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #555;
+}
+.wms-rec-fase-desc strong { color: #333; }
+.wms-rec-fase--nf .wms-rec-fase-titulo { background: #e3f2fd; }
+.wms-rec-fase--nf .wms-rec-fase-num { background: #1565c0; }
+.wms-rec-fase--etq-prod .wms-rec-fase-titulo { background: #fff8e1; }
+.wms-rec-fase--etq-prod .wms-rec-fase-num { background: #f9a825; color: #333; }
+.wms-rec-fase--bip .wms-rec-fase-titulo { background: #f3e5f5; }
+.wms-rec-fase--bip .wms-rec-fase-num { background: #7b1fa2; }
+.wms-rec-etapa {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border-left: 4px solid #90a4ae;
+    background: #fafbfc;
+}
+.wms-rec-etapa:last-child { margin-bottom: 0; }
+.wms-rec-etapa-titulo {
+    margin: 0 0 4px 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #37474f;
+}
+.wms-rec-etapa-codigo {
+    display: inline-block;
+    margin: 0 0 6px 0;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    border-radius: 4px;
+    background: #eceff1;
+    color: #455a64;
+}
+.wms-rec-etapa--palete { border-left-color: #1976d2; }
+.wms-rec-etapa--palete .wms-rec-etapa-codigo { background: #e3f2fd; color: #0d47a1; }
+.wms-rec-etapa--produto { border-left-color: #f9a825; }
+.wms-rec-etapa--produto .wms-rec-etapa-codigo { background: #fff8e1; color: #e65100; }
+.wms-rec-etapa--imprimir { border-left-color: #5c6bc0; }
+.wms-rec-etapa--imprimir .wms-rec-etapa-codigo { background: #e8eaf6; color: #283593; }
+.wms-rec-etapa--destino { border-left-color: #2e7d32; }
+.wms-rec-etapa--destino .wms-rec-etapa-codigo { background: #e8f5e9; color: #1b5e20; }
+.wms-rec-guia-codigos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+    font-size: 11px;
+    line-height: 1.35;
+}
+.wms-rec-guia-item {
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    background: #fff;
+}
+.wms-rec-guia-item strong { display: block; font-size: 12px; margin-bottom: 2px; }
+
 .devolucoes-titulo-principal {
     font-size: 1.05rem;
     color: #366092;

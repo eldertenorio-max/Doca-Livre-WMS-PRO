@@ -3012,6 +3012,470 @@ function _wmsSetTbody(id, cols, html) {
     if (tb) tb.innerHTML = '<tr><td colspan="' + cols + '">' + html + '</td></tr>';
 }
 
+window._wmsRelatorioUltimo = null;
+
+function _wmsFmtDuracaoMin(min) {
+    if (min == null || min === '' || isNaN(min)) return '—';
+    min = parseInt(min, 10);
+    if (min < 60) return min + ' min';
+    var h = Math.floor(min / 60);
+    var m = min % 60;
+    return h + ' h ' + m + ' min';
+}
+
+function _wmsLabelEventoHistorico(tipo) {
+    var map = {
+        palete_criado: 'Palete vinculado',
+        produto_bipado: 'Produto bipado',
+        movimentacao: 'Movimentação / armazenagem',
+        controle_palete_entrada: 'Entrada palete',
+        controle_palete_saida: 'Saída palete',
+        controle_palete_retorno: 'Retorno palete'
+    };
+    return map[tipo] || tipo || '—';
+}
+
+var _WMS_CTRL_MOTIVO_LABELS = {
+    expedicao: 'Expedição', transferencia: 'Transferência', auditoria: 'Auditoria',
+    manutencao: 'Manutenção', outro: 'Outro', nao_informado: 'Não informado',
+    retorno_expedicao: 'Retorno expedição', retorno_transferencia: 'Retorno transferência',
+    retorno_auditoria: 'Retorno auditoria', reentrada: 'Reentrada', retorno: 'Retorno'
+};
+
+function _wmsLabelMotivoPalete(m) {
+    return _WMS_CTRL_MOTIVO_LABELS[m] || m || '—';
+}
+
+function _wmsLabelTipoControlePalete(t) {
+    var map = { entrada: 'Entrada', saida: 'Saída', retorno: 'Retorno' };
+    return map[t] || t || '—';
+}
+
+window._wmsControlePaleteAtual = null;
+
+function _wmsPaintControlePaleteDetalhe(data) {
+    window._wmsControlePaleteAtual = data;
+    var box = document.getElementById('wms-ctrl-palete-detalhe');
+    var acoes = document.getElementById('wms-ctrl-acoes');
+    var formSaida = document.getElementById('wms-ctrl-form-saida');
+    var formRetorno = document.getElementById('wms-ctrl-form-retorno');
+    var tbHist = document.getElementById('wms-tbody-ctrl-historico');
+    if (!box) return;
+    var pal = data.palete || {};
+    var fora = !!data.fora_armazem;
+    var saidaAberta = data.saida_aberta || null;
+    var statusCor = fora ? '#e65100' : '#2e7d32';
+    var html = '<h4 style="margin:0 0 10px 0;">Palete <strong>' + escHtml(pal.etiqueta || '—') + '</strong></h4>';
+    html += '<div class="extrato-resumo-grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px;">';
+    html += '<div><span class="extrato-resumo-label">Status:</span> <strong style="color:' + statusCor + ';">' + escHtml(pal.status || '—') + '</strong></div>';
+    html += '<div><span class="extrato-resumo-label">NF:</span> ' + escHtml(pal.numero_nf || '—') + '</div>';
+    html += '<div><span class="extrato-resumo-label">Fornecedor:</span> ' + escHtml(pal.fornecedor || '—') + '</div>';
+    html += '<div><span class="extrato-resumo-label">Endereço:</span> ' + escHtml(pal.codigo_endereco || '—') + '</div>';
+    if (fora) html += '<div style="grid-column:1/-1;color:#e65100;"><strong>⚠ Palete fora do armazém</strong>';
+    if (saidaAberta) {
+        html += ' — saída em ' + escHtml(formatarDataHoraPtBR(saidaAberta.criado_em));
+        html += ' · ' + escHtml(_wmsLabelMotivoPalete(saidaAberta.motivo));
+        if (saidaAberta.destino_externo) html += ' → ' + escHtml(saidaAberta.destino_externo);
+        html += '</div>';
+    } else if (fora) html += '</div>';
+    html += '</div>';
+    var itens = data.itens || [];
+    if (itens.length) {
+        html += '<p style="margin:10px 0 4px 0;font-size:12px;"><strong>Itens no palete:</strong> ';
+        html += itens.map(function(it) {
+            return escHtml(it.sku) + ' (' + escHtml(it.quantidade_caixas) + ' cx)';
+        }).join(' · ');
+        html += '</p>';
+    }
+    box.innerHTML = html;
+    box.style.display = 'block';
+    if (acoes) acoes.style.display = 'block';
+    if (formSaida) formSaida.style.display = (!fora && !saidaAberta) ? 'block' : 'none';
+    if (formRetorno) formRetorno.style.display = (fora || saidaAberta) ? 'block' : 'none';
+    if (tbHist) {
+        var hist = data.historico || [];
+        if (!hist.length) {
+            tbHist.innerHTML = '<tr><td colspan="7" class="loading">Sem registros de entrada/saída.</td></tr>';
+        } else {
+            tbHist.innerHTML = hist.map(function(h) {
+                return '<tr><td>' + escHtml(formatarDataHoraPtBR(h.criado_em)) + '</td>'
+                    + '<td><strong>' + escHtml(_wmsLabelTipoControlePalete(h.tipo)) + '</strong></td>'
+                    + '<td>' + escHtml(h.subtipo || '—') + '</td>'
+                    + '<td>' + escHtml(_wmsLabelMotivoPalete(h.motivo)) + '</td>'
+                    + '<td>' + escHtml(h.codigo_endereco || '—') + '</td>'
+                    + '<td>' + escHtml(h.destino_externo || '—') + '</td>'
+                    + '<td>' + escHtml(h.criado_por || '—') + '</td></tr>';
+            }).join('');
+        }
+    }
+}
+
+async function loadWmsControlePaleteConsulta() {
+    var etq = (document.getElementById('wms-ctrl-etiqueta') || {}).value || '';
+    etq = String(etq).trim();
+    if (!etq) {
+        showMessage('Bipe ou informe a etiqueta do palete (22 caracteres).', 'warning');
+        return;
+    }
+    var tbHist = document.getElementById('wms-tbody-ctrl-historico');
+    if (tbHist) tbHist.innerHTML = '<tr><td colspan="7" class="loading">Consultando...</td></tr>';
+    try {
+        var data = await _wmsFetchGet('/wms/paletes/controle?etiqueta=' + encodeURIComponent(etq), 45000);
+        if (!data || data.erro) {
+            showMessage(_modErroMsg(data, 'Palete não encontrado.'), 'error');
+            if (tbHist) tbHist.innerHTML = '<tr><td colspan="7" class="loading" style="color:#c62828;">' + escHtml(_modErroMsg(data, 'Não encontrado.')) + '</td></tr>';
+            return;
+        }
+        _wmsPaintControlePaleteDetalhe(data);
+    } catch (e) {
+        showMessage((e && e.message) || 'Erro ao consultar palete.', 'error');
+        if (tbHist) tbHist.innerHTML = '<tr><td colspan="7" class="loading" style="color:#c62828;">Erro.</td></tr>';
+    }
+}
+
+async function loadWmsControlePaletesFora() {
+    var tb = document.getElementById('wms-tbody-ctrl-fora');
+    var cnt = document.getElementById('wms-ctrl-fora-contagem');
+    if (!tb) return;
+    tb.innerHTML = '<tr><td colspan="9" class="loading">Carregando...</td></tr>';
+    try {
+        var data = await _wmsFetchGet('/wms/paletes/controle?lista=fora', 45000);
+        var lista = (data && data.paletes_fora) || [];
+        if (cnt) cnt.textContent = '(' + lista.length + ')';
+        if (!lista.length) {
+            tb.innerHTML = '<tr><td colspan="9" class="loading">Nenhum palete fora do armazém no momento.</td></tr>';
+            return;
+        }
+        tb.innerHTML = lista.map(function(p) {
+            return '<tr><td><strong>' + escHtml(p.etiqueta) + '</strong></td>'
+                + '<td>' + escHtml(p.status) + '</td><td>' + escHtml(p.numero_nf || '—') + '</td>'
+                + '<td>' + escHtml(p.ultimo_endereco || '—') + '</td>'
+                + '<td>' + escHtml(formatarDataHoraPtBR(p.saida_em)) + '</td>'
+                + '<td>' + escHtml(_wmsLabelMotivoPalete(p.motivo_saida)) + '</td>'
+                + '<td>' + escHtml(p.destino_externo || '—') + '</td>'
+                + '<td>' + escHtml(p.operador_saida || '—') + '</td>'
+                + '<td><button type="button" class="btn btn-secondary btn-sm wms-ctrl-abrir-etq" data-etq="' + escHtml(p.etiqueta) + '">Abrir</button></td></tr>';
+        }).join('');
+        tb.querySelectorAll('.wms-ctrl-abrir-etq').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var inp = document.getElementById('wms-ctrl-etiqueta');
+                if (inp) inp.value = btn.getAttribute('data-etq') || '';
+                loadWmsControlePaleteConsulta();
+            });
+        });
+    } catch (e) {
+        tb.innerHTML = '<tr><td colspan="9" class="loading" style="color:#c62828;">' + escHtml((e && e.message) || 'Erro.') + '</td></tr>';
+    }
+}
+
+async function wmsRegistrarSaidaPalete() {
+    var cur = window._wmsControlePaleteAtual;
+    if (!cur || !cur.palete || !cur.palete.id) {
+        showMessage('Consulte um palete antes de registrar a saída.', 'warning');
+        return;
+    }
+    if (!confirm('Confirmar saída do palete ' + (cur.palete.etiqueta || '') + ' do armazém?')) return;
+    var motivo = (document.getElementById('wms-ctrl-motivo-saida') || {}).value || 'nao_informado';
+    var destino = (document.getElementById('wms-ctrl-destino-saida') || {}).value || '';
+    var obs = (document.getElementById('wms-ctrl-obs-saida') || {}).value || '';
+    var data = await fetchAPI('/wms/paletes/controle', {
+        method: 'POST',
+        body: JSON.stringify({
+            acao: 'saida',
+            palete_id: cur.palete.id,
+            motivo: motivo,
+            destino_externo: destino,
+            observacao: obs
+        })
+    });
+    if (!data || data.erro) {
+        showMessage(_modErroMsg(data, 'Não foi possível registrar a saída.'), 'error');
+        return;
+    }
+    showMessage('Saída registrada. Palete marcado como fora do armazém.', 'success');
+    _wmsPaintControlePaleteDetalhe(data);
+    loadWmsControlePaletesFora();
+    var elF = document.getElementById('wms-stat-pal-fora');
+    if (elF) elF.textContent = String((parseInt(elF.textContent, 10) || 0) + 1);
+}
+
+async function wmsRegistrarRetornoPalete() {
+    var cur = window._wmsControlePaleteAtual;
+    if (!cur || !cur.palete || !cur.palete.id) {
+        showMessage('Consulte um palete antes de registrar o retorno.', 'warning');
+        return;
+    }
+    if (!confirm('Confirmar retorno do palete ' + (cur.palete.etiqueta || '') + '?')) return;
+    var motivo = (document.getElementById('wms-ctrl-motivo-retorno') || {}).value || 'retorno';
+    var end = (document.getElementById('wms-ctrl-endereco-retorno') || {}).value || '';
+    var obs = (document.getElementById('wms-ctrl-obs-retorno') || {}).value || '';
+    var data = await fetchAPI('/wms/paletes/controle', {
+        method: 'POST',
+        body: JSON.stringify({
+            acao: 'retorno',
+            palete_id: cur.palete.id,
+            motivo: motivo,
+            codigo_endereco: end,
+            observacao: obs
+        })
+    });
+    if (!data || data.erro) {
+        showMessage(_modErroMsg(data, 'Não foi possível registrar o retorno.'), 'error');
+        return;
+    }
+    showMessage(end.trim() ? 'Retorno registrado e palete rearmazenado.' : 'Retorno registrado — palete em conferência.', 'success');
+    _wmsPaintControlePaleteDetalhe(data);
+    loadWmsControlePaletesFora();
+    var elF = document.getElementById('wms-stat-pal-fora');
+    if (elF) {
+        var n = (parseInt(elF.textContent, 10) || 1) - 1;
+        elF.textContent = String(Math.max(0, n));
+    }
+}
+
+function loadWmsControlePaletesAba() {
+    loadWmsControlePaletesFora();
+    var inp = document.getElementById('wms-ctrl-etiqueta');
+    if (inp && !inp.dataset.bound) {
+        inp.dataset.bound = '1';
+        inp.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); loadWmsControlePaleteConsulta(); }
+        });
+    }
+}
+
+function wmsInitHistoricoNfAba() {
+    var nfIn = document.getElementById('wms-hist-nf');
+    if (nfIn && !nfIn.dataset.bound) {
+        nfIn.dataset.bound = '1';
+        nfIn.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); loadWmsHistoricoNf(); }
+        });
+    }
+    var recNf = document.getElementById('wms-rec-nf');
+    if (nfIn && recNf && String(recNf.value || '').trim() && !String(nfIn.value || '').trim()) {
+        nfIn.value = recNf.value.trim();
+    }
+}
+
+function wmsInitRelatoriosAba() {
+    var di = document.getElementById('wms-rel-data-inicio');
+    var df = document.getElementById('wms-rel-data-fim');
+    if (!di || di.dataset.inited) return;
+    di.dataset.inited = '1';
+    var hoje = new Date();
+    var ini = new Date(hoje);
+    ini.setDate(ini.getDate() - 30);
+    var fmt = function(d) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+    if (!di.value) di.value = fmt(ini);
+    if (!df.value) df.value = fmt(hoje);
+}
+
+async function loadWmsHistoricoNf() {
+    var box = document.getElementById('wms-historico-conteudo');
+    if (!box) return;
+    var nf = (document.getElementById('wms-hist-nf') || {}).value || '';
+    var rid = (document.getElementById('wms-hist-rec-id') || {}).value || '';
+    if (!String(nf).trim() && !String(rid).trim()) {
+        showMessage('Informe o número da NF ou o ID do recebimento WMS.', 'warning');
+        return;
+    }
+    box.innerHTML = '<p class="loading">Carregando histórico...</p>';
+    var q = [];
+    if (String(nf).trim()) q.push('numero_nf=' + encodeURIComponent(String(nf).trim()));
+    if (String(rid).trim()) q.push('recebimento_id=' + encodeURIComponent(String(rid).trim()));
+    try {
+        var data = await _wmsFetchGet('/wms/historico-nf?' + q.join('&'), 60000);
+        if (!data || data.erro) {
+            box.innerHTML = '<p class="loading" style="color:#c62828;">' + escHtml(_modErroMsg(data, 'Histórico não encontrado.')) + '</p>';
+            return;
+        }
+        _wmsPaintHistoricoNf(box, data);
+    } catch (e) {
+        box.innerHTML = '<p class="loading" style="color:#c62828;">' + escHtml((e && e.message) || 'Erro ao carregar histórico.') + '</p>';
+    }
+}
+
+function _wmsPaintHistoricoNf(box, data) {
+    var rec = data.recebimento || {};
+    var per = data.periodo || {};
+    var tot = data.totais || {};
+    var ter = data.terceiros || {};
+    var html = '';
+    html += '<div class="extrato-resumo-box" style="margin-bottom:14px;">';
+    html += '<h4 style="margin:0 0 10px 0;color:#1976D2;">NF ' + escHtml(rec.numero_nf || '—') + ' · Recebimento WMS #' + escHtml(rec.id || '—') + '</h4>';
+    html += '<div class="extrato-resumo-grid">';
+    html += '<section class="extrato-resumo-grupo"><h4 class="extrato-resumo-grupo-titulo">Documento</h4>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Fornecedor:</span> ' + escHtml(rec.fornecedor || '—') + '</div>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Placa:</span> ' + escHtml(rec.placa || '—') + '</div>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Status WMS:</span> <strong>' + escHtml(rec.status || '—') + '</strong></div>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Origem:</span> ' + escHtml(rec.origem || '—') + '</div>';
+    if (ter.motorista) html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Motorista:</span> ' + escHtml(ter.motorista) + '</div>';
+    html += '</section>';
+    html += '<section class="extrato-resumo-grupo"><h4 class="extrato-resumo-grupo-titulo">Bipagem</h4>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Início:</span> <strong>' + escHtml(formatarDataHoraPtBR(per.inicio_bipagem)) + '</strong></div>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Fim:</span> <strong>' + escHtml(formatarDataHoraPtBR(per.fim_bipagem)) + '</strong></div>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Duração:</span> ' + escHtml(_wmsFmtDuracaoMin(per.duracao_minutos)) + '</div>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Operadores:</span> ' + escHtml((per.operadores || []).join(', ') || per.criado_por || '—') + '</div>';
+    html += '</section>';
+    html += '<section class="extrato-resumo-grupo"><h4 class="extrato-resumo-grupo-titulo">Totais</h4>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Paletes:</span> ' + escHtml(tot.paletes) + '</div>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Linhas bipadas:</span> ' + escHtml(tot.linhas_bipagem) + '</div>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">SKUs:</span> ' + escHtml(tot.skus_unicos) + '</div>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Caixas:</span> <strong>' + escHtml(tot.caixas_bipadas) + '</strong></div>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Movimentações:</span> ' + escHtml(tot.movimentacoes) + '</div>';
+    html += '</section></div></div>';
+
+    var itensNf = data.itens_nf || [];
+    if (itensNf.length) {
+        html += '<h4 style="margin:14px 0 8px 0;">Conferência NF × WMS</h4>';
+        html += '<div class="table-container"><table class="data-table"><thead><tr><th>Item</th><th>SKU</th><th>Descrição</th><th>Qtd NF</th><th>Qtd WMS</th><th>Pendente</th><th>Status</th><th>EAN</th></tr></thead><tbody>';
+        html += itensNf.map(function(it) {
+            return '<tr><td>' + escHtml(it.n_item) + '</td><td><strong>' + escHtml(it.sku) + '</strong></td><td>' + escHtml(it.descricao) + '</td>'
+                + '<td>' + escHtml(it.quantidade_xml) + '</td><td><strong>' + escHtml(it.quantidade_wms) + '</strong></td>'
+                + '<td>' + escHtml(it.pendente_wms) + '</td><td>' + escHtml(it.status_wms) + '</td><td>' + escHtml(it.codigo_ean || '') + '</td></tr>';
+        }).join('');
+        html += '</tbody></table></div>';
+    }
+
+    var bipados = data.itens_bipados || [];
+    html += '<h4 style="margin:14px 0 8px 0;">Tudo que foi bipado</h4>';
+    if (!bipados.length) {
+        html += '<p class="info-text">Nenhum item bipado neste recebimento.</p>';
+    } else {
+        html += '<div class="table-container"><table class="data-table"><thead><tr><th>Data/hora</th><th>SKU</th><th>Descrição</th><th>Lote</th><th>Produção</th><th>Validade</th><th>Cx</th><th>Palete (22)</th><th>Status palete</th></tr></thead><tbody>';
+        html += bipados.map(function(it) {
+            return '<tr><td>' + escHtml(formatarDataHoraPtBR(it.bipado_em)) + '</td><td><strong>' + escHtml(it.sku) + '</strong></td>'
+                + '<td>' + escHtml(it.descricao) + '</td><td>' + escHtml(it.lote || '—') + '</td>'
+                + '<td>' + escHtml(it.data_producao || '—') + '</td><td>' + escHtml(it.data_validade || '—') + '</td>'
+                + '<td><strong>' + escHtml(it.quantidade_caixas) + '</strong></td>'
+                + '<td>' + escHtml(it.palete_etiqueta || '—') + '</td><td>' + escHtml(it.palete_status || '—') + '</td></tr>';
+        }).join('');
+        html += '</tbody></table></div>';
+    }
+
+    var pals = data.paletes || [];
+    if (pals.length) {
+        html += '<h4 style="margin:14px 0 8px 0;">Paletes</h4>';
+        html += '<div class="table-container"><table class="data-table"><thead><tr><th>Etiqueta</th><th>Status</th><th>Endereço</th><th>Estado</th><th>Criado em</th><th>Atualizado</th><th>Operador</th></tr></thead><tbody>';
+        html += pals.map(function(p) {
+            return '<tr><td><strong>' + escHtml(p.etiqueta) + '</strong></td><td>' + escHtml(p.status) + '</td>'
+                + '<td>' + escHtml(p.endereco || '—') + '</td><td>' + escHtml(p.estado_fisico || '—') + '</td>'
+                + '<td>' + escHtml(formatarDataHoraPtBR(p.criado_em)) + '</td>'
+                + '<td>' + escHtml(formatarDataHoraPtBR(p.atualizado_em)) + '</td>'
+                + '<td>' + escHtml(p.criado_por || '—') + '</td></tr>';
+        }).join('');
+        html += '</tbody></table></div>';
+    }
+
+    var linha = data.linha_do_tempo || [];
+    html += '<h4 style="margin:14px 0 8px 0;">Linha do tempo</h4>';
+    if (!linha.length) {
+        html += '<p class="info-text">Sem eventos registrados.</p>';
+    } else {
+        html += '<div class="table-container"><table class="data-table"><thead><tr><th>Data/hora</th><th>Evento</th><th>Descrição</th><th>Detalhe</th><th>Usuário</th></tr></thead><tbody>';
+        html += linha.map(function(ev) {
+            return '<tr><td>' + escHtml(formatarDataHoraPtBR(ev.quando)) + '</td><td>' + escHtml(_wmsLabelEventoHistorico(ev.tipo)) + '</td>'
+                + '<td>' + escHtml(ev.descricao) + '</td><td>' + escHtml(ev.detalhe || '') + '</td>'
+                + '<td>' + escHtml(ev.usuario || '—') + '</td></tr>';
+        }).join('');
+        html += '</tbody></table></div>';
+    }
+    box.innerHTML = html;
+}
+
+var _WMS_REL_COL_LABELS = {
+    id: 'ID', numero_nf: 'NF', fornecedor: 'Fornecedor', placa: 'Placa', status: 'Status', origem: 'Origem',
+    qtd_paletes: 'Paletes', qtd_caixas: 'Caixas', criado_em: 'Criado em', atualizado_em: 'Atualizado', criado_por: 'Operador',
+    bipado_em: 'Bipado em', palete: 'Palete', sku: 'SKU', descricao: 'Descrição', lote: 'Lote',
+    data_producao: 'Produção', data_validade: 'Validade', quantidade_caixas: 'Caixas',
+    etiqueta: 'Etiqueta', endereco: 'Endereço', bloqueio_tipo: 'Bloqueio',
+    tipo: 'Tipo', origem_codigo: 'Origem', destino: 'Destino', destino_codigo: 'Destino',
+    concluida_em: 'Concluída em', concluida_por: 'Concluído por', observacao: 'Observação',
+    total_caixas: 'Total caixas', linhas_bipagem: 'Linhas', paletes: 'Paletes',
+    prod_mais_antiga: 'Prod. + antiga', validade_max: 'Val. máxima',
+    operador: 'Operador', itens_bipados: 'Itens bipados', caixas: 'Caixas',
+    camara: 'Câmara', descricao_cam: 'Descrição', total_posicoes: 'Total pos.', cadastradas: 'Cadastradas',
+    ocupadas: 'Ocupadas', vazias: 'Vazias', ocupacao_pct: 'Ocupação %', qtd_bipada: 'Qtd bipada',
+    subtipo: 'Subtipo', motivo: 'Motivo', destino_externo: 'Destino externo', codigo_endereco: 'Endereço',
+    status_palete: 'Status palete', ultimo_endereco: 'Último endereço', saida_em: 'Saída em',
+    motivo_saida: 'Motivo saída', operador_saida: 'Operador saída'
+};
+
+function _wmsRelColLabel(col) {
+    return _WMS_REL_COL_LABELS[col] || col;
+}
+
+async function loadWmsRelatorio() {
+    var tipo = (document.getElementById('wms-rel-tipo') || {}).value || 'recebimentos';
+    var di = (document.getElementById('wms-rel-data-inicio') || {}).value || '';
+    var df = (document.getElementById('wms-rel-data-fim') || {}).value || '';
+    var thead = document.querySelector('#wms-tabela-relatorio thead');
+    var tbody = document.getElementById('wms-tbody-relatorio');
+    var titulo = document.getElementById('wms-relatorio-titulo');
+    var contagem = document.getElementById('wms-relatorio-contagem');
+    var btnCsv = document.getElementById('btn-wms-relatorio-csv');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td class="loading">Gerando relatório...</td></tr>';
+    if (btnCsv) btnCsv.disabled = true;
+    window._wmsRelatorioUltimo = null;
+    var q = 'tipo=' + encodeURIComponent(tipo);
+    if (di && tipo !== 'ocupacao' && tipo !== 'nfs_pendentes' && tipo !== 'paletes_fora') q += '&data_inicio=' + encodeURIComponent(di);
+    if (df && tipo !== 'ocupacao' && tipo !== 'nfs_pendentes' && tipo !== 'paletes_fora') q += '&data_fim=' + encodeURIComponent(df);
+    try {
+        var data = await _wmsFetchGet('/wms/relatorios?' + q, 90000);
+        if (!data || data.erro) {
+            tbody.innerHTML = '<tr><td class="loading" style="color:#c62828;">' + escHtml(_modErroMsg(data, 'Erro ao gerar relatório.')) + '</td></tr>';
+            return;
+        }
+        window._wmsRelatorioUltimo = data;
+        var cols = data.colunas || [];
+        var linhas = data.linhas || [];
+        if (titulo) titulo.textContent = data.titulo || 'Relatório';
+        if (contagem) contagem.textContent = linhas.length + ' linha(s).';
+        if (thead) thead.innerHTML = '<tr>' + cols.map(function(c) { return '<th>' + escHtml(_wmsRelColLabel(c)) + '</th>'; }).join('') + '</tr>';
+        if (!linhas.length) {
+            tbody.innerHTML = '<tr><td colspan="' + Math.max(cols.length, 1) + '" class="loading">Nenhum registro no período.</td></tr>';
+        } else {
+            tbody.innerHTML = linhas.map(function(row) {
+                return '<tr>' + cols.map(function(c) {
+                    var v = row[c];
+                    if (c.indexOf('_em') >= 0 || c === 'bipado_em') v = formatarDataHoraPtBR(v);
+                    return '<td>' + escHtml(v != null && v !== '' ? v : '—') + '</td>';
+                }).join('') + '</tr>';
+            }).join('');
+        }
+        if (btnCsv) btnCsv.disabled = !linhas.length;
+    } catch (e) {
+        tbody.innerHTML = '<tr><td class="loading" style="color:#c62828;">' + escHtml((e && e.message) || 'Erro.') + '</td></tr>';
+    }
+}
+
+function wmsExportarRelatorioCsv() {
+    var data = window._wmsRelatorioUltimo;
+    if (!data || !data.linhas || !data.linhas.length) return;
+    var cols = data.colunas || [];
+    var sep = ';';
+    var linhas = [cols.map(function(c) { return _wmsRelColLabel(c); }).join(sep)];
+    data.linhas.forEach(function(row) {
+        linhas.push(cols.map(function(c) {
+            var v = row[c];
+            if (v == null) return '';
+            var s = String(v).replace(/"/g, '""');
+            if (s.indexOf(sep) >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0) s = '"' + s + '"';
+            return s;
+        }).join(sep));
+    });
+    var blob = new Blob(['\ufeff' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'wms-' + (data.tipo || 'relatorio') + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
 function _wmsMostrarSubtab(tab) {
     tab = tab || 'painel';
     document.querySelectorAll('.wms-subtab[data-wms-tab]').forEach(function(b) {
@@ -3025,9 +3489,13 @@ function _wmsMostrarSubtab(tab) {
     });
     if (tab === 'painel') loadWmsPainel();
     else if (tab === 'localizacoes') loadWmsLocalizacoes();
+    else if (tab === 'etiquetas-longarina') loadWmsEtiquetasLongarinaAba();
     else if (tab === 'produtos') loadWmsProdutos();
     else if (tab === 'movimentacoes') loadWmsMovimentacoes();
     else if (tab === 'recebimento') loadWmsRecebimentos();
+    else if (tab === 'controle-paletes') loadWmsControlePaletesAba();
+    else if (tab === 'historico-nf') wmsInitHistoricoNfAba();
+    else if (tab === 'relatorios') wmsInitRelatoriosAba();
     else if (tab === 'separacao') loadWmsSeparacao();
     else if (tab === 'inventario') loadWmsInventarios();
 }
@@ -3045,8 +3513,21 @@ function initWmsEnderecamento() {
     if (bEtqCol) bEtqCol.addEventListener('click', wmsImprimirEtqColuna);
     var bEtqCam = document.getElementById('btn-wms-etq-camara');
     if (bEtqCam) bEtqCam.addEventListener('click', wmsImprimirEtqCamara);
+    var bEtqTodas = document.getElementById('btn-wms-etq-todas');
+    if (bEtqTodas) bEtqTodas.addEventListener('click', wmsImprimirEtqTodasLongarinas);
+    var bEtqRes = document.getElementById('btn-wms-etq-resumo-atualizar');
+    if (bEtqRes) bEtqRes.addEventListener('click', loadWmsEtqLongarinaResumo);
     var bEtqDemo = document.getElementById('btn-wms-etq-demo');
     if (bEtqDemo) bEtqDemo.addEventListener('click', wmsImprimirEtqDemo);
+    var bEtqUnico = document.getElementById('btn-wms-etq-unico');
+    if (bEtqUnico) bEtqUnico.addEventListener('click', wmsImprimirEtqUnico);
+    var etqCodUnico = document.getElementById('wms-etq-codigo-unico');
+    if (etqCodUnico && !etqCodUnico.dataset.bound) {
+        etqCodUnico.dataset.bound = '1';
+        etqCodUnico.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); wmsImprimirEtqUnico(); }
+        });
+    }
     var bProd = document.getElementById('btn-wms-produtos');
     if (bProd) bProd.addEventListener('click', loadWmsProdutos);
     var bPesq = document.getElementById('btn-wms-pesquisa');
@@ -3060,6 +3541,17 @@ function initWmsEnderecamento() {
     wmsInitRecebimentoIntegracaoNf();
     var bRecL = document.getElementById('btn-wms-rec-lista');
     if (bRecL) bRecL.addEventListener('click', loadWmsRecebimentos);
+    var bVerHist = document.getElementById('btn-wms-ver-historico-nf');
+    if (bVerHist) bVerHist.addEventListener('click', function() {
+        var nf = (document.getElementById('wms-rec-nf') || {}).value || '';
+        var histNf = document.getElementById('wms-hist-nf');
+        if (histNf && nf.trim()) histNf.value = nf.trim();
+        var rid = window._wmsNfDoc && window._wmsNfDoc.recebimento_wms_id;
+        var histRid = document.getElementById('wms-hist-rec-id');
+        if (histRid && rid) histRid.value = String(rid);
+        _wmsMostrarSubtab('historico-nf');
+        if (nf.trim() || rid) loadWmsHistoricoNf();
+    });
     var bConf = document.getElementById('btn-wms-conferir-palete');
     if (bConf) bConf.addEventListener('click', wmsConferirPalete);
     var bBipPal = document.getElementById('btn-wms-bip-palete');
@@ -3080,9 +3572,23 @@ function initWmsEnderecamento() {
     if (bInv) bInv.addEventListener('click', wmsCriarInventario);
     var bRedis = document.getElementById('btn-wms-redistribuir');
     if (bRedis) bRedis.addEventListener('click', wmsRedistribuirLayout);
+    var bCtrlBusca = document.getElementById('btn-wms-ctrl-buscar');
+    if (bCtrlBusca) bCtrlBusca.addEventListener('click', loadWmsControlePaleteConsulta);
+    var bCtrlFora = document.getElementById('btn-wms-ctrl-atualizar-fora');
+    if (bCtrlFora) bCtrlFora.addEventListener('click', loadWmsControlePaletesFora);
+    var bCtrlSaida = document.getElementById('btn-wms-ctrl-registrar-saida');
+    if (bCtrlSaida) bCtrlSaida.addEventListener('click', wmsRegistrarSaidaPalete);
+    var bCtrlRet = document.getElementById('btn-wms-ctrl-registrar-retorno');
+    if (bCtrlRet) bCtrlRet.addEventListener('click', wmsRegistrarRetornoPalete);
+    var bHist = document.getElementById('btn-wms-historico-buscar');
+    if (bHist) bHist.addEventListener('click', loadWmsHistoricoNf);
+    var bRel = document.getElementById('btn-wms-relatorio-gerar');
+    if (bRel) bRel.addEventListener('click', loadWmsRelatorio);
+    var bRelCsv = document.getElementById('btn-wms-relatorio-csv');
+    if (bRelCsv) bRelCsv.addEventListener('click', wmsExportarRelatorioCsv);
 
     window._wmsIniciarModulo = function(tab) {
-        var abasWms = ['painel', 'localizacoes', 'produtos', 'movimentacoes', 'recebimento', 'separacao', 'inventario', 'pesquisa'];
+        var abasWms = ['painel', 'localizacoes', 'etiquetas-longarina', 'produtos', 'movimentacoes', 'recebimento', 'controle-paletes', 'historico-nf', 'relatorios', 'separacao', 'inventario', 'pesquisa'];
         var t = (tab || 'painel').trim();
         if (abasWms.indexOf(t) === -1) t = 'painel';
         _wmsMostrarSubtab(t);
@@ -3116,9 +3622,11 @@ async function loadWmsPainel() {
         var elM = document.getElementById('wms-stat-mov-pend');
         var elR = document.getElementById('wms-stat-rec-abertos');
         var elI = document.getElementById('wms-stat-inv-ativos');
+        var elP = document.getElementById('wms-stat-pal-fora');
         if (elM) elM.textContent = String(data.movimentacoes_pendentes || 0);
         if (elR) elR.textContent = String(data.recebimentos_abertos || 0);
         if (elI) elI.textContent = String(data.inventarios_ativos || 0);
+        if (elP) elP.textContent = String(data.paletes_fora_armazem || 0);
         var box = document.getElementById('wms-camaras-barras');
         if (box) {
             var cams = data.camaras || [];
@@ -3167,7 +3675,7 @@ async function loadWmsPainel() {
 }
 
 async function loadWmsLocalizacoes() {
-    _wmsSetTbody('wms-tbody-localizacoes', 9, '<span class="loading">Carregando endereços...</span>');
+    _wmsSetTbody('wms-tbody-localizacoes', 10, '<span class="loading">Carregando endereços...</span>');
     var tb = document.getElementById('wms-tbody-localizacoes');
     var cam = document.getElementById('wms-filtro-camara');
     var cat = document.getElementById('wms-filtro-cat-zona');
@@ -3181,7 +3689,7 @@ async function loadWmsLocalizacoes() {
         var data = await _wmsFetchGet(path, 60000);
         if (!tb) return;
         if (!data || data.erro) {
-            tb.innerHTML = '<tr><td colspan="9">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar localizações.')) + '</td></tr>';
+            tb.innerHTML = '<tr><td colspan="10">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar localizações.')) + '</td></tr>';
             if (data && data.erro) showMessage(data.erro, 'error');
             return;
         }
@@ -3191,12 +3699,13 @@ async function loadWmsLocalizacoes() {
             var zona = r.zona_armazenagem || (niv === 1 ? 'picking' : 'pulmao');
             var zl = zona === 'picking' ? 'PICKING' : 'PULMÃO';
             var cod = escHtml(r.codigo_endereco || '');
+            var bcLong = escHtml(r.barcode_longarina || '');
             var codJs = String(r.codigo_endereco || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            return '<tr><td>' + cod + '</td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(r.categoria_zona || r.area || '—') + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Etiqueta</button></td></tr>';
-        }).join('') : '<tr><td colspan="9">Nenhuma localização. Clique em Atualizar ou use o painel para recalcular o layout.</td></tr>';
+            return '<tr><td>' + cod + '</td><td><strong>' + bcLong + '</strong></td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(r.categoria_zona || r.area || '—') + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Longarina</button></td></tr>';
+        }).join('') : '<tr><td colspan="10">Nenhuma localização. Clique em Atualizar ou use o painel para recalcular o layout.</td></tr>';
     } catch (e) {
         if (tb) {
-            tb.innerHTML = '<tr><td colspan="9">' + escHtml((e && e.message) || 'Erro ao carregar localizações.') + '</td></tr>';
+            tb.innerHTML = '<tr><td colspan="10">' + escHtml((e && e.message) || 'Erro ao carregar localizações.') + '</td></tr>';
         }
         showMessage('Erro ao carregar localizações WMS.', 'error');
     }
@@ -3213,21 +3722,76 @@ window.wmsImprimirEtqEndereco = function(codigo) {
 };
 
 function wmsImprimirEtqColuna() {
-    var cam = (document.getElementById('wms-filtro-camara') || {}).value || '';
+    var cam = (document.getElementById('wms-etq-camara') || {}).value || '';
     var rua = ((document.getElementById('wms-etq-rua') || {}).value || '').trim().toUpperCase();
     var pos = (document.getElementById('wms-etq-pos') || {}).value || '';
-    if (!cam) { showMessage('Selecione a câmara no filtro.', 'error'); return; }
-    if (!rua || !pos) { showMessage('Informe Rua (letra) e Posição da coluna.', 'error'); return; }
+    if (!cam) { showMessage('Selecione a câmara (Rua).', 'error'); return; }
+    if (!rua || !pos) { showMessage('Informe a rua interna (letra) e o prédio (posição).', 'error'); return; }
     var url = '/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam) +
         '&rua=' + encodeURIComponent(rua) + '&posicao=' + encodeURIComponent(pos);
     _wmsAbrirEtiquetaUrl(url);
 }
 
 function wmsImprimirEtqCamara() {
-    var cam = (document.getElementById('wms-filtro-camara') || {}).value || '';
-    if (!cam) { showMessage('Selecione a câmara no filtro.', 'error'); return; }
-    if (!confirm('Imprimir etiquetas de TODAS as colunas da câmara ' + cam + '?')) return;
+    var cam = (document.getElementById('wms-etq-camara') || {}).value || '';
+    if (!cam) { showMessage('Selecione a câmara.', 'error'); return; }
+    if (!confirm('Imprimir todas as longarinas da câmara ' + cam + '?')) return;
     _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam));
+}
+
+async function loadWmsEtqLongarinaResumo() {
+    var box = document.getElementById('wms-etq-resumo-box');
+    if (!box) return;
+    box.innerHTML = '<p class="loading" style="margin:0;">Carregando resumo…</p>';
+    try {
+        var data = await _wmsFetchGet('/wms/etiqueta/enderecos/resumo', 45000);
+        if (!data || data.erro) {
+            box.innerHTML = '<p style="margin:0;color:#c62828;">' + escHtml(_modErroMsg(data, 'Erro ao carregar.')) + '</p>';
+            return;
+        }
+        var total = data.total_etiquetas || 0;
+        var cols = data.total_colunas || 0;
+        var html = '<h4 style="margin:0 0 8px 0;color:#1565c0;">Armazém pronto para etiquetar</h4>';
+        html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Total de etiquetas:</span> <strong>' + escHtml(total) + '</strong></div>';
+        html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Colunas (pilares):</span> <strong>' + escHtml(cols) + '</strong></div>';
+        var por = data.por_camara || [];
+        if (por.length) {
+            html += '<div class="table-container" style="margin-top:10px;max-height:160px;overflow:auto;"><table class="data-table"><thead><tr><th>Câmara</th><th>Colunas</th><th>Etiquetas</th></tr></thead><tbody>';
+            html += por.map(function(r) {
+                return '<tr><td><strong>' + escHtml(r.camara) + '</strong></td><td>' + escHtml(r.colunas) + '</td><td>' + escHtml(r.etiquetas) + '</td></tr>';
+            }).join('');
+            html += '</tbody></table></div>';
+        }
+        if (!total) {
+            html += '<p class="info-text" style="margin:8px 0 0 0;">Nenhum endereço no banco. No <strong>Painel WMS</strong>, use «Recalcular distribuição» ou aguarde a geração automática do layout.</p>';
+        }
+        box.innerHTML = html;
+    } catch (e) {
+        box.innerHTML = '<p style="margin:0;color:#c62828;">' + escHtml((e && e.message) || 'Erro.') + '</p>';
+    }
+}
+
+function loadWmsEtiquetasLongarinaAba() {
+    loadWmsEtqLongarinaResumo();
+}
+
+function wmsImprimirEtqTodasLongarinas() {
+    var box = document.getElementById('wms-etq-resumo-box');
+    var txt = box ? box.textContent : '';
+    var msg = 'Imprimir TODAS as etiquetas de longarina do armazém';
+    if (txt && txt.indexOf('Total') >= 0) {
+        msg += ' (' + txt.replace(/\s+/g, ' ').trim().slice(0, 120) + '…)?';
+    } else {
+        msg += '? Pode levar várias páginas.';
+    }
+    if (!confirm(msg)) return;
+    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?todas=1');
+}
+
+function wmsImprimirEtqUnico() {
+    var cod = ((document.getElementById('wms-etq-codigo-unico') || {}).value || '').trim();
+    if (!cod) { showMessage('Informe o código longarina (21.13.1.1) ou WMS.', 'warning'); return; }
+    wmsImprimirEtqEndereco(cod);
 }
 
 function wmsImprimirEtqDemo() {
@@ -3366,7 +3930,7 @@ function wmsPreencherPainelNfDescarga(doc) {
     if (info) {
         var areaLbl = doc.area === 'carreta' ? 'Carreta' : (doc.area || 'Recebimento');
         var st = doc.recebimento_concluido ? '<span style="color:#e65100;">Recebimento já concluído no módulo descarga</span>' :
-            '<span style="color:#2e7d32;">Pendência de recebimento — imprima etiquetas e bipe aqui no WMS</span>';
+            '<span style="color:#2e7d32;">Pendência — imprima etiquetas de <strong>produto</strong> (fase A) e depois inicie a bipagem (fase B)</span>';
         var recWms = doc.recebimento_wms_id ? (' · Recebimento WMS #' + escHtml(doc.recebimento_wms_id)) : '';
         info.innerHTML = '<strong>NF ' + escHtml(doc.numero_nf || '') + '</strong>'
             + (doc.serie_nf ? ' · Série ' + escHtml(doc.serie_nf) : '')
@@ -3389,8 +3953,8 @@ function wmsPreencherPainelNfDescarga(doc) {
             return '<tr><td>' + escHtml(it.n_item || '') + '</td><td><strong>' + escHtml(it.sku || '—') + '</strong></td>'
                 + '<td>' + escHtml(it.descricao || '') + '</td><td>' + escHtml(it.quantidade_xml) + '</td>'
                 + '<td>' + escHtml(qWms) + '</td><td>' + _wmsStatusItemNfLabel(it.status_wms) + '</td>'
-                + '<td>' + escHtml(it.codigo_ean || '') + '</td>'
-                + '<td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtiquetaNfItem(\'' + nItemJs + '\', \'' + skuJs + '\')">Imprimir</button></td></tr>';
+                + '<td>' + escHtml(it.codigo_ean || '—') + '</td>'
+                + '<td><button type="button" class="btn btn-sm btn-secondary" title="Etiqueta de produto 50×76 mm — código EAN/SKU para bipar na etapa 2" onclick="wmsImprimirEtiquetaNfItem(\'' + nItemJs + '\', \'' + skuJs + '\')">Etq. produto</button></td></tr>';
         }).join('') : '';
     }
     if (doc.recebimento_wms_id) {
@@ -3480,7 +4044,7 @@ async function wmsIniciarBipagemNf() {
     if (det && det.scrollIntoView) det.scrollIntoView({ behavior: 'smooth', block: 'start' });
     var bip = document.getElementById('wms-bip-etiqueta');
     if (bip) bip.focus();
-    showMessage('Recebimento #' + rid + ' — bipe o palete e depois o produto (EAN/SKU).', 'success');
+    showMessage('Fase B aberta — etapa 1: código do palete (22 chars); etapa 2: EAN/SKU da etiqueta de produto.', 'success');
 }
 
 function wmsInitRecebimentoIntegracaoNf() {
@@ -3536,7 +4100,7 @@ window.wmsBuscarNfDescarga = async function() {
     if (data.documento.recebimento_concluido) {
         showMessage('NF encontrada, mas o recebimento já foi concluído no módulo de descarga.', 'warning');
     } else {
-        showMessage('NF carregada — imprima as etiquetas e clique em Iniciar bipagem.', 'success');
+        showMessage('NF carregada — fase A: imprima as etiquetas de produto; depois clique em Iniciar bipagem.', 'success');
     }
 };
 
@@ -3574,26 +4138,94 @@ window.wmsAbrirRecebimento = function(id) {
     if (pid) pid.value = '';
     var info = document.getElementById('wms-rec-palete-info');
     if (info) info.textContent = '';
+    _wmsResetDestinoSugestao();
     var sug = document.getElementById('wms-sugestao-destino');
-    if (sug) { sug.style.display = 'none'; sug.textContent = ''; }
+    if (sug) { sug.style.display = 'none'; sug.innerHTML = ''; }
+};
+
+window._wmsSugestaoAtual = null;
+window._wmsDestinoManual = false;
+
+function _wmsAplicarModoDestinoSugestao() {
+    var dest = document.getElementById('wms-bip-destino');
+    var btnManual = document.getElementById('btn-wms-destino-manual');
+    var btnSug = document.getElementById('btn-wms-usar-sugestao');
+    var manual = !!window._wmsDestinoManual;
+    if (dest) {
+        dest.readOnly = false;
+        dest.style.background = manual ? '#fff' : '#e8f5e9';
+        dest.style.fontWeight = manual ? 'normal' : 'bold';
+        if (!manual && !dest.value) dest.placeholder = 'Bipe a etiqueta da longarina (21.13.1.1)…';
+    }
+    if (btnManual) btnManual.style.display = manual ? 'none' : '';
+    if (btnSug) btnSug.style.display = manual ? '' : 'none';
+}
+
+function _wmsResetDestinoSugestao() {
+    window._wmsDestinoManual = false;
+    window._wmsSugestaoAtual = null;
+    var dest = document.getElementById('wms-bip-destino');
+    if (dest) dest.value = '';
+    _wmsAplicarModoDestinoSugestao();
+}
+
+window.wmsHabilitarDestinoManual = function() {
+    window._wmsDestinoManual = true;
+    _wmsAplicarModoDestinoSugestao();
+    var dest = document.getElementById('wms-bip-destino');
+    if (dest) { dest.focus(); dest.select(); }
+    showMessage('Modo manual: o endereço digitado substitui a indicação do sistema.', 'warning');
+};
+
+window.wmsUsarSugestaoDestino = function() {
+    window._wmsDestinoManual = false;
+    var sug = window._wmsSugestaoAtual;
+    if (sug && (sug.barcode_longarina || sug.codigo_endereco)) {
+        var dest = document.getElementById('wms-bip-destino');
+        if (dest) dest.value = sug.barcode_longarina || sug.codigo_endereco;
+    } else {
+        wmsSugerirDestino();
+        return;
+    }
+    _wmsAplicarModoDestinoSugestao();
+    showMessage('Indicação aplicada — bipe a longarina ou confirme se já estiver no endereço.', 'success');
 };
 
 function _wmsMostrarSugestao(sug) {
     var box = document.getElementById('wms-sugestao-destino');
     var dest = document.getElementById('wms-bip-destino');
     if (!box) return;
+    window._wmsSugestaoAtual = sug || null;
     if (!sug || !sug.codigo_endereco) {
         box.style.display = 'block';
-        box.innerHTML = '<strong>Sem sugestão:</strong> ' + escHtml((sug && sug.motivo && sug.motivo.join(' · ')) || 'Nenhuma posição vazia.');
+        box.style.background = '#fff3e0';
+        box.style.border = '1px solid #ffb74d';
+        box.innerHTML = '<strong>Sem indicação automática:</strong> ' + escHtml((sug && sug.motivo && sug.motivo.join(' · ')) || 'Nenhuma posição vazia.') +
+            ' Use <em>Alterar endereço manualmente</em> se necessário.';
         return;
     }
     var alerta = sug.alerta ? '<br><span style="color:#e65100;font-weight:bold;">⚠ ' + escHtml(sug.alerta) + '</span>' : '';
     var st = sug.status_condicional ? ' · Status: <strong>' + escHtml(sug.status_condicional) + '</strong>' : '';
+    var priLbl = {
+        adensamento_lote: 'mesmo SKU e lote',
+        zoneamento: 'FIFO + cluster + categoria'
+    };
+    var priTxt = priLbl[sug.prioridade] || 'putaway inteligente';
+    var bcLong = sug.barcode_longarina || sug.codigo_endereco;
     box.style.display = 'block';
-    box.innerHTML = '<strong>Sugestão putaway (' + escHtml(sug.zona_label || 'PULMÃO') + '):</strong> ' +
-        escHtml(sug.codigo_endereco) + ' — ' + escHtml(sug.texto || '') + st + alerta +
-        '<br><span style="font-size:12px;color:#555;">' + escHtml((sug.motivo || []).join(' · ')) + '</span>';
-    if (dest && !dest.value) dest.value = sug.codigo_endereco;
+    box.style.background = '#e8f5e9';
+    box.style.border = '1px solid #81c784';
+    box.style.padding = '10px';
+    box.style.borderRadius = '8px';
+    box.innerHTML = '<strong style="color:#1b5e20;">✓ Onde colocar — indicação do sistema (' + escHtml(sug.zona_label || 'PULMÃO') + ')</strong><br>' +
+        '<span style="font-size:16px;font-weight:bold;">' + escHtml(bcLong) + '</span> <span style="font-size:12px;color:#555;">(bip longarina)</span> — ' + escHtml(sug.texto || '') + st + alerta +
+        '<br><span style="font-size:12px;color:#2e7d32;">Critério: ' + escHtml(priTxt) + ' · ' + escHtml((sug.motivo || []).join(' · ')) + '</span>' +
+        '<br><span style="font-size:12px;color:#555;">Bipe a etiqueta da longarina e confirme a armazenagem.</span>';
+    if (!window._wmsDestinoManual && dest) {
+        dest.value = bcLong || '';
+        dest.focus();
+    }
+    _wmsAplicarModoDestinoSugestao();
 }
 
 async function wmsBipPalete() {
@@ -3647,7 +4279,7 @@ async function wmsBipProduto() {
         if (data.bloqueios && data.bloqueios.length) txt += ' — Bloqueios: ' + data.bloqueios.join(', ');
         if (msg) msg.textContent = txt;
         _wmsMostrarSugestao(data.sugestao);
-        showMessage('Produto bipado. Imprima a etiqueta, confirme destino — status atualiza ao armazenar.', 'success');
+        showMessage('Etapa 2 ok — imprima a etiqueta do palete (etapa 3) e confirme o endereço indicado (etapa 4).', 'success');
         wmsAtualizarPainelNfDescarga();
         var skuEl = document.getElementById('wms-pal-sku');
         if (skuEl) skuEl.value = '';
@@ -3662,7 +4294,7 @@ async function wmsBipProduto() {
 function wmsImprimirEtiqueta() {
     var etiqueta = (document.getElementById('wms-bip-etiqueta') || {}).value || '';
     if (!etiqueta || etiqueta.length !== 22) {
-        showMessage('Bipe o palete antes de imprimir (etiqueta 22 caracteres).', 'error');
+        showMessage('Etapa 3: bipe o palete na etapa 1 antes de imprimir (código de 22 caracteres).', 'error');
         return;
     }
     var url = '/api/wms/etiqueta?etiqueta=' + encodeURIComponent(etiqueta);
@@ -3680,32 +4312,52 @@ async function wmsSugerirDestino() {
     if (data && !data.erro) {
         _wmsMostrarSugestao(data);
     } else {
-        showMessage((data && data.erro) || 'Erro na sugestão.', 'error');
+        showMessage((data && data.erro) || 'Erro ao obter indicação de destino.', 'error');
     }
 }
 
 async function wmsConfirmarDestino() {
     var pid = (document.getElementById('wms-rec-palete-id') || {}).value;
+    if (!pid) { showMessage('Bipe palete e produto antes de confirmar.', 'error'); return; }
+    var manual = !!window._wmsDestinoManual;
     var cod = (document.getElementById('wms-bip-destino') || {}).value || '';
-    if (!pid || !cod) { showMessage('Informe palete e endereço destino.', 'error'); return; }
-    var data = await fetchAPI('/wms/recebimentos', {
-        method: 'POST',
-        body: JSON.stringify({ acao: 'confirmar_armazenagem', palete_id: parseInt(pid, 10), codigo_endereco: cod.trim() })
-    });
+    if (manual && !cod.trim()) {
+        showMessage('Informe o endereço manual ou clique em «Usar indicação do sistema».', 'error');
+        return;
+    }
+    if (!manual && (!window._wmsSugestaoAtual || !window._wmsSugestaoAtual.codigo_endereco)) {
+        await wmsSugerirDestino();
+        if (!window._wmsSugestaoAtual || !window._wmsSugestaoAtual.codigo_endereco) {
+            showMessage('Não há indicação de destino. Altere manualmente ou libere vagas no armazém.', 'error');
+            return;
+        }
+    }
+    var body = {
+        acao: 'confirmar_armazenagem',
+        palete_id: parseInt(pid, 10),
+        usar_sugestao: !manual
+    };
+    if (manual) body.codigo_endereco = cod.trim();
+    else if (window._wmsSugestaoAtual && window._wmsSugestaoAtual.codigo_endereco) {
+        body.codigo_endereco = window._wmsSugestaoAtual.codigo_endereco;
+    }
+    var data = await fetchAPI('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) });
     if (data && data.ok) {
         var st = data.status_atualizado || {};
         var stTxt = Object.keys(st).map(function(k) { return k + ': ' + st[k]; }).join(' · ');
-        showMessage('Armazenado em ' + (data.localizacao && data.localizacao.codigo_endereco || cod) +
+        var endFinal = (data.localizacao && data.localizacao.codigo_endereco) || body.codigo_endereco || cod;
+        showMessage('Armazenado em ' + endFinal + (manual ? ' (manual)' : ' (indicação do sistema)') +
             (stTxt ? ' · Status: ' + stTxt : ''), 'success');
         loadWmsPainel();
         loadWmsProdutos();
+        wmsAtualizarPainelNfDescarga();
         var pidEl = document.getElementById('wms-rec-palete-id');
         if (pidEl) pidEl.value = '';
-        var dest = document.getElementById('wms-bip-destino');
-        if (dest) dest.value = '';
+        _wmsResetDestinoSugestao();
         var sug = document.getElementById('wms-sugestao-destino');
-        if (sug) { sug.style.display = 'none'; sug.textContent = ''; }
+        if (sug) { sug.style.display = 'none'; sug.innerHTML = ''; }
     } else {
+        if (data && data.sugestao) _wmsMostrarSugestao(data.sugestao);
         showMessage((data && data.erro) || 'Erro ao confirmar destino.', 'error');
     }
 }

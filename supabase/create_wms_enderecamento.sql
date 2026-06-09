@@ -100,6 +100,25 @@ CREATE TABLE IF NOT EXISTS public.wms_palete (
 CREATE INDEX IF NOT EXISTS idx_wms_palete_loc ON public.wms_palete (localizacao_id);
 CREATE INDEX IF NOT EXISTS idx_wms_palete_status ON public.wms_palete (status);
 
+-- Entrada / saída / retorno de palete (controle físico)
+CREATE TABLE IF NOT EXISTS public.wms_palete_controle (
+  id BIGSERIAL PRIMARY KEY,
+  palete_id BIGINT NOT NULL REFERENCES public.wms_palete(id) ON DELETE CASCADE,
+  tipo TEXT NOT NULL,
+  subtipo TEXT,
+  motivo TEXT,
+  destino_externo TEXT,
+  localizacao_id BIGINT REFERENCES public.wms_localizacao(id) ON DELETE SET NULL,
+  codigo_endereco TEXT,
+  observacao TEXT,
+  registro_saida_id BIGINT REFERENCES public.wms_palete_controle(id) ON DELETE SET NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  criado_por TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_wms_pal_ctrl_palete ON public.wms_palete_controle (palete_id, criado_em DESC);
+CREATE INDEX IF NOT EXISTS idx_wms_pal_ctrl_tipo ON public.wms_palete_controle (tipo);
+
 -- Itens do palete
 CREATE TABLE IF NOT EXISTS public.wms_palete_item (
   id BIGSERIAL PRIMARY KEY,
