@@ -56,6 +56,13 @@ def _ativo_sql(conn, alias=''):
     return f'({p}ativo = 1)'
 
 
+def _bind_bool(conn, val=True):
+    """Valor booleano para INSERT/UPDATE (Postgres bool, SQLite 0/1)."""
+    if _is_pg(conn):
+        return bool(val)
+    return 1 if val else 0
+
+
 def _int_col(row, key='c', default=0):
     d = _row_dict(row)
     if not d:
@@ -3393,8 +3400,8 @@ def api_wms_recebimentos():
             ).fetchone()
             if not vinc:
                 conn.execute(
-                    f'INSERT INTO {t_rp} (recebimento_id, palete_id, estado_palete, conferencia_cega) VALUES (?, ?, ?, 1)',
-                    (rid, pid, 'bom'),
+                    f'INSERT INTO {t_rp} (recebimento_id, palete_id, estado_palete, conferencia_cega) VALUES (?, ?, ?, ?)',
+                    (rid, pid, 'bom', _bind_bool(conn, True)),
                 )
             if _is_pg(conn):
                 conn.execute(f"UPDATE {t_rec} SET status = 'em_conferencia', atualizado_em = NOW() WHERE id = ?", (rid,))
@@ -3549,8 +3556,8 @@ def api_wms_recebimentos():
                 pid = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
             conn.execute(
                 f'''INSERT INTO {t_rp} (recebimento_id, palete_id, estado_palete, conferencia_cega)
-                    VALUES (?, ?, ?, 1)''',
-                (rid, pid, estado),
+                    VALUES (?, ?, ?, ?)''',
+                (rid, pid, estado, _bind_bool(conn, True)),
             )
             sku = (item.get('sku') or '').strip()
             conn.execute(
