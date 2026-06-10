@@ -25,43 +25,72 @@
     min-height: 64mm;
     margin: 0 auto;
     border: 2px solid #000;
-    padding: 4mm;
+    padding: 3mm;
     background: #fff;
     display: flex;
     flex-direction: column;
   }
-  .brand {
-    font-size: 8pt;
-    font-weight: bold;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    border-bottom: 1.5pt solid #000;
-    padding-bottom: 2mm;
+  .destino {
     margin-bottom: 2mm;
+    border: 2pt solid #000;
+    padding: 2.5mm 3mm;
+    background: #f0f7f0;
+    text-align: center;
   }
-  .tipo {
+  .destino strong {
+    display: block;
     font-size: 7pt;
-    color: #444;
-    margin-bottom: 1mm;
+    margin-bottom: 1.5mm;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
-  .bc-wrap { text-align: center; margin: 2mm 0; }
-  .bc-wrap svg { width: 92%; height: 14mm; }
+  .destino .end-bc {
+    display: block;
+    font-size: 22pt;
+    font-weight: bold;
+    font-family: Consolas, monospace;
+    letter-spacing: 2px;
+    line-height: 1.1;
+    margin: 1mm 0;
+  }
+  .destino .end-txt {
+    display: block;
+    font-size: 8pt;
+    color: #222;
+    line-height: 1.25;
+  }
+  .bc-wrap { text-align: center; margin: 1mm 0 1.5mm; }
+  .bc-wrap svg { width: 92%; height: 12mm; }
   .codigo {
     text-align: center;
-    font-size: 11pt;
+    font-size: 9pt;
     font-family: Consolas, monospace;
     font-weight: bold;
-    letter-spacing: 1.5px;
+    letter-spacing: 1px;
     margin-bottom: 2mm;
+    padding-bottom: 1.5mm;
+    border-bottom: 1pt solid #ccc;
+  }
+  .brand {
+    font-size: 7pt;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 0.5mm;
+  }
+  .tipo {
+    font-size: 6.5pt;
+    color: #444;
+    margin-bottom: 1.5mm;
   }
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 9pt;
+    font-size: 8pt;
   }
   table td {
     border: 0.5pt solid #000;
-    padding: 1.5mm 2mm;
+    padding: 1mm 1.5mm;
     vertical-align: top;
   }
   table td.lbl {
@@ -69,23 +98,6 @@
     font-weight: bold;
     background: #f5f5f5;
   }
-  .destino {
-    margin-top: 2mm;
-    font-size: 8pt;
-    border: 1.5pt solid #000;
-    padding: 2mm;
-    background: #f0f7f0;
-  }
-  .destino strong { display: block; font-size: 7pt; margin-bottom: 1mm; text-transform: uppercase; }
-  .destino .end-bc {
-    display: block;
-    font-size: 13pt;
-    font-weight: bold;
-    font-family: Consolas, monospace;
-    letter-spacing: 1px;
-    margin: 1mm 0;
-  }
-  .destino .end-txt { font-size: 8pt; color: #333; }
   @media print {
     body { background: #fff; padding: 0; }
     .toolbar { display: none !important; }
@@ -97,12 +109,19 @@
   <button type="button" onclick="window.print()">Imprimir</button>
 </div>
 <div class="etq">
-  <div class="brand">Ultrapão · Stock System WMS</div>
-  <div class="tipo">ETIQUETA DE PALETE — 22 caracteres</div>
+  {% if endereco_barcode or destino %}
+  <div class="destino">
+    <strong>Guardar em — longarina</strong>
+    <span class="end-bc">{{ endereco_barcode or destino }}</span>
+    {% if endereco_texto %}<span class="end-txt">{{ endereco_texto }}</span>{% endif %}
+  </div>
+  {% endif %}
   <div class="bc-wrap">
     <svg id="bc-palete" data-code="{{ etiqueta }}"></svg>
   </div>
   <div class="codigo">{{ etiqueta }}</div>
+  <div class="brand">Ultrapão · Stock System WMS</div>
+  <div class="tipo">ETIQUETA DE PALETE — 22 caracteres</div>
   <table>
     <tr><td class="lbl">SKU</td><td>{{ sku or '—' }}</td></tr>
     <tr><td class="lbl">Descrição</td><td>{{ descricao or '—' }}</td></tr>
@@ -112,13 +131,6 @@
     <tr><td class="lbl">Caixas</td><td>{{ qtd if qtd is not none else '—' }}</td></tr>
     {% if up %}<tr><td class="lbl">UP</td><td>{{ up }}</td></tr>{% endif %}
   </table>
-  {% if endereco_barcode or destino %}
-  <div class="destino">
-    <strong>Guardar em — longarina</strong>
-    <span class="end-bc">{{ endereco_barcode or destino }}</span>
-    {% if endereco_texto %}<span class="end-txt">{{ endereco_texto }}</span>{% endif %}
-  </div>
-  {% endif %}
 </div>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>

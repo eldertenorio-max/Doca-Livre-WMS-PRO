@@ -2236,6 +2236,170 @@ def _excluir_recebimento_wms(conn, recebimento_id):
     return {'ok': True, 'paletes_removidos': len(palete_ids)}, None
 
 
+def _mov_pendente_putaway(conn, palete_id):
+    t_mov = _tbl(conn, 'wms_movimentacao')
+    row = conn.execute(
+        f'''SELECT * FROM {t_mov}
+            WHERE palete_id = ? AND status = 'pendente' AND tipo = 'putaway'
+            ORDER BY id DESC LIMIT 1''',
+        (int(palete_id),),
+    ).fetchone()
+    return _row_dict(row)
+
+
+def _criar_mov_pendente_putaway(conn, palete_id, sug, obs_extra=None):
+    """Gera tarefa de putaway pendente para aparecer na fila até bipar a longarina."""
+    if not sug or not sug.get('localizacao_id'):
+        return None
+    existente = _mov_pendente_putaway(conn, palete_id)
+    if existente:
+        return existente.get('id')
+    t_mov = _tbl(conn, 'wms_movimentacao')
+    obs_parts = list(sug.get('motivo') or [])
+    if obs_extra:
+        obs_parts.insert(0, obs_extra)
+    obs = '; '.join(obs_parts) or 'Putaway pendente — aguardando bip da longarina'
+    now = _now_iso()
+    dest_id = sug['localizacao_id']
+    if _is_pg(conn):
+        cur = conn.execute(
+            f'''INSERT INTO {t_mov} (tipo, palete_id, destino_localizacao_id, status, prioridade, observacao, criado_em, criado_por)
+                VALUES ('putaway', ?, ?, 'pendente', 1, ?, NOW(), ?) RETURNING id''',
+            (int(palete_id), dest_id, obs, _usuario()),
+        )
+        return (cur.fetchone() or {}).get('id')
+    conn.execute(
+        f'''INSERT INTO {t_mov} (tipo, palete_id, destino_localizacao_id, status, prioridade, observacao, criado_em, criado_por)
+            VALUES ('putaway', ?, ?, 'pendente', 1, ?, ?, ?)''',
+        (int(palete_id), dest_id, obs, now, _usuario()),
+    )
+    return conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+
+
+def _sync_recebimento_status_armazenagem(conn, recebimento_id):
+    """Atualiza status do recebimento conforme paletes armazenados."""
+    if not recebimento_id:
+        return None
+    t_rp = _tbl(conn, 'wms_recebimento_palete')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_rec = _tbl(conn, 'wms_recebimento')
+    rows = conn.execute(
+        f'''SELECT p.status FROM {t_rp} rp
+            JOIN {t_pal} p ON p.id = rp.palete_id
+            WHERE rp.recebimento_id = ?''',
+        (int(recebimento_id),),
+    ).fetchall()
+    if not rows:
+        return None
+    statuses = [((_row_dict(r) or {}).get('status') or '').lower() for r in rows]
+    if all(s == 'armazenado' for s in statuses):
+        novo = 'concluido'
+    elif any(s == 'armazenado' for s in statuses):
+        novo = 'aguardando_armazenagem'
+    else:
+        return None
+    now = _now_iso()
+    if _is_pg(conn):
+        conn.execute(f"UPDATE {t_rec} SET status = ?, atualizado_em = NOW() WHERE id = ?", (novo, int(recebimento_id)))
+    else:
+        conn.execute(f"UPDATE {t_rec} SET status = ?, atualizado_em = ? WHERE id = ?", (novo, now, int(recebimento_id)))
+    return novo
+
+
+def _resumo_finalizacao_recebimento(conn, recebimento_id):
+    """Indica se o recebimento pode ser finalizado (todos paletes guardados, NF ok)."""
+    rec = _resolver_recebimento_wms(conn, recebimento_id=recebimento_id)
+    if not rec:
+        return None
+    rid = int(rec['id'])
+    t_rp = _tbl(conn, 'wms_recebimento_palete')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_item = _tbl(conn, 'wms_palete_item')
+    t_mov = _tbl(conn, 'wms_movimentacao')
+
+    pals = conn.execute(
+        f'''SELECT p.id, p.etiqueta, p.status
+            FROM {t_rp} rp JOIN {t_pal} p ON p.id = rp.palete_id
+            WHERE rp.recebimento_id = ?''',
+        (rid,),
+    ).fetchall()
+
+    paletes_total = 0
+    paletes_armazenados = 0
+    paletes_pendentes = []
+    pid_list = []
+    for p in pals or []:
+        rd = _row_dict(p) or {}
+        pid = rd.get('id')
+        status = (rd.get('status') or '').lower()
+        cnt = conn.execute(f'SELECT COUNT(*) AS n FROM {t_item} WHERE palete_id = ?', (pid,)).fetchone()
+        n_items = int((_row_dict(cnt) or {}).get('n') or 0)
+        if n_items == 0 and status != 'armazenado':
+            continue
+        paletes_total += 1
+        pid_list.append(pid)
+        if status == 'armazenado':
+            paletes_armazenados += 1
+        else:
+            paletes_pendentes.append({'etiqueta': rd.get('etiqueta'), 'status': status})
+
+    mov_pendentes = 0
+    if pid_list:
+        ph = ','.join('?' * len(pid_list))
+        row_mov = conn.execute(
+            f"SELECT COUNT(*) AS n FROM {t_mov} WHERE palete_id IN ({ph}) AND LOWER(COALESCE(status, '')) = 'pendente'",
+            pid_list,
+        ).fetchone()
+        mov_pendentes = int((_row_dict(row_mov) or {}).get('n') or 0)
+
+    itens_nf_ok = True
+    itens_nf_pendentes = 0
+    numero_nf = rec.get('numero_nf')
+    doc_id = rec.get('terceiros_documento_id')
+    if doc_id and numero_nf:
+        doc_nf, _err = _buscar_documento_terceiros_por_nf(conn, numero_nf)
+        if doc_nf:
+            doc_enr = _enriquecer_documento_nf_wms(conn, doc_nf)
+            for it in doc_enr.get('itens') or []:
+                if it.get('status_wms') != 'ok':
+                    itens_nf_ok = False
+                    itens_nf_pendentes += 1
+
+    st_rec = (rec.get('status') or '').lower()
+    motivos = []
+    if st_rec == 'finalizado':
+        motivos.append('Recebimento já finalizado.')
+    elif st_rec == 'cancelado':
+        motivos.append('Recebimento cancelado.')
+    if paletes_total == 0:
+        motivos.append('Nenhum palete conferido ainda.')
+    elif paletes_pendentes:
+        motivos.append(f'{len(paletes_pendentes)} palete(s) ainda não guardado(s).')
+    if mov_pendentes:
+        motivos.append(f'{mov_pendentes} movimentação(ões) pendente(s).')
+    if not itens_nf_ok:
+        motivos.append(f'{itens_nf_pendentes} item(ns) da NF ainda pendente(s).')
+
+    pode = (
+        st_rec not in ('finalizado', 'cancelado')
+        and paletes_total > 0
+        and paletes_armazenados == paletes_total
+        and mov_pendentes == 0
+        and itens_nf_ok
+    )
+    return {
+        'pode_finalizar': pode,
+        'motivo': ' · '.join(motivos) if motivos else 'Pronto para finalizar.',
+        'motivos': motivos,
+        'paletes_total': paletes_total,
+        'paletes_armazenados': paletes_armazenados,
+        'mov_pendentes': mov_pendentes,
+        'itens_nf_ok': itens_nf_ok,
+        'itens_nf_pendentes': itens_nf_pendentes,
+        'status_recebimento': st_rec,
+    }
+
+
 def _confirmar_armazenagem_palete(conn, palete_id, codigo_endereco):
     t_pal = _tbl(conn, 'wms_palete')
     t_loc = _tbl(conn, 'wms_localizacao')
@@ -2258,19 +2422,30 @@ def _confirmar_armazenagem_palete(conn, palete_id, codigo_endereco):
     dest_id = ld.get('id')
     orig = pal.get('localizacao_id') if isinstance(pal, dict) else None
     obs = f'Armazenagem confirmada em {ld.get("codigo_endereco")}'
-    if _is_pg(conn):
+    mov_pend = _mov_pendente_putaway(conn, pid)
+    mov_id = mov_pend.get('id') if mov_pend else None
+    if mov_pend:
+        if _is_pg(conn):
+            conn.execute(
+                f'''UPDATE {t_mov} SET status = 'concluida', destino_localizacao_id = ?,
+                    origem_localizacao_id = COALESCE(origem_localizacao_id, ?),
+                    observacao = ?, concluida_em = NOW(), concluida_por = ?
+                    WHERE id = ?''',
+                (dest_id, orig, obs, _usuario(), mov_id),
+            )
+        else:
+            conn.execute(
+                f'''UPDATE {t_mov} SET status = 'concluida', destino_localizacao_id = ?,
+                    origem_localizacao_id = COALESCE(origem_localizacao_id, ?),
+                    observacao = ?, concluida_em = ?, concluida_por = ? WHERE id = ?''',
+                (dest_id, orig, obs, now, _usuario(), mov_id),
+            )
+    elif _is_pg(conn):
         conn.execute(
             f'''INSERT INTO {t_mov} (tipo, palete_id, origem_localizacao_id, destino_localizacao_id,
                 status, prioridade, observacao, criado_em, criado_por, concluida_em, concluida_por)
                 VALUES ('putaway', ?, ?, ?, 'concluida', 1, ?, NOW(), ?, NOW(), ?)''',
             (pid, orig, dest_id, obs, _usuario(), _usuario()),
-        )
-        conn.execute(f"UPDATE {t_loc} SET status = 'ocupada', atualizado_em = NOW() WHERE id = ?", (dest_id,))
-        if orig:
-            conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = NOW() WHERE id = ?", (orig,))
-        conn.execute(
-            f"UPDATE {t_pal} SET localizacao_id = ?, status = 'armazenado', atualizado_em = NOW() WHERE id = ?",
-            (dest_id, pid),
         )
     else:
         conn.execute(
@@ -2279,6 +2454,15 @@ def _confirmar_armazenagem_palete(conn, palete_id, codigo_endereco):
                 VALUES ('putaway', ?, ?, ?, 'concluida', 1, ?, ?, ?, ?, ?)''',
             (pid, orig, dest_id, obs, now, _usuario(), now, _usuario()),
         )
+    if _is_pg(conn):
+        conn.execute(f"UPDATE {t_loc} SET status = 'ocupada', atualizado_em = NOW() WHERE id = ?", (dest_id,))
+        if orig:
+            conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = NOW() WHERE id = ?", (orig,))
+        conn.execute(
+            f"UPDATE {t_pal} SET localizacao_id = ?, status = 'armazenado', atualizado_em = NOW() WHERE id = ?",
+            (dest_id, pid),
+        )
+    else:
         conn.execute(f"UPDATE {t_loc} SET status = 'ocupada', atualizado_em = ? WHERE id = ?", (now, dest_id))
         if orig:
             conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = ? WHERE id = ?", (now, orig))
@@ -2286,6 +2470,15 @@ def _confirmar_armazenagem_palete(conn, palete_id, codigo_endereco):
             f"UPDATE {t_pal} SET localizacao_id = ?, status = 'armazenado', atualizado_em = ? WHERE id = ?",
             (dest_id, now, pid),
         )
+    pal_rd = _row_dict(pal) or {}
+    rid = pal_rd.get('recebimento_id')
+    if not rid:
+        t_rp = _tbl(conn, 'wms_recebimento_palete')
+        rp = conn.execute(
+            f'SELECT recebimento_id FROM {t_rp} WHERE palete_id = ? ORDER BY id DESC LIMIT 1', (pid,),
+        ).fetchone()
+        rid = (_row_dict(rp) or {}).get('recebimento_id')
+    rec_status = _sync_recebimento_status_armazenagem(conn, rid)
     _ensure_wms_palete_controle_table(conn)
     _registrar_controle_palete(
         conn, pid, 'entrada',
@@ -2294,7 +2487,12 @@ def _confirmar_armazenagem_palete(conn, palete_id, codigo_endereco):
         codigo_endereco=ld.get('codigo_endereco'),
         observacao='Entrada no endereço do armazém',
     )
-    return _format_locacao(loc), None
+    loc_fmt = _format_locacao(loc)
+    if loc_fmt is not None and isinstance(loc_fmt, dict):
+        loc_fmt['movimentacao_id'] = mov_id
+        loc_fmt['movimentacao_status'] = 'concluida'
+        loc_fmt['recebimento_status'] = rec_status
+    return loc_fmt, None
 
 
 def _aplicar_bloqueios_palete(conn, palete_id, estado_fisico, data_validade, temperatura):
@@ -2489,6 +2687,7 @@ def _historico_recebimento_nf(conn, recebimento_id=None, numero_nf=None):
             'data_producao': rd.get('data_producao'),
             'data_validade': rd.get('data_validade'),
             'quantidade_caixas': q,
+            'rg_caixa': rd.get('rg_caixa'),
             'palete_etiqueta': rd.get('palete_etiqueta'),
             'palete_status': rd.get('palete_status'),
             'bipado_em': rd.get('criado_em'),
@@ -3345,12 +3544,14 @@ def api_wms_recebimentos():
                     ('recebimento',),
                 ).fetchall()
                 resp = conn.execute(f'SELECT * FROM {t_cqr} WHERE recebimento_id = ?', (rid,)).fetchall()
+                finalizacao = _resumo_finalizacao_recebimento(conn, rid)
                 conn.close()
                 return jsonify({
                     'recebimento': dict(rec) if rec else None,
                     'paletes': [dict(p) for p in pals],
                     'perguntas': [dict(p) for p in perg],
                     'respostas': [dict(r) for r in resp],
+                    'finalizacao': finalizacao,
                 })
             rows = conn.execute(f'SELECT * FROM {t_rec} ORDER BY id DESC LIMIT 100').fetchall()
             conn.close()
@@ -3470,6 +3671,20 @@ def api_wms_recebimentos():
                     sug = sug_pick
             pal = conn.execute(f'SELECT etiqueta FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
             etiqueta = (pal['etiqueta'] if isinstance(pal, dict) else pal[0]) if pal else None
+            mov_id = _criar_mov_pendente_putaway(conn, pid, sug, 'Aguardando bip da longarina')
+            pal_rec = conn.execute(f'SELECT recebimento_id FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
+            rid = (_row_dict(pal_rec) or {}).get('recebimento_id')
+            if rid:
+                if _is_pg(conn):
+                    conn.execute(
+                        f"UPDATE {t_rec} SET status = 'aguardando_armazenagem', atualizado_em = NOW() WHERE id = ? AND status NOT IN ('concluido', 'finalizado', 'cancelado')",
+                        (rid,),
+                    )
+                else:
+                    conn.execute(
+                        f"UPDATE {t_rec} SET status = 'aguardando_armazenagem', atualizado_em = ? WHERE id = ? AND status NOT IN ('concluido', 'finalizado', 'cancelado')",
+                        (now, rid),
+                    )
             conn.commit()
             conn.close()
             return jsonify({
@@ -3478,6 +3693,8 @@ def api_wms_recebimentos():
                 'etiqueta': etiqueta,
                 'bloqueios': bloqueios,
                 'sugestao': sug,
+                'movimentacao_id': mov_id,
+                'movimentacao_status': 'pendente' if mov_id else None,
                 'mensagem': 'Datas registradas na bipagem. Status será atualizado após confirmar armazenagem.',
             })
 
@@ -3496,8 +3713,12 @@ def api_wms_recebimentos():
                 sug_pick = _sugerir_putaway(conn, rd.get('sku'), rd.get('lote'), rd.get('data_producao'), 'picking')
                 if sug_pick.get('codigo_endereco'):
                     sug = sug_pick
+            mov_id = _criar_mov_pendente_putaway(conn, pid, sug, 'Aguardando bip da longarina')
             conn.close()
-            return jsonify(sug)
+            out = dict(sug)
+            out['movimentacao_id'] = mov_id
+            out['movimentacao_status'] = 'pendente' if mov_id else None
+            return jsonify(out)
 
         if acao == 'confirmar_armazenagem':
             pid = data.get('palete_id')
@@ -3560,6 +3781,9 @@ def api_wms_recebimentos():
             resp_arm = {
                 'ok': True,
                 'localizacao': loc,
+                'movimentacao_status': 'concluida',
+                'movimentacao_id': (loc or {}).get('movimentacao_id'),
+                'recebimento_status': (loc or {}).get('recebimento_status'),
                 'status_atualizado': {k: v.get('status_condicional') for k, v in status_skus.items()},
             }
             if sug_aplicada:
@@ -3633,51 +3857,28 @@ def api_wms_recebimentos():
 
         if acao == 'finalizar':
             rid = data.get('recebimento_id')
+            if not rid:
+                conn.close()
+                return jsonify({'erro': 'Informe recebimento_id.'}), 400
+            resumo_fin = _resumo_finalizacao_recebimento(conn, rid)
+            if not resumo_fin or not resumo_fin.get('pode_finalizar'):
+                conn.close()
+                msg = (resumo_fin or {}).get('motivo') or 'Recebimento ainda não está pronto para finalizar.'
+                return jsonify({'erro': msg, 'finalizacao': resumo_fin}), 400
             for resp in data.get('respostas') or []:
                 conn.execute(
                     f'''INSERT INTO {t_cqr} (recebimento_id, pergunta_id, resposta, valor_numerico, respondido_em, respondido_por)
                         VALUES (?, ?, ?, ?, ?, ?)''',
                     (rid, resp.get('pergunta_id'), resp.get('resposta'), resp.get('valor_numerico'), now, _usuario()),
                 )
-            pals = conn.execute(
-                f'SELECT palete_id FROM {t_rp} WHERE recebimento_id = ?', (rid,)
-            ).fetchall()
-            movs = 0
-            for pr in pals:
-                pid = pr['palete_id'] if isinstance(pr, dict) else pr[0]
-                it = conn.execute(
-                    f'SELECT sku, lote, data_producao FROM {t_item} WHERE palete_id = ? LIMIT 1', (pid,)
-                ).fetchone()
-                if not it:
-                    continue
-                rd = _row_dict(it) or {}
-                sku = rd.get('sku')
-                lote = rd.get('lote')
-                dp = rd.get('data_producao')
-                sug = _sugerir_putaway(conn, sku, lote, dp, 'pulmao')
-                if sug.get('localizacao_id'):
-                    obs = '; '.join(sug.get('motivo') or [])
-                    if _is_pg(conn):
-                        conn.execute(
-                            f'''INSERT INTO {t_mov} (tipo, palete_id, destino_localizacao_id, status, prioridade, observacao, criado_em, criado_por)
-                                VALUES ('putaway', ?, ?, 'pendente', 3, ?, NOW(), ?)''',
-                            (pid, sug['localizacao_id'], obs, _usuario()),
-                        )
-                    else:
-                        conn.execute(
-                            f'''INSERT INTO {t_mov} (tipo, palete_id, destino_localizacao_id, status, prioridade, observacao, criado_em, criado_por)
-                                VALUES ('putaway', ?, ?, 'pendente', 3, ?, ?, ?)''',
-                            (pid, sug['localizacao_id'], obs, now, _usuario()),
-                        )
-                    movs += 1
             if _is_pg(conn):
                 conn.execute(
-                    f"UPDATE {t_rec} SET status = 'aguardando_armazenagem', check_qualidade_ok = TRUE, atualizado_em = NOW() WHERE id = ?",
+                    f"UPDATE {t_rec} SET status = 'finalizado', check_qualidade_ok = TRUE, atualizado_em = NOW() WHERE id = ?",
                     (rid,),
                 )
             else:
                 conn.execute(
-                    f"UPDATE {t_rec} SET status = 'aguardando_armazenagem', check_qualidade_ok = 1, atualizado_em = ? WHERE id = ?",
+                    f"UPDATE {t_rec} SET status = 'finalizado', check_qualidade_ok = 1, atualizado_em = ? WHERE id = ?",
                     (now, rid),
                 )
             rec_vinc = conn.execute(
@@ -3697,7 +3898,7 @@ def api_wms_recebimentos():
                     terceiros_sync = {'documento_id': int(doc_ter), 'erro': err_t}
             conn.commit()
             conn.close()
-            return jsonify({'ok': True, 'movimentacoes_geradas': movs, 'terceiros': terceiros_sync})
+            return jsonify({'ok': True, 'status': 'finalizado', 'finalizacao': resumo_fin, 'terceiros': terceiros_sync})
 
         ter_doc_id = data.get('terceiros_documento_id')
         ter_area = (data.get('terceiros_area') or '').strip().lower()

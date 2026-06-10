@@ -3310,7 +3310,14 @@ function _wmsPaintHistoricoNf(box, data) {
     html += '<section class="extrato-resumo-grupo"><h4 class="extrato-resumo-grupo-titulo">Documento</h4>';
     html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Fornecedor:</span> ' + escHtml(rec.fornecedor || '—') + '</div>';
     html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Placa:</span> ' + escHtml(rec.placa || '—') + '</div>';
-    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Status WMS:</span> <strong>' + escHtml(rec.status || '—') + '</strong></div>';
+    html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Status WMS:</span> ';
+    var stRec = String(rec.status || '—').toLowerCase();
+    if (stRec === 'finalizado') {
+        html += '<strong style="color:#2e7d32;">✓ Finalizado</strong>';
+    } else {
+        html += '<strong>' + escHtml(rec.status || '—') + '</strong>';
+    }
+    html += '</div>';
     html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Origem:</span> ' + escHtml(rec.origem || '—') + '</div>';
     if (ter.motorista) html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Motorista:</span> ' + escHtml(ter.motorista) + '</div>';
     html += '</section>';
@@ -3333,9 +3340,12 @@ function _wmsPaintHistoricoNf(box, data) {
         html += '<h4 style="margin:14px 0 8px 0;">Conferência NF × WMS</h4>';
         html += '<div class="table-container"><table class="data-table"><thead><tr><th>Item</th><th>SKU</th><th>Descrição</th><th>Qtd NF</th><th>Qtd WMS</th><th>Pendente</th><th>Status</th><th>EAN</th></tr></thead><tbody>';
         html += itensNf.map(function(it) {
+            var st = String(it.status_wms || '').toLowerCase();
+            var stLbl = st === 'ok' ? '✓ OK' : (st === 'parcial' ? 'Parcial' : 'Pendente');
+            var stColor = st === 'ok' ? '#2e7d32' : (st === 'parcial' ? '#ef6c00' : '#c62828');
             return '<tr><td>' + escHtml(it.n_item) + '</td><td><strong>' + escHtml(it.sku) + '</strong></td><td>' + escHtml(it.descricao) + '</td>'
                 + '<td>' + escHtml(it.quantidade_xml) + '</td><td><strong>' + escHtml(it.quantidade_wms) + '</strong></td>'
-                + '<td>' + escHtml(it.pendente_wms) + '</td><td>' + escHtml(it.status_wms) + '</td><td>' + escHtml(it.codigo_ean || '') + '</td></tr>';
+                + '<td>' + escHtml(it.pendente_wms) + '</td><td><strong style="color:' + stColor + ';">' + escHtml(stLbl) + '</strong></td><td>' + escHtml(it.codigo_ean || '') + '</td></tr>';
         }).join('');
         html += '</tbody></table></div>';
     }
@@ -3345,13 +3355,33 @@ function _wmsPaintHistoricoNf(box, data) {
     if (!bipados.length) {
         html += '<p class="info-text">Nenhum item bipado neste recebimento.</p>';
     } else {
-        html += '<div class="table-container"><table class="data-table"><thead><tr><th>Data/hora</th><th>SKU</th><th>Descrição</th><th>Lote</th><th>Produção</th><th>Validade</th><th>Cx</th><th>Palete (22)</th><th>Status palete</th></tr></thead><tbody>';
+        html += '<div class="table-container"><table class="data-table"><thead><tr><th>Data/hora</th><th>SKU</th><th>Descrição</th><th>Lote</th><th>Produção</th><th>Validade</th><th>UP</th><th>Cx</th><th>Palete (22)</th><th>Status palete</th></tr></thead><tbody>';
         html += bipados.map(function(it) {
             return '<tr><td>' + escHtml(formatarDataHoraPtBR(it.bipado_em)) + '</td><td><strong>' + escHtml(it.sku) + '</strong></td>'
                 + '<td>' + escHtml(it.descricao) + '</td><td>' + escHtml(it.lote || '—') + '</td>'
                 + '<td>' + escHtml(it.data_producao || '—') + '</td><td>' + escHtml(it.data_validade || '—') + '</td>'
+                + '<td>' + escHtml(it.rg_caixa || '—') + '</td>'
                 + '<td><strong>' + escHtml(it.quantidade_caixas) + '</strong></td>'
                 + '<td>' + escHtml(it.palete_etiqueta || '—') + '</td><td>' + escHtml(it.palete_status || '—') + '</td></tr>';
+        }).join('');
+        html += '</tbody></table></div>';
+    }
+
+    var movs = data.movimentacoes || [];
+    if (movs.length) {
+        html += '<h4 style="margin:14px 0 8px 0;">Movimentações (putaway)</h4>';
+        html += '<div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Tipo</th><th>Status</th><th>Palete</th><th>Origem</th><th>Destino</th><th>Criado</th><th>Concluído</th><th>Operador</th></tr></thead><tbody>';
+        html += movs.map(function(m) {
+            var st = String(m.status || '').toLowerCase();
+            var stLbl = st === 'concluida' ? '✓ Concluída' : (st === 'pendente' ? 'Pendente' : (m.status || '—'));
+            var stColor = st === 'concluida' ? '#2e7d32' : (st === 'pendente' ? '#ef6c00' : '#333');
+            return '<tr><td>' + escHtml(m.id) + '</td><td>' + escHtml(m.tipo || '—') + '</td>'
+                + '<td><strong style="color:' + stColor + ';">' + escHtml(stLbl) + '</strong></td>'
+                + '<td>' + escHtml(m.palete_etiqueta || '—') + '</td>'
+                + '<td>' + escHtml(m.origem || '—') + '</td><td><strong>' + escHtml(m.destino || '—') + '</strong></td>'
+                + '<td>' + escHtml(formatarDataHoraPtBR(m.criado_em)) + '</td>'
+                + '<td>' + escHtml(formatarDataHoraPtBR(m.concluida_em)) + '</td>'
+                + '<td>' + escHtml(m.concluida_por || m.criado_por || '—') + '</td></tr>';
         }).join('');
         html += '</tbody></table></div>';
     }
@@ -4106,6 +4136,57 @@ function wmsSincronizarRecebimentoAberto(id, opts) {
     } else if (!document.getElementById('wms-rec-palete-id').value) {
         wmsBipEnsurePalete(true);
     }
+    wmsAtualizarBotaoFinalizarNf();
+}
+
+async function wmsAtualizarBotaoFinalizarNf() {
+    var btn = document.getElementById('btn-wms-finalizar-recebimento');
+    var hint = document.getElementById('wms-finalizar-nf-hint');
+    var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value;
+    if (!btn) return;
+    if (!rid) {
+        btn.disabled = true;
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-secondary');
+        btn.title = 'Abra um recebimento para finalizar';
+        if (hint) hint.textContent = 'Abra um recebimento para habilitar a finalização.';
+        return;
+    }
+    try {
+        var data = await _wmsFetchGet('/wms/recebimentos?id=' + encodeURIComponent(rid), 30000);
+        var fin = (data && data.finalizacao) || {};
+        var stRec = String((fin.status_recebimento || (data.recebimento && data.recebimento.status) || '')).toLowerCase();
+        if (stRec === 'finalizado') {
+            btn.disabled = true;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-secondary');
+            btn.textContent = 'NF finalizada';
+            btn.title = 'Recebimento já finalizado';
+            if (hint) hint.textContent = 'Recebimento finalizado — consulte o histórico abaixo ou na aba Histórico NF.';
+            return;
+        }
+        btn.textContent = 'Finalizar NF';
+        if (fin.pode_finalizar) {
+            btn.disabled = false;
+            btn.classList.add('btn-success');
+            btn.classList.remove('btn-secondary');
+            btn.title = 'Finalizar recebimento e registrar histórico';
+            if (hint) {
+                hint.innerHTML = '<strong style="color:#2e7d32;">✓ Todos os paletes guardados'
+                    + (fin.paletes_total ? ' (' + fin.paletes_armazenados + '/' + fin.paletes_total + ')' : '')
+                    + ' — pode finalizar a NF.</strong>';
+            }
+        } else {
+            btn.disabled = true;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-secondary');
+            btn.title = fin.motivo || 'Aguardando conclusão';
+            if (hint) hint.textContent = fin.motivo || 'Aguardando guardar todos os paletes e conferir a NF.';
+        }
+    } catch (e) {
+        btn.disabled = true;
+        if (hint) hint.textContent = 'Não foi possível verificar status para finalizar.';
+    }
 }
 
 async function wmsIniciarBipagemNf() {
@@ -4231,7 +4312,7 @@ window.wmsExcluirRecebimento = async function(btn) {
 
 window._wmsBipEtapa = 1;
 window._wmsBipMaxEtapa = 1;
-window._wmsBipResumo = { palete: '', produto: '', impresso: false, endereco: '' };
+window._wmsBipResumo = { palete: '', produto: '', impresso: false, endereco: '', guardado: false };
 
 var _WMS_BIP_ACOES = {
     1: 'Bipe a etiqueta de produto (EAN) colada na caixa e confirme lote e datas.',
@@ -4361,7 +4442,7 @@ function wmsBipAtualizarResumos() {
     var elD = document.getElementById('wms-bip-resumo-destino');
     if (elPr) elPr.textContent = r.produto ? '✓ ' + r.produto : '';
     if (elI) elI.textContent = r.impresso ? '✓ ' + (r.palete || 'Etiqueta colada') : (r.palete ? '✓ ' + r.palete : '');
-    if (elD) elD.textContent = r.endereco ? '✓ ' + r.endereco : '';
+    if (elD) elD.textContent = r.guardado && r.endereco ? ('✓ Concluído — ' + r.endereco) : (r.endereco ? '✓ ' + r.endereco : '');
     wmsBipAtualizarCodigoPaleteUI(r.palete);
     wmsBipAtualizarEnderecoEtapa2();
 }
@@ -4436,7 +4517,8 @@ function wmsBipFocarEtapa(n) {
 
 async function wmsBipResetNovoPalete() {
     window._wmsBipMaxEtapa = 1;
-    window._wmsBipResumo = { palete: '', produto: '', impresso: false, endereco: '' };
+    window._wmsBipResumo = { palete: '', produto: '', impresso: false, endereco: '', guardado: false };
+    window._wmsMovArmazenagem = { id: null, status: null };
     var pid = document.getElementById('wms-rec-palete-id');
     if (pid) pid.value = '';
     var bip = document.getElementById('wms-bip-etiqueta');
@@ -4458,8 +4540,16 @@ async function wmsBipResetNovoPalete() {
     var btnProx = document.getElementById('btn-wms-bip-proximo-palete');
     if (btnProx) btnProx.style.display = 'none';
     wmsMostrarErroBipProduto('');
+    var btnConf = document.getElementById('btn-wms-confirmar-destino');
+    if (btnConf) {
+        btnConf.disabled = false;
+        btnConf.textContent = 'Confirmar guardado';
+        btnConf.classList.add('btn-success');
+        btnConf.classList.remove('btn-secondary');
+    }
     wmsBipIrParaEtapa(1);
     await wmsBipEnsurePalete(true);
+    wmsAtualizarBotaoFinalizarNf();
 }
 
 function wmsBipInitStepper() {
@@ -4515,6 +4605,42 @@ window.wmsAbrirRecebimento = function(id) {
 
 window._wmsSugestaoAtual = null;
 window._wmsDestinoManual = false;
+window._wmsMovArmazenagem = { id: null, status: null };
+
+function wmsMarcarGuardadoConcluido(endFinal, data) {
+    data = data || {};
+    window._wmsMovArmazenagem = {
+        id: data.movimentacao_id || (window._wmsMovArmazenagem && window._wmsMovArmazenagem.id),
+        status: 'concluida'
+    };
+    window._wmsBipResumo.endereco = endFinal;
+    window._wmsBipResumo.guardado = true;
+    var elD = document.getElementById('wms-bip-resumo-destino');
+    if (elD) elD.textContent = '✓ Concluído — ' + endFinal;
+    var box = document.getElementById('wms-sugestao-destino');
+    if (box) {
+        box.style.display = 'block';
+        box.style.background = '#e8f5e9';
+        box.style.border = '2px solid #2e7d32';
+        box.style.padding = '10px';
+        box.style.borderRadius = '8px';
+        box.innerHTML = '<strong style="color:#1b5e20;">✓ Guardado — concluído</strong><br>'
+            + '<span style="font-size:16px;font-weight:bold;">' + escHtml(endFinal) + '</span><br>'
+            + '<span style="font-size:12px;color:#2e7d32;">Movimentação '
+            + (data.movimentacao_id ? '#' + escHtml(String(data.movimentacao_id)) + ' ' : '')
+            + 'finalizada · status atualizado.</span>';
+    }
+    var dest = document.getElementById('wms-bip-destino');
+    if (dest) { dest.value = ''; dest.readOnly = true; dest.style.background = '#f1f8e9'; }
+    var btnConf = document.getElementById('btn-wms-confirmar-destino');
+    if (btnConf) {
+        btnConf.disabled = true;
+        btnConf.textContent = 'Concluído';
+        btnConf.classList.remove('btn-success');
+        btnConf.classList.add('btn-secondary');
+    }
+    wmsAtualizarBotaoFinalizarNf();
+}
 
 function _wmsAplicarModoDestinoSugestao() {
     var dest = document.getElementById('wms-bip-destino');
@@ -4570,6 +4696,9 @@ function _wmsMostrarSugestao(sug) {
     var dest = document.getElementById('wms-bip-destino');
     if (!box) return;
     window._wmsSugestaoAtual = sug || null;
+    if (sug && sug.movimentacao_id) {
+        window._wmsMovArmazenagem = { id: sug.movimentacao_id, status: sug.movimentacao_status || 'pendente' };
+    }
     if (!sug || !sug.codigo_endereco) {
         box.style.display = 'block';
         box.style.background = '#fff3e0';
@@ -4587,6 +4716,10 @@ function _wmsMostrarSugestao(sug) {
     };
     var priTxt = priLbl[sug.prioridade] || 'putaway inteligente';
     var bcLong = sug.barcode_longarina || sug.codigo_endereco;
+    var movSt = (window._wmsMovArmazenagem && window._wmsMovArmazenagem.status) || sug.movimentacao_status || 'pendente';
+    var stBadge = movSt === 'concluida'
+        ? '<span style="font-size:11px;background:#c8e6c9;padding:2px 8px;border-radius:4px;color:#1b5e20;font-weight:bold;">Status: concluído</span>'
+        : '<span style="font-size:11px;background:#fff3e0;padding:2px 8px;border-radius:4px;color:#e65100;font-weight:bold;">Status: pendente — bipe a longarina</span>';
     box.style.display = 'block';
     box.style.background = '#e8f5e9';
     box.style.border = '1px solid #81c784';
@@ -4595,7 +4728,7 @@ function _wmsMostrarSugestao(sug) {
     box.innerHTML = '<strong style="color:#1b5e20;">✓ Onde colocar — indicação do sistema (' + escHtml(sug.zona_label || 'PULMÃO') + ')</strong><br>' +
         '<span style="font-size:16px;font-weight:bold;">' + escHtml(bcLong) + '</span> <span style="font-size:12px;color:#555;">(bip longarina)</span> — ' + escHtml(sug.texto || '') + st + alerta +
         '<br><span style="font-size:12px;color:#2e7d32;">Critério: ' + escHtml(priTxt) + ' · ' + escHtml((sug.motivo || []).join(' · ')) + '</span>' +
-        '<br><span style="font-size:12px;color:#555;">Bipe a etiqueta da longarina/coluna — a entrada confirma automaticamente.</span>';
+        '<br><span style="font-size:12px;color:#555;">Bipe a etiqueta da longarina/coluna — a entrada confirma automaticamente.</span><br>' + stBadge;
     if (window._wmsBipEtapa >= 3 && dest && !window._wmsDestinoManual) dest.focus();
     _wmsAplicarModoDestinoSugestao();
     wmsBipAtualizarEnderecoEtapa2();
@@ -4681,6 +4814,9 @@ async function wmsBipProduto() {
             if (data.bloqueios && data.bloqueios.length) txt += ' — Bloqueios: ' + data.bloqueios.join(', ');
             if (msg) msg.textContent = txt;
             _wmsMostrarSugestao(data.sugestao);
+            if (data.movimentacao_id) {
+                window._wmsMovArmazenagem = { id: data.movimentacao_id, status: data.movimentacao_status || 'pendente' };
+            }
             wmsBipIrParaEtapa(2);
             showMessage('Produto OK — imprima a etiqueta do palete e cole no meio dele.', 'success');
             wmsAtualizarPainelNfDescarga();
@@ -4777,7 +4913,7 @@ async function wmsConfirmarDestino() {
             var st = data.status_atualizado || {};
             var stTxt = Object.keys(st).map(function(k) { return k + ': ' + st[k]; }).join(' · ');
             var endFinal = (data.localizacao && data.localizacao.codigo_endereco) || body.codigo_endereco || cod;
-            window._wmsBipResumo.endereco = endFinal;
+            wmsMarcarGuardadoConcluido(endFinal, data);
             window._wmsBipMaxEtapa = 3;
             document.querySelectorAll('.wms-bip-step[data-wms-bip-step]').forEach(function(btnStep) {
                 btnStep.classList.remove('wms-bip-step--ativa');
@@ -4789,10 +4925,12 @@ async function wmsConfirmarDestino() {
                 el.classList.add('wms-rec-etapa--feita');
             });
             wmsBipAtualizarResumos();
-            showMessage('Palete guardado em ' + endFinal + (manual ? ' (manual)' : '') +
+            showMessage('Palete guardado em ' + endFinal + ' — movimentação concluída.' +
                 (stTxt ? ' · ' + stTxt : ''), 'success');
             loadWmsPainel();
             loadWmsProdutos();
+            loadWmsMovimentacoes();
+            loadWmsRecebimentos();
             wmsAtualizarPainelNfDescarga();
             var btnProx = document.getElementById('btn-wms-bip-proximo-palete');
             if (btnProx) btnProx.style.display = '';
@@ -4806,7 +4944,12 @@ async function wmsConfirmarDestino() {
         }
     } finally {
         window._wmsConfirmandoDestino = false;
-        if (btn) { btn.disabled = false; btn.textContent = 'Confirmar guardado'; }
+        if (btn && !(window._wmsBipResumo && window._wmsBipResumo.guardado)) {
+            btn.disabled = false;
+            btn.textContent = 'Confirmar guardado';
+            btn.classList.add('btn-success');
+            btn.classList.remove('btn-secondary');
+        }
     }
 }
 
@@ -4922,23 +5065,39 @@ async function wmsConferirPalete() {
 async function wmsFinalizarRecebimento() {
     var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value;
     if (!rid) return;
+    var btn = document.getElementById('btn-wms-finalizar-recebimento');
+    if (btn && btn.disabled) {
+        showMessage(btn.title || 'Recebimento ainda não está pronto para finalizar.', 'warning');
+        return;
+    }
+    if (!confirm('Finalizar recebimento desta NF?\n\nTodos os paletes devem estar guardados. O histórico completo ficará disponível na aba Histórico NF.')) return;
     var data = await fetchAPI('/wms/recebimentos', {
         method: 'POST',
         body: JSON.stringify({ acao: 'finalizar', recebimento_id: parseInt(rid, 10), respostas: [] })
     });
     if (data && data.ok) {
-        var msg = 'Recebimento finalizado. Movimentações geradas: ' + (data.movimentacoes_geradas || 0);
+        var msg = 'Recebimento finalizado com sucesso.';
         if (data.terceiros && data.terceiros.recebimento_concluido) {
-            msg += ' · Pendência de recebimento atualizada no módulo descarga.';
+            msg += ' Pendência de recebimento atualizada no módulo descarga.';
         } else if (data.terceiros && data.terceiros.erro) {
-            msg += ' · Aviso terceiros: ' + data.terceiros.erro;
+            msg += ' Aviso terceiros: ' + data.terceiros.erro;
         }
         showMessage(msg, 'success');
         loadWmsRecebimentos();
         loadWmsMovimentacoes();
         loadWmsPainel();
+        wmsAtualizarPainelNfDescarga();
+        wmsAtualizarBotaoFinalizarNf();
+        var nf = (document.getElementById('wms-rec-nf') || {}).value || '';
+        var histNf = document.getElementById('wms-hist-nf');
+        if (histNf && String(nf).trim()) histNf.value = String(nf).trim();
+        var histRid = document.getElementById('wms-hist-rec-id');
+        if (histRid) histRid.value = String(rid);
+        _wmsMostrarSubtab('historico-nf');
+        loadWmsHistoricoNf();
     } else {
         showMessage((data && data.erro) || 'Erro ao finalizar.', 'error');
+        if (data && data.finalizacao) wmsAtualizarBotaoFinalizarNf();
     }
 }
 
