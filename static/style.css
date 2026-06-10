@@ -668,6 +668,30 @@ body.hub-modulos-aberto .container {
     gap: 8px;
     margin-left: auto;
 }
+.wms-bip-codigo-palete {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    background: #e8eaf6;
+    border: 1px solid #9fa8da;
+    border-radius: 8px;
+}
+.wms-bip-codigo-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #3949ab;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.wms-bip-codigo-valor {
+    font-size: 18px;
+    letter-spacing: 0.06em;
+    color: #1a237e;
+    font-family: Consolas, 'Courier New', monospace;
+}
 
 .devolucoes-titulo-principal {
     font-size: 1.05rem;

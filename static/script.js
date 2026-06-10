@@ -4064,7 +4064,7 @@ async function wmsIniciarBipagemNf() {
     wmsAbrirRecebimento(rid);
     var det = document.getElementById('wms-recebimento-detalhe');
     if (det && det.scrollIntoView) det.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    showMessage('Comece pelo passo 1: identifique o palete.', 'success');
+    showMessage('Comece bipando a etiqueta de produto (EAN) na caixa.', 'success');
 }
 
 function wmsInitRecebimentoIntegracaoNf() {
@@ -4154,27 +4154,56 @@ window._wmsBipMaxEtapa = 1;
 window._wmsBipResumo = { palete: '', produto: '', impresso: false, endereco: '' };
 
 var _WMS_BIP_ACOES = {
-    1: 'Bipe o palete (22 caracteres) ou deixe vazio para o sistema gerar o código.',
-    2: 'Bipe a etiqueta de produto (EAN) colada na caixa e confirme lote e datas.',
-    3: 'Imprima a etiqueta grande, cole no palete e clique em «Etiqueta colada — continuar».',
-    4: 'Leve o palete ao endereço indicado, bipe a longarina do rack e confirme.'
+    1: 'Bipe a etiqueta de produto (EAN) colada na caixa e confirme lote e datas.',
+    2: 'Imprima a etiqueta do palete, cole no meio dele e clique em «Etiqueta colada — continuar».',
+    3: 'Leve o palete ao endereço indicado, bipe a longarina do rack e confirme.'
 };
+
+function wmsBipAtualizarCodigoPaleteUI(etiqueta) {
+    var el = document.getElementById('wms-bip-codigo-palete');
+    var hid = document.getElementById('wms-bip-etiqueta');
+    var v = etiqueta || (hid && hid.value) || '';
+    if (hid && etiqueta) hid.value = etiqueta;
+    if (el) el.textContent = v || '—';
+}
 
 function wmsBipAtualizarResumos() {
     var r = window._wmsBipResumo || {};
-    var elP = document.getElementById('wms-bip-resumo-palete');
     var elPr = document.getElementById('wms-bip-resumo-produto');
     var elI = document.getElementById('wms-bip-resumo-imprimir');
     var elD = document.getElementById('wms-bip-resumo-destino');
-    if (elP) elP.textContent = r.palete ? '✓ ' + r.palete : '';
     if (elPr) elPr.textContent = r.produto ? '✓ ' + r.produto : '';
-    if (elI) elI.textContent = r.impresso ? '✓ Etiqueta impressa/cola' : '';
+    if (elI) elI.textContent = r.impresso ? '✓ ' + (r.palete || 'Etiqueta colada') : (r.palete ? '✓ ' + r.palete : '');
     if (elD) elD.textContent = r.endereco ? '✓ ' + r.endereco : '';
+    wmsBipAtualizarCodigoPaleteUI(r.palete);
+}
+
+async function wmsBipEnsurePalete(silent) {
+    var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value;
+    var pid = (document.getElementById('wms-rec-palete-id') || {}).value;
+    if (!rid) return null;
+    if (pid) {
+        var hid = document.getElementById('wms-bip-etiqueta');
+        if (hid && hid.value) return { palete_id: pid, etiqueta: hid.value };
+    }
+    var data = await fetchAPI('/wms/recebimentos', {
+        method: 'POST',
+        body: JSON.stringify({ acao: 'bip_palete', recebimento_id: parseInt(rid, 10), etiqueta: '' })
+    });
+    if (data && data.ok) {
+        var pidEl = document.getElementById('wms-rec-palete-id');
+        if (pidEl) pidEl.value = String(data.palete_id);
+        window._wmsBipResumo.palete = data.etiqueta || '';
+        wmsBipAtualizarCodigoPaleteUI(data.etiqueta);
+        return data;
+    }
+    if (!silent) showMessage((data && data.erro) || 'Erro ao abrir palete no sistema.', 'error');
+    return null;
 }
 
 function wmsBipIrParaEtapa(n, opts) {
     opts = opts || {};
-    n = Math.max(1, Math.min(4, parseInt(n, 10) || 1));
+    n = Math.max(1, Math.min(3, parseInt(n, 10) || 1));
     if (!opts.manterMax && n > window._wmsBipMaxEtapa) window._wmsBipMaxEtapa = n;
     window._wmsBipEtapa = n;
     var maxLiberada = opts.maxLiberada || window._wmsBipMaxEtapa;
@@ -4199,20 +4228,23 @@ function wmsBipIrParaEtapa(n, opts) {
 }
 
 function wmsBipFocarEtapa(n) {
-    var idMap = { 1: 'wms-bip-etiqueta', 2: 'wms-pal-sku', 4: 'wms-bip-destino' };
+    var idMap = { 1: 'wms-pal-sku', 3: 'wms-bip-destino' };
     var el = document.getElementById(idMap[n]);
     if (el && !el.readOnly) {
         setTimeout(function() { el.focus(); if (el.select) el.select(); }, 80);
     }
 }
 
-function wmsBipResetNovoPalete() {
+async function wmsBipResetNovoPalete() {
     window._wmsBipMaxEtapa = 1;
     window._wmsBipResumo = { palete: '', produto: '', impresso: false, endereco: '' };
     var pid = document.getElementById('wms-rec-palete-id');
     if (pid) pid.value = '';
     var bip = document.getElementById('wms-bip-etiqueta');
     if (bip) bip.value = '';
+    var bipM = document.getElementById('wms-bip-etiqueta-manual');
+    if (bipM) bipM.value = '';
+    wmsBipAtualizarCodigoPaleteUI('');
     var info = document.getElementById('wms-rec-palete-info');
     if (info) { info.textContent = ''; info.style.display = 'none'; }
     ['wms-pal-sku', 'wms-pal-lote'].forEach(function(id) {
@@ -4227,6 +4259,7 @@ function wmsBipResetNovoPalete() {
     var btnProx = document.getElementById('btn-wms-bip-proximo-palete');
     if (btnProx) btnProx.style.display = 'none';
     wmsBipIrParaEtapa(1);
+    await wmsBipEnsurePalete(true);
 }
 
 function wmsBipInitStepper() {
@@ -4251,17 +4284,17 @@ function wmsBipInitStepper() {
             }
         });
     }
-    var bipEl = document.getElementById('wms-bip-etiqueta');
-    if (bipEl && !bipEl.dataset.wmsBipEnter) {
-        bipEl.dataset.wmsBipEnter = '1';
-        bipEl.addEventListener('keydown', function(ev) {
+    var bipMan = document.getElementById('wms-bip-etiqueta-manual');
+    if (bipMan && !bipMan.dataset.wmsBipEnter) {
+        bipMan.dataset.wmsBipEnter = '1';
+        bipMan.addEventListener('keydown', function(ev) {
             if (ev.key === 'Enter') { ev.preventDefault(); wmsBipPalete(); }
         });
     }
     var btnCola = document.getElementById('btn-wms-etq-cola-ok');
     if (btnCola) btnCola.addEventListener('click', function() {
         window._wmsBipResumo.impresso = true;
-        wmsBipIrParaEtapa(4);
+        wmsBipIrParaEtapa(3);
         showMessage('Agora leve o palete ao endereço e bipe a longarina.', 'success');
     });
     var btnProx = document.getElementById('btn-wms-bip-proximo-palete');
@@ -4364,7 +4397,7 @@ function _wmsMostrarSugestao(sug) {
         '<br><span style="font-size:12px;color:#555;">Bipe a etiqueta da longarina e confirme a armazenagem.</span>';
     if (!window._wmsDestinoManual && dest) {
         dest.value = bcLong || '';
-        if (window._wmsBipEtapa >= 4) dest.focus();
+        if (window._wmsBipEtapa >= 3) dest.focus();
     }
     _wmsAplicarModoDestinoSugestao();
 }
@@ -4372,7 +4405,12 @@ function _wmsMostrarSugestao(sug) {
 async function wmsBipPalete() {
     var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value;
     if (!rid) { showMessage('Selecione um recebimento.', 'error'); return; }
-    var etiqueta = (document.getElementById('wms-bip-etiqueta') || {}).value || '';
+    var manual = document.getElementById('wms-bip-etiqueta-manual');
+    var etiqueta = (manual && manual.value ? manual.value : '') || '';
+    if (!etiqueta.trim()) {
+        showMessage('Informe o código de 22 caracteres da etiqueta já colada no palete.', 'warning');
+        return;
+    }
     var data = await fetchAPI('/wms/recebimentos', {
         method: 'POST',
         body: JSON.stringify({ acao: 'bip_palete', recebimento_id: parseInt(rid, 10), etiqueta: etiqueta.trim() })
@@ -4380,19 +4418,22 @@ async function wmsBipPalete() {
     if (data && data.ok) {
         var hid = document.getElementById('wms-rec-palete-id');
         if (hid) hid.value = String(data.palete_id);
-        var bip = document.getElementById('wms-bip-etiqueta');
-        if (bip) bip.value = data.etiqueta;
         window._wmsBipResumo.palete = data.etiqueta || '';
-        wmsBipIrParaEtapa(2);
-        showMessage('Palete OK — agora bipe o produto.', 'success');
+        wmsBipAtualizarCodigoPaleteUI(data.etiqueta);
+        wmsBipAtualizarResumos();
+        showMessage('Etiqueta de palete vinculada.', 'success');
     } else {
-        showMessage((data && data.erro) || 'Erro ao bipar palete.', 'error');
+        showMessage((data && data.erro) || 'Erro ao vincular etiqueta do palete.', 'error');
     }
 }
 
 async function wmsBipProduto() {
     var pid = (document.getElementById('wms-rec-palete-id') || {}).value;
-    if (!pid) { showMessage('Bipe o palete primeiro (passo 1).', 'error'); return; }
+    if (!pid) {
+        var criado = await wmsBipEnsurePalete(false);
+        if (!criado) return;
+        pid = criado.palete_id;
+    }
     var dp = (document.getElementById('wms-pal-producao') || {}).value || '';
     var dv = (document.getElementById('wms-pal-validade') || {}).value || '';
     if (!dp) { showMessage('Informe a data de produção na bipagem.', 'error'); return; }
@@ -4419,12 +4460,14 @@ async function wmsBipProduto() {
         var skuTxt = body.item.sku || '';
         var loteTxt = body.item.lote ? ' · lote ' + body.item.lote : '';
         window._wmsBipResumo.produto = skuTxt + loteTxt;
+        window._wmsBipResumo.palete = data.etiqueta || window._wmsBipResumo.palete || '';
+        wmsBipAtualizarCodigoPaleteUI(window._wmsBipResumo.palete);
         var txt = 'Produto conferido no palete ' + (data.etiqueta || '');
         if (data.bloqueios && data.bloqueios.length) txt += ' — Bloqueios: ' + data.bloqueios.join(', ');
         if (msg) msg.textContent = txt;
         _wmsMostrarSugestao(data.sugestao);
-        wmsBipIrParaEtapa(3);
-        showMessage('Produto OK — imprima e cole a etiqueta no palete.', 'success');
+        wmsBipIrParaEtapa(2);
+        showMessage('Produto OK — imprima a etiqueta do palete e cole no meio dele.', 'success');
         wmsAtualizarPainelNfDescarga();
     } else {
         showMessage((data && data.erro) || 'Erro ao bipar produto.', 'error');
@@ -4434,7 +4477,7 @@ async function wmsBipProduto() {
 function wmsImprimirEtiqueta() {
     var etiqueta = (document.getElementById('wms-bip-etiqueta') || {}).value || '';
     if (!etiqueta || etiqueta.length !== 22) {
-        showMessage('Confirme o palete no passo 1 antes de imprimir.', 'error');
+        showMessage('Confira o produto no passo 1 antes de imprimir a etiqueta do palete.', 'error');
         wmsBipIrParaEtapa(1);
         return;
     }
@@ -4494,7 +4537,7 @@ async function wmsConfirmarDestino() {
         var stTxt = Object.keys(st).map(function(k) { return k + ': ' + st[k]; }).join(' · ');
         var endFinal = (data.localizacao && data.localizacao.codigo_endereco) || body.codigo_endereco || cod;
         window._wmsBipResumo.endereco = endFinal;
-        window._wmsBipMaxEtapa = 4;
+        window._wmsBipMaxEtapa = 3;
         document.querySelectorAll('.wms-bip-step[data-wms-bip-step]').forEach(function(btn) {
             btn.classList.remove('wms-bip-step--ativa');
             btn.classList.add('wms-bip-step--feita');

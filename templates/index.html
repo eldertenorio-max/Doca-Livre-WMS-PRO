@@ -2694,7 +2694,7 @@
                         <section class="wms-rec-fase wms-rec-fase--etq-prod" id="wms-rec-nf-itens-wrap" style="display: none;">
                             <h3 class="wms-rec-fase-titulo"><span class="wms-rec-fase-num">A</span><span>Etiquetas de PRODUTO — imprimir antes de bipar</span></h3>
                             <div class="wms-rec-fase-corpo">
-                                <p class="wms-rec-fase-desc">Etiqueta Zebra <strong>50×76 mm</strong> colada em cada item/caixa. O código de barras impresso é o <strong>EAN ou SKU</strong> — você vai <strong>bipar esse código na etapa 2</strong> da bipagem. <em>Não confundir com o código de 22 caracteres do palete.</em></p>
+                                <p class="wms-rec-fase-desc">Etiqueta Zebra <strong>50×76 mm</strong> colada em cada item/caixa. O código de barras é o <strong>EAN ou SKU</strong> — você <strong>bipa esse código primeiro</strong> ao montar o palete. <em>A etiqueta de 22 caracteres do palete só é impressa depois, no passo 2 da montagem.</em></p>
                                 <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px;">
                                     <button type="button" class="btn btn-secondary" id="btn-wms-imprimir-etq-nf-todos">Imprimir todas (etq. produto)</button>
                                     <button type="button" class="btn btn-primary" id="btn-wms-iniciar-bipagem">Montar paletes — abrir passo a passo</button>
@@ -2717,42 +2717,29 @@
                                 <input type="hidden" id="wms-rec-palete-id">
 
                                 <nav class="wms-bip-stepper" id="wms-bip-stepper" aria-label="Passos do palete">
-                                    <button type="button" class="wms-bip-step" data-wms-bip-step="1"><span class="wms-bip-step-num">1</span><span class="wms-bip-step-txt">Palete</span></button>
+                                    <button type="button" class="wms-bip-step" data-wms-bip-step="1"><span class="wms-bip-step-num">1</span><span class="wms-bip-step-txt">Produto</span></button>
                                     <span class="wms-bip-step-linha" aria-hidden="true"></span>
-                                    <button type="button" class="wms-bip-step" data-wms-bip-step="2"><span class="wms-bip-step-num">2</span><span class="wms-bip-step-txt">Produto</span></button>
+                                    <button type="button" class="wms-bip-step" data-wms-bip-step="2"><span class="wms-bip-step-num">2</span><span class="wms-bip-step-txt">Etiqueta palete</span></button>
                                     <span class="wms-bip-step-linha" aria-hidden="true"></span>
-                                    <button type="button" class="wms-bip-step" data-wms-bip-step="3"><span class="wms-bip-step-num">3</span><span class="wms-bip-step-txt">Etiqueta</span></button>
-                                    <span class="wms-bip-step-linha" aria-hidden="true"></span>
-                                    <button type="button" class="wms-bip-step" data-wms-bip-step="4"><span class="wms-bip-step-num">4</span><span class="wms-bip-step-txt">Guardar</span></button>
+                                    <button type="button" class="wms-bip-step" data-wms-bip-step="3"><span class="wms-bip-step-num">3</span><span class="wms-bip-step-txt">Guardar</span></button>
                                 </nav>
 
                                 <div class="wms-bip-acao-atual" id="wms-bip-acao-atual">
                                     <span class="wms-bip-acao-label">Agora</span>
-                                    <span class="wms-bip-acao-texto" id="wms-bip-acao-texto">Bipe o palete ou deixe vazio para gerar o código.</span>
+                                    <span class="wms-bip-acao-texto" id="wms-bip-acao-texto">Bipe a etiqueta de produto (EAN) colada na caixa.</span>
                                 </div>
 
-                                <div class="wms-rec-etapa wms-rec-etapa--palete" data-wms-bip-step="1">
-                                    <div class="wms-rec-etapa-cab">
-                                        <p class="wms-rec-etapa-titulo">Identificar o palete</p>
-                                        <p class="wms-rec-etapa-resumo" id="wms-bip-resumo-palete"></p>
-                                    </div>
-                                    <div class="wms-rec-etapa-corpo">
-                                        <p class="wms-rec-fase-desc">Etiqueta de <strong>22 caracteres</strong> no palete. Já tem? Bipe. Não tem? Deixe vazio — o sistema gera.</p>
-                                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end;">
-                                            <div class="form-group" style="flex:1;min-width:200px;"><label>Código do palete</label><input type="text" id="wms-bip-etiqueta" placeholder="Bipe ou vazio = gerar" maxlength="22" autocomplete="off"></div>
-                                            <button type="button" class="btn btn-primary" id="btn-wms-bip-palete">Confirmar palete</button>
-                                        </div>
-                                        <span id="wms-rec-palete-info" class="info-text" style="display:none;"></span>
-                                    </div>
-                                </div>
+                                <input type="hidden" id="wms-bip-etiqueta">
+                                <span id="wms-rec-palete-info" style="display:none;"></span>
 
-                                <div class="wms-rec-etapa wms-rec-etapa--produto" data-wms-bip-step="2">
+                                <div class="wms-rec-etapa wms-rec-etapa--produto" data-wms-bip-step="1">
                                     <div class="wms-rec-etapa-cab">
                                         <p class="wms-rec-etapa-titulo">Conferir produto no palete</p>
                                         <p class="wms-rec-etapa-resumo" id="wms-bip-resumo-produto"></p>
                                     </div>
                                     <div class="wms-rec-etapa-corpo">
-                                        <p class="wms-rec-fase-desc">Bipe a <strong>etiqueta de produto</strong> (EAN) colada na caixa — a mesma impressa na fase A.</p>
+                                        <p class="wms-rec-fase-desc">Comece pela <strong>etiqueta de produto</strong> (EAN) que você imprimiu na fase A e colou na caixa. Monte o palete e bipe cada item aqui.</p>
+                                        <p class="info-text" style="margin:0 0 10px 0;font-size:12px;">O código do palete é gerado automaticamente — você só imprime a etiqueta dele no passo 2.</p>
                                         <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end;">
                                             <div class="form-group"><label>EAN / SKU</label><input type="text" id="wms-pal-sku" placeholder="Bipe a etiqueta da caixa" autocomplete="off"></div>
                                             <div class="form-group"><label>Lote</label><input type="text" id="wms-pal-lote"></div>
@@ -2765,13 +2752,24 @@
                                     </div>
                                 </div>
 
-                                <div class="wms-rec-etapa wms-rec-etapa--imprimir" data-wms-bip-step="3">
+                                <div class="wms-rec-etapa wms-rec-etapa--imprimir" data-wms-bip-step="2">
                                     <div class="wms-rec-etapa-cab">
-                                        <p class="wms-rec-etapa-titulo">Colar etiqueta no palete</p>
+                                        <p class="wms-rec-etapa-titulo">Etiqueta do palete (22 caracteres)</p>
                                         <p class="wms-rec-etapa-resumo" id="wms-bip-resumo-imprimir"></p>
                                     </div>
                                     <div class="wms-rec-etapa-corpo">
-                                        <p class="wms-rec-fase-desc">Imprima a etiqueta grande e cole no meio do palete montado.</p>
+                                        <p class="wms-rec-fase-desc">Imprima e cole no meio do palete. O código abaixo foi gerado ao conferir o produto.</p>
+                                        <div class="wms-bip-codigo-palete" id="wms-bip-codigo-palete-box">
+                                            <span class="wms-bip-codigo-label">Código do palete</span>
+                                            <strong id="wms-bip-codigo-palete" class="wms-bip-codigo-valor">—</strong>
+                                        </div>
+                                        <details class="wms-bip-palete-opcional" style="margin:10px 0;">
+                                            <summary style="cursor:pointer;font-size:12px;color:#555;">Palete já tem etiqueta de 22 caracteres? Bipe para vincular</summary>
+                                            <div class="form-row" style="flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px;">
+                                                <div class="form-group" style="flex:1;min-width:200px;"><label>Bip etiqueta existente</label><input type="text" id="wms-bip-etiqueta-manual" placeholder="22 caracteres" maxlength="22" autocomplete="off"></div>
+                                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-bip-palete">Vincular etiqueta</button>
+                                            </div>
+                                        </details>
                                         <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: center;">
                                             <button type="button" class="btn btn-primary" id="btn-wms-imprimir-etiqueta">Imprimir etiqueta</button>
                                             <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-modelo-palete" onclick="wmsImprimirEtqPaleteModelo()">Ver modelo</button>
@@ -2780,7 +2778,7 @@
                                     </div>
                                 </div>
 
-                                <div class="wms-rec-etapa wms-rec-etapa--destino" data-wms-bip-step="4">
+                                <div class="wms-rec-etapa wms-rec-etapa--destino" data-wms-bip-step="3">
                                     <div class="wms-rec-etapa-cab">
                                         <p class="wms-rec-etapa-titulo">Guardar no rack</p>
                                         <p class="wms-rec-etapa-resumo" id="wms-bip-resumo-destino"></p>
