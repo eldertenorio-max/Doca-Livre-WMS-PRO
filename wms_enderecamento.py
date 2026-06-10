@@ -3359,6 +3359,9 @@ def api_wms_recebimentos():
     try:
         if acao == 'bip_palete':
             rid = data.get('recebimento_id')
+            if not rid:
+                conn.close()
+                return jsonify({'erro': 'Informe recebimento_id.'}), 400
             etiqueta = (data.get('etiqueta') or '').strip()
             if etiqueta and len(etiqueta) != 22:
                 conn.close()
@@ -3432,6 +3435,11 @@ def api_wms_recebimentos():
                 return jsonify({'erro': 'Informe a data de validade na bipagem.'}), 400
             estado = data.get('estado_palete') or 'bom'
             lote = (item.get('lote') or '').strip() or None
+            rg_up = (item.get('rg_caixa') or item.get('up') or '').strip() or None
+            qtd_cx = int(item.get('quantidade_caixas') or 0)
+            if qtd_cx < 1:
+                conn.close()
+                return jsonify({'erro': 'Informe a quantidade de caixas (mínimo 1).'}), 400
             conn.execute(
                 f'''INSERT INTO {t_item}
                     (palete_id, sku, descricao, lote, data_producao, data_validade, sif,
@@ -3440,8 +3448,8 @@ def api_wms_recebimentos():
                 (
                     pid, sku, item.get('descricao'), lote, dp,
                     dv, item.get('sif'),
-                    int(item.get('quantidade_caixas') or 0), item.get('peso_liquido'),
-                    item.get('rg_caixa'), now,
+                    qtd_cx, item.get('peso_liquido'),
+                    rg_up, now,
                 ),
             )
             bloqueios = _aplicar_bloqueios_palete(conn, pid, estado, dv, item.get('temperatura'))

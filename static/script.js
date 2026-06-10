@@ -4013,17 +4013,27 @@ async function wmsAtualizarPainelNfDescarga() {
     if (data && data.documento) wmsPreencherPainelNfDescarga(data.documento);
 }
 
+function wmsNormalizarCodigoBip(codigo) {
+    return String(codigo || '').trim().replace(/\s+/g, ' ');
+}
+
+function wmsSomenteDigitosCodigo(codigo) {
+    return String(codigo || '').replace(/\D/g, '');
+}
+
 function wmsResolverCodigoProdutoNf(codigo) {
-    codigo = String(codigo || '').trim();
+    codigo = wmsNormalizarCodigoBip(codigo);
     if (!codigo || !window._wmsNfDoc) return null;
-    var norm = codigo.replace(/\D/g, '');
+    var norm = wmsSomenteDigitosCodigo(codigo);
+    var compact = codigo.replace(/\s/g, '').toUpperCase();
     var itens = window._wmsNfDoc.itens || [];
     for (var i = 0; i < itens.length; i++) {
         var it = itens[i];
         var sku = String(it.sku || '').trim();
-        var ean = String(it.codigo_ean || '').replace(/\D/g, '');
-        if (sku && (sku === codigo || sku.toUpperCase() === codigo.toUpperCase())) return it;
-        if (ean && (ean === norm || ean === codigo)) return it;
+        var skuCompact = sku.replace(/\s/g, '').toUpperCase();
+        var ean = wmsSomenteDigitosCodigo(it.codigo_ean);
+        if (sku && (sku === codigo || sku.toUpperCase() === codigo.toUpperCase() || (compact && skuCompact === compact))) return it;
+        if (ean && norm && (ean === norm || ean.endsWith(norm) || norm.endsWith(ean))) return it;
     }
     return null;
 }
@@ -4093,8 +4103,8 @@ function wmsInitRecebimentoIntegracaoNf() {
             if (it) {
                 skuEl.value = it.sku || skuEl.value;
                 showMessage('Produto NF: ' + (it.descricao || it.sku), 'success');
-                var lote = document.getElementById('wms-pal-lote');
-                if (lote && !lote.value) lote.focus();
+                var up = document.getElementById('wms-pal-up');
+                if (up) up.focus();
             }
         });
         skuEl.addEventListener('blur', function() {
@@ -4181,10 +4191,13 @@ function wmsBipAtualizarResumos() {
 async function wmsBipEnsurePalete(silent) {
     var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value;
     var pid = (document.getElementById('wms-rec-palete-id') || {}).value;
-    if (!rid) return null;
+    if (!rid) {
+        if (!silent) showMessage('Recebimento não aberto. Use «Montar paletes — abrir passo a passo».', 'error');
+        return null;
+    }
     if (pid) {
         var hid = document.getElementById('wms-bip-etiqueta');
-        if (hid && hid.value) return { palete_id: pid, etiqueta: hid.value };
+        return { palete_id: parseInt(pid, 10), etiqueta: (hid && hid.value) || '' };
     }
     var data = await fetchAPI('/wms/recebimentos', {
         method: 'POST',
@@ -4247,7 +4260,7 @@ async function wmsBipResetNovoPalete() {
     wmsBipAtualizarCodigoPaleteUI('');
     var info = document.getElementById('wms-rec-palete-info');
     if (info) { info.textContent = ''; info.style.display = 'none'; }
-    ['wms-pal-sku', 'wms-pal-lote'].forEach(function(id) {
+    ['wms-pal-sku', 'wms-pal-lote', 'wms-pal-up'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -4428,49 +4441,72 @@ async function wmsBipPalete() {
 }
 
 async function wmsBipProduto() {
-    var pid = (document.getElementById('wms-rec-palete-id') || {}).value;
-    if (!pid) {
-        var criado = await wmsBipEnsurePalete(false);
-        if (!criado) return;
-        pid = criado.palete_id;
+    var btn = document.getElementById('btn-wms-bip-produto');
+    var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value;
+    if (!rid) {
+        showMessage('Recebimento não aberto. Clique em «Montar paletes — abrir passo a passo».', 'error');
+        return;
+    }
+    var skuRaw = wmsNormalizarCodigoBip((document.getElementById('wms-pal-sku') || {}).value);
+    if (!skuRaw) {
+        showMessage('Bipe o EAN ou SKU da etiqueta de produto.', 'error');
+        var skuEl = document.getElementById('wms-pal-sku');
+        if (skuEl) skuEl.focus();
+        return;
     }
     var dp = (document.getElementById('wms-pal-producao') || {}).value || '';
     var dv = (document.getElementById('wms-pal-validade') || {}).value || '';
-    if (!dp) { showMessage('Informe a data de produção na bipagem.', 'error'); return; }
-    if (!dv) { showMessage('Informe a data de validade na bipagem.', 'error'); return; }
+    if (!dp) { showMessage('Informe a data de produção.', 'error'); return; }
+    if (!dv) { showMessage('Informe a data de validade.', 'error'); return; }
+    var qtd = parseInt((document.getElementById('wms-pal-qtd') || {}).value || '1', 10);
+    if (isNaN(qtd) || qtd < 1) {
+        showMessage('Informe a quantidade de caixas (mínimo 1).', 'error');
+        return;
+    }
+    var criado = await wmsBipEnsurePalete(false);
+    if (!criado || !criado.palete_id) return;
+    var pid = criado.palete_id;
+    var skuResolved = wmsResolverCodigoProdutoNf(skuRaw);
     var body = {
         acao: 'bip_produto',
         palete_id: parseInt(pid, 10),
         estado_palete: (document.getElementById('wms-pal-estado') || {}).value || 'bom',
         item: {
-            sku: (document.getElementById('wms-pal-sku') || {}).value || '',
-            descricao: (wmsResolverCodigoProdutoNf((document.getElementById('wms-pal-sku') || {}).value) || {}).descricao || '',
-            lote: (document.getElementById('wms-pal-lote') || {}).value || '',
+            sku: skuRaw,
+            descricao: (skuResolved && skuResolved.descricao) || '',
+            lote: ((document.getElementById('wms-pal-lote') || {}).value || '').trim(),
+            up: ((document.getElementById('wms-pal-up') || {}).value || '').trim(),
             data_producao: dp,
             data_validade: dv,
-            quantidade_caixas: parseInt((document.getElementById('wms-pal-qtd') || {}).value || '1', 10)
+            quantidade_caixas: qtd
         }
     };
-    var skuResolved = wmsResolverCodigoProdutoNf(body.item.sku);
     if (skuResolved && skuResolved.sku) body.item.sku = skuResolved.sku;
-    if (skuResolved && skuResolved.descricao) body.item.descricao = skuResolved.descricao;
-    var data = await fetchAPI('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) });
+    if (btn) { btn.disabled = true; btn.textContent = 'Conferindo…'; }
     var msg = document.getElementById('wms-palete-gerado');
-    if (data && data.ok) {
-        var skuTxt = body.item.sku || '';
-        var loteTxt = body.item.lote ? ' · lote ' + body.item.lote : '';
-        window._wmsBipResumo.produto = skuTxt + loteTxt;
-        window._wmsBipResumo.palete = data.etiqueta || window._wmsBipResumo.palete || '';
-        wmsBipAtualizarCodigoPaleteUI(window._wmsBipResumo.palete);
-        var txt = 'Produto conferido no palete ' + (data.etiqueta || '');
-        if (data.bloqueios && data.bloqueios.length) txt += ' — Bloqueios: ' + data.bloqueios.join(', ');
-        if (msg) msg.textContent = txt;
-        _wmsMostrarSugestao(data.sugestao);
-        wmsBipIrParaEtapa(2);
-        showMessage('Produto OK — imprima a etiqueta do palete e cole no meio dele.', 'success');
-        wmsAtualizarPainelNfDescarga();
-    } else {
-        showMessage((data && data.erro) || 'Erro ao bipar produto.', 'error');
+    try {
+        var data = await fetchAPI('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) });
+        if (data && data.ok) {
+            var skuTxt = body.item.sku || '';
+            var loteTxt = body.item.lote ? ' · lote ' + body.item.lote : '';
+            var upTxt = body.item.up ? ' · UP ' + body.item.up : '';
+            window._wmsBipResumo.produto = skuTxt + loteTxt + upTxt;
+            window._wmsBipResumo.palete = data.etiqueta || window._wmsBipResumo.palete || '';
+            wmsBipAtualizarCodigoPaleteUI(window._wmsBipResumo.palete);
+            var txt = 'Produto conferido no palete ' + (data.etiqueta || '');
+            if (data.bloqueios && data.bloqueios.length) txt += ' — Bloqueios: ' + data.bloqueios.join(', ');
+            if (msg) msg.textContent = txt;
+            _wmsMostrarSugestao(data.sugestao);
+            wmsBipIrParaEtapa(2);
+            showMessage('Produto OK — imprima a etiqueta do palete e cole no meio dele.', 'success');
+            wmsAtualizarPainelNfDescarga();
+        } else {
+            showMessage((data && data.erro) || 'Erro ao confirmar produto.', 'error');
+        }
+    } catch (e) {
+        showMessage((e && e.message) || 'Erro ao confirmar produto.', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Confirmar produto'; }
     }
 }
 
