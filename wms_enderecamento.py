@@ -612,6 +612,31 @@ def _quantidades_wms_recebimento(conn, recebimento_id):
     return out
 
 
+def _quantidades_wms_armazenadas_recebimento(conn, recebimento_id):
+    """Quantidades bipadas em paletes já guardados (status armazenado)."""
+    if not recebimento_id:
+        return {}
+    t_rp = _tbl(conn, 'wms_recebimento_palete')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_item = _tbl(conn, 'wms_palete_item')
+    rows = conn.execute(
+        f'''SELECT i.sku, SUM(COALESCE(i.quantidade_caixas, 0)) AS qtd
+            FROM {t_rp} rp
+            JOIN {t_pal} p ON p.id = rp.palete_id
+            JOIN {t_item} i ON i.palete_id = rp.palete_id
+            WHERE rp.recebimento_id = ? AND LOWER(COALESCE(p.status, '')) = 'armazenado'
+            GROUP BY i.sku''',
+        (int(recebimento_id),),
+    ).fetchall()
+    out = {}
+    for r in rows or []:
+        rd = _row_dict(r) or {}
+        sku = (rd.get('sku') or '').strip()
+        if sku:
+            out[sku.upper()] = float(rd.get('qtd') or 0)
+    return out
+
+
 def _enriquecer_documento_nf_wms(conn, doc):
     if not doc:
         return doc
@@ -620,16 +645,18 @@ def _enriquecer_documento_nf_wms(conn, doc):
     doc['recebimento_wms_id'] = rec.get('id') if rec else None
     doc['recebimento_wms_status'] = rec.get('status') if rec else None
     qtd_wms = _quantidades_wms_recebimento(conn, doc.get('recebimento_wms_id'))
+    qtd_arm = _quantidades_wms_armazenadas_recebimento(conn, doc.get('recebimento_wms_id'))
     itens = []
     for it in doc.get('itens') or []:
         rd = dict(it)
         sku = (rd.get('sku') or '').strip()
         q_wms = qtd_wms.get(sku.upper(), 0) if sku else 0
+        q_arm = qtd_arm.get(sku.upper(), 0) if sku else 0
+        q_xml = float(rd.get('quantidade_xml') or 0)
         rd['quantidade_wms'] = q_wms
-        rd['pendente_wms'] = max(float(rd.get('quantidade_xml') or 0) - q_wms, 0)
-        rd['status_wms'] = 'ok' if q_wms >= float(rd.get('quantidade_xml') or 0) and float(rd.get('quantidade_xml') or 0) > 0 else (
-            'parcial' if q_wms > 0 else 'pendente'
-        )
+        rd['quantidade_armazenada'] = q_arm
+        rd['pendente_wms'] = max(q_xml - q_wms, 0)
+        rd['status_wms'] = 'concluido' if q_arm >= q_xml and q_xml > 0 else 'pendente'
         itens.append(rd)
     doc['itens'] = itens
     return doc
@@ -2361,7 +2388,7 @@ def _resumo_finalizacao_recebimento(conn, recebimento_id):
         if doc_nf:
             doc_enr = _enriquecer_documento_nf_wms(conn, doc_nf)
             for it in doc_enr.get('itens') or []:
-                if it.get('status_wms') != 'ok':
+                if it.get('status_wms') != 'concluido':
                     itens_nf_ok = False
                     itens_nf_pendentes += 1
 

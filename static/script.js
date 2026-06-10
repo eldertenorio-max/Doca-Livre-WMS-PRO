@@ -3341,8 +3341,8 @@ function _wmsPaintHistoricoNf(box, data) {
         html += '<div class="table-container"><table class="data-table"><thead><tr><th>Item</th><th>SKU</th><th>Descrição</th><th>Qtd NF</th><th>Qtd WMS</th><th>Pendente</th><th>Status</th><th>EAN</th></tr></thead><tbody>';
         html += itensNf.map(function(it) {
             var st = String(it.status_wms || '').toLowerCase();
-            var stLbl = st === 'ok' ? '✓ OK' : (st === 'parcial' ? 'Parcial' : 'Pendente');
-            var stColor = st === 'ok' ? '#2e7d32' : (st === 'parcial' ? '#ef6c00' : '#c62828');
+            var stLbl = (st === 'concluido' || st === 'ok') ? '✓ Concluído' : 'Pendente';
+            var stColor = (st === 'concluido' || st === 'ok') ? '#2e7d32' : '#e65100';
             return '<tr><td>' + escHtml(it.n_item) + '</td><td><strong>' + escHtml(it.sku) + '</strong></td><td>' + escHtml(it.descricao) + '</td>'
                 + '<td>' + escHtml(it.quantidade_xml) + '</td><td><strong>' + escHtml(it.quantidade_wms) + '</strong></td>'
                 + '<td>' + escHtml(it.pendente_wms) + '</td><td><strong style="color:' + stColor + ';">' + escHtml(stLbl) + '</strong></td><td>' + escHtml(it.codigo_ean || '') + '</td></tr>';
@@ -3962,9 +3962,8 @@ function wmsLimparPainelNfDescarga() {
 
 function _wmsStatusItemNfLabel(st) {
     st = (st || 'pendente').toLowerCase();
-    if (st === 'ok') return '<span style="color:#2e7d32;font-weight:bold;">OK</span>';
-    if (st === 'parcial') return '<span style="color:#e65100;font-weight:bold;">Parcial</span>';
-    return '<span style="color:#666;">Pendente</span>';
+    if (st === 'concluido' || st === 'ok') return '<span style="color:#2e7d32;font-weight:bold;">Concluído</span>';
+    return '<span style="color:#e65100;font-weight:bold;">Pendente</span>';
 }
 
 function wmsPreencherPainelNfDescarga(doc) {
