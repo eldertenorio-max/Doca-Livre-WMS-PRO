@@ -1115,6 +1115,7 @@ def _layout_niveis_esperados():
 
 
 def _precisa_regenerar_layout_niveis(conn):
+    """Só regera quando falta nível 4/5 no banco (ex.: layout antigo com max=3)."""
     if not _wms_tabelas_existem(conn):
         return False
     t_loc = _tbl(conn, 'wms_localizacao')
@@ -1130,16 +1131,6 @@ def _precisa_regenerar_layout_niveis(conn):
         ).fetchone()
         mx = int((_row_dict(row) or {}).get('mx') or 0)
         if mx < n_esp:
-            return True
-        incompletas = conn.execute(
-            f'''SELECT COUNT(*) AS c FROM (
-                    SELECT posicao, rua FROM {t_loc}
-                    WHERE camara = ? GROUP BY posicao, rua
-                    HAVING COUNT(DISTINCT nivel) < ?
-                ) t''',
-            (cam, n_esp),
-        ).fetchone()
-        if _int_col(incompletas, 'c') > 0:
             return True
     return False
 
@@ -3902,9 +3893,12 @@ def _agrupar_faixas_por_camara(faixas):
     return [blocos[k] for k in sorted(blocos.keys(), key=lambda x: int(x) if str(x).isdigit() else x)]
 
 
-def _resumo_etiquetas_longarina(conn):
+def _resumo_etiquetas_longarina(conn, sincronizar=False):
     """Contagem de endereços/longarinas para impressão em lote."""
-    _ensure_layout_enderecos_atualizado(conn)
+    if sincronizar:
+        _ensure_layout_enderecos_atualizado(conn)
+    else:
+        _ensure_layout_enderecos(conn)
     t_loc = _tbl(conn, 'wms_localizacao')
     niveis_cfg = _layout_niveis_esperados()
     n_esp = max(niveis_cfg.values()) if niveis_cfg else 5
@@ -3954,7 +3948,10 @@ def _resumo_etiquetas_longarina(conn):
 
 def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, auto_print=False, todas=False):
     _ensure_zona_armazenagem_column(conn)
-    _ensure_layout_enderecos_atualizado(conn)
+    if _precisa_regenerar_layout_niveis(conn):
+        _ensure_layout_enderecos_atualizado(conn)
+    else:
+        _ensure_layout_enderecos(conn)
     t_loc = _tbl(conn, 'wms_localizacao')
     if codigo:
         cod_busca = _resolver_codigo_endereco_bip(codigo) or codigo
@@ -4122,10 +4119,11 @@ def api_wms_etiqueta_endereco():
 @bp.route('/etiqueta/enderecos/resumo', methods=['GET'])
 def api_wms_etiqueta_enderecos_resumo():
     """Resumo para instalação: quantas longarinas imprimir por câmara."""
+    sincronizar = (request.args.get('sync') or '').strip().lower() in ('1', 'true', 'sim')
     conn = _db()
     ensure_wms_schema(conn)
     try:
-        data = _resumo_etiquetas_longarina(conn)
+        data = _resumo_etiquetas_longarina(conn, sincronizar=sincronizar)
         conn.close()
         return jsonify(data)
     except Exception as e:

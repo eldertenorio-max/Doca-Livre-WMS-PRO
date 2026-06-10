@@ -3516,7 +3516,7 @@ function initWmsEnderecamento() {
     var bEtqTodas = document.getElementById('btn-wms-etq-todas');
     if (bEtqTodas) bEtqTodas.addEventListener('click', wmsImprimirEtqTodasLongarinas);
     var bEtqRes = document.getElementById('btn-wms-etq-resumo-atualizar');
-    if (bEtqRes) bEtqRes.addEventListener('click', loadWmsEtqLongarinaResumo);
+    if (bEtqRes) bEtqRes.addEventListener('click', function() { loadWmsEtqLongarinaResumo({ forcarSync: true }); });
     var bEtqDemo = document.getElementById('btn-wms-etq-demo');
     if (bEtqDemo) bEtqDemo.addEventListener('click', wmsImprimirEtqDemo);
     var bEtqUnico = document.getElementById('btn-wms-etq-unico');
@@ -3739,28 +3739,41 @@ function wmsImprimirEtqCamara() {
     _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam));
 }
 
-async function loadWmsEtqLongarinaResumo() {
+async function loadWmsEtqLongarinaResumo(opcoes) {
+    opcoes = opcoes || {};
     var box = document.getElementById('wms-etq-resumo-box');
     if (!box) return;
     box.innerHTML = '<p class="loading" style="margin:0;">Carregando resumo…</p>';
     try {
-        var data = await _wmsFetchGet('/wms/etiqueta/enderecos/resumo', 45000);
+        var data = await _wmsFetchGet('/wms/etiqueta/enderecos/resumo', 30000);
         if (!data || data.erro) {
             box.innerHTML = '<p style="margin:0;color:#c62828;">' + escHtml(_modErroMsg(data, 'Erro ao carregar.')) + '</p>';
             return;
         }
-        var total = data.total_etiquetas || 0;
-        var cols = data.total_colunas || 0;
         var nCfg = data.niveis_config || 5;
         var mx = data.max_nivel_banco || 0;
+        if ((opcoes.forcarSync || mx < nCfg) && !opcoes.jaSincronizou) {
+            box.innerHTML = '<p class="loading" style="margin:0;">Atualizando layout para ' + escHtml(nCfg) + ' níveis (pode levar 1 min)…</p>';
+            data = await _wmsFetchGet('/wms/etiqueta/enderecos/resumo?sync=1', 120000);
+            if (!data || data.erro) {
+                box.innerHTML = '<p style="margin:0;color:#c62828;">' + escHtml(_modErroMsg(data, 'Erro ao sincronizar layout.')) + '</p>';
+                return;
+            }
+            opcoes.jaSincronizou = true;
+        }
+        var total = data.total_etiquetas || 0;
+        var cols = data.total_colunas || 0;
+        mx = data.max_nivel_banco || 0;
         var inc = data.colunas_incompletas || 0;
         var html = '<h4 style="margin:0 0 8px 0;color:#1565c0;">Armazém pronto para etiquetar</h4>';
         html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Níveis por coluna (config):</span> <strong>' + escHtml(nCfg) + '</strong> (1 PICKING + ' + escHtml(nCfg - 1) + ' PULMÃO)</div>';
         html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Máx. nível no banco:</span> <strong>' + escHtml(mx) + '</strong></div>';
         html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Total de etiquetas:</span> <strong>' + escHtml(total) + '</strong></div>';
         html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Colunas (pilares):</span> <strong>' + escHtml(cols) + '</strong></div>';
-        if (inc > 0 || mx < nCfg) {
-            html += '<p class="info-text" style="margin:10px 0 0 0;padding:8px;background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;color:#e65100;">Layout desatualizado (' + escHtml(inc) + ' coluna(s) incompleta(s)). Clique <strong>Atualizar resumo</strong> — o sistema regera automaticamente para ' + escHtml(nCfg) + ' níveis.</p>';
+        if (mx < nCfg) {
+            html += '<p class="info-text" style="margin:10px 0 0 0;padding:8px;background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;color:#e65100;">Layout ainda com ' + escHtml(mx) + ' níveis. Clique <strong>Atualizar resumo</strong> ou no Painel «Recalcular distribuição».</p>';
+        } else if (inc > 0) {
+            html += '<p class="info-text" style="margin:8px 0 0 0;font-size:12px;">' + escHtml(inc) + ' coluna(s) com menos de ' + escHtml(nCfg) + ' níveis — normal nas últimas colunas parciais de cada câmara.</p>';
         }
         var por = data.por_camara || [];
         if (por.length) {
