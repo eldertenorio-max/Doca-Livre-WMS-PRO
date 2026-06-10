@@ -3464,6 +3464,10 @@ def api_wms_recebimentos():
             )
             bloqueios = _aplicar_bloqueios_palete(conn, pid, estado, dv, item.get('temperatura'))
             sug = _sugerir_putaway(conn, sku, lote, dp, 'pulmao')
+            if not sug.get('codigo_endereco'):
+                sug_pick = _sugerir_putaway(conn, sku, lote, dp, 'picking')
+                if sug_pick.get('codigo_endereco'):
+                    sug = sug_pick
             pal = conn.execute(f'SELECT etiqueta FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
             etiqueta = (pal['etiqueta'] if isinstance(pal, dict) else pal[0]) if pal else None
             conn.commit()
@@ -3488,6 +3492,10 @@ def api_wms_recebimentos():
                 return jsonify({'erro': 'Palete sem produto conferido.'}), 400
             rd = _row_dict(it) or {}
             sug = _sugerir_putaway(conn, rd.get('sku'), rd.get('lote'), rd.get('data_producao'), 'pulmao')
+            if not sug.get('codigo_endereco'):
+                sug_pick = _sugerir_putaway(conn, rd.get('sku'), rd.get('lote'), rd.get('data_producao'), 'picking')
+                if sug_pick.get('codigo_endereco'):
+                    sug = sug_pick
             conn.close()
             return jsonify(sug)
 
@@ -3498,8 +3506,15 @@ def api_wms_recebimentos():
                 usar_sugestao = False
             else:
                 usar_sugestao = True
-            cod = (data.get('codigo_endereco') or '').strip()
+            cod_bip = (data.get('codigo_endereco') or data.get('barcode_longarina') or '').strip()
             sug_aplicada = None
+            if not pid or not cod_bip:
+                conn.close()
+                return jsonify({
+                    'erro': 'Bipe a etiqueta da longarina ou coluna para validar a entrada.',
+                    'sugestao': sug_aplicada,
+                }), 400
+            cod_resolvido = _resolver_codigo_endereco_bip(cod_bip) or cod_bip.upper()
             if usar_sugestao and pid:
                 it_sug = conn.execute(
                     f'SELECT sku, lote, data_producao FROM {t_item} WHERE palete_id = ? ORDER BY id DESC LIMIT 1',
@@ -3510,14 +3525,25 @@ def api_wms_recebimentos():
                     sug_aplicada = _sugerir_putaway(
                         conn, rd_sug.get('sku'), rd_sug.get('lote'), rd_sug.get('data_producao'), 'pulmao',
                     )
+                    if not sug_aplicada.get('codigo_endereco'):
+                        sug_pick = _sugerir_putaway(
+                            conn, rd_sug.get('sku'), rd_sug.get('lote'), rd_sug.get('data_producao'), 'picking',
+                        )
+                        if sug_pick.get('codigo_endereco'):
+                            sug_aplicada = sug_pick
                     if sug_aplicada and sug_aplicada.get('codigo_endereco'):
-                        cod = sug_aplicada['codigo_endereco']
-            if not pid or not cod:
-                conn.close()
-                return jsonify({
-                    'erro': 'Sem indicação de destino disponível. Verifique vagas vazias ou informe endereço manual.',
-                    'sugestao': sug_aplicada,
-                }), 400
+                        sug_cod = (sug_aplicada.get('codigo_endereco') or '').strip().upper()
+                        sug_bc = (sug_aplicada.get('barcode_longarina') or '').strip()
+                        bip_norm = cod_bip.strip()
+                        if (cod_resolvido.upper() != sug_cod
+                                and bip_norm != sug_bc
+                                and bip_norm.upper() != (sug_bc or '').upper()):
+                            conn.close()
+                            return jsonify({
+                                'erro': f'Bipe a longarina indicada ({sug_bc or sug_cod}), não {cod_bip}.',
+                                'sugestao': sug_aplicada,
+                            }), 400
+            cod = cod_resolvido
             loc, err = _confirmar_armazenagem_palete(conn, pid, cod)
             if err:
                 try:
@@ -4085,6 +4111,10 @@ def api_wms_etiqueta():
                 up = rd.get('rg_caixa')
                 if not destino and sku:
                     sug = _sugerir_putaway(conn, sku, lote, data_producao, 'pulmao')
+                    if not sug.get('codigo_endereco'):
+                        sug_pick = _sugerir_putaway(conn, sku, lote, data_producao, 'picking')
+                        if sug_pick.get('codigo_endereco'):
+                            sug = sug_pick
                     destino, endereco_barcode, endereco_texto = _texto_destino_etiqueta(sug)
         auto_print = request.args.get('auto_print', '1') != '0'
         conn.close()

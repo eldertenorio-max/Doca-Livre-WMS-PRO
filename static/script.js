@@ -4236,8 +4236,46 @@ window._wmsBipResumo = { palete: '', produto: '', impresso: false, endereco: '' 
 var _WMS_BIP_ACOES = {
     1: 'Bipe a etiqueta de produto (EAN) colada na caixa e confirme lote e datas.',
     2: 'Imprima a etiqueta (já com o endereço de guardar), cole no palete e clique em «Etiqueta colada — continuar».',
-    3: 'Leve o palete ao endereço indicado, bipe a longarina do rack e confirme.'
+    3: 'Leve o palete ao endereço indicado e bipe a etiqueta da longarina/coluna — a entrada confirma sozinha.'
 };
+
+function wmsEnderecoBipPareceCompleto(codigo) {
+    var c = wmsNormalizarCodigoBip(codigo);
+    if (!c) return false;
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(c)) return true;
+    if (/^\d{2}-[A-Z]-\d{2}-\d+$/i.test(c)) return true;
+    return false;
+}
+
+var _wmsDestinoBipTimer = null;
+
+function wmsAgendarConfirmarDestinoAuto() {
+    if (window._wmsBipEtapa !== 3) return;
+    if (window._wmsConfirmandoDestino) return;
+    clearTimeout(_wmsDestinoBipTimer);
+    _wmsDestinoBipTimer = setTimeout(function() {
+        var dest = document.getElementById('wms-bip-destino');
+        var cod = dest ? wmsNormalizarCodigoBip(dest.value) : '';
+        if (wmsEnderecoBipPareceCompleto(cod)) wmsConfirmarDestino();
+    }, 150);
+}
+
+function wmsInitBipDestinoAutoConfirm() {
+    var destBip = document.getElementById('wms-bip-destino');
+    if (!destBip || destBip.dataset.wmsBipAuto) return;
+    destBip.dataset.wmsBipAuto = '1';
+    destBip.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            clearTimeout(_wmsDestinoBipTimer);
+            wmsConfirmarDestino();
+        }
+    });
+    destBip.addEventListener('input', wmsAgendarConfirmarDestinoAuto);
+    destBip.addEventListener('paste', function() {
+        setTimeout(wmsAgendarConfirmarDestinoAuto, 50);
+    });
+}
 
 function wmsFormatarDestinoEtiqueta(sug) {
     if (!sug || !sug.codigo_endereco) return null;
@@ -4257,16 +4295,55 @@ function wmsBipAtualizarEnderecoEtapa2() {
     var val = document.getElementById('wms-bip-endereco-valor');
     var det = document.getElementById('wms-bip-endereco-detalhe');
     var fmt = wmsFormatarDestinoEtiqueta(window._wmsSugestaoAtual);
+    var onStep2 = window._wmsBipEtapa === 2;
     if (!box || !val) return;
     if (fmt) {
         box.style.display = '';
         val.textContent = fmt.barcode;
         if (det) det.textContent = (fmt.texto || '') + (fmt.zona ? ' · ' + fmt.zona : '');
+        if (window._wmsBipResumo) window._wmsBipResumo.endereco = fmt.barcode;
+    } else if (onStep2) {
+        box.style.display = '';
+        val.textContent = '—';
+        if (det) det.textContent = window._wmsSugestaoCarregando
+            ? 'Calculando endereço de guardar…'
+            : 'Sem indicação automática — libere vagas ou informe manualmente no passo 3.';
     } else {
         box.style.display = 'none';
         val.textContent = '—';
-        if (det) det.textContent = 'Sem indicação — será calculado na impressão ou no passo 3.';
+        if (det) det.textContent = '';
     }
+}
+
+async function wmsGarantirSugestaoDestino(silent) {
+    if (window._wmsSugestaoAtual && window._wmsSugestaoAtual.codigo_endereco) {
+        wmsBipAtualizarEnderecoEtapa2();
+        return window._wmsSugestaoAtual;
+    }
+    var pid = (document.getElementById('wms-rec-palete-id') || {}).value;
+    if (!pid) {
+        wmsBipAtualizarEnderecoEtapa2();
+        return null;
+    }
+    window._wmsSugestaoCarregando = true;
+    wmsBipAtualizarEnderecoEtapa2();
+    try {
+        var data = await fetchAPI('/wms/recebimentos', {
+            method: 'POST',
+            body: JSON.stringify({ acao: 'sugerir_destino', palete_id: parseInt(pid, 10) })
+        });
+        if (data && !data.erro) {
+            _wmsMostrarSugestao(data);
+            return data;
+        }
+        if (!silent) showMessage((data && data.erro) || 'Não foi possível calcular o endereço de guardar.', 'warning');
+    } catch (e) {
+        if (!silent) showMessage((e && e.message) || 'Erro ao calcular endereço.', 'error');
+    } finally {
+        window._wmsSugestaoCarregando = false;
+        wmsBipAtualizarEnderecoEtapa2();
+    }
+    return window._wmsSugestaoAtual && window._wmsSugestaoAtual.codigo_endereco ? window._wmsSugestaoAtual : null;
 }
 
 function wmsBipAtualizarCodigoPaleteUI(etiqueta) {
@@ -4338,6 +4415,14 @@ function wmsBipIrParaEtapa(n, opts) {
     var txt = document.getElementById('wms-bip-acao-texto');
     if (txt) txt.textContent = _WMS_BIP_ACOES[n] || '';
     wmsBipAtualizarResumos();
+    if (n === 2) wmsGarantirSugestaoDestino(true);
+    if (n === 3) {
+        if (!window._wmsDestinoManual) {
+            var destEl = document.getElementById('wms-bip-destino');
+            if (destEl) destEl.value = '';
+        }
+        wmsSugerirDestino();
+    }
     if (!opts.semFoco) wmsBipFocarEtapa(n);
 }
 
@@ -4410,8 +4495,9 @@ function wmsBipInitStepper() {
     if (btnCola) btnCola.addEventListener('click', function() {
         window._wmsBipResumo.impresso = true;
         wmsBipIrParaEtapa(3);
-        showMessage('Agora leve o palete ao endereço e bipe a longarina.', 'success');
+        showMessage('Leve o palete ao endereço da etiqueta e bipe a longarina/coluna — confirma automaticamente.', 'success');
     });
+    wmsInitBipDestinoAutoConfirm();
     var btnProx = document.getElementById('btn-wms-bip-proximo-palete');
     if (btnProx) btnProx.addEventListener('click', wmsBipResetNovoPalete);
     var valEl = document.getElementById('wms-pal-validade');
@@ -4437,9 +4523,13 @@ function _wmsAplicarModoDestinoSugestao() {
     var manual = !!window._wmsDestinoManual;
     if (dest) {
         dest.readOnly = false;
-        dest.style.background = manual ? '#fff' : '#e8f5e9';
-        dest.style.fontWeight = manual ? 'normal' : 'bold';
-        if (!manual && !dest.value) dest.placeholder = 'Bipe a etiqueta da longarina (21.13.1.1)…';
+        dest.style.background = '#fff';
+        dest.style.fontWeight = dest.value ? 'bold' : 'normal';
+        if (!dest.value) {
+            dest.placeholder = manual
+                ? 'Digite o endereço ou bip a longarina/coluna…'
+                : 'Bipe a etiqueta da longarina/coluna (ex.: 11.5.2.1)…';
+        }
     }
     if (btnManual) btnManual.style.display = manual ? 'none' : '';
     if (btnSug) btnSug.style.display = manual ? '' : 'none';
@@ -4464,15 +4554,15 @@ window.wmsHabilitarDestinoManual = function() {
 window.wmsUsarSugestaoDestino = function() {
     window._wmsDestinoManual = false;
     var sug = window._wmsSugestaoAtual;
-    if (sug && (sug.barcode_longarina || sug.codigo_endereco)) {
-        var dest = document.getElementById('wms-bip-destino');
-        if (dest) dest.value = sug.barcode_longarina || sug.codigo_endereco;
-    } else {
+    if (!sug || !sug.codigo_endereco) {
         wmsSugerirDestino();
         return;
     }
+    var dest = document.getElementById('wms-bip-destino');
+    if (dest) dest.value = '';
     _wmsAplicarModoDestinoSugestao();
-    showMessage('Indicação aplicada — bipe a longarina ou confirme se já estiver no endereço.', 'success');
+    if (dest) dest.focus();
+    showMessage('Indicação do sistema restaurada — bipe a etiqueta da longarina/coluna indicada acima.', 'success');
 };
 
 function _wmsMostrarSugestao(sug) {
@@ -4505,12 +4595,10 @@ function _wmsMostrarSugestao(sug) {
     box.innerHTML = '<strong style="color:#1b5e20;">✓ Onde colocar — indicação do sistema (' + escHtml(sug.zona_label || 'PULMÃO') + ')</strong><br>' +
         '<span style="font-size:16px;font-weight:bold;">' + escHtml(bcLong) + '</span> <span style="font-size:12px;color:#555;">(bip longarina)</span> — ' + escHtml(sug.texto || '') + st + alerta +
         '<br><span style="font-size:12px;color:#2e7d32;">Critério: ' + escHtml(priTxt) + ' · ' + escHtml((sug.motivo || []).join(' · ')) + '</span>' +
-        '<br><span style="font-size:12px;color:#555;">Bipe a etiqueta da longarina e confirme a armazenagem.</span>';
-    if (!window._wmsDestinoManual && dest) {
-        dest.value = bcLong || '';
-        if (window._wmsBipEtapa >= 3) dest.focus();
-    }
+        '<br><span style="font-size:12px;color:#555;">Bipe a etiqueta da longarina/coluna — a entrada confirma automaticamente.</span>';
+    if (window._wmsBipEtapa >= 3 && dest && !window._wmsDestinoManual) dest.focus();
     _wmsAplicarModoDestinoSugestao();
+    wmsBipAtualizarEnderecoEtapa2();
 }
 
 async function wmsBipPalete() {
@@ -4606,28 +4694,36 @@ async function wmsBipProduto() {
     }
 }
 
-function wmsImprimirEtiqueta() {
+async function wmsImprimirEtiqueta() {
+    var btn = document.getElementById('btn-wms-imprimir-etiqueta');
     var etiqueta = (document.getElementById('wms-bip-etiqueta') || {}).value || '';
     if (!etiqueta || etiqueta.length !== 22) {
         showMessage('Confira o produto no passo 1 antes de imprimir a etiqueta do palete.', 'error');
         wmsBipIrParaEtapa(1);
         return;
     }
-    var url = '/api/wms/etiqueta?etiqueta=' + encodeURIComponent(etiqueta);
-    var fmt = wmsFormatarDestinoEtiqueta(window._wmsSugestaoAtual);
-    if (fmt) {
-        url += '&destino=' + encodeURIComponent(fmt.destino);
-        url += '&barcode_longarina=' + encodeURIComponent(fmt.barcode);
-        if (fmt.texto) url += '&endereco_texto=' + encodeURIComponent(fmt.texto);
+    if (btn) { btn.disabled = true; btn.textContent = 'Preparando…'; }
+    try {
+        await wmsGarantirSugestaoDestino(true);
+        var url = '/api/wms/etiqueta?etiqueta=' + encodeURIComponent(etiqueta);
+        var fmt = wmsFormatarDestinoEtiqueta(window._wmsSugestaoAtual);
+        if (fmt) {
+            url += '&destino=' + encodeURIComponent(fmt.destino);
+            url += '&barcode_longarina=' + encodeURIComponent(fmt.barcode);
+            if (fmt.texto) url += '&endereco_texto=' + encodeURIComponent(fmt.texto);
+        }
+        var w = window.open(url, '_blank');
+        if (!w) {
+            showMessage('Pop-up bloqueado — libere pop-ups para imprimir.', 'error');
+            return;
+        }
+        window._wmsBipResumo.impresso = true;
+        wmsBipAtualizarResumos();
+        var avisoEnd = fmt ? '' : ' Endereço não calculado — verifique vagas no armazém.';
+        showMessage('Etiqueta enviada à impressora. Cole no palete e clique em «Etiqueta colada — continuar».' + avisoEnd, fmt ? 'success' : 'warning');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Imprimir etiqueta'; }
     }
-    var w = window.open(url, '_blank');
-    if (!w) {
-        showMessage('Pop-up bloqueado — libere pop-ups para imprimir.', 'error');
-        return;
-    }
-    window._wmsBipResumo.impresso = true;
-    wmsBipAtualizarResumos();
-    showMessage('Etiqueta enviada à impressora. Cole no palete e clique em «Etiqueta colada — continuar».', 'success');
 }
 
 async function wmsSugerirDestino() {
@@ -4645,12 +4741,17 @@ async function wmsSugerirDestino() {
 }
 
 async function wmsConfirmarDestino() {
+    if (window._wmsConfirmandoDestino) return;
     var pid = (document.getElementById('wms-rec-palete-id') || {}).value;
     if (!pid) { showMessage('Bipe palete e produto antes de confirmar.', 'error'); return; }
     var manual = !!window._wmsDestinoManual;
-    var cod = (document.getElementById('wms-bip-destino') || {}).value || '';
-    if (manual && !cod.trim()) {
-        showMessage('Informe o endereço manual ou clique em «Usar indicação do sistema».', 'error');
+    var cod = ((document.getElementById('wms-bip-destino') || {}).value || '').trim();
+    if (!cod) {
+        showMessage(manual
+            ? 'Informe o endereço ou bipe a etiqueta da longarina/coluna.'
+            : 'Bipe a etiqueta da longarina ou coluna — confirma automaticamente.', 'error');
+        var destErr = document.getElementById('wms-bip-destino');
+        if (destErr) destErr.focus();
         return;
     }
     if (!manual && (!window._wmsSugestaoAtual || !window._wmsSugestaoAtual.codigo_endereco)) {
@@ -4663,41 +4764,49 @@ async function wmsConfirmarDestino() {
     var body = {
         acao: 'confirmar_armazenagem',
         palete_id: parseInt(pid, 10),
-        usar_sugestao: !manual
+        usar_sugestao: !manual,
+        codigo_endereco: cod
     };
-    if (manual) body.codigo_endereco = cod.trim();
-    else if (window._wmsSugestaoAtual && window._wmsSugestaoAtual.codigo_endereco) {
-        body.codigo_endereco = window._wmsSugestaoAtual.codigo_endereco;
-    }
-    var data = await fetchAPI('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) });
-    if (data && data.ok) {
-        var st = data.status_atualizado || {};
-        var stTxt = Object.keys(st).map(function(k) { return k + ': ' + st[k]; }).join(' · ');
-        var endFinal = (data.localizacao && data.localizacao.codigo_endereco) || body.codigo_endereco || cod;
-        window._wmsBipResumo.endereco = endFinal;
-        window._wmsBipMaxEtapa = 3;
-        document.querySelectorAll('.wms-bip-step[data-wms-bip-step]').forEach(function(btn) {
-            btn.classList.remove('wms-bip-step--ativa');
-            btn.classList.add('wms-bip-step--feita');
-            btn.disabled = false;
-        });
-        document.querySelectorAll('.wms-rec-etapa[data-wms-bip-step]').forEach(function(el) {
-            el.classList.remove('wms-rec-etapa--ativa', 'wms-rec-etapa--aguardando');
-            el.classList.add('wms-rec-etapa--feita');
-        });
-        wmsBipAtualizarResumos();
-        showMessage('Palete guardado em ' + endFinal + (manual ? ' (manual)' : '') +
-            (stTxt ? ' · ' + stTxt : ''), 'success');
-        loadWmsPainel();
-        loadWmsProdutos();
-        wmsAtualizarPainelNfDescarga();
-        var btnProx = document.getElementById('btn-wms-bip-proximo-palete');
-        if (btnProx) btnProx.style.display = '';
-        var txtAcao = document.getElementById('wms-bip-acao-texto');
-        if (txtAcao) txtAcao.textContent = 'Palete guardado! Clique em «Próximo palete» para montar outro ou «Finalizar NF» quando terminar a nota.';
-    } else {
-        if (data && data.sugestao) _wmsMostrarSugestao(data.sugestao);
-        showMessage((data && data.erro) || 'Erro ao confirmar destino.', 'error');
+    var btn = document.getElementById('btn-wms-confirmar-destino');
+    window._wmsConfirmandoDestino = true;
+    if (btn) { btn.disabled = true; btn.textContent = 'Confirmando…'; }
+    try {
+        var data = await fetchAPI('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) });
+        if (data && data.ok) {
+            clearTimeout(_wmsDestinoBipTimer);
+            var st = data.status_atualizado || {};
+            var stTxt = Object.keys(st).map(function(k) { return k + ': ' + st[k]; }).join(' · ');
+            var endFinal = (data.localizacao && data.localizacao.codigo_endereco) || body.codigo_endereco || cod;
+            window._wmsBipResumo.endereco = endFinal;
+            window._wmsBipMaxEtapa = 3;
+            document.querySelectorAll('.wms-bip-step[data-wms-bip-step]').forEach(function(btnStep) {
+                btnStep.classList.remove('wms-bip-step--ativa');
+                btnStep.classList.add('wms-bip-step--feita');
+                btnStep.disabled = false;
+            });
+            document.querySelectorAll('.wms-rec-etapa[data-wms-bip-step]').forEach(function(el) {
+                el.classList.remove('wms-rec-etapa--ativa', 'wms-rec-etapa--aguardando');
+                el.classList.add('wms-rec-etapa--feita');
+            });
+            wmsBipAtualizarResumos();
+            showMessage('Palete guardado em ' + endFinal + (manual ? ' (manual)' : '') +
+                (stTxt ? ' · ' + stTxt : ''), 'success');
+            loadWmsPainel();
+            loadWmsProdutos();
+            wmsAtualizarPainelNfDescarga();
+            var btnProx = document.getElementById('btn-wms-bip-proximo-palete');
+            if (btnProx) btnProx.style.display = '';
+            var txtAcao = document.getElementById('wms-bip-acao-texto');
+            if (txtAcao) txtAcao.textContent = 'Palete guardado! Clique em «Próximo palete» para montar outro ou «Finalizar NF» quando terminar a nota.';
+        } else {
+            if (data && data.sugestao) _wmsMostrarSugestao(data.sugestao);
+            showMessage((data && data.erro) || 'Erro ao confirmar destino.', 'error');
+            var destFail = document.getElementById('wms-bip-destino');
+            if (destFail) { destFail.value = ''; destFail.focus(); }
+        }
+    } finally {
+        window._wmsConfirmandoDestino = false;
+        if (btn) { btn.disabled = false; btn.textContent = 'Confirmar guardado'; }
     }
 }
 
