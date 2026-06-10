@@ -4833,9 +4833,8 @@ async function wmsBipProduto() {
             wmsBipMostrarPosProduto(true);
             await wmsGarantirSugestaoDestino(true);
             wmsBipAtualizarResumos();
-            showMessage('Produto OK — imprima a etiqueta de identificação e cole no palete.', 'success');
+            showMessage('Produto OK — clique em Imprimir etiqueta, cole no palete e depois em «Etiqueta colada — ir guardar».', 'success');
             wmsAtualizarPainelNfDescarga();
-            wmsImprimirEtiqueta(true);
         } else {
             wmsMostrarErroBipProduto((data && data.erro) || 'Erro ao confirmar produto.');
         }
