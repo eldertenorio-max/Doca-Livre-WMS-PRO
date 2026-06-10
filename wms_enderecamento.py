@@ -421,6 +421,34 @@ def _ensure_wms_palete_controle_table(conn):
             pass
 
 
+def _ensure_wms_palete_item_nf_columns(conn):
+    cols = [('n_item_nf', 'TEXT')]
+    t = _tbl(conn, 'wms_palete_item')
+    if _is_pg(conn):
+        for name, typ in cols:
+            try:
+                conn.execute(f'ALTER TABLE {t} ADD COLUMN IF NOT EXISTS {name} {typ}')
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    else:
+        try:
+            existing = conn.execute('PRAGMA table_info(wms_palete_item)').fetchall()
+            names = {c[1] if not isinstance(c, dict) else c.get('name') for c in (existing or [])}
+            for name, typ in cols:
+                if name not in names:
+                    conn.execute(f'ALTER TABLE wms_palete_item ADD COLUMN {name} {typ}')
+            conn.commit()
+        except Exception:
+            pass
+
+
 def _ensure_wms_recebimento_terceiros_columns(conn):
     cols = [
         ('terceiros_documento_id', 'BIGINT' if _is_pg(conn) else 'INTEGER'),
@@ -590,6 +618,72 @@ def _buscar_recebimento_wms_por_nf(conn, documento_id=None, numero_nf=None):
     return None
 
 
+def _quantidades_por_linha_nf(conn, recebimento_id, doc_itens):
+    """Quantidades bipadas/armazenadas por linha (n_item) da NF, com alocação FIFO para registros legados."""
+    if not recebimento_id:
+        return {}
+    _ensure_wms_palete_item_nf_columns(conn)
+    t_rp = _tbl(conn, 'wms_recebimento_palete')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_item = _tbl(conn, 'wms_palete_item')
+    rows = conn.execute(
+        f'''SELECT i.n_item_nf, i.sku, COALESCE(i.quantidade_caixas, 0) AS qtd,
+                   LOWER(COALESCE(p.status, '')) AS palete_status
+            FROM {t_rp} rp
+            JOIN {t_pal} p ON p.id = rp.palete_id
+            JOIN {t_item} i ON i.palete_id = rp.palete_id
+            WHERE rp.recebimento_id = ?
+            ORDER BY i.criado_em, i.id''',
+        (int(recebimento_id),),
+    ).fetchall()
+
+    linhas_doc = sorted(doc_itens or [], key=lambda x: int(x.get('n_item') or 0))
+    out = {str(it.get('n_item')): {'bip': 0.0, 'arm': 0.0} for it in linhas_doc if it.get('n_item') is not None}
+    legacy = []
+
+    for r in rows or []:
+        rd = _row_dict(r) or {}
+        q = float(rd.get('qtd') or 0)
+        is_arm = (rd.get('palete_status') or '') == 'armazenado'
+        n_raw = rd.get('n_item_nf')
+        if n_raw is not None and str(n_raw).strip() != '':
+            key = str(n_raw).strip()
+            if key not in out:
+                out[key] = {'bip': 0.0, 'arm': 0.0}
+            out[key]['bip'] += q
+            if is_arm:
+                out[key]['arm'] += q
+        else:
+            sku = (rd.get('sku') or '').strip().upper()
+            if sku and q > 0:
+                legacy.append({'sku': sku, 'q': q, 'arm': is_arm})
+
+    for it in linhas_doc:
+        n_key = str(it.get('n_item'))
+        sku_u = (it.get('sku') or '').strip().upper()
+        cap = float(it.get('quantidade_xml') or 0)
+        if not n_key or not sku_u or cap <= 0:
+            continue
+        if n_key not in out:
+            out[n_key] = {'bip': 0.0, 'arm': 0.0}
+        for leg in legacy:
+            if leg.get('used') or leg.get('sku') != sku_u:
+                continue
+            room = max(cap - out[n_key]['bip'], 0)
+            if room <= 0:
+                break
+            take = min(leg['q'], room)
+            if take <= 0:
+                continue
+            out[n_key]['bip'] += take
+            if leg.get('arm'):
+                out[n_key]['arm'] += take
+            leg['q'] -= take
+            if leg['q'] <= 0:
+                leg['used'] = True
+    return out
+
+
 def _quantidades_wms_recebimento(conn, recebimento_id):
     if not recebimento_id:
         return {}
@@ -646,12 +740,18 @@ def _enriquecer_documento_nf_wms(conn, doc):
     doc['recebimento_wms_status'] = rec.get('status') if rec else None
     qtd_wms = _quantidades_wms_recebimento(conn, doc.get('recebimento_wms_id'))
     qtd_arm = _quantidades_wms_armazenadas_recebimento(conn, doc.get('recebimento_wms_id'))
+    por_linha = _quantidades_por_linha_nf(conn, doc.get('recebimento_wms_id'), doc.get('itens') or [])
     itens = []
     for it in doc.get('itens') or []:
         rd = dict(it)
         sku = (rd.get('sku') or '').strip()
-        q_wms = qtd_wms.get(sku.upper(), 0) if sku else 0
-        q_arm = qtd_arm.get(sku.upper(), 0) if sku else 0
+        n_key = str(rd.get('n_item')) if rd.get('n_item') is not None else ''
+        lin = por_linha.get(n_key) or {}
+        q_wms = float(lin.get('bip') or 0)
+        q_arm = float(lin.get('arm') or 0)
+        if not n_key and sku:
+            q_wms = qtd_wms.get(sku.upper(), 0)
+            q_arm = qtd_arm.get(sku.upper(), 0)
         q_xml = float(rd.get('quantidade_xml') or 0)
         rd['quantidade_wms'] = q_wms
         rd['quantidade_armazenada'] = q_arm
@@ -1354,6 +1454,7 @@ def ensure_wms_schema(conn):
         _ensure_zona_armazenagem_column(conn)
         _ensure_produto_planejamento_columns(conn)
         _ensure_wms_recebimento_terceiros_columns(conn)
+        _ensure_wms_palete_item_nf_columns(conn)
         _ensure_wms_palete_controle_table(conn)
         _WMS_SCHEMA_READY = True
         return
@@ -3674,20 +3775,37 @@ def api_wms_recebimentos():
             estado = data.get('estado_palete') or 'bom'
             lote = (item.get('lote') or '').strip() or None
             rg_up = (item.get('rg_caixa') or item.get('up') or '').strip() or None
+            n_item_nf = item.get('n_item_nf')
+            if n_item_nf is not None and str(n_item_nf).strip() != '':
+                n_item_nf = str(n_item_nf).strip()
+            else:
+                n_item_nf = None
             qtd_cx = int(item.get('quantidade_caixas') or 0)
             if qtd_cx < 1:
                 conn.close()
                 return jsonify({'erro': 'Informe a quantidade de caixas (mínimo 1).'}), 400
+            _ensure_wms_palete_item_nf_columns(conn)
+            existentes = conn.execute(
+                f'SELECT id, n_item_nf, sku FROM {t_item} WHERE palete_id = ?', (pid,)
+            ).fetchall()
+            for ex in existentes or []:
+                ex_rd = _row_dict(ex) or {}
+                ex_n = ex_rd.get('n_item_nf')
+                if ex_n is not None and str(ex_n).strip() != '' and n_item_nf and str(ex_n).strip() != str(n_item_nf):
+                    conn.close()
+                    return jsonify({
+                        'erro': 'Este palete já tem outro item da NF. Use «Próximo palete» para conferir o próximo item.',
+                    }), 400
             conn.execute(
                 f'''INSERT INTO {t_item}
                     (palete_id, sku, descricao, lote, data_producao, data_validade, sif,
-                     quantidade_caixas, peso_liquido, rg_caixa, criado_em)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                     quantidade_caixas, peso_liquido, rg_caixa, n_item_nf, criado_em)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (
                     pid, sku, item.get('descricao'), lote, dp,
                     dv, item.get('sif'),
                     qtd_cx, item.get('peso_liquido'),
-                    rg_up, now,
+                    rg_up, n_item_nf, now,
                 ),
             )
             bloqueios = _aplicar_bloqueios_palete(conn, pid, estado, dv, item.get('temperatura'))

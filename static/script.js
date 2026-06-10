@@ -3999,7 +3999,13 @@ function wmsPreencherPainelNfDescarga(doc) {
         wrap.style.display = itens.length ? 'block' : 'none';
         tb.innerHTML = itens.length ? itens.map(function(it) {
             var qWms = it.quantidade_wms != null ? it.quantidade_wms : 0;
-            return '<tr><td>' + escHtml(it.n_item || '') + '</td><td><strong>' + escHtml(it.sku || '—') + '</strong></td>'
+            var st = String(it.status_wms || 'pendente').toLowerCase();
+            var destaque = st !== 'concluido' && st !== 'ok' && !itens.some(function(o) {
+                var os = String(o.status_wms || 'pendente').toLowerCase();
+                return os !== 'concluido' && os !== 'ok' && (Number(o.n_item) || 0) < (Number(it.n_item) || 0);
+            });
+            var trStyle = destaque ? ' style="background:#fff8e1;"' : '';
+            return '<tr' + trStyle + '><td>' + escHtml(it.n_item || '') + '</td><td><strong>' + escHtml(it.sku || '—') + '</strong></td>'
                 + '<td>' + escHtml(it.descricao || '') + '</td><td>' + escHtml(it.quantidade_xml) + '</td>'
                 + '<td>' + escHtml(qWms) + '</td><td>' + _wmsStatusItemNfLabel(it.status_wms) + '</td>'
                 + '<td>' + escHtml(it.codigo_ean || '—') + '</td></tr>';
@@ -4070,15 +4076,24 @@ function wmsResolverCodigoProdutoNf(codigo) {
     var norm = wmsSomenteDigitosCodigo(codigo);
     var compact = wmsCompactCodigoProduto(codigo);
     var itens = window._wmsNfDoc.itens || [];
+    var candidatos = [];
     for (var i = 0; i < itens.length; i++) {
         var it = itens[i];
         var sku = String(it.sku || '').trim();
         var skuCompact = wmsCompactCodigoProduto(sku);
         var ean = wmsSomenteDigitosCodigo(it.codigo_ean);
-        if (sku && (sku === codigo || sku.toUpperCase() === codigo.toUpperCase() || (compact && skuCompact && skuCompact === compact))) return it;
-        if (ean && norm && (ean === norm || ean.endsWith(norm) || norm.endsWith(ean))) return it;
+        var match = false;
+        if (sku && (sku === codigo || sku.toUpperCase() === codigo.toUpperCase() || (compact && skuCompact && skuCompact === compact))) match = true;
+        if (ean && norm && (ean === norm || ean.endsWith(norm) || norm.endsWith(ean))) match = true;
+        if (match) candidatos.push(it);
     }
-    return null;
+    if (!candidatos.length) return null;
+    candidatos.sort(function(a, b) { return (Number(a.n_item) || 0) - (Number(b.n_item) || 0); });
+    for (var j = 0; j < candidatos.length; j++) {
+        var st = String(candidatos[j].status_wms || 'pendente').toLowerCase();
+        if (st !== 'concluido' && st !== 'ok') return candidatos[j];
+    }
+    return candidatos[0];
 }
 
 async function wmsGarantirRecebimentoAberto() {
@@ -4797,13 +4812,28 @@ async function wmsBipProduto() {
     if (!criado || !criado.palete_id) return;
     var pid = criado.palete_id;
     var skuResolved = wmsResolverCodigoProdutoNf(skuRaw);
+    if (!skuResolved) {
+        wmsMostrarErroBipProduto('Produto não encontrado nesta NF ou todas as linhas deste código já foram concluídas.');
+        return;
+    }
+    var stLinha = String(skuResolved.status_wms || 'pendente').toLowerCase();
+    if (stLinha === 'concluido' || stLinha === 'ok') {
+        wmsMostrarErroBipProduto('Item ' + (skuResolved.n_item != null ? skuResolved.n_item : '') + ' já concluído — passe para o próximo item da NF.');
+        return;
+    }
+    var qtdPend = skuResolved.pendente_wms != null ? parseFloat(skuResolved.pendente_wms) : parseFloat(skuResolved.quantidade_xml || 0);
+    if (qtd > qtdPend) {
+        wmsMostrarErroBipProduto('Quantidade acima do pendente deste item (máx. ' + qtdPend + ' cx).');
+        return;
+    }
     var body = {
         acao: 'bip_produto',
         palete_id: parseInt(pid, 10),
         estado_palete: (document.getElementById('wms-pal-estado') || {}).value || 'bom',
         item: {
             sku: skuRaw,
-            descricao: (skuResolved && skuResolved.descricao) || '',
+            descricao: skuResolved.descricao || '',
+            n_item_nf: skuResolved.n_item,
             lote: ((document.getElementById('wms-pal-lote') || {}).value || '').trim(),
             up: ((document.getElementById('wms-pal-up') || {}).value || '').trim(),
             data_producao: dp,
@@ -4811,7 +4841,7 @@ async function wmsBipProduto() {
             quantidade_caixas: qtd
         }
     };
-    if (skuResolved && skuResolved.sku) body.item.sku = skuResolved.sku;
+    if (skuResolved.sku) body.item.sku = skuResolved.sku;
     if (btn) { btn.disabled = true; btn.textContent = 'Conferindo…'; }
     var msg = document.getElementById('wms-palete-gerado');
     try {
@@ -4833,7 +4863,8 @@ async function wmsBipProduto() {
             wmsBipMostrarPosProduto(true);
             await wmsGarantirSugestaoDestino(true);
             wmsBipAtualizarResumos();
-            showMessage('Produto OK — clique em Imprimir etiqueta, cole no palete e depois em «Etiqueta colada — ir guardar».', 'success');
+            var itemLbl = skuResolved.n_item != null ? ('Item ' + skuResolved.n_item + ' · ') : '';
+            showMessage('Produto OK (' + itemLbl + 'clique em Imprimir etiqueta, cole no palete e depois em «Etiqueta colada — ir guardar»).', 'success');
             wmsAtualizarPainelNfDescarga();
         } else {
             wmsMostrarErroBipProduto((data && data.erro) || 'Erro ao confirmar produto.');
