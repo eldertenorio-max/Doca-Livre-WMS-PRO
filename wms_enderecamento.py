@@ -63,6 +63,13 @@ def _bind_bool(conn, val=True):
     return 1 if val else 0
 
 
+def _bloqueio_off_sql(conn, col):
+    """Filtro sem bloqueio ativo (boolean Postgres, integer SQLite)."""
+    if _is_pg(conn):
+        return f'({col} IS NOT TRUE)'
+    return f'({col} = 0 OR {col} IS NULL)'
+
+
 def _int_col(row, key='c', default=0):
     d = _row_dict(row)
     if not d:
@@ -1009,7 +1016,7 @@ def _buscar_vaga_vazia_putaway(conn, cat, cam_list, zona, order_prefix, order_pa
                 WHERE l.camara = ? AND l.status = 'vazia'
                   AND UPPER(TRIM(COALESCE(l.categoria_zona, ''))) = ?
                   AND {zona_sql}
-                  AND (l.bloqueio_entrada IS FALSE OR l.bloqueio_entrada = 0)
+                  AND {_bloqueio_off_sql(conn, 'l.bloqueio_entrada')}
                 ORDER BY {prefix}l.rua, l.posicao, l.nivel
                 LIMIT 1''',
             tuple([cam, cat, *order_params]),
@@ -2031,7 +2038,7 @@ def _estoque_fifo_por_sku(conn, sku, qtd_necessaria=0, preferir_picking=True):
               WHERE i.sku = ? AND p.status = 'armazenado'
                 AND (p.bloqueio_tipo IS NULL OR p.bloqueio_tipo = '')
                 AND l.status = 'ocupada'
-                AND (l.bloqueio_saida IS FALSE OR l.bloqueio_saida = 0)'''
+                AND {_bloqueio_off_sql(conn, 'l.bloqueio_saida')}'''
     params = [sku]
     if preferir_picking:
         sql += f' ORDER BY CASE WHEN {zona_pick} THEN 0 ELSE 1 END, {order_fifo}'
