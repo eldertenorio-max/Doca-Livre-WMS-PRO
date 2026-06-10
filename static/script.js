@@ -3751,9 +3751,17 @@ async function loadWmsEtqLongarinaResumo() {
         }
         var total = data.total_etiquetas || 0;
         var cols = data.total_colunas || 0;
+        var nCfg = data.niveis_config || 5;
+        var mx = data.max_nivel_banco || 0;
+        var inc = data.colunas_incompletas || 0;
         var html = '<h4 style="margin:0 0 8px 0;color:#1565c0;">Armazém pronto para etiquetar</h4>';
+        html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Níveis por coluna (config):</span> <strong>' + escHtml(nCfg) + '</strong> (1 PICKING + ' + escHtml(nCfg - 1) + ' PULMÃO)</div>';
+        html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Máx. nível no banco:</span> <strong>' + escHtml(mx) + '</strong></div>';
         html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Total de etiquetas:</span> <strong>' + escHtml(total) + '</strong></div>';
         html += '<div class="extrato-resumo-linha"><span class="extrato-resumo-label">Colunas (pilares):</span> <strong>' + escHtml(cols) + '</strong></div>';
+        if (inc > 0 || mx < nCfg) {
+            html += '<p class="info-text" style="margin:10px 0 0 0;padding:8px;background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;color:#e65100;">Layout desatualizado (' + escHtml(inc) + ' coluna(s) incompleta(s)). Clique <strong>Atualizar resumo</strong> — o sistema regera automaticamente para ' + escHtml(nCfg) + ' níveis.</p>';
+        }
         var por = data.por_camara || [];
         if (por.length) {
             html += '<div class="table-container" style="margin-top:10px;max-height:160px;overflow:auto;"><table class="data-table"><thead><tr><th>Câmara</th><th>Colunas</th><th>Etiquetas</th></tr></thead><tbody>';

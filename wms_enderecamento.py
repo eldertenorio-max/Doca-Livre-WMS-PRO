@@ -197,7 +197,7 @@ def _sync_wms_camara_layout(conn):
         if total <= 0:
             continue
         conn.execute(f'UPDATE {t_cam} SET total_posicoes = ? WHERE codigo = ?', (total, cod))
-        coords = _gerar_coordenadas_camara(cod, bloco.get('ruas'), bloco.get('niveis', 3), total)
+        coords = _gerar_coordenadas_camara(cod, bloco.get('ruas'), bloco.get('niveis', 5), total)
         codigos = {_codigo_endereco(c, r, p, n) for c, r, p, n in coords}
         removidas += _limpar_localizacoes_orfas_vazias(conn, cod, codigos)
     try:
@@ -1087,23 +1087,77 @@ def _distribuir_categorias_em_slots(total, categorias, pesos):
 
 
 def _gerar_coordenadas_camara(camara, ruas, niveis, total):
-    """Gera (camara, rua, posicao, nivel) até atingir total de posições."""
+    """Gera (camara, rua, posicao, nivel) — coluna cheia com todos os níveis antes da próxima."""
     ruas = [str(r).strip().upper() for r in (ruas or ['A']) if str(r).strip()] or ['A']
-    niveis = max(1, int(niveis or 3))
+    niveis = max(1, int(niveis or 5))
     out = []
     base = total // len(ruas)
     extra = total % len(ruas)
     for idx, rua in enumerate(ruas):
         slots_rua = base + (1 if idx < extra else 0)
         pos = 1
-        niv = 1
-        for _ in range(slots_rua):
-            out.append((int(camara), rua, pos, niv))
-            niv += 1
-            if niv > niveis:
-                niv = 1
-                pos += 1
+        i = 0
+        while i < slots_rua:
+            for niv in range(1, niveis + 1):
+                if i >= slots_rua:
+                    break
+                out.append((int(camara), rua, pos, niv))
+                i += 1
+            pos += 1
     return out[:total]
+
+
+def _layout_niveis_esperados():
+    return {
+        int(b['codigo']): max(1, int(b.get('niveis') or 5))
+        for b in (_layout_camaras_config().get('camaras') or [])
+    }
+
+
+def _precisa_regenerar_layout_niveis(conn):
+    if not _wms_tabelas_existem(conn):
+        return False
+    t_loc = _tbl(conn, 'wms_localizacao')
+    esperados = _layout_niveis_esperados()
+    if not esperados:
+        return False
+    total = _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
+    if total <= 0:
+        return True
+    for cam, n_esp in esperados.items():
+        row = conn.execute(
+            f'SELECT MAX(nivel) AS mx FROM {t_loc} WHERE camara = ?', (cam,),
+        ).fetchone()
+        mx = int((_row_dict(row) or {}).get('mx') or 0)
+        if mx < n_esp:
+            return True
+        incompletas = conn.execute(
+            f'''SELECT COUNT(*) AS c FROM (
+                    SELECT posicao, rua FROM {t_loc}
+                    WHERE camara = ? GROUP BY posicao, rua
+                    HAVING COUNT(DISTINCT nivel) < ?
+                ) t''',
+            (cam, n_esp),
+        ).fetchone()
+        if _int_col(incompletas, 'c') > 0:
+            return True
+    return False
+
+
+def _ensure_layout_enderecos_atualizado(conn):
+    """Gera endereços se vazio; regera com force se níveis do banco ≠ layout JSON (ex.: 3 → 5)."""
+    t_loc = _tbl(conn, 'wms_localizacao')
+    total = _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
+    if total <= 0:
+        gerar_layout_enderecos(conn, force=False)
+    elif _precisa_regenerar_layout_niveis(conn):
+        gerar_layout_enderecos(conn, force=True)
+    try:
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
 
 
 def gerar_layout_enderecos(conn, force=False):
@@ -1143,7 +1197,7 @@ def gerar_layout_enderecos(conn, force=False):
             continue
         cats = _categorias_camara_zoneamento(conn, cod)
         seq_cat = _distribuir_categorias_em_slots(total, cats, pesos)
-        coords = _gerar_coordenadas_camara(cod, bloco.get('ruas'), bloco.get('niveis', 3), total)
+        coords = _gerar_coordenadas_camara(cod, bloco.get('ruas'), bloco.get('niveis', 5), total)
         codigos_validos = []
         for i, (cam, rua, pos, nivel) in enumerate(coords):
             cat_z = seq_cat[i] if i < len(seq_cat) else cats[0]
@@ -3850,9 +3904,20 @@ def _agrupar_faixas_por_camara(faixas):
 
 def _resumo_etiquetas_longarina(conn):
     """Contagem de endereços/longarinas para impressão em lote."""
-    _ensure_layout_enderecos(conn)
+    _ensure_layout_enderecos_atualizado(conn)
     t_loc = _tbl(conn, 'wms_localizacao')
+    niveis_cfg = _layout_niveis_esperados()
+    n_esp = max(niveis_cfg.values()) if niveis_cfg else 5
     total = _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
+    mx = _int_col(conn.execute(f'SELECT MAX(nivel) AS mx FROM {t_loc}').fetchone(), 'mx')
+    incompletas = _int_col(conn.execute(
+        f'''SELECT COUNT(*) AS c FROM (
+                SELECT camara, posicao, rua FROM {t_loc}
+                GROUP BY camara, posicao, rua
+                HAVING COUNT(DISTINCT nivel) < ?
+            ) t''',
+        (n_esp,),
+    ).fetchone(), 'c')
     rows_cam = conn.execute(
         f'''SELECT camara, COUNT(*) AS etiquetas
             FROM {t_loc} GROUP BY camara ORDER BY camara''',
@@ -3880,13 +3945,16 @@ def _resumo_etiquetas_longarina(conn):
     return {
         'total_etiquetas': total,
         'total_colunas': len(colunas or []),
+        'niveis_config': n_esp,
+        'max_nivel_banco': mx,
+        'colunas_incompletas': incompletas,
         'por_camara': por_camara,
     }
 
 
 def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, auto_print=False, todas=False):
     _ensure_zona_armazenagem_column(conn)
-    _ensure_layout_enderecos(conn)
+    _ensure_layout_enderecos_atualizado(conn)
     t_loc = _tbl(conn, 'wms_localizacao')
     if codigo:
         cod_busca = _resolver_codigo_endereco_bip(codigo) or codigo
