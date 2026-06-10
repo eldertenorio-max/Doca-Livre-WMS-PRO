@@ -3593,6 +3593,7 @@ function initWmsEnderecamento() {
         if (abasWms.indexOf(t) === -1) t = 'painel';
         _wmsMostrarSubtab(t);
     };
+    wmsBipInitStepper();
 }
 
 async function wmsRedistribuirLayout() {
@@ -4063,9 +4064,7 @@ async function wmsIniciarBipagemNf() {
     wmsAbrirRecebimento(rid);
     var det = document.getElementById('wms-recebimento-detalhe');
     if (det && det.scrollIntoView) det.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    var bip = document.getElementById('wms-bip-etiqueta');
-    if (bip) bip.focus();
-    showMessage('Fase B aberta — etapa 1: código do palete (22 chars); etapa 2: EAN/SKU da etiqueta de produto.', 'success');
+    showMessage('Comece pelo passo 1: identifique o palete.', 'success');
 }
 
 function wmsInitRecebimentoIntegracaoNf() {
@@ -4150,18 +4149,139 @@ window.wmsExcluirRecebimento = async function(btn) {
     }
 };
 
-window.wmsAbrirRecebimento = function(id) {
-    var det = document.getElementById('wms-recebimento-detalhe');
-    var hid = document.getElementById('wms-rec-detalhe-id');
+window._wmsBipEtapa = 1;
+window._wmsBipMaxEtapa = 1;
+window._wmsBipResumo = { palete: '', produto: '', impresso: false, endereco: '' };
+
+var _WMS_BIP_ACOES = {
+    1: 'Bipe o palete (22 caracteres) ou deixe vazio para o sistema gerar o código.',
+    2: 'Bipe a etiqueta de produto (EAN) colada na caixa e confirme lote e datas.',
+    3: 'Imprima a etiqueta grande, cole no palete e clique em «Etiqueta colada — continuar».',
+    4: 'Leve o palete ao endereço indicado, bipe a longarina do rack e confirme.'
+};
+
+function wmsBipAtualizarResumos() {
+    var r = window._wmsBipResumo || {};
+    var elP = document.getElementById('wms-bip-resumo-palete');
+    var elPr = document.getElementById('wms-bip-resumo-produto');
+    var elI = document.getElementById('wms-bip-resumo-imprimir');
+    var elD = document.getElementById('wms-bip-resumo-destino');
+    if (elP) elP.textContent = r.palete ? '✓ ' + r.palete : '';
+    if (elPr) elPr.textContent = r.produto ? '✓ ' + r.produto : '';
+    if (elI) elI.textContent = r.impresso ? '✓ Etiqueta impressa/cola' : '';
+    if (elD) elD.textContent = r.endereco ? '✓ ' + r.endereco : '';
+}
+
+function wmsBipIrParaEtapa(n, opts) {
+    opts = opts || {};
+    n = Math.max(1, Math.min(4, parseInt(n, 10) || 1));
+    if (!opts.manterMax && n > window._wmsBipMaxEtapa) window._wmsBipMaxEtapa = n;
+    window._wmsBipEtapa = n;
+    var maxLiberada = opts.maxLiberada || window._wmsBipMaxEtapa;
+    document.querySelectorAll('.wms-bip-step[data-wms-bip-step]').forEach(function(btn) {
+        var s = parseInt(btn.getAttribute('data-wms-bip-step'), 10);
+        btn.classList.remove('wms-bip-step--ativa', 'wms-bip-step--feita');
+        btn.disabled = s > maxLiberada;
+        if (s < n) btn.classList.add('wms-bip-step--feita');
+        else if (s === n) btn.classList.add('wms-bip-step--ativa');
+    });
+    document.querySelectorAll('.wms-rec-etapa[data-wms-bip-step]').forEach(function(el) {
+        var s = parseInt(el.getAttribute('data-wms-bip-step'), 10);
+        el.classList.remove('wms-rec-etapa--ativa', 'wms-rec-etapa--feita', 'wms-rec-etapa--aguardando');
+        if (s < n) el.classList.add('wms-rec-etapa--feita');
+        else if (s === n) el.classList.add('wms-rec-etapa--ativa');
+        else el.classList.add('wms-rec-etapa--aguardando');
+    });
+    var txt = document.getElementById('wms-bip-acao-texto');
+    if (txt) txt.textContent = _WMS_BIP_ACOES[n] || '';
+    wmsBipAtualizarResumos();
+    if (!opts.semFoco) wmsBipFocarEtapa(n);
+}
+
+function wmsBipFocarEtapa(n) {
+    var idMap = { 1: 'wms-bip-etiqueta', 2: 'wms-pal-sku', 4: 'wms-bip-destino' };
+    var el = document.getElementById(idMap[n]);
+    if (el && !el.readOnly) {
+        setTimeout(function() { el.focus(); if (el.select) el.select(); }, 80);
+    }
+}
+
+function wmsBipResetNovoPalete() {
+    window._wmsBipMaxEtapa = 1;
+    window._wmsBipResumo = { palete: '', produto: '', impresso: false, endereco: '' };
     var pid = document.getElementById('wms-rec-palete-id');
-    if (det) det.style.display = 'block';
-    if (hid) hid.value = String(id);
     if (pid) pid.value = '';
+    var bip = document.getElementById('wms-bip-etiqueta');
+    if (bip) bip.value = '';
     var info = document.getElementById('wms-rec-palete-info');
-    if (info) info.textContent = '';
+    if (info) { info.textContent = ''; info.style.display = 'none'; }
+    ['wms-pal-sku', 'wms-pal-lote'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    var msg = document.getElementById('wms-palete-gerado');
+    if (msg) msg.textContent = '';
     _wmsResetDestinoSugestao();
     var sug = document.getElementById('wms-sugestao-destino');
     if (sug) { sug.style.display = 'none'; sug.innerHTML = ''; }
+    var btnProx = document.getElementById('btn-wms-bip-proximo-palete');
+    if (btnProx) btnProx.style.display = 'none';
+    wmsBipIrParaEtapa(1);
+}
+
+function wmsBipInitStepper() {
+    var nav = document.getElementById('wms-bip-stepper');
+    if (!nav || nav.dataset.wmsBipBind) return;
+    nav.dataset.wmsBipBind = '1';
+    nav.addEventListener('click', function(ev) {
+        var btn = ev.target.closest('.wms-bip-step[data-wms-bip-step]');
+        if (!btn || btn.disabled) return;
+        wmsBipIrParaEtapa(parseInt(btn.getAttribute('data-wms-bip-step'), 10), { semFoco: false });
+    });
+    var det = document.getElementById('wms-recebimento-detalhe');
+    if (det && !det.dataset.wmsBipCabBind) {
+        det.dataset.wmsBipCabBind = '1';
+        det.addEventListener('click', function(ev) {
+            var cab = ev.target.closest('.wms-rec-etapa-cab');
+            if (!cab) return;
+            var etapa = cab.closest('[data-wms-bip-step]');
+            if (!etapa || etapa.classList.contains('wms-rec-etapa--aguardando')) return;
+            if (etapa.classList.contains('wms-rec-etapa--feita') && !etapa.classList.contains('wms-rec-etapa--ativa')) {
+                wmsBipIrParaEtapa(parseInt(etapa.getAttribute('data-wms-bip-step'), 10), { manterMax: true });
+            }
+        });
+    }
+    var bipEl = document.getElementById('wms-bip-etiqueta');
+    if (bipEl && !bipEl.dataset.wmsBipEnter) {
+        bipEl.dataset.wmsBipEnter = '1';
+        bipEl.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); wmsBipPalete(); }
+        });
+    }
+    var btnCola = document.getElementById('btn-wms-etq-cola-ok');
+    if (btnCola) btnCola.addEventListener('click', function() {
+        window._wmsBipResumo.impresso = true;
+        wmsBipIrParaEtapa(4);
+        showMessage('Agora leve o palete ao endereço e bipe a longarina.', 'success');
+    });
+    var btnProx = document.getElementById('btn-wms-bip-proximo-palete');
+    if (btnProx) btnProx.addEventListener('click', wmsBipResetNovoPalete);
+    var valEl = document.getElementById('wms-pal-validade');
+    if (valEl && !valEl.dataset.wmsBipEnter) {
+        valEl.dataset.wmsBipEnter = '1';
+        valEl.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); wmsBipProduto(); }
+        });
+    }
+}
+
+window.wmsAbrirRecebimento = function(id) {
+    var det = document.getElementById('wms-recebimento-detalhe');
+    var hid = document.getElementById('wms-rec-detalhe-id');
+    if (det) det.style.display = 'block';
+    if (hid) hid.value = String(id);
+    wmsBipInitStepper();
+    wmsBipResetNovoPalete();
 };
 
 window._wmsSugestaoAtual = null;
@@ -4244,7 +4364,7 @@ function _wmsMostrarSugestao(sug) {
         '<br><span style="font-size:12px;color:#555;">Bipe a etiqueta da longarina e confirme a armazenagem.</span>';
     if (!window._wmsDestinoManual && dest) {
         dest.value = bcLong || '';
-        dest.focus();
+        if (window._wmsBipEtapa >= 4) dest.focus();
     }
     _wmsAplicarModoDestinoSugestao();
 }
@@ -4260,11 +4380,11 @@ async function wmsBipPalete() {
     if (data && data.ok) {
         var hid = document.getElementById('wms-rec-palete-id');
         if (hid) hid.value = String(data.palete_id);
-        var info = document.getElementById('wms-rec-palete-info');
-        if (info) info.textContent = 'Palete ' + data.etiqueta;
         var bip = document.getElementById('wms-bip-etiqueta');
         if (bip) bip.value = data.etiqueta;
-        showMessage('Palete vinculado.', 'success');
+        window._wmsBipResumo.palete = data.etiqueta || '';
+        wmsBipIrParaEtapa(2);
+        showMessage('Palete OK — agora bipe o produto.', 'success');
     } else {
         showMessage((data && data.erro) || 'Erro ao bipar palete.', 'error');
     }
@@ -4296,17 +4416,16 @@ async function wmsBipProduto() {
     var data = await fetchAPI('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) });
     var msg = document.getElementById('wms-palete-gerado');
     if (data && data.ok) {
+        var skuTxt = body.item.sku || '';
+        var loteTxt = body.item.lote ? ' · lote ' + body.item.lote : '';
+        window._wmsBipResumo.produto = skuTxt + loteTxt;
         var txt = 'Produto conferido no palete ' + (data.etiqueta || '');
         if (data.bloqueios && data.bloqueios.length) txt += ' — Bloqueios: ' + data.bloqueios.join(', ');
         if (msg) msg.textContent = txt;
         _wmsMostrarSugestao(data.sugestao);
-        showMessage('Etapa 2 ok — imprima a etiqueta do palete (etapa 3) e confirme o endereço indicado (etapa 4).', 'success');
+        wmsBipIrParaEtapa(3);
+        showMessage('Produto OK — imprima e cole a etiqueta no palete.', 'success');
         wmsAtualizarPainelNfDescarga();
-        var skuEl = document.getElementById('wms-pal-sku');
-        if (skuEl) skuEl.value = '';
-        var loteEl = document.getElementById('wms-pal-lote');
-        if (loteEl) loteEl.value = '';
-        if (skuEl) skuEl.focus();
     } else {
         showMessage((data && data.erro) || 'Erro ao bipar produto.', 'error');
     }
@@ -4315,12 +4434,19 @@ async function wmsBipProduto() {
 function wmsImprimirEtiqueta() {
     var etiqueta = (document.getElementById('wms-bip-etiqueta') || {}).value || '';
     if (!etiqueta || etiqueta.length !== 22) {
-        showMessage('Etapa 3: bipe o palete na etapa 1 antes de imprimir (código de 22 caracteres).', 'error');
+        showMessage('Confirme o palete no passo 1 antes de imprimir.', 'error');
+        wmsBipIrParaEtapa(1);
         return;
     }
     var url = '/api/wms/etiqueta?etiqueta=' + encodeURIComponent(etiqueta);
     var w = window.open(url, '_blank');
-    if (!w) showMessage('Pop-up bloqueado — libere pop-ups para imprimir.', 'error');
+    if (!w) {
+        showMessage('Pop-up bloqueado — libere pop-ups para imprimir.', 'error');
+        return;
+    }
+    window._wmsBipResumo.impresso = true;
+    wmsBipAtualizarResumos();
+    showMessage('Etiqueta enviada à impressora. Cole no palete e clique em «Etiqueta colada — continuar».', 'success');
 }
 
 async function wmsSugerirDestino() {
@@ -4367,16 +4493,27 @@ async function wmsConfirmarDestino() {
         var st = data.status_atualizado || {};
         var stTxt = Object.keys(st).map(function(k) { return k + ': ' + st[k]; }).join(' · ');
         var endFinal = (data.localizacao && data.localizacao.codigo_endereco) || body.codigo_endereco || cod;
-        showMessage('Armazenado em ' + endFinal + (manual ? ' (manual)' : ' (indicação do sistema)') +
-            (stTxt ? ' · Status: ' + stTxt : ''), 'success');
+        window._wmsBipResumo.endereco = endFinal;
+        window._wmsBipMaxEtapa = 4;
+        document.querySelectorAll('.wms-bip-step[data-wms-bip-step]').forEach(function(btn) {
+            btn.classList.remove('wms-bip-step--ativa');
+            btn.classList.add('wms-bip-step--feita');
+            btn.disabled = false;
+        });
+        document.querySelectorAll('.wms-rec-etapa[data-wms-bip-step]').forEach(function(el) {
+            el.classList.remove('wms-rec-etapa--ativa', 'wms-rec-etapa--aguardando');
+            el.classList.add('wms-rec-etapa--feita');
+        });
+        wmsBipAtualizarResumos();
+        showMessage('Palete guardado em ' + endFinal + (manual ? ' (manual)' : '') +
+            (stTxt ? ' · ' + stTxt : ''), 'success');
         loadWmsPainel();
         loadWmsProdutos();
         wmsAtualizarPainelNfDescarga();
-        var pidEl = document.getElementById('wms-rec-palete-id');
-        if (pidEl) pidEl.value = '';
-        _wmsResetDestinoSugestao();
-        var sug = document.getElementById('wms-sugestao-destino');
-        if (sug) { sug.style.display = 'none'; sug.innerHTML = ''; }
+        var btnProx = document.getElementById('btn-wms-bip-proximo-palete');
+        if (btnProx) btnProx.style.display = '';
+        var txtAcao = document.getElementById('wms-bip-acao-texto');
+        if (txtAcao) txtAcao.textContent = 'Palete guardado! Clique em «Próximo palete» para montar outro ou «Finalizar NF» quando terminar a nota.';
     } else {
         if (data && data.sugestao) _wmsMostrarSugestao(data.sugestao);
         showMessage((data && data.erro) || 'Erro ao confirmar destino.', 'error');

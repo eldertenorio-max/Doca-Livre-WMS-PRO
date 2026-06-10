@@ -494,55 +494,180 @@ body.hub-modulos-aberto .container {
 .wms-rec-fase--etq-prod .wms-rec-fase-num { background: #f9a825; color: #333; }
 .wms-rec-fase--bip .wms-rec-fase-titulo { background: #f3e5f5; }
 .wms-rec-fase--bip .wms-rec-fase-num { background: #7b1fa2; }
-.wms-rec-etapa {
+/* Bipagem — passo a passo dinâmico */
+.wms-bip-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0;
     margin-bottom: 12px;
-    padding: 10px 12px;
+    padding: 8px 10px;
+    background: #f5f5f5;
+    border-radius: 10px;
+    overflow-x: auto;
+}
+.wms-bip-step {
+    flex: 1;
+    min-width: 72px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 4px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
     border-radius: 8px;
+    font-family: inherit;
+}
+.wms-bip-step:hover:not(:disabled) { background: rgba(0,0,0,0.04); }
+.wms-bip-step:disabled { cursor: default; opacity: 0.45; }
+.wms-bip-step-num {
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+    text-align: center;
+    border-radius: 50%;
+    background: #cfd8dc;
+    color: #546e7a;
+    font-size: 13px;
+    font-weight: 800;
+    transition: background 0.2s, color 0.2s;
+}
+.wms-bip-step-txt {
+    font-size: 11px;
+    font-weight: 700;
+    color: #607d8b;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+.wms-bip-step--ativa .wms-bip-step-num {
+    background: #7b1fa2;
+    color: #fff;
+    box-shadow: 0 0 0 3px rgba(123,31,162,0.25);
+}
+.wms-bip-step--ativa .wms-bip-step-txt { color: #7b1fa2; }
+.wms-bip-step--feita .wms-bip-step-num {
+    background: #2e7d32;
+    color: #fff;
+}
+.wms-bip-step--feita .wms-bip-step-txt { color: #2e7d32; }
+.wms-bip-step-linha {
+    flex: 0 0 16px;
+    height: 2px;
+    background: #cfd8dc;
+    margin-bottom: 18px;
+}
+.wms-bip-acao-atual {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    background: linear-gradient(135deg, #f3e5f5 0%, #ede7f6 100%);
+    border: 1px solid #ce93d8;
+    border-radius: 10px;
+}
+.wms-bip-acao-label {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #fff;
+    background: #7b1fa2;
+    border-radius: 4px;
+}
+.wms-bip-acao-texto {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: #4a148c;
+}
+.wms-rec-etapa {
+    margin-bottom: 10px;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
     border-left: 4px solid #90a4ae;
     background: #fafbfc;
+    overflow: hidden;
+    transition: opacity 0.2s, box-shadow 0.2s;
 }
-.wms-rec-etapa:last-child { margin-bottom: 0; }
+.wms-rec-etapa:last-of-type { margin-bottom: 0; }
+.wms-rec-etapa-cab {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 12px;
+    padding: 8px 12px;
+    background: #fff;
+    border-bottom: 1px solid transparent;
+}
 .wms-rec-etapa-titulo {
-    margin: 0 0 4px 0;
+    margin: 0;
     font-size: 13px;
     font-weight: 700;
     color: #37474f;
 }
-.wms-rec-etapa-codigo {
-    display: inline-block;
-    margin: 0 0 6px 0;
-    padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    border-radius: 4px;
-    background: #eceff1;
-    color: #455a64;
+.wms-rec-etapa-resumo {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: #2e7d32;
+    display: none;
 }
-.wms-rec-etapa--palete { border-left-color: #1976d2; }
-.wms-rec-etapa--palete .wms-rec-etapa-codigo { background: #e3f2fd; color: #0d47a1; }
-.wms-rec-etapa--produto { border-left-color: #f9a825; }
-.wms-rec-etapa--produto .wms-rec-etapa-codigo { background: #fff8e1; color: #e65100; }
-.wms-rec-etapa--imprimir { border-left-color: #5c6bc0; }
-.wms-rec-etapa--imprimir .wms-rec-etapa-codigo { background: #e8eaf6; color: #283593; }
-.wms-rec-etapa--destino { border-left-color: #2e7d32; }
-.wms-rec-etapa--destino .wms-rec-etapa-codigo { background: #e8f5e9; color: #1b5e20; }
-.wms-rec-guia-codigos {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 8px;
-    margin-bottom: 14px;
-    font-size: 11px;
-    line-height: 1.35;
+.wms-rec-etapa-corpo {
+    padding: 10px 12px 12px;
 }
-.wms-rec-guia-item {
-    padding: 8px 10px;
-    border-radius: 6px;
-    border: 1px solid #e0e0e0;
+.wms-rec-etapa--aguardando {
+    opacity: 0.55;
+    pointer-events: none;
+}
+.wms-rec-etapa--aguardando .wms-rec-etapa-corpo { display: none; }
+.wms-rec-etapa--aguardando .wms-rec-etapa-cab { border-bottom: none; cursor: default; }
+.wms-rec-etapa--ativa {
+    opacity: 1;
+    pointer-events: auto;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.wms-rec-etapa--ativa .wms-rec-etapa-cab {
+    border-bottom-color: #e8ecf0;
     background: #fff;
 }
-.wms-rec-guia-item strong { display: block; font-size: 12px; margin-bottom: 2px; }
+.wms-rec-etapa--feita {
+    opacity: 1;
+    pointer-events: auto;
+}
+.wms-rec-etapa--feita .wms-rec-etapa-corpo { display: none; }
+.wms-rec-etapa--feita .wms-rec-etapa-cab {
+    cursor: pointer;
+    border-bottom: none;
+}
+.wms-rec-etapa--feita .wms-rec-etapa-cab:hover { background: #f5f5f5; }
+.wms-rec-etapa--feita .wms-rec-etapa-resumo { display: block; }
+.wms-rec-etapa--feita.wms-rec-etapa--ativa .wms-rec-etapa-corpo { display: block; }
+.wms-rec-etapa--feita.wms-rec-etapa--ativa .wms-rec-etapa-cab { border-bottom-color: #e8ecf0; }
+.wms-rec-etapa--palete { border-left-color: #1976d2; }
+.wms-rec-etapa--produto { border-left-color: #f9a825; }
+.wms-rec-etapa--imprimir { border-left-color: #5c6bc0; }
+.wms-rec-etapa--destino { border-left-color: #2e7d32; }
+.wms-bip-rodape {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #e8ecf0;
+}
+.wms-bip-rodape-acoes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-left: auto;
+}
 
 .devolucoes-titulo-principal {
     font-size: 1.05rem;
