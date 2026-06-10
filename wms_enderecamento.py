@@ -4018,7 +4018,22 @@ def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo
     return html, None
 
 
-def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=None, data_producao=None, data_validade=None, destino=None, auto_print=True):
+def _texto_destino_etiqueta(sug):
+    """Texto do endereço para etiqueta de palete e UI."""
+    if not sug or not sug.get('codigo_endereco'):
+        return None, None, None
+    bc = (sug.get('barcode_longarina') or sug.get('codigo_endereco') or '').strip()
+    txt = (sug.get('texto') or '').strip()
+    zona = (sug.get('zona_label') or '').strip()
+    linha = bc
+    if txt:
+        linha = f'{bc} — {txt}'
+    elif zona:
+        linha = f'{bc} ({zona})'
+    return linha, bc, txt or None
+
+
+def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=None, data_producao=None, data_validade=None, destino=None, endereco_barcode=None, endereco_texto=None, up=None, auto_print=True):
     return render_template(
         'wms/etiqueta_palete.html',
         etiqueta=etiqueta,
@@ -4029,6 +4044,9 @@ def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=Non
         data_producao=data_producao,
         data_validade=data_validade,
         destino=destino,
+        endereco_barcode=endereco_barcode,
+        endereco_texto=endereco_texto,
+        up=up,
         auto_print=auto_print,
     )
 
@@ -4044,12 +4062,15 @@ def api_wms_etiqueta():
     t_item = _tbl(conn, 'wms_palete_item')
     try:
         pal = conn.execute(f'SELECT id FROM {t_pal} WHERE etiqueta = ?', (etiqueta,)).fetchone()
-        sku = lote = descricao = data_producao = data_validade = None
+        sku = lote = descricao = data_producao = data_validade = up = None
         qtd = None
+        destino = (request.args.get('destino') or '').strip() or None
+        endereco_barcode = (request.args.get('barcode_longarina') or '').strip() or None
+        endereco_texto = (request.args.get('endereco_texto') or '').strip() or None
         if pal:
             pid = pal['id'] if isinstance(pal, dict) else pal[0]
             it = conn.execute(
-                f'''SELECT sku, descricao, lote, data_producao, data_validade, quantidade_caixas
+                f'''SELECT sku, descricao, lote, data_producao, data_validade, quantidade_caixas, rg_caixa
                     FROM {t_item} WHERE palete_id = ? ORDER BY id DESC LIMIT 1''',
                 (pid,),
             ).fetchone()
@@ -4061,10 +4082,18 @@ def api_wms_etiqueta():
                 descricao = rd.get('descricao')
                 data_producao = rd.get('data_producao')
                 data_validade = rd.get('data_validade')
+                up = rd.get('rg_caixa')
+                if not destino and sku:
+                    sug = _sugerir_putaway(conn, sku, lote, data_producao, 'pulmao')
+                    destino, endereco_barcode, endereco_texto = _texto_destino_etiqueta(sug)
         auto_print = request.args.get('auto_print', '1') != '0'
         conn.close()
         html = _html_etiqueta_palete(
             etiqueta, sku, lote, qtd, descricao, data_producao, data_validade,
+            destino=destino,
+            endereco_barcode=endereco_barcode,
+            endereco_texto=endereco_texto,
+            up=up,
             auto_print=auto_print,
         )
         return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
@@ -4089,7 +4118,10 @@ def api_wms_etiqueta_modelo():
             descricao='Pão de forma integral 500g',
             data_producao='2025-06-01',
             data_validade='2025-12-01',
-            destino='21-R-01-2 (PULMÃO · Cat. C)',
+            destino='21.13.1.1 — Rua 11 · Prédio 1 · Nív 1 · Apto 1 (PULMÃO)',
+            endereco_barcode='21.13.1.1',
+            endereco_texto='Rua 11 · Prédio 1 · Nív 1 · Apto 1 (PULMÃO)',
+            up='5020',
             auto_print=False,
         )
         return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})

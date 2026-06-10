@@ -692,6 +692,30 @@ body.hub-modulos-aberto .container {
     color: #1a237e;
     font-family: Consolas, 'Courier New', monospace;
 }
+.wms-bip-endereco-palete {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    background: #e8f5e9;
+    border: 1px solid #81c784;
+    border-radius: 8px;
+}
+.wms-bip-endereco-palete .wms-bip-codigo-label { color: #1b5e20; }
+.wms-bip-endereco-valor {
+    font-size: 20px;
+    letter-spacing: 0.08em;
+    color: #1b5e20;
+    font-family: Consolas, 'Courier New', monospace;
+    font-weight: 800;
+}
+.wms-bip-endereco-detalhe {
+    flex: 1 1 100%;
+    font-size: 12px;
+    color: #2e7d32;
+}
 .wms-bip-erro-inline {
     margin: 10px 0 0 0;
     padding: 10px 12px;

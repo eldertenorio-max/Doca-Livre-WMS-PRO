@@ -4235,9 +4235,39 @@ window._wmsBipResumo = { palete: '', produto: '', impresso: false, endereco: '' 
 
 var _WMS_BIP_ACOES = {
     1: 'Bipe a etiqueta de produto (EAN) colada na caixa e confirme lote e datas.',
-    2: 'Imprima a etiqueta do palete, cole no meio dele e clique em «Etiqueta colada — continuar».',
+    2: 'Imprima a etiqueta (já com o endereço de guardar), cole no palete e clique em «Etiqueta colada — continuar».',
     3: 'Leve o palete ao endereço indicado, bipe a longarina do rack e confirme.'
 };
+
+function wmsFormatarDestinoEtiqueta(sug) {
+    if (!sug || !sug.codigo_endereco) return null;
+    var bc = sug.barcode_longarina || sug.codigo_endereco;
+    var txt = sug.texto || '';
+    var zona = sug.zona_label || '';
+    return {
+        barcode: bc,
+        texto: txt,
+        zona: zona,
+        destino: bc + (txt ? ' — ' + txt : (zona ? ' (' + zona + ')' : ''))
+    };
+}
+
+function wmsBipAtualizarEnderecoEtapa2() {
+    var box = document.getElementById('wms-bip-endereco-etapa2');
+    var val = document.getElementById('wms-bip-endereco-valor');
+    var det = document.getElementById('wms-bip-endereco-detalhe');
+    var fmt = wmsFormatarDestinoEtiqueta(window._wmsSugestaoAtual);
+    if (!box || !val) return;
+    if (fmt) {
+        box.style.display = '';
+        val.textContent = fmt.barcode;
+        if (det) det.textContent = (fmt.texto || '') + (fmt.zona ? ' · ' + fmt.zona : '');
+    } else {
+        box.style.display = 'none';
+        val.textContent = '—';
+        if (det) det.textContent = 'Sem indicação — será calculado na impressão ou no passo 3.';
+    }
+}
 
 function wmsBipAtualizarCodigoPaleteUI(etiqueta) {
     var el = document.getElementById('wms-bip-codigo-palete');
@@ -4256,6 +4286,7 @@ function wmsBipAtualizarResumos() {
     if (elI) elI.textContent = r.impresso ? '✓ ' + (r.palete || 'Etiqueta colada') : (r.palete ? '✓ ' + r.palete : '');
     if (elD) elD.textContent = r.endereco ? '✓ ' + r.endereco : '';
     wmsBipAtualizarCodigoPaleteUI(r.palete);
+    wmsBipAtualizarEnderecoEtapa2();
 }
 
 async function wmsBipEnsurePalete(silent) {
@@ -4455,6 +4486,7 @@ function _wmsMostrarSugestao(sug) {
         box.style.border = '1px solid #ffb74d';
         box.innerHTML = '<strong>Sem indicação automática:</strong> ' + escHtml((sug && sug.motivo && sug.motivo.join(' · ')) || 'Nenhuma posição vazia.') +
             ' Use <em>Alterar endereço manualmente</em> se necessário.';
+        wmsBipAtualizarEnderecoEtapa2();
         return;
     }
     var alerta = sug.alerta ? '<br><span style="color:#e65100;font-weight:bold;">⚠ ' + escHtml(sug.alerta) + '</span>' : '';
@@ -4582,6 +4614,12 @@ function wmsImprimirEtiqueta() {
         return;
     }
     var url = '/api/wms/etiqueta?etiqueta=' + encodeURIComponent(etiqueta);
+    var fmt = wmsFormatarDestinoEtiqueta(window._wmsSugestaoAtual);
+    if (fmt) {
+        url += '&destino=' + encodeURIComponent(fmt.destino);
+        url += '&barcode_longarina=' + encodeURIComponent(fmt.barcode);
+        if (fmt.texto) url += '&endereco_texto=' + encodeURIComponent(fmt.texto);
+    }
     var w = window.open(url, '_blank');
     if (!w) {
         showMessage('Pop-up bloqueado — libere pop-ups para imprimir.', 'error');
