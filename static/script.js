@@ -3980,7 +3980,7 @@ function wmsPreencherPainelNfDescarga(doc) {
         }).join('') : '';
     }
     if (doc.recebimento_wms_id) {
-        wmsAbrirRecebimento(doc.recebimento_wms_id);
+        wmsSincronizarRecebimentoAberto(doc.recebimento_wms_id, { resetarPalete: false });
     }
 }
 
@@ -4021,21 +4021,91 @@ function wmsSomenteDigitosCodigo(codigo) {
     return String(codigo || '').replace(/\D/g, '');
 }
 
+function wmsCompactCodigoProduto(codigo) {
+    return String(codigo || '').replace(/[\s.\-_/\\]/g, '').toUpperCase();
+}
+
+function wmsMostrarErroBipProduto(msg) {
+    var box = document.getElementById('wms-bip-erro-produto');
+    if (!msg) {
+        if (box) { box.style.display = 'none'; box.textContent = ''; }
+        return;
+    }
+    if (box) {
+        box.textContent = msg;
+        box.style.display = 'block';
+    }
+    showMessage(msg, 'error');
+}
+
 function wmsResolverCodigoProdutoNf(codigo) {
     codigo = wmsNormalizarCodigoBip(codigo);
     if (!codigo || !window._wmsNfDoc) return null;
     var norm = wmsSomenteDigitosCodigo(codigo);
-    var compact = codigo.replace(/\s/g, '').toUpperCase();
+    var compact = wmsCompactCodigoProduto(codigo);
     var itens = window._wmsNfDoc.itens || [];
     for (var i = 0; i < itens.length; i++) {
         var it = itens[i];
         var sku = String(it.sku || '').trim();
-        var skuCompact = sku.replace(/\s/g, '').toUpperCase();
+        var skuCompact = wmsCompactCodigoProduto(sku);
         var ean = wmsSomenteDigitosCodigo(it.codigo_ean);
-        if (sku && (sku === codigo || sku.toUpperCase() === codigo.toUpperCase() || (compact && skuCompact === compact))) return it;
+        if (sku && (sku === codigo || sku.toUpperCase() === codigo.toUpperCase() || (compact && skuCompact && skuCompact === compact))) return it;
         if (ean && norm && (ean === norm || ean.endsWith(norm) || norm.endsWith(ean))) return it;
     }
     return null;
+}
+
+async function wmsGarantirRecebimentoAberto() {
+    var hid = document.getElementById('wms-rec-detalhe-id');
+    var rid = (hid && hid.value) ? String(hid.value).trim() : '';
+    if (!rid && window._wmsNfDoc && window._wmsNfDoc.recebimento_wms_id) {
+        rid = String(window._wmsNfDoc.recebimento_wms_id);
+    }
+    if (rid) {
+        wmsSincronizarRecebimentoAberto(rid, { resetarPalete: false });
+        return parseInt(rid, 10);
+    }
+    var nf = (document.getElementById('wms-rec-nf') || {}).value || '';
+    if (!String(nf).trim()) return null;
+    if (!window._wmsNfDoc) await wmsBuscarNfDescarga();
+    if (!window._wmsNfDoc) return null;
+    if (window._wmsNfDoc.recebimento_wms_id) {
+        wmsSincronizarRecebimentoAberto(window._wmsNfDoc.recebimento_wms_id, { resetarPalete: false });
+        return parseInt(window._wmsNfDoc.recebimento_wms_id, 10);
+    }
+    var terDoc = (document.getElementById('wms-rec-terceiros-doc-id') || {}).value || '';
+    var body = {
+        numero_nf: nf.trim(),
+        fornecedor: (document.getElementById('wms-rec-fornecedor') || {}).value || '',
+        placa: (document.getElementById('wms-rec-placa') || {}).value || '',
+        terceiros_documento_id: terDoc ? parseInt(terDoc, 10) : null,
+        terceiros_area: (document.getElementById('wms-rec-terceiros-area') || {}).value || ''
+    };
+    var data = await fetchAPIComTimeout('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) }, 60000);
+    if (!data || !data.ok) {
+        wmsMostrarErroBipProduto((data && data.erro) || 'Erro ao abrir recebimento WMS.');
+        return null;
+    }
+    window._wmsNfDoc.recebimento_wms_id = data.id;
+    wmsSincronizarRecebimentoAberto(data.id, { resetarPalete: false });
+    loadWmsRecebimentos();
+    return parseInt(data.id, 10);
+}
+
+function wmsSincronizarRecebimentoAberto(id, opts) {
+    opts = opts || {};
+    var det = document.getElementById('wms-recebimento-detalhe');
+    var hid = document.getElementById('wms-rec-detalhe-id');
+    var ridNovo = String(id || '');
+    var ridAtual = hid ? String(hid.value || '') : '';
+    if (det) det.style.display = 'block';
+    if (hid) hid.value = ridNovo;
+    wmsBipInitStepper();
+    if (opts.resetarPalete || !ridAtual || ridAtual !== ridNovo) {
+        wmsBipResetNovoPalete();
+    } else if (!document.getElementById('wms-rec-palete-id').value) {
+        wmsBipEnsurePalete(true);
+    }
 }
 
 async function wmsIniciarBipagemNf() {
@@ -4071,7 +4141,7 @@ async function wmsIniciarBipagemNf() {
         window._wmsNfDoc.recebimento_wms_id = rid;
         loadWmsRecebimentos();
     }
-    wmsAbrirRecebimento(rid);
+    wmsSincronizarRecebimentoAberto(rid, { resetarPalete: true });
     var det = document.getElementById('wms-recebimento-detalhe');
     if (det && det.scrollIntoView) det.scrollIntoView({ behavior: 'smooth', block: 'start' });
     showMessage('Comece bipando a etiqueta de produto (EAN) na caixa.', 'success');
@@ -4190,19 +4260,19 @@ function wmsBipAtualizarResumos() {
 
 async function wmsBipEnsurePalete(silent) {
     var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value;
-    var pid = (document.getElementById('wms-rec-palete-id') || {}).value;
     if (!rid) {
-        if (!silent) showMessage('Recebimento não aberto. Use «Montar paletes — abrir passo a passo».', 'error');
-        return null;
+        rid = await wmsGarantirRecebimentoAberto();
+        if (!rid) return null;
     }
+    var pid = (document.getElementById('wms-rec-palete-id') || {}).value;
     if (pid) {
         var hid = document.getElementById('wms-bip-etiqueta');
-        return { palete_id: parseInt(pid, 10), etiqueta: (hid && hid.value) || '' };
+        return { ok: true, palete_id: parseInt(pid, 10), etiqueta: (hid && hid.value) || '' };
     }
-    var data = await fetchAPI('/wms/recebimentos', {
+    var data = await fetchAPIComTimeout('/wms/recebimentos', {
         method: 'POST',
         body: JSON.stringify({ acao: 'bip_palete', recebimento_id: parseInt(rid, 10), etiqueta: '' })
-    });
+    }, 60000);
     if (data && data.ok) {
         var pidEl = document.getElementById('wms-rec-palete-id');
         if (pidEl) pidEl.value = String(data.palete_id);
@@ -4210,7 +4280,7 @@ async function wmsBipEnsurePalete(silent) {
         wmsBipAtualizarCodigoPaleteUI(data.etiqueta);
         return data;
     }
-    if (!silent) showMessage((data && data.erro) || 'Erro ao abrir palete no sistema.', 'error');
+    if (!silent) wmsMostrarErroBipProduto((data && data.erro) || 'Erro ao abrir palete no sistema.');
     return null;
 }
 
@@ -4271,6 +4341,7 @@ async function wmsBipResetNovoPalete() {
     if (sug) { sug.style.display = 'none'; sug.innerHTML = ''; }
     var btnProx = document.getElementById('btn-wms-bip-proximo-palete');
     if (btnProx) btnProx.style.display = 'none';
+    wmsMostrarErroBipProduto('');
     wmsBipIrParaEtapa(1);
     await wmsBipEnsurePalete(true);
 }
@@ -4322,12 +4393,7 @@ function wmsBipInitStepper() {
 }
 
 window.wmsAbrirRecebimento = function(id) {
-    var det = document.getElementById('wms-recebimento-detalhe');
-    var hid = document.getElementById('wms-rec-detalhe-id');
-    if (det) det.style.display = 'block';
-    if (hid) hid.value = String(id);
-    wmsBipInitStepper();
-    wmsBipResetNovoPalete();
+    wmsSincronizarRecebimentoAberto(id, { resetarPalete: true });
 };
 
 window._wmsSugestaoAtual = null;
@@ -4442,25 +4508,23 @@ async function wmsBipPalete() {
 
 async function wmsBipProduto() {
     var btn = document.getElementById('btn-wms-bip-produto');
-    var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value;
-    if (!rid) {
-        showMessage('Recebimento não aberto. Clique em «Montar paletes — abrir passo a passo».', 'error');
-        return;
-    }
+    wmsMostrarErroBipProduto('');
+    var rid = await wmsGarantirRecebimentoAberto();
+    if (!rid) return;
     var skuRaw = wmsNormalizarCodigoBip((document.getElementById('wms-pal-sku') || {}).value);
     if (!skuRaw) {
-        showMessage('Bipe o EAN ou SKU da etiqueta de produto.', 'error');
+        wmsMostrarErroBipProduto('Bipe o EAN ou SKU da etiqueta de produto.');
         var skuEl = document.getElementById('wms-pal-sku');
         if (skuEl) skuEl.focus();
         return;
     }
     var dp = (document.getElementById('wms-pal-producao') || {}).value || '';
     var dv = (document.getElementById('wms-pal-validade') || {}).value || '';
-    if (!dp) { showMessage('Informe a data de produção.', 'error'); return; }
-    if (!dv) { showMessage('Informe a data de validade.', 'error'); return; }
+    if (!dp) { wmsMostrarErroBipProduto('Informe a data de produção.'); return; }
+    if (!dv) { wmsMostrarErroBipProduto('Informe a data de validade.'); return; }
     var qtd = parseInt((document.getElementById('wms-pal-qtd') || {}).value || '1', 10);
     if (isNaN(qtd) || qtd < 1) {
-        showMessage('Informe a quantidade de caixas (mínimo 1).', 'error');
+        wmsMostrarErroBipProduto('Informe a quantidade de caixas (mínimo 1).');
         return;
     }
     var criado = await wmsBipEnsurePalete(false);
@@ -4485,7 +4549,7 @@ async function wmsBipProduto() {
     if (btn) { btn.disabled = true; btn.textContent = 'Conferindo…'; }
     var msg = document.getElementById('wms-palete-gerado');
     try {
-        var data = await fetchAPI('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) });
+        var data = await fetchAPIComTimeout('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) }, 90000);
         if (data && data.ok) {
             var skuTxt = body.item.sku || '';
             var loteTxt = body.item.lote ? ' · lote ' + body.item.lote : '';
@@ -4501,10 +4565,10 @@ async function wmsBipProduto() {
             showMessage('Produto OK — imprima a etiqueta do palete e cole no meio dele.', 'success');
             wmsAtualizarPainelNfDescarga();
         } else {
-            showMessage((data && data.erro) || 'Erro ao confirmar produto.', 'error');
+            wmsMostrarErroBipProduto((data && data.erro) || 'Erro ao confirmar produto.');
         }
     } catch (e) {
-        showMessage((e && e.message) || 'Erro ao confirmar produto.', 'error');
+        wmsMostrarErroBipProduto((e && e.message) || 'Erro ao confirmar produto.');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Confirmar produto'; }
     }

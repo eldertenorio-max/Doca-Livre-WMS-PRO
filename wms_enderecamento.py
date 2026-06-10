@@ -2307,10 +2307,6 @@ def _aplicar_bloqueios_palete(conn, palete_id, estado_fisico, data_validade, tem
                 )
         except Exception:
             pass
-    try:
-        conn.commit()
-    except Exception:
-        conn.rollback()
     return bloqueios
 
 

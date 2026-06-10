@@ -692,6 +692,16 @@ body.hub-modulos-aberto .container {
     color: #1a237e;
     font-family: Consolas, 'Courier New', monospace;
 }
+.wms-bip-erro-inline {
+    margin: 10px 0 0 0;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #b71c1c;
+    background: #ffebee;
+    border: 1px solid #ef9a9a;
+    border-radius: 8px;
+}
 
 .devolucoes-titulo-principal {
     font-size: 1.05rem;
