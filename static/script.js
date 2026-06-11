@@ -4300,22 +4300,30 @@ window.wmsExcluirRecebimento = async function(btn) {
     var id = btn && btn.getAttribute ? btn.getAttribute('data-wms-rec-id') : btn;
     var nf = (btn && btn.getAttribute ? btn.getAttribute('data-wms-rec-nf') : '') || '—';
     var label = nf && nf !== '—' ? ('NF ' + nf) : ('recebimento #' + id);
-    if (!confirm('Excluir ' + label + '?\n\nPaletes em conferência serão removidos. Não é possível excluir se algum palete já foi armazenado no WMS.')) return;
+    if (!confirm('Excluir ' + label + '?\n\nTodos os paletes deste recebimento serão removidos. Endereços já ocupados serão liberados. Recebimentos finalizados não podem ser excluídos.')) return;
     var data = await fetchAPI('/wms/recebimentos', {
         method: 'POST',
         body: JSON.stringify({ acao: 'excluir', recebimento_id: parseInt(id, 10) })
     });
     if (data && data.ok) {
-        showMessage('Recebimento excluído.', 'success');
+        var msg = 'Recebimento excluído.';
+        if (data.enderecos_liberados) msg += ' ' + data.enderecos_liberados + ' endereço(s) liberado(s).';
+        showMessage(msg, 'success');
         var hid = document.getElementById('wms-rec-detalhe-id');
         if (hid && String(hid.value) === String(id)) {
             var det = document.getElementById('wms-recebimento-detalhe');
             if (det) det.style.display = 'none';
             hid.value = '';
+            wmsLimparPainelNfDescarga();
+        }
+        if (window._wmsNfDoc && window._wmsNfDoc.recebimento_wms_id && String(window._wmsNfDoc.recebimento_wms_id) === String(id)) {
+            window._wmsNfDoc.recebimento_wms_id = null;
         }
         loadWmsRecebimentos();
         loadWmsPainel();
         loadWmsMovimentacoes();
+        loadWmsProdutos();
+        wmsAtualizarPainelNfDescarga();
     } else {
         showMessage((data && data.erro) || 'Erro ao excluir recebimento.', 'error');
     }

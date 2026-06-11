@@ -2312,18 +2312,44 @@ def _lista_picking_roteiro(conn, id_roteiro, id_viagem):
     return lista, None
 
 
+def _liberar_palete_para_exclusao(conn, palete_id):
+    """Libera endereço e remove vínculo do palete antes de excluir o recebimento."""
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    pal = conn.execute(
+        f'SELECT id, localizacao_id, status FROM {t_pal} WHERE id = ?', (int(palete_id),)
+    ).fetchone()
+    if not pal:
+        return
+    rd = _row_dict(pal) or {}
+    loc_id = rd.get('localizacao_id')
+    st = (rd.get('status') or '').lower()
+    now = _now_iso()
+    if loc_id and st == 'armazenado':
+        if _is_pg(conn):
+            conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = NOW() WHERE id = ?", (loc_id,))
+        else:
+            conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = ? WHERE id = ?", (now, loc_id))
+
+
 def _excluir_recebimento_wms(conn, recebimento_id):
-    """Remove recebimento e paletes em conferência. Bloqueia se houver palete armazenado (estoque real)."""
+    """Remove recebimento e paletes vinculados. Libera endereços de paletes armazenados (exceto NF finalizada)."""
     t_rec = _tbl(conn, 'wms_recebimento')
     t_rp = _tbl(conn, 'wms_recebimento_palete')
     t_pal = _tbl(conn, 'wms_palete')
     t_item = _tbl(conn, 'wms_palete_item')
     t_mov = _tbl(conn, 'wms_movimentacao')
     t_cqr = _tbl(conn, 'wms_check_qualidade_resposta')
+    _ensure_wms_palete_controle_table(conn)
+    t_ctrl = _tbl(conn, 'wms_palete_controle')
 
-    rec = conn.execute(f'SELECT id FROM {t_rec} WHERE id = ?', (recebimento_id,)).fetchone()
+    rec = conn.execute(f'SELECT id, status FROM {t_rec} WHERE id = ?', (recebimento_id,)).fetchone()
     if not rec:
         return None, 'Recebimento não encontrado.'
+    rec_rd = _row_dict(rec) or {}
+    st_rec = (rec_rd.get('status') or '').lower()
+    if st_rec == 'finalizado':
+        return None, 'Recebimento já finalizado — não pode ser excluído. Consulte o Histórico NF.'
 
     pals = conn.execute(
         f'''SELECT DISTINCT p.id, p.etiqueta, p.status
@@ -2333,8 +2359,8 @@ def _excluir_recebimento_wms(conn, recebimento_id):
         (recebimento_id, recebimento_id),
     ).fetchall()
 
-    armazenados = []
     palete_ids = []
+    armazenados = []
     for p in pals:
         rd = _row_dict(p) or {}
         pid = rd.get('id')
@@ -2343,15 +2369,13 @@ def _excluir_recebimento_wms(conn, recebimento_id):
         if (rd.get('status') or '').lower() == 'armazenado':
             armazenados.append(rd.get('etiqueta') or str(pid))
 
-    if armazenados:
-        lista = ', '.join(str(x) for x in armazenados[:5])
-        extra = f' (+{len(armazenados) - 5})' if len(armazenados) > 5 else ''
-        return None, (
-            'Não é possível excluir: há palete(s) já armazenado(s) no WMS '
-            f'({lista}{extra}). O estoque real não pode ser removido por exclusão de recebimento.'
-        )
-
     for pid in palete_ids:
+        _liberar_palete_para_exclusao(conn, pid)
+        try:
+            conn.execute(f'UPDATE {t_ctrl} SET registro_saida_id = NULL WHERE palete_id = ?', (pid,))
+        except Exception:
+            pass
+        conn.execute(f'DELETE FROM {t_ctrl} WHERE palete_id = ?', (pid,))
         conn.execute(f'DELETE FROM {t_mov} WHERE palete_id = ?', (pid,))
         conn.execute(f'DELETE FROM {t_item} WHERE palete_id = ?', (pid,))
 
@@ -2361,7 +2385,11 @@ def _excluir_recebimento_wms(conn, recebimento_id):
     conn.execute(f'DELETE FROM {t_cqr} WHERE recebimento_id = ?', (recebimento_id,))
     conn.execute(f'DELETE FROM {t_rec} WHERE id = ?', (recebimento_id,))
 
-    return {'ok': True, 'paletes_removidos': len(palete_ids)}, None
+    return {
+        'ok': True,
+        'paletes_removidos': len(palete_ids),
+        'enderecos_liberados': len(armazenados),
+    }, None
 
 
 def _mov_pendente_putaway(conn, palete_id):
