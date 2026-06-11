@@ -741,6 +741,15 @@ def _enriquecer_documento_nf_wms(conn, doc):
     st_wms = (doc.get('recebimento_wms_status') or '').lower()
     doc['wms_bloqueado'] = st_wms == 'finalizado'
     doc['descarga_reabrivel'] = bool(doc.get('recebimento_concluido') and not doc['wms_bloqueado'])
+    # Descarga concluída com WMS ainda não finalizado — reabre pendência (ex.: após excluir WMS).
+    if doc.get('recebimento_concluido') and not doc['wms_bloqueado'] and doc.get('documento_id'):
+        ok_ter, _err_ter = _reabrir_terceiros_recebimento_wms(
+            conn, int(doc['documento_id']), motivo='busca_nf_sem_wms',
+        )
+        if ok_ter:
+            doc['recebimento_concluido'] = False
+            doc['descarga_reabrivel'] = False
+            doc['_wms_descarga_reaberta'] = True
     qtd_wms = _quantidades_wms_recebimento(conn, doc.get('recebimento_wms_id'))
     qtd_arm = _quantidades_wms_armazenadas_recebimento(conn, doc.get('recebimento_wms_id'))
     por_linha = _quantidades_por_linha_nf(conn, doc.get('recebimento_wms_id'), doc.get('itens') or [])
@@ -3727,6 +3736,8 @@ def api_wms_recebimentos_buscar_nf():
             conn.close()
             return jsonify({'erro': err}), 404
         doc = _enriquecer_documento_nf_wms(conn, doc)
+        if doc.pop('_wms_descarga_reaberta', None):
+            conn.commit()
         conn.close()
         return jsonify({'ok': True, 'documento': doc})
     except Exception as e:

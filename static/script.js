@@ -3997,6 +3997,14 @@ function _wmsStatusItemNfLabel(st) {
     return '<span style="color:#e65100;font-weight:bold;">Pendente</span>';
 }
 
+function wmsDocDescargaReabrivel(doc) {
+    if (!doc || !doc.recebimento_concluido) return false;
+    var stWms = String(doc.recebimento_wms_status || '').toLowerCase();
+    if (stWms === 'finalizado' || doc.wms_bloqueado) return false;
+    if (doc.descarga_reabrivel != null) return !!doc.descarga_reabrivel;
+    return !doc.recebimento_wms_id;
+}
+
 function wmsPreencherPainelNfDescarga(doc) {
     if (!doc) { wmsLimparPainelNfDescarga(); return; }
     window._wmsNfDoc = doc;
@@ -4015,10 +4023,10 @@ function wmsPreencherPainelNfDescarga(doc) {
         var st;
         if (stWmsFin) {
             st = '<span style="color:#1565c0;">NF finalizada no WMS — consulte o Histórico NF.</span>';
-        } else if (doc.recebimento_concluido && doc.descarga_reabrivel) {
+        } else if (wmsDocDescargaReabrivel(doc)) {
             st = '<span style="color:#e65100;">Descarga marcada como concluída — clique em <strong>Montar paletes</strong> para reabrir e continuar no WMS.</span>';
         } else if (doc.recebimento_concluido) {
-            st = '<span style="color:#e65100;">Recebimento concluído no módulo descarga.</span>';
+            st = '<span style="color:#e65100;">Recebimento concluído no módulo descarga (sem reinício WMS).</span>';
         } else {
             st = '<span style="color:#2e7d32;">Pendência — clique em <strong>Montar paletes</strong> para iniciar a bipagem.</span>';
         }
@@ -4094,6 +4102,10 @@ async function wmsGarantirDescargaAbertaParaWms(doc, nf) {
         return false;
     }
     if (!doc.recebimento_concluido) return true;
+    if (!wmsDocDescargaReabrivel(doc)) {
+        showMessage('Recebimento concluído na descarga e não pode ser reaberto pelo WMS.', 'warning');
+        return false;
+    }
     var terDoc = doc.documento_id || (document.getElementById('wms-rec-terceiros-doc-id') || {}).value || '';
     var data = await fetchAPIComTimeout('/wms/recebimentos', {
         method: 'POST',
@@ -4410,7 +4422,7 @@ window.wmsBuscarNfDescarga = async function() {
     var stWmsFin = String(doc.recebimento_wms_status || '').toLowerCase() === 'finalizado';
     if (stWmsFin) {
         showMessage('NF encontrada — já finalizada no WMS. Consulte o Histórico NF.', 'warning');
-    } else if (doc.recebimento_concluido && doc.descarga_reabrivel) {
+    } else if (wmsDocDescargaReabrivel(doc)) {
         showMessage('NF carregada — descarga estava concluída; clique em Montar paletes para reabrir o WMS.', 'success');
     } else if (doc.recebimento_concluido) {
         showMessage('NF encontrada, mas o recebimento já foi concluído no módulo de descarga.', 'warning');
