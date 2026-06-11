@@ -157,6 +157,28 @@ function formatarDataHoraPtBR(val) {
     return s;
 }
 
+/** Formata só a data para exibição em português (dd/mm/aaaa). */
+function formatarDataPtBR(val) {
+    if (val == null || val === '') return '—';
+    var s = String(val).trim();
+    if (!s || s === '-') return '—';
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+    var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return iso[3] + '/' + iso[2] + '/' + iso[1];
+    try {
+        var d = new Date(s);
+        if (!isNaN(d.getTime())) {
+            return d.toLocaleDateString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                timeZone: 'UTC'
+            });
+        }
+    } catch (e) { /* ignore */ }
+    return s;
+}
+
 function _conferenciaRegistrarMomentoBipagemLocal() {
     var idV = window._getIdViagemAtivo && window._getIdViagemAtivo();
     if (!idV) return;
@@ -3359,7 +3381,7 @@ function _wmsPaintHistoricoNf(box, data) {
         html += bipados.map(function(it) {
             return '<tr><td>' + escHtml(formatarDataHoraPtBR(it.bipado_em)) + '</td><td><strong>' + escHtml(it.sku) + '</strong></td>'
                 + '<td>' + escHtml(it.descricao) + '</td><td>' + escHtml(it.lote || '—') + '</td>'
-                + '<td>' + escHtml(it.data_producao || '—') + '</td><td>' + escHtml(it.data_validade || '—') + '</td>'
+                + '<td>' + escHtml(formatarDataPtBR(it.data_producao)) + '</td><td>' + escHtml(formatarDataPtBR(it.data_validade)) + '</td>'
                 + '<td>' + escHtml(it.rg_caixa || '—') + '</td>'
                 + '<td><strong>' + escHtml(it.quantidade_caixas) + '</strong></td>'
                 + '<td>' + escHtml(it.palete_etiqueta || '—') + '</td><td>' + escHtml(it.palete_status || '—') + '</td></tr>';
