@@ -48,17 +48,17 @@
         </header>
 
         <div id="modulo-carregamento" class="modulo-area modulo-area--ativo">
-        <!-- Navegação por Abas (ordem: Painel, Importar Ravex, Conferência, Extrato, Base, Romaneio por item, Relatórios, Divergências) -->
+        <!-- Navegação por Abas (ordem: Painel … Divergências, Base de produtos) -->
         <nav class="tabs">
             <button class="tab-button active" data-tab="painel">PAINEL</button>
             <button class="tab-button" data-tab="importar-ravex">IMPORTAR RAVEX</button>
             <button class="tab-button" data-tab="baixa-ravex">BAIXADOS (RAVEX)</button>
             <button class="tab-button" data-tab="conferencia">CONFERÊNCIA</button>
             <button class="tab-button" data-tab="extrato">EXTRATO</button>
-            <button class="tab-button" data-tab="base">BASE</button>
             <button class="tab-button" data-tab="romaneio">ROMANEIO POR ITEM</button>
             <button class="tab-button" data-tab="relatorios">RELATÓRIOS</button>
             <button class="tab-button" id="tab-btn-divergencias" data-tab="divergencias">DIVERGÊNCIAS</button>
+            <button class="tab-button" data-tab="base">BASE DE PRODUTOS</button>
         </nav>
 
         <!-- Conteúdo das Abas -->
@@ -311,9 +311,9 @@
                 </div>
             </div>
 
-            <!-- ABA BASE -->
+            <!-- ABA Base de produtos -->
             <div id="base" class="tab-content">
-                <h2>BASE - DADOS DA TABELA</h2>
+                <h2>Base de produtos</h2>
                 <p class="info-text">Dados da tabela base de produtos (base_codigo_barras). Filtre por código de barras, código interno, descrição, EAN, DUN ou unidade.</p>
                 
                 <div class="form-container" style="margin-bottom: 1rem;">
@@ -493,6 +493,15 @@
                                 <div class="form-group">
                                     <label for="quantidade">Qtd. bipada</label>
                                     <input type="number" id="quantidade" value="1" min="1" max="99999" step="1" title="Quantidade a bipar (volta a 1 após cada bip)">
+                                </div>
+                                <div class="form-group">
+                                    <label for="disposicao-estoque">Classificação estoque</label>
+                                    <select id="disposicao-estoque" title="Destino do item no estoque SP">
+                                        <option value="">Normal (expedição)</option>
+                                        <option value="avaria">Descarte avariado</option>
+                                        <option value="descarte_perdas">Descarte / perdas</option>
+                                        <option value="palete_bloqueado">Palete bloqueado</option>
+                                    </select>
                                 </div>
                             </div>
                             <div id="aviso-produto-fora-relacao" style="display: none; margin-bottom: 8px; padding: 8px; background: #fff3e0; border: 1px solid #ff9800; border-radius: 6px; color: #e65100; font-size: 12px;">
@@ -1322,6 +1331,16 @@
                                         <div class="form-group">
                                             <label for="dev-quantidade">Qtd. bipada</label>
                                             <input type="number" id="dev-quantidade" value="1" min="1" max="99999" step="1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="dev-disposicao-estoque">Classificação retorno</label>
+                                            <select id="dev-disposicao-estoque" title="Destino do item no retorno parcial">
+                                                <option value="">Normal (entrada estoque)</option>
+                                                <option value="reentrega">Reentrega</option>
+                                                <option value="avaria">Descarte avariado</option>
+                                                <option value="descarte_perdas">Descarte / perdas</option>
+                                                <option value="palete_bloqueado">Palete bloqueado</option>
+                                            </select>
                                         </div>
                                     </div>
                                     <div id="dev-aviso-produto-fora-relacao" style="display: none; margin-bottom: 8px; padding: 8px; background: #fff3e0; border: 1px solid #ff9800; border-radius: 6px; color: #e65100; font-size: 12px;">
@@ -2501,12 +2520,16 @@
                 <p id="estoque-sp-atualizado-em" class="info-text estoque-sp-atualizado-em" style="margin: 0 0 12px 0; display: none;"></p>
                 <nav class="tabs devolucoes-subtabs" aria-label="Abas Estoque SP em tempo real">
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab active" data-estoque-tab="estoque-atual">ESTOQUE ATUAL</button>
-                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="saida">SAÍDA</button>
+                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="saida">HISTÓRICO DE SAÍDA</button>
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="entrada-devolucao">ENTRADA (DEVOLUÇÕES)</button>
                     <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="entrada-terceiros">ENTRADA TERCEIROS</button>
+                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="reentregas">REENTREGAS</button>
+                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="avaria">AVARIA</button>
+                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="descarte-perdas">DESCARTE / PERDAS</button>
+                    <button type="button" class="tab-button devolucoes-subtab estoque-sp-subtab" data-estoque-tab="palete-bloqueado">PALETE BLOQUEADO</button>
                 </nav>
                 <div id="estoque-sp-panel-estoque-atual" class="devolucoes-panel devolucoes-panel-active">
-                    <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Saldo = devoluções + recebimento terceiros (sem MG/consumível) − expedição bipada. Atualização automática a cada 30 segundos.</p>
+                    <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Saldo = devoluções + recebimento terceiros (sem MG/consumível) − expedição bipada (somente itens normais; reentregas, avarias, descartes e paletes bloqueados ficam nas abas específicas). Atualização automática a cada 30 segundos.</p>
                     <div class="stats-grid" style="margin-bottom: 16px;">
                         <div class="stat-card"><h3>Itens com saldo</h3><p class="stat-number" id="estoque-sp-atual-linhas">0</p></div>
                         <div class="stat-card"><h3>Saldo total</h3><p class="stat-number" id="estoque-sp-atual-saldo">0</p></div>
@@ -2563,6 +2586,58 @@
                         <table class="data-table">
                             <thead><tr><th>Cód. produto</th><th>Produto</th><th>Cód. barras</th><th>Qtd. bipada</th><th>NFs</th></tr></thead>
                             <tbody id="estoque-sp-tbody-ter"><tr><td colspan="5" class="loading">Clique em Atualizar.</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="estoque-sp-panel-reentregas" class="devolucoes-panel">
+                    <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Itens classificados como reentrega na conferência de retorno ou com NF motivo reentrega.</p>
+                    <div class="stats-grid" style="margin-bottom: 16px;">
+                        <div class="stat-card"><h3>Itens (linhas)</h3><p class="stat-number" id="estoque-sp-reent-linhas">0</p></div>
+                        <div class="stat-card"><h3>Quantidade total</h3><p class="stat-number" id="estoque-sp-reent-qtd">0</p></div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Cód. produto</th><th>Produto</th><th>Cód. barras</th><th>Entrada</th><th>Saída</th><th>Total</th><th>Registros</th></tr></thead>
+                            <tbody id="estoque-sp-tbody-reent"><tr><td colspan="7" class="loading">Clique em Atualizar.</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="estoque-sp-panel-avaria" class="devolucoes-panel">
+                    <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Itens apontados como descarte avariado na expedição ou no retorno.</p>
+                    <div class="stats-grid" style="margin-bottom: 16px;">
+                        <div class="stat-card"><h3>Itens (linhas)</h3><p class="stat-number" id="estoque-sp-avaria-linhas">0</p></div>
+                        <div class="stat-card"><h3>Quantidade total</h3><p class="stat-number" id="estoque-sp-avaria-qtd">0</p></div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Cód. produto</th><th>Produto</th><th>Cód. barras</th><th>Entrada</th><th>Saída</th><th>Total</th><th>Registros</th></tr></thead>
+                            <tbody id="estoque-sp-tbody-avaria"><tr><td colspan="7" class="loading">Clique em Atualizar.</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="estoque-sp-panel-descarte-perdas" class="devolucoes-panel">
+                    <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Itens apontados como descarte / perdas na expedição ou no retorno.</p>
+                    <div class="stats-grid" style="margin-bottom: 16px;">
+                        <div class="stat-card"><h3>Itens (linhas)</h3><p class="stat-number" id="estoque-sp-desc-linhas">0</p></div>
+                        <div class="stat-card"><h3>Quantidade total</h3><p class="stat-number" id="estoque-sp-desc-qtd">0</p></div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Cód. produto</th><th>Produto</th><th>Cód. barras</th><th>Entrada</th><th>Saída</th><th>Total</th><th>Registros</th></tr></thead>
+                            <tbody id="estoque-sp-tbody-desc"><tr><td colspan="7" class="loading">Clique em Atualizar.</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="estoque-sp-panel-palete-bloqueado" class="devolucoes-panel">
+                    <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Itens apontados como palete bloqueado na expedição ou no retorno.</p>
+                    <div class="stats-grid" style="margin-bottom: 16px;">
+                        <div class="stat-card"><h3>Itens (linhas)</h3><p class="stat-number" id="estoque-sp-pal-linhas">0</p></div>
+                        <div class="stat-card"><h3>Quantidade total</h3><p class="stat-number" id="estoque-sp-pal-qtd">0</p></div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Cód. produto</th><th>Produto</th><th>Cód. barras</th><th>Entrada</th><th>Saída</th><th>Total</th><th>Registros</th></tr></thead>
+                            <tbody id="estoque-sp-tbody-pal"><tr><td colspan="7" class="loading">Clique em Atualizar.</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -2919,6 +2994,23 @@
                             <button type="button" class="btn btn-primary" id="btn-wms-picking">Gerar lista de separação</button>
                         </div>
                         <div class="table-container"><table class="data-table"><thead><tr><th>#</th><th>SKU</th><th>Status</th><th>Qtd sep.</th><th>Endereço</th><th>Local</th><th>Zona</th><th>FIFO prod.</th><th>Palete</th><th></th></tr></thead><tbody id="wms-tbody-separacao"><tr><td colspan="10" class="loading">Informe roteiro e viagem.</td></tr></tbody></table></div>
+
+                        <hr style="margin: 24px 0; border: none; border-top: 1px solid #ddd;">
+                        <h3 style="margin: 0 0 8px 0;">Bipar saída → Área Stage</h3>
+                        <p class="info-text" style="margin: 0 0 12px 0;">Após retirar o palete do endereço, <strong>bipe a etiqueta ou o endereço de origem</strong>. O sistema libera o endereço e move o palete para a <strong>área stage</strong> da doca (câmara 99). Quando terminar, clique em <strong>Validar saída</strong>.</p>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: flex-end;">
+                            <div class="form-group"><label>Doca stage</label>
+                                <select id="wms-stage-doca"><option value="1">Doca 1</option><option value="2">Doca 2</option><option value="3">Doca 3</option><option value="4">Doca 4</option></select>
+                            </div>
+                            <div class="form-group" style="flex: 1; min-width: 220px;"><label>Etiqueta palete ou endereço origem</label>
+                                <input type="text" id="wms-stage-bip" placeholder="Escaneie etiqueta (22) ou endereço" autocomplete="off">
+                            </div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-stage-bip">Bipar → stage</button>
+                            <button type="button" class="btn btn-success" id="btn-wms-validar-saida">Validar saída</button>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-stage-atualizar">Atualizar stage</button>
+                        </div>
+                        <p id="wms-stage-resumo" class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">—</p>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>Mov.</th><th>Status</th><th>Palete</th><th>Origem</th><th>Stage</th><th>Quando</th></tr></thead><tbody id="wms-tbody-stage"><tr><td colspan="6" class="loading">Informe roteiro e viagem.</td></tr></tbody></table></div>
                     </div>
                     <div id="wms-panel-inventario" class="wms-inner-panel" hidden>
                         <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: flex-end;">

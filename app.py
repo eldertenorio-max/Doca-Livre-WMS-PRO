@@ -939,6 +939,59 @@ def _ensure_pg_produtos_bipados_fluxo(conn):
             pass
 
 
+DISPOSICOES_ESTOQUE_SP = frozenset({'reentrega', 'avaria', 'descarte_perdas', 'palete_bloqueado'})
+
+
+def _ensure_produtos_bipados_disposicao(conn):
+    """Coluna disposicao_estoque: reentrega, avaria, descarte_perdas, palete_bloqueado."""
+    is_pg = getattr(conn, 'kind', None) == 'pg'
+    tbl = 'public.produtos_bipados' if is_pg else 'produtos_bipados'
+    try:
+        if is_pg:
+            conn.execute(f'ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS disposicao_estoque TEXT')
+            conn.commit()
+        else:
+            cols = [r[1] for r in conn.execute('PRAGMA table_info(produtos_bipados)').fetchall()]
+            if 'disposicao_estoque' not in cols:
+                conn.execute('ALTER TABLE produtos_bipados ADD COLUMN disposicao_estoque TEXT')
+                conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def _normalizar_disposicao_estoque(val, fluxo=None, devolucao_nf_id=None, conn=None):
+    raw = (val or '').strip().lower()
+    if raw in ('', 'normal', 'none', 'null'):
+        disp = None
+    elif raw in DISPOSICOES_ESTOQUE_SP:
+        disp = raw
+    else:
+        disp = None
+    if disp is None and fluxo == 'devolucao' and devolucao_nf_id and conn:
+        try:
+            row = conn.execute(
+                'SELECT motivo FROM devolucao_nota_fiscal WHERE id = ?',
+                (int(devolucao_nf_id),),
+            ).fetchone()
+            rd = _row_dict(row) if row else {}
+            if str(rd.get('motivo') or '').lower() == 'reentrega':
+                disp = 'reentrega'
+        except Exception:
+            pass
+    return disp
+
+
+def _estoque_sp_sql_apenas_disposicao_normal(prefix=''):
+    col = f'{prefix}disposicao_estoque' if prefix else 'disposicao_estoque'
+    return (
+        f" AND (COALESCE(NULLIF(TRIM({col}), ''), 'normal') = 'normal' "
+        f"OR {col} IS NULL) "
+    )
+
+
 def _ensure_devolucao_nf_schema(conn):
     """Tabela de NF de devolução e vínculo em produtos_bipados."""
     is_pg = getattr(conn, 'kind', None) == 'pg'
@@ -2397,6 +2450,7 @@ def add_produto():
     conn = get_db()
     if getattr(conn, 'kind', None) == 'pg':
         _ensure_pg_produtos_bipados_fluxo(conn)
+    _ensure_produtos_bipados_disposicao(conn)
     _ensure_devolucao_nf_schema(conn)
     codigo_barras = _normalizar_codigo_barras(data.get('codigo_barras', '') or '')
     id_viagem = (data.get('id_viagem') or '').strip()
@@ -2495,10 +2549,16 @@ def add_produto():
     except (TypeError, ValueError):
         qtd_bipar = 1
     qtd_bipar = max(1, min(99999, qtd_bipar))
+    disposicao_estoque = _normalizar_disposicao_estoque(
+        data.get('disposicao_estoque'),
+        fluxo=fluxo,
+        devolucao_nf_id=devolucao_nf_id if fluxo == 'devolucao' else None,
+        conn=conn,
+    )
     conn.execute(
         '''INSERT INTO produtos_bipados 
-           (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca, codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo, devolucao_nf_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+           (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca, codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo, devolucao_nf_id, disposicao_estoque)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         (
             codigo_barras,
             data.get('produto', ''),
@@ -2515,6 +2575,7 @@ def add_produto():
             usuario_logado,
             fluxo,
             devolucao_nf_id if fluxo == 'devolucao' else None,
+            disposicao_estoque,
         )
     )
     if id_viagem:
@@ -2660,15 +2721,15 @@ def remover_itens_bipados():
 
 _PRODUTOS_BIPADOS_INSERT_SQL = '''INSERT INTO produtos_bipados
    (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca,
-    codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+    codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo, disposicao_estoque)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
 
 _PRODUTOS_BIPADOS_INSERT_PG_TEMPLATE = (
-    '(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+    '(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
 )
 _PRODUTOS_BIPADOS_INSERT_PG_SQL = """INSERT INTO produtos_bipados
    (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem, doca,
-    codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo)
+    codigo_interno, codigo_dun, unidade, peso, usuario_bipagem, fluxo, disposicao_estoque)
    VALUES %s"""
 
 
@@ -2758,6 +2819,7 @@ def gravar_bipagem_viagem(id_viagem):
     conn = get_db()
     if getattr(conn, 'kind', None) == 'pg':
         _ensure_pg_produtos_bipados_fluxo(conn)
+    _ensure_produtos_bipados_disposicao(conn)
     gravados = 0
     pulados = 0
     agora = datetime.now(timezone.utc)
@@ -2813,6 +2875,7 @@ def gravar_bipagem_viagem(id_viagem):
                 )
                 if not unidade and not _usa_banco_para_dados() and id_norm:
                     unidade = get_unidade_romaneio(id_norm, codigo_interno) or ''
+            disposicao_estoque = _normalizar_disposicao_estoque(it.get('disposicao_estoque'), fluxo=fluxo)
             params_insert.append(
                 (
                     cb,
@@ -2829,6 +2892,7 @@ def gravar_bipagem_viagem(id_viagem):
                     peso,
                     usuario_logado,
                     fluxo,
+                    disposicao_estoque,
                 )
             )
             gravados += 1
@@ -10186,6 +10250,8 @@ def _estoque_sp_calcular_atual(saida_l, dev_l, ter_l):
 
 
 def _estoque_sp_coletar_movimentos(conn, data_inicio='', data_fim=''):
+    _ensure_produtos_bipados_disposicao(conn)
+    filtro_disp = _estoque_sp_sql_apenas_disposicao_normal()
     filtro_data_saida = ''
     filtro_data_dev = ''
     params_saida = []
@@ -10206,7 +10272,7 @@ def _estoque_sp_coletar_movimentos(conn, data_inicio='', data_fim=''):
                    COALESCE(codigo_barras, '') AS codigo_barras, COALESCE(SUM(quantidade), 0) AS quantidade,
                    COUNT(*) AS registros
             FROM produtos_bipados
-            WHERE COALESCE(fluxo, 'carregamento') = 'carregamento' {filtro_data_saida}
+            WHERE COALESCE(fluxo, 'carregamento') = 'carregamento' {filtro_disp} {filtro_data_saida}
             GROUP BY codigo_interno, codigo_barras
             ORDER BY quantidade DESC
             LIMIT 2000''',
@@ -10218,7 +10284,7 @@ def _estoque_sp_coletar_movimentos(conn, data_inicio='', data_fim=''):
                    COALESCE(codigo_barras, '') AS codigo_barras, COALESCE(SUM(quantidade), 0) AS quantidade,
                    COUNT(*) AS registros
             FROM produtos_bipados
-            WHERE COALESCE(fluxo, 'carregamento') = 'devolucao' {filtro_data_dev}
+            WHERE COALESCE(fluxo, 'carregamento') = 'devolucao' {filtro_disp} {filtro_data_dev}
             GROUP BY codigo_interno, codigo_barras
             ORDER BY quantidade DESC
             LIMIT 2000''',
@@ -10256,12 +10322,89 @@ def _estoque_sp_coletar_movimentos(conn, data_inicio='', data_fim=''):
     )
 
 
+def _estoque_sp_coletar_por_disposicao(conn, disposicao, data_inicio='', data_fim=''):
+    """Itens classificados (reentrega, avaria, descarte_perdas, palete_bloqueado)."""
+    _ensure_produtos_bipados_disposicao(conn)
+    _ensure_devolucao_nf_schema(conn)
+    filtro_data = ''
+    params = []
+    if disposicao == 'reentrega':
+        where = """(
+            COALESCE(pb.disposicao_estoque, '') = 'reentrega'
+            OR EXISTS (
+                SELECT 1 FROM devolucao_nota_fiscal nf
+                WHERE nf.id = pb.devolucao_nf_id
+                  AND LOWER(COALESCE(nf.motivo, '')) = 'reentrega'
+            )
+        )"""
+    else:
+        where = "COALESCE(pb.disposicao_estoque, '') = ?"
+        params.append(disposicao)
+    if data_inicio:
+        filtro_data += ' AND pb.data_hora >= ?'
+        params.append(data_inicio)
+    if data_fim:
+        filtro_data += ' AND pb.data_hora <= ?'
+        params.append(data_fim + 'T23:59:59')
+
+    rows = conn.execute(
+        f'''SELECT COALESCE(pb.codigo_interno, '') AS codigo_produto,
+                   COALESCE(MAX(pb.produto), '') AS produto,
+                   COALESCE(pb.codigo_barras, '') AS codigo_barras,
+                   COALESCE(SUM(pb.quantidade), 0) AS quantidade,
+                   COUNT(*) AS registros,
+                   COALESCE(SUM(CASE WHEN COALESCE(pb.fluxo, 'carregamento') = 'devolucao'
+                        THEN pb.quantidade ELSE 0 END), 0) AS qtd_entrada,
+                   COALESCE(SUM(CASE WHEN COALESCE(pb.fluxo, 'carregamento') = 'carregamento'
+                        THEN pb.quantidade ELSE 0 END), 0) AS qtd_saida
+            FROM produtos_bipados pb
+            WHERE {where} {filtro_data}
+            GROUP BY pb.codigo_interno, pb.codigo_barras
+            ORDER BY quantidade DESC
+            LIMIT 2000''',
+        tuple(params),
+    ).fetchall()
+    out = []
+    for r in rows or []:
+        d = _row_dict(r) if hasattr(r, 'keys') else None
+        if not d and r:
+            d = {
+                'codigo_produto': r[0],
+                'produto': r[1] if len(r) > 1 else '',
+                'codigo_barras': r[2] if len(r) > 2 else '',
+                'quantidade': r[3] if len(r) > 3 else 0,
+                'registros': r[4] if len(r) > 4 else 0,
+                'qtd_entrada': r[5] if len(r) > 5 else 0,
+                'qtd_saida': r[6] if len(r) > 6 else 0,
+            }
+        out.append({
+            'codigo_produto': (d.get('codigo_produto') or '').strip(),
+            'produto': (d.get('produto') or '').strip(),
+            'codigo_barras': (d.get('codigo_barras') or '').strip(),
+            'quantidade': float(d.get('quantidade') or 0),
+            'registros': int(d.get('registros') or 0),
+            'qtd_entrada': float(d.get('qtd_entrada') or 0),
+            'qtd_saida': float(d.get('qtd_saida') or 0),
+        })
+    return out
+
+
+def _estoque_sp_secao_disposicao(titulo, itens):
+    return {
+        'titulo': titulo,
+        'itens': itens,
+        'total_quantidade': sum(x['quantidade'] for x in itens),
+        'total_linhas': len(itens),
+    }
+
+
 @app.route('/api/estoque-sp/tempo-real', methods=['GET'])
 def api_estoque_sp_tempo_real():
     """Estoque atual em tempo real: saldo por produto (todas as movimentações)."""
     conn = get_db()
     _ensure_devolucao_nf_schema(conn)
     _ensure_pg_produtos_bipados_fluxo(conn)
+    _ensure_produtos_bipados_disposicao(conn)
     _ensure_terceiros_schema(conn)
     try:
         saida_l, dev_l, ter_l = _estoque_sp_coletar_movimentos(conn)
@@ -10285,11 +10428,16 @@ def api_estoque_sp_resumo():
     conn = get_db()
     _ensure_devolucao_nf_schema(conn)
     _ensure_pg_produtos_bipados_fluxo(conn)
+    _ensure_produtos_bipados_disposicao(conn)
     _ensure_terceiros_schema(conn)
     data_inicio = (request.args.get('data_inicio') or '').strip()
     data_fim = (request.args.get('data_fim') or '').strip()
     try:
         saida_l, dev_l, ter_l = _estoque_sp_coletar_movimentos(conn, data_inicio, data_fim)
+        reent_l = _estoque_sp_coletar_por_disposicao(conn, 'reentrega', data_inicio, data_fim)
+        avar_l = _estoque_sp_coletar_por_disposicao(conn, 'avaria', data_inicio, data_fim)
+        desc_l = _estoque_sp_coletar_por_disposicao(conn, 'descarte_perdas', data_inicio, data_fim)
+        pal_l = _estoque_sp_coletar_por_disposicao(conn, 'palete_bloqueado', data_inicio, data_fim)
         conn.close()
         return jsonify({
             'saida': {
@@ -10310,6 +10458,10 @@ def api_estoque_sp_resumo():
                 'total_quantidade': sum(x['quantidade'] for x in ter_l),
                 'total_linhas': len(ter_l),
             },
+            'reentregas': _estoque_sp_secao_disposicao('Reentregas', reent_l),
+            'avaria': _estoque_sp_secao_disposicao('Avaria (descarte avariado)', avar_l),
+            'descarte_perdas': _estoque_sp_secao_disposicao('Descarte / perdas', desc_l),
+            'palete_bloqueado': _estoque_sp_secao_disposicao('Palete bloqueado', pal_l),
         })
     except Exception as e:
         try:

@@ -148,6 +148,8 @@ def _resolver_codigo_endereco_bip(codigo):
 
 
 _WMS_CAMARA_TOTAIS_PADRAO = {11: 138, 12: 134, 13: 138, 21: 82}
+_WMS_CAMARA_STAGE = 99
+_WMS_STAGE_SLOTS_POR_DOCA = 40
 
 
 def _layout_camaras_config():
@@ -1507,6 +1509,8 @@ def ensure_wms_schema(conn):
         _ensure_wms_recebimento_terceiros_columns(conn)
         _ensure_wms_palete_item_nf_columns(conn)
         _ensure_wms_palete_controle_table(conn)
+        _ensure_movimentacao_expedicao_columns(conn)
+        _ensure_stage_localizacoes(conn)
         _WMS_SCHEMA_READY = True
         return
     if _is_pg(conn):
@@ -2361,6 +2365,392 @@ def _lista_picking_roteiro(conn, id_roteiro, id_viagem):
                 'alerta': 'quantidade_insuficiente',
             })
     return lista, None
+
+
+def _ensure_movimentacao_expedicao_columns(conn):
+    """Colunas id_roteiro / id_viagem em wms_movimentacao (separação → stage)."""
+    cols_needed = ('id_roteiro', 'id_viagem')
+    if _is_pg(conn):
+        for col in cols_needed:
+            try:
+                conn.execute(f'ALTER TABLE public.wms_movimentacao ADD COLUMN IF NOT EXISTS {col} TEXT')
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+    else:
+        try:
+            names = {
+                (c[1] if not isinstance(c, dict) else c.get('name'))
+                for c in (conn.execute('PRAGMA table_info(wms_movimentacao)').fetchall() or [])
+            }
+            for col in cols_needed:
+                if col not in names:
+                    conn.execute(f'ALTER TABLE wms_movimentacao ADD COLUMN {col} TEXT')
+            conn.commit()
+        except Exception:
+            pass
+
+
+def _ensure_stage_localizacoes(conn):
+    """Câmara 99 — área stage por doca (posições para paletes aguardando validação de saída)."""
+    t_cam = _tbl(conn, 'wms_camara')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    now = _now_iso()
+    cam = _WMS_CAMARA_STAGE
+    desc = 'Área Stage (expedição)'
+    total_slots = _WMS_STAGE_SLOTS_POR_DOCA * 4
+    if _is_pg(conn):
+        conn.execute(
+            f'''INSERT INTO {t_cam} (codigo, descricao, total_posicoes, ativo, criado_em)
+                VALUES (?, ?, ?, TRUE, NOW())
+                ON CONFLICT (codigo) DO UPDATE SET
+                    descricao = EXCLUDED.descricao,
+                    total_posicoes = GREATEST({t_cam}.total_posicoes, EXCLUDED.total_posicoes)''',
+            (cam, desc, total_slots),
+        )
+    else:
+        ex = conn.execute(f'SELECT 1 FROM {t_cam} WHERE codigo = ?', (cam,)).fetchone()
+        if not ex:
+            conn.execute(
+                f'INSERT INTO {t_cam} (codigo, descricao, total_posicoes, ativo, criado_em) VALUES (?, ?, ?, 1, ?)',
+                (cam, desc, total_slots, now),
+            )
+    for doca in (1, 2, 3, 4):
+        rua = f'D{doca}'
+        for pos in range(1, _WMS_STAGE_SLOTS_POR_DOCA + 1):
+            cod = _codigo_endereco(cam, rua, pos, 1)
+            if _is_pg(conn):
+                conn.execute(
+                    f'''INSERT INTO {t_loc}
+                        (camara, rua, posicao, nivel, codigo_endereco, tipo, status, capacidade_max,
+                         area, zona_armazenagem, criado_em, atualizado_em)
+                        VALUES (?, ?, ?, 1, ?, 'stage', 'vazia', 1, 'stage', 'stage', NOW(), NOW())
+                        ON CONFLICT (codigo_endereco) DO UPDATE SET
+                            area = 'stage', tipo = 'stage', zona_armazenagem = 'stage' ''',
+                    (cam, rua, pos, cod),
+                )
+            else:
+                ex_loc = conn.execute(
+                    f'SELECT id FROM {t_loc} WHERE codigo_endereco = ?', (cod,),
+                ).fetchone()
+                if not ex_loc:
+                    conn.execute(
+                        f'''INSERT INTO {t_loc}
+                            (camara, rua, posicao, nivel, codigo_endereco, tipo, status, capacidade_max,
+                             bloqueio_entrada, bloqueio_saida, bloqueio_inventario, area, zona_armazenagem,
+                             criado_em, atualizado_em)
+                            VALUES (?, ?, ?, 1, ?, 'stage', 'vazia', 1, 0, 0, 0, 'stage', 'stage', ?, ?)''',
+                        (cam, rua, pos, cod, now, now),
+                    )
+    try:
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def _obter_vaga_stage_doca(conn, doca):
+    t_loc = _tbl(conn, 'wms_localizacao')
+    rua = f'D{int(doca)}'
+    row = conn.execute(
+        f'''SELECT * FROM {t_loc}
+            WHERE camara = ? AND area = 'stage'
+              AND UPPER(TRIM(rua)) = ?
+              AND status = 'vazia'
+              AND {_bloqueio_off_sql(conn, 'bloqueio_entrada')}
+            ORDER BY posicao ASC
+            LIMIT 1''',
+        (_WMS_CAMARA_STAGE, rua),
+    ).fetchone()
+    if not row:
+        return None, f'Sem vaga livre na área stage da doca {doca}.'
+    return _row_dict(row), None
+
+
+def _resolver_palete_separacao_bip(conn, codigo):
+    """Resolve palete pela etiqueta (22) ou pelo endereço armazenado."""
+    raw = (codigo or '').strip()
+    if not raw:
+        return None, 'Informe a etiqueta do palete ou o endereço de origem.'
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    etiqueta = raw[:22].ljust(22, '0') if len(raw) >= 18 else raw
+    if len(raw) >= 18:
+        pal = conn.execute(
+            f'SELECT * FROM {t_pal} WHERE etiqueta = ? OR etiqueta = ?',
+            (raw, etiqueta),
+        ).fetchone()
+        if pal:
+            return _row_dict(pal), None
+    cod_resolvido = _resolver_codigo_endereco_bip(raw) or raw.upper()
+    loc = conn.execute(
+        f'''SELECT id, codigo_endereco, area FROM {t_loc}
+            WHERE codigo_endereco IN (?, ?) OR UPPER(codigo_endereco) = ?''',
+        (cod_resolvido, raw.upper(), raw.upper()),
+    ).fetchone()
+    if loc:
+        ld = _row_dict(loc) or {}
+        if (ld.get('area') or '').lower() == 'stage':
+            return None, 'Este endereço é da área stage — bip o palete pela etiqueta.'
+        loc_id = ld.get('id')
+        pal = conn.execute(
+            f'''SELECT * FROM {t_pal}
+                WHERE localizacao_id = ? AND status = 'armazenado'
+                ORDER BY id DESC LIMIT 1''',
+            (loc_id,),
+        ).fetchone()
+        if pal:
+            return _row_dict(pal), None
+        return None, 'Nenhum palete armazenado neste endereço.'
+    return None, 'Palete ou endereço não reconhecido.'
+
+
+def _palete_ja_separado_viagem(conn, palete_id, id_roteiro, id_viagem):
+    t_mov = _tbl(conn, 'wms_movimentacao')
+    row = conn.execute(
+        f'''SELECT id, status FROM {t_mov}
+            WHERE palete_id = ? AND tipo = 'separacao_stage'
+              AND id_roteiro = ? AND id_viagem = ?
+              AND status IN ('aguardando_validacao', 'concluida')
+            ORDER BY id DESC LIMIT 1''',
+        (int(palete_id), str(id_roteiro).strip(), str(id_viagem).strip()),
+    ).fetchone()
+    return _row_dict(row) if row else None
+
+
+def _bip_separacao_para_stage(conn, id_roteiro, id_viagem, doca, codigo_bip):
+    """Retira palete do endereço e envia para área stage (aguarda validação de saída)."""
+    id_roteiro = str(id_roteiro or '').strip()
+    id_viagem = str(id_viagem or '').strip()
+    doca = str(doca or '1').strip()
+    if doca not in ('1', '2', '3', '4'):
+        return None, 'Selecione a doca (1 a 4).'
+    if not id_roteiro or not id_viagem:
+        return None, 'Informe roteiro e viagem antes de bipar a saída.'
+    _ensure_movimentacao_expedicao_columns(conn)
+    _ensure_stage_localizacoes(conn)
+
+    pal, err = _resolver_palete_separacao_bip(conn, codigo_bip)
+    if err:
+        return None, err
+    pid = int(pal['id'])
+    if (pal.get('status') or '').lower() != 'armazenado':
+        return None, f'Palete {pal.get("etiqueta")} não está armazenado (status: {pal.get("status")}).'
+    if pal.get('bloqueio_tipo'):
+        return None, 'Palete bloqueado — não pode ser separado.'
+    dup = _palete_ja_separado_viagem(conn, pid, id_roteiro, id_viagem)
+    if dup:
+        st = dup.get('status') or ''
+        return None, f'Palete já enviado ao stage nesta viagem (mov. #{dup.get("id")}, {st}).'
+
+    orig_id = pal.get('localizacao_id')
+    if not orig_id:
+        return None, 'Palete sem endereço de origem.'
+
+    stage_loc, err2 = _obter_vaga_stage_doca(conn, doca)
+    if err2:
+        return None, err2
+    dest_id = stage_loc['id']
+
+    t_mov = _tbl(conn, 'wms_movimentacao')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    t_pal = _tbl(conn, 'wms_palete')
+    now = _now_iso()
+
+    orig_row = conn.execute(f'SELECT codigo_endereco FROM {t_loc} WHERE id = ?', (orig_id,)).fetchone()
+    orig_cod = (_row_dict(orig_row) or {}).get('codigo_endereco') or ''
+    obs = (
+        f'Separação doca {doca} → stage {stage_loc.get("codigo_endereco")} '
+        f'| roteiro {id_roteiro} viagem {id_viagem} | origem {orig_cod}'
+    )
+
+    if _is_pg(conn):
+        cur = conn.execute(
+            f'''INSERT INTO {t_mov}
+                (tipo, palete_id, origem_localizacao_id, destino_localizacao_id, status, prioridade,
+                 observacao, id_roteiro, id_viagem, criado_em, criado_por)
+                VALUES ('separacao_stage', ?, ?, ?, 'aguardando_validacao', 1, ?, ?, ?, NOW(), ?)
+                RETURNING id''',
+            (pid, orig_id, dest_id, obs, id_roteiro, id_viagem, _usuario()),
+        )
+        mov_id = (_row_dict(cur.fetchone()) or {}).get('id')
+        conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = NOW() WHERE id = ?", (orig_id,))
+        conn.execute(f"UPDATE {t_loc} SET status = 'ocupada', atualizado_em = NOW() WHERE id = ?", (dest_id,))
+        conn.execute(
+            f"UPDATE {t_pal} SET localizacao_id = ?, status = 'em_stage', atualizado_em = NOW() WHERE id = ?",
+            (dest_id, pid),
+        )
+    else:
+        conn.execute(
+            f'''INSERT INTO {t_mov}
+                (tipo, palete_id, origem_localizacao_id, destino_localizacao_id, status, prioridade,
+                 observacao, id_roteiro, id_viagem, criado_em, criado_por)
+                VALUES ('separacao_stage', ?, ?, ?, 'aguardando_validacao', 1, ?, ?, ?, ?, ?)''',
+            (pid, orig_id, dest_id, obs, id_roteiro, id_viagem, now, _usuario()),
+        )
+        mov_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = ? WHERE id = ?", (now, orig_id))
+        conn.execute(f"UPDATE {t_loc} SET status = 'ocupada', atualizado_em = ? WHERE id = ?", (now, dest_id))
+        conn.execute(
+            f'UPDATE {t_pal} SET localizacao_id = ?, status = ?, atualizado_em = ? WHERE id = ?',
+            (dest_id, 'em_stage', now, pid),
+        )
+
+    _ensure_wms_palete_controle_table(conn)
+    _registrar_controle_palete(
+        conn, pid, 'entrada',
+        subtipo='area_stage',
+        localizacao_id=dest_id,
+        codigo_endereco=stage_loc.get('codigo_endereco'),
+        observacao=f'Palete retirado de {orig_cod} → stage doca {doca}',
+    )
+    for sku in _skus_do_palete(conn, pid):
+        _sync_produto_estoque_cache(conn, sku)
+
+    itens = _itens_resumo_palete(conn, pid)
+    return {
+        'movimentacao_id': mov_id,
+        'palete_id': pid,
+        'etiqueta': pal.get('etiqueta'),
+        'origem': orig_cod,
+        'stage': stage_loc.get('codigo_endereco'),
+        'doca': doca,
+        'status': 'aguardando_validacao',
+        'itens': itens,
+    }, None
+
+
+def _itens_resumo_palete(conn, palete_id):
+    t_item = _tbl(conn, 'wms_palete_item')
+    rows = conn.execute(
+        f'''SELECT sku, lote, quantidade_caixas, data_producao
+            FROM {t_item} WHERE palete_id = ? ORDER BY sku''',
+        (int(palete_id),),
+    ).fetchall()
+    out = []
+    for r in rows or []:
+        rd = _row_dict(r) or {}
+        out.append({
+            'sku': rd.get('sku'),
+            'lote': rd.get('lote'),
+            'quantidade_caixas': int(rd.get('quantidade_caixas') or 0),
+            'data_producao': rd.get('data_producao'),
+        })
+    return out
+
+
+def _listar_separacao_stage(conn, id_roteiro, id_viagem, status=None):
+    id_roteiro = str(id_roteiro or '').strip()
+    id_viagem = str(id_viagem or '').strip()
+    if not id_roteiro or not id_viagem:
+        return None, 'Informe roteiro e viagem.'
+    _ensure_movimentacao_expedicao_columns(conn)
+    t_mov = _tbl(conn, 'wms_movimentacao')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    params = [id_roteiro, id_viagem]
+    filtro_st = ''
+    if status:
+        filtro_st = ' AND m.status = ?'
+        params.append(status)
+    rows = conn.execute(
+        f'''SELECT m.id, m.status, m.criado_em, m.concluida_em, m.observacao,
+                   p.etiqueta, p.id AS palete_id,
+                   lo.codigo_endereco AS origem, ld.codigo_endereco AS stage
+            FROM {t_mov} m
+            JOIN {t_pal} p ON p.id = m.palete_id
+            LEFT JOIN {t_loc} lo ON lo.id = m.origem_localizacao_id
+            LEFT JOIN {t_loc} ld ON ld.id = m.destino_localizacao_id
+            WHERE m.tipo = 'separacao_stage'
+              AND m.id_roteiro = ? AND m.id_viagem = ? {filtro_st}
+            ORDER BY m.id DESC
+            LIMIT 500''',
+        tuple(params),
+    ).fetchall()
+    out = []
+    for r in rows or []:
+        rd = _row_dict(r) or {}
+        out.append({
+            'movimentacao_id': rd.get('id'),
+            'status': rd.get('status'),
+            'etiqueta': rd.get('etiqueta'),
+            'palete_id': rd.get('palete_id'),
+            'origem': rd.get('origem'),
+            'stage': rd.get('stage'),
+            'criado_em': rd.get('criado_em'),
+            'concluida_em': rd.get('concluida_em'),
+        })
+    pendentes = sum(1 for x in out if x.get('status') == 'aguardando_validacao')
+    return {
+        'itens': out,
+        'total': len(out),
+        'pendentes_validacao': pendentes,
+        'id_roteiro': id_roteiro,
+        'id_viagem': id_viagem,
+    }, None
+
+
+def _validar_saida_expedicao_stage(conn, id_roteiro, id_viagem):
+    """Confirma saída dos paletes que já estão na área stage para esta viagem."""
+    id_roteiro = str(id_roteiro or '').strip()
+    id_viagem = str(id_viagem or '').strip()
+    if not id_roteiro or not id_viagem:
+        return None, 'Informe roteiro e viagem.'
+    _ensure_movimentacao_expedicao_columns(conn)
+    t_mov = _tbl(conn, 'wms_movimentacao')
+    t_pal = _tbl(conn, 'wms_palete')
+    now = _now_iso()
+    rows = conn.execute(
+        f'''SELECT id, palete_id FROM {t_mov}
+            WHERE tipo = 'separacao_stage' AND status = 'aguardando_validacao'
+              AND id_roteiro = ? AND id_viagem = ?''',
+        (id_roteiro, id_viagem),
+    ).fetchall()
+    if not rows:
+        return None, 'Nenhum palete aguardando validação de saída nesta viagem.'
+    validados = 0
+    pids = []
+    for r in rows:
+        rd = _row_dict(r) or {}
+        mov_id = rd.get('id')
+        pid = rd.get('palete_id')
+        if not mov_id or not pid:
+            continue
+        if _is_pg(conn):
+            conn.execute(
+                f'''UPDATE {t_mov} SET status = 'concluida', concluida_em = NOW(), concluida_por = ?
+                    WHERE id = ?''',
+                (_usuario(), mov_id),
+            )
+            conn.execute(
+                f"UPDATE {t_pal} SET status = 'separado', atualizado_em = NOW() WHERE id = ?",
+                (pid,),
+            )
+        else:
+            conn.execute(
+                f'''UPDATE {t_mov} SET status = 'concluida', concluida_em = ?, concluida_por = ? WHERE id = ?''',
+                (now, _usuario(), mov_id),
+            )
+            conn.execute(
+                f'UPDATE {t_pal} SET status = ?, atualizado_em = ? WHERE id = ?',
+                ('separado', now, pid),
+            )
+        pids.append(pid)
+        validados += 1
+    for pid in pids:
+        for sku in _skus_do_palete(conn, pid):
+            _sync_produto_estoque_cache(conn, sku)
+    return {
+        'validados': validados,
+        'id_roteiro': id_roteiro,
+        'id_viagem': id_viagem,
+        'mensagem': f'Saída validada — {validados} palete(s) liberado(s) para expedição (stage).',
+    }, None
 
 
 def _liberar_palete_para_exclusao(conn, palete_id):
@@ -4890,6 +5280,81 @@ def api_wms_relatorios():
         conn.close()
         if not data:
             return jsonify({'erro': f'Tipo de relatório inválido: {tipo}'}), 400
+        return jsonify(data)
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/separacao/bip-stage', methods=['POST'])
+def api_wms_separacao_bip_stage():
+    data = request.get_json() or {}
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        result, err = _bip_separacao_para_stage(
+            conn,
+            data.get('id_roteiro'),
+            data.get('id_viagem'),
+            data.get('doca'),
+            data.get('codigo_bip') or data.get('codigo') or data.get('etiqueta'),
+        )
+        if err:
+            conn.rollback()
+            conn.close()
+            return jsonify({'ok': False, 'erro': err}), 400
+        conn.commit()
+        conn.close()
+        return jsonify({'ok': True, **result})
+    except Exception as e:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/separacao/validar-saida', methods=['POST'])
+def api_wms_separacao_validar_saida():
+    data = request.get_json() or {}
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        result, err = _validar_saida_expedicao_stage(
+            conn, data.get('id_roteiro'), data.get('id_viagem'),
+        )
+        if err:
+            conn.rollback()
+            conn.close()
+            return jsonify({'ok': False, 'erro': err}), 400
+        conn.commit()
+        conn.close()
+        return jsonify({'ok': True, **result})
+    except Exception as e:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/separacao/stage', methods=['GET'])
+def api_wms_separacao_stage_list():
+    id_roteiro = (request.args.get('id_roteiro') or '').strip()
+    id_viagem = (request.args.get('id_viagem') or '').strip()
+    status = (request.args.get('status') or '').strip() or None
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        data, err = _listar_separacao_stage(conn, id_roteiro, id_viagem, status=status)
+        conn.close()
+        if err:
+            return jsonify({'erro': err, 'itens': []}), 400
         return jsonify(data)
     except Exception as e:
         try:
