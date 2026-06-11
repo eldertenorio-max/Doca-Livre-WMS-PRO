@@ -2371,6 +2371,18 @@ def _excluir_recebimento_wms(conn, recebimento_id):
 
     for pid in palete_ids:
         _liberar_palete_para_exclusao(conn, pid)
+        ctrl_rows = conn.execute(f'SELECT id FROM {t_ctrl} WHERE palete_id = ?', (pid,)).fetchall()
+        ctrl_ids = [(_row_dict(r) or {}).get('id') for r in ctrl_rows or []]
+        ctrl_ids = [i for i in ctrl_ids if i is not None]
+        if ctrl_ids:
+            ph = ','.join('?' * len(ctrl_ids))
+            try:
+                conn.execute(
+                    f'UPDATE {t_ctrl} SET registro_saida_id = NULL WHERE registro_saida_id IN ({ph})',
+                    ctrl_ids,
+                )
+            except Exception:
+                pass
         try:
             conn.execute(f'UPDATE {t_ctrl} SET registro_saida_id = NULL WHERE palete_id = ?', (pid,))
         except Exception:

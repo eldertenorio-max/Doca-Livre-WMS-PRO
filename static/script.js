@@ -3582,6 +3582,8 @@ function initWmsEnderecamento() {
         _wmsMostrarSubtab('historico-nf');
         if (nf.trim() || rid) loadWmsHistoricoNf();
     });
+    var bExclRecNf = document.getElementById('btn-wms-excluir-recebimento-nf');
+    if (bExclRecNf) bExclRecNf.addEventListener('click', wmsExcluirRecebimentoAtualNf);
     var bConf = document.getElementById('btn-wms-conferir-palete');
     if (bConf) bConf.addEventListener('click', wmsConferirPalete);
     var bBipPal = document.getElementById('btn-wms-bip-palete');
@@ -3958,6 +3960,7 @@ function wmsLimparPainelNfDescarga() {
     if (tb) tb.innerHTML = '';
     if (hid) hid.value = '';
     if (hidA) hidA.value = '';
+    wmsAtualizarBotaoExcluirRecebimentoNf();
 }
 
 function _wmsStatusItemNfLabel(st) {
@@ -4014,6 +4017,7 @@ function wmsPreencherPainelNfDescarga(doc) {
     if (doc.recebimento_wms_id) {
         wmsSincronizarRecebimentoAberto(doc.recebimento_wms_id, { resetarPalete: false });
     }
+    wmsAtualizarBotaoExcluirRecebimentoNf();
 }
 
 function wmsImprimirEtiquetasNfTodos() {
@@ -4300,13 +4304,13 @@ window.wmsExcluirRecebimento = async function(btn) {
     var id = btn && btn.getAttribute ? btn.getAttribute('data-wms-rec-id') : btn;
     var nf = (btn && btn.getAttribute ? btn.getAttribute('data-wms-rec-nf') : '') || '—';
     var label = nf && nf !== '—' ? ('NF ' + nf) : ('recebimento #' + id);
-    if (!confirm('Excluir ' + label + '?\n\nTodos os paletes deste recebimento serão removidos. Endereços já ocupados serão liberados. Recebimentos finalizados não podem ser excluídos.')) return;
+    if (!confirm('Excluir ' + label + '?\n\nTodos os paletes serão removidos e os endereços liberados. Você poderá buscar a NF de novo e começar do zero. Recebimentos finalizados não podem ser excluídos.')) return;
     var data = await fetchAPI('/wms/recebimentos', {
         method: 'POST',
         body: JSON.stringify({ acao: 'excluir', recebimento_id: parseInt(id, 10) })
     });
     if (data && data.ok) {
-        var msg = 'Recebimento excluído.';
+        var msg = 'Recebimento excluído — pode buscar a NF e começar do zero.';
         if (data.enderecos_liberados) msg += ' ' + data.enderecos_liberados + ' endereço(s) liberado(s).';
         showMessage(msg, 'success');
         var hid = document.getElementById('wms-rec-detalhe-id');
@@ -4314,11 +4318,12 @@ window.wmsExcluirRecebimento = async function(btn) {
             var det = document.getElementById('wms-recebimento-detalhe');
             if (det) det.style.display = 'none';
             hid.value = '';
-            wmsLimparPainelNfDescarga();
         }
         if (window._wmsNfDoc && window._wmsNfDoc.recebimento_wms_id && String(window._wmsNfDoc.recebimento_wms_id) === String(id)) {
             window._wmsNfDoc.recebimento_wms_id = null;
+            window._wmsNfDoc.recebimento_wms_status = null;
         }
+        wmsAtualizarBotaoExcluirRecebimentoNf();
         loadWmsRecebimentos();
         loadWmsPainel();
         loadWmsMovimentacoes();
@@ -4327,6 +4332,32 @@ window.wmsExcluirRecebimento = async function(btn) {
     } else {
         showMessage((data && data.erro) || 'Erro ao excluir recebimento.', 'error');
     }
+};
+
+function wmsAtualizarBotaoExcluirRecebimentoNf() {
+    var btn = document.getElementById('btn-wms-excluir-recebimento-nf');
+    if (!btn) return;
+    var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value
+        || (window._wmsNfDoc && window._wmsNfDoc.recebimento_wms_id);
+    var st = String((window._wmsNfDoc && window._wmsNfDoc.recebimento_wms_status) || '').toLowerCase();
+    btn.style.display = (rid && st !== 'finalizado') ? '' : 'none';
+}
+
+window.wmsExcluirRecebimentoAtualNf = async function() {
+    var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value
+        || (window._wmsNfDoc && window._wmsNfDoc.recebimento_wms_id);
+    if (!rid) {
+        showMessage('Nenhum recebimento WMS vinculado a esta NF. Busque a NF na lista abaixo e use Excluir.', 'warning');
+        return;
+    }
+    var nf = (document.getElementById('wms-rec-nf') || {}).value || '';
+    await wmsExcluirRecebimento({
+        getAttribute: function(k) {
+            if (k === 'data-wms-rec-id') return String(rid);
+            if (k === 'data-wms-rec-nf') return nf;
+            return '';
+        }
+    });
 };
 
 window._wmsBipEtapa = 1;
