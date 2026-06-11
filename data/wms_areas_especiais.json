@@ -1,0 +1,42 @@
+{
+  "camara": 98,
+  "descricao": "Áreas especiais — quarentena, descarte, MG e reentregas",
+  "areas": [
+    {
+      "area": "descarte_perdas",
+      "rua": "DP",
+      "slots": 10,
+      "label": "Descarte / perdas"
+    },
+    {
+      "area": "avaria",
+      "rua": "AV",
+      "slots": 3,
+      "label": "Avariado (descarte avariado)"
+    },
+    {
+      "area": "retrabalho",
+      "rua": "RT",
+      "slots": 5,
+      "label": "Retrabalho"
+    },
+    {
+      "area": "palete_bloqueado",
+      "rua": "PB",
+      "slots": 5,
+      "label": "Palete bloqueado"
+    },
+    {
+      "area": "envio_mg",
+      "rua": "MG",
+      "slots": 10,
+      "label": "Envio MG"
+    },
+    {
+      "area": "reentregas",
+      "rua": "RE",
+      "slots": 15,
+      "label": "Reentregas (retorno da rua)"
+    }
+  ]
+}

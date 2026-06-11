@@ -149,7 +149,20 @@ def _resolver_codigo_endereco_bip(codigo):
 
 _WMS_CAMARA_TOTAIS_PADRAO = {11: 138, 12: 134, 13: 138, 21: 82}
 _WMS_CAMARA_STAGE = 99
+_WMS_CAMARA_ESPECIAL = 98
 _WMS_STAGE_SLOTS_POR_DOCA = 40
+_WMS_AREAS_ESPECIAIS_DEFAULT = {
+    'camara': 98,
+    'descricao': 'Áreas especiais — quarentena, descarte, MG e reentregas',
+    'areas': [
+        {'area': 'descarte_perdas', 'rua': 'DP', 'slots': 10, 'label': 'Descarte / perdas'},
+        {'area': 'avaria', 'rua': 'AV', 'slots': 3, 'label': 'Avariado (descarte avariado)'},
+        {'area': 'retrabalho', 'rua': 'RT', 'slots': 5, 'label': 'Retrabalho'},
+        {'area': 'palete_bloqueado', 'rua': 'PB', 'slots': 5, 'label': 'Palete bloqueado'},
+        {'area': 'envio_mg', 'rua': 'MG', 'slots': 10, 'label': 'Envio MG'},
+        {'area': 'reentregas', 'rua': 'RE', 'slots': 15, 'label': 'Reentregas (retorno da rua)'},
+    ],
+}
 
 
 def _layout_camaras_config():
@@ -421,6 +434,142 @@ def _ensure_wms_palete_controle_table(conn):
             conn.commit()
         except Exception:
             pass
+
+
+WMS_DISPOSICOES_ENTRADA = frozenset({'avaria', 'descarte_perdas', 'palete_bloqueado'})
+
+
+def _estado_recebimento_para_disposicao(estado):
+    raw = (estado or '').strip().lower()
+    if raw in ('', 'bom', 'normal', 'ok'):
+        return None
+    if raw in WMS_DISPOSICOES_ENTRADA:
+        return raw
+    if raw == 'deteriorado':
+        return 'descarte_perdas'
+    if raw == 'avaria':
+        return 'avaria'
+    return None
+
+
+def _ensure_wms_palete_item_disposicao(conn):
+    cols = [('disposicao_estoque', 'TEXT'), ('estoque_sp_lancado', 'INTEGER' if not _is_pg(conn) else 'SMALLINT')]
+    t = _tbl(conn, 'wms_palete_item')
+    if _is_pg(conn):
+        for name, typ in cols:
+            try:
+                conn.execute(f'ALTER TABLE {t} ADD COLUMN IF NOT EXISTS {name} {typ}')
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    else:
+        try:
+            existing = conn.execute('PRAGMA table_info(wms_palete_item)').fetchall()
+            names = {c[1] if not isinstance(c, dict) else c.get('name') for c in (existing or [])}
+            for name, typ in cols:
+                if name not in names:
+                    conn.execute(f'ALTER TABLE wms_palete_item ADD COLUMN {name} {typ}')
+            conn.commit()
+        except Exception:
+            pass
+
+
+def _ensure_produtos_bipados_wms_cols(conn):
+    tbl = 'public.produtos_bipados' if _is_pg(conn) else 'produtos_bipados'
+    try:
+        if _is_pg(conn):
+            conn.execute(f'ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS disposicao_estoque TEXT')
+            conn.execute(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS fluxo TEXT DEFAULT 'carregamento'")
+            conn.commit()
+        else:
+            cols = [r[1] for r in conn.execute('PRAGMA table_info(produtos_bipados)').fetchall()]
+            if 'disposicao_estoque' not in cols:
+                conn.execute('ALTER TABLE produtos_bipados ADD COLUMN disposicao_estoque TEXT')
+            if 'fluxo' not in cols:
+                conn.execute("ALTER TABLE produtos_bipados ADD COLUMN fluxo TEXT DEFAULT 'carregamento'")
+            conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def _registrar_entrada_classificada_estoque_sp(conn, palete_id):
+    """Lança itens classificados (avaria/perdas/bloqueado) nas abas do Estoque SP."""
+    _ensure_wms_palete_item_disposicao(conn)
+    _ensure_produtos_bipados_wms_cols(conn)
+    t_item = _tbl(conn, 'wms_palete_item')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_rec = _tbl(conn, 'wms_recebimento')
+    pal = conn.execute(
+        f'''SELECT p.id, p.etiqueta, p.recebimento_id, r.numero_nf
+            FROM {t_pal} p
+            LEFT JOIN {t_rec} r ON r.id = p.recebimento_id
+            WHERE p.id = ?''',
+        (int(palete_id),),
+    ).fetchone()
+    if not pal:
+        return 0
+    pd = _row_dict(pal) or {}
+    rows = conn.execute(
+        f'''SELECT id, sku, descricao, quantidade_caixas, disposicao_estoque
+            FROM {t_item}
+            WHERE palete_id = ?
+              AND COALESCE(estoque_sp_lancado, 0) = 0
+              AND COALESCE(disposicao_estoque, '') IN ('avaria', 'descarte_perdas', 'palete_bloqueado')''',
+        (int(palete_id),),
+    ).fetchall()
+    if not rows:
+        return 0
+    agora = datetime.now(timezone.utc)
+    user = _usuario() or ''
+    rid = pd.get('recebimento_id') or ''
+    nf = (pd.get('numero_nf') or '').strip()
+    id_viagem_ref = f'wms-rec-{rid}' if rid else f'wms-pal-{palete_id}'
+    veiculo = f'NF {nf}' if nf else 'Recebimento WMS'
+    lancados = 0
+    for r in rows:
+        rd = _row_dict(r) or {}
+        item_id = rd.get('id')
+        sku = (rd.get('sku') or '').strip()
+        disp = (rd.get('disposicao_estoque') or '').strip()
+        qtd = int(rd.get('quantidade_caixas') or 0)
+        if not sku or qtd <= 0 or not disp:
+            continue
+        conn.execute(
+            '''INSERT INTO produtos_bipados
+               (codigo_barras, produto, quantidade, data_hora, veiculo, status, id_viagem,
+                codigo_interno, unidade, usuario_bipagem, fluxo, disposicao_estoque)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (
+                sku,
+                (rd.get('descricao') or sku),
+                qtd,
+                agora,
+                veiculo,
+                'PENDENTE',
+                id_viagem_ref,
+                sku,
+                'Caixa',
+                user,
+                'devolucao',
+                disp,
+            ),
+        )
+        if item_id is not None:
+            conn.execute(
+                f'UPDATE {t_item} SET estoque_sp_lancado = ? WHERE id = ?',
+                (_bind_bool(conn, True), int(item_id)),
+            )
+        lancados += 1
+    return lancados
 
 
 def _ensure_wms_palete_item_nf_columns(conn):
@@ -1508,9 +1657,11 @@ def ensure_wms_schema(conn):
         _ensure_produto_planejamento_columns(conn)
         _ensure_wms_recebimento_terceiros_columns(conn)
         _ensure_wms_palete_item_nf_columns(conn)
+        _ensure_wms_palete_item_disposicao(conn)
         _ensure_wms_palete_controle_table(conn)
         _ensure_movimentacao_expedicao_columns(conn)
         _ensure_stage_localizacoes(conn)
+        _ensure_areas_especiais_localizacoes(conn)
         _WMS_SCHEMA_READY = True
         return
     if _is_pg(conn):
@@ -2454,6 +2605,201 @@ def _ensure_stage_localizacoes(conn):
             pass
 
 
+def _load_areas_especiais_config():
+    path = os.path.join(os.path.dirname(__file__), 'data', 'wms_areas_especiais.json')
+    try:
+        if os.path.isfile(path):
+            with open(path, encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, dict) and data.get('areas'):
+                return data
+    except Exception:
+        pass
+    return dict(_WMS_AREAS_ESPECIAIS_DEFAULT)
+
+
+def _area_especial_por_chave(area_key):
+    cfg = _load_areas_especiais_config()
+    key = (area_key or '').strip().lower()
+    for a in cfg.get('areas') or []:
+        if (a.get('area') or '').lower() == key:
+            return a
+    return None
+
+
+def _ensure_areas_especiais_localizacoes(conn):
+    """Câmara 98 — posições fixas: descarte, avaria, retrabalho, bloqueado, MG, reentregas."""
+    cfg = _load_areas_especiais_config()
+    cam = int(cfg.get('camara') or _WMS_CAMARA_ESPECIAL)
+    desc = cfg.get('descricao') or 'Áreas especiais'
+    areas = cfg.get('areas') or []
+    total_slots = sum(int(a.get('slots') or 0) for a in areas)
+    t_cam = _tbl(conn, 'wms_camara')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    now = _now_iso()
+    if _is_pg(conn):
+        conn.execute(
+            f'''INSERT INTO {t_cam} (codigo, descricao, total_posicoes, ativo, criado_em)
+                VALUES (?, ?, ?, TRUE, NOW())
+                ON CONFLICT (codigo) DO UPDATE SET
+                    descricao = EXCLUDED.descricao,
+                    total_posicoes = GREATEST({t_cam}.total_posicoes, EXCLUDED.total_posicoes)''',
+            (cam, desc, total_slots),
+        )
+    else:
+        ex = conn.execute(f'SELECT 1 FROM {t_cam} WHERE codigo = ?', (cam,)).fetchone()
+        if not ex:
+            conn.execute(
+                f'INSERT INTO {t_cam} (codigo, descricao, total_posicoes, ativo, criado_em) VALUES (?, ?, ?, 1, ?)',
+                (cam, desc, total_slots, now),
+            )
+    for zona in areas:
+        area_key = (zona.get('area') or '').strip().lower()
+        rua = (zona.get('rua') or area_key[:2].upper()).strip().upper()
+        slots = max(0, int(zona.get('slots') or 0))
+        label = (zona.get('label') or area_key).strip()
+        for pos in range(1, slots + 1):
+            cod = _codigo_endereco(cam, rua, pos, 1)
+            if _is_pg(conn):
+                conn.execute(
+                    f'''INSERT INTO {t_loc}
+                        (camara, rua, posicao, nivel, codigo_endereco, tipo, status, capacidade_max,
+                         area, zona_armazenagem, criado_em, atualizado_em)
+                        VALUES (?, ?, ?, 1, ?, 'area_especial', 'vazia', 1, ?, ?, NOW(), NOW())
+                        ON CONFLICT (codigo_endereco) DO UPDATE SET
+                            area = EXCLUDED.area, tipo = 'area_especial',
+                            zona_armazenagem = EXCLUDED.zona_armazenagem''',
+                    (cam, rua, pos, cod, area_key, area_key),
+                )
+            else:
+                ex_loc = conn.execute(
+                    f'SELECT id FROM {t_loc} WHERE codigo_endereco = ?', (cod,),
+                ).fetchone()
+                if not ex_loc:
+                    conn.execute(
+                        f'''INSERT INTO {t_loc}
+                            (camara, rua, posicao, nivel, codigo_endereco, tipo, status, capacidade_max,
+                             bloqueio_entrada, bloqueio_saida, bloqueio_inventario, area, zona_armazenagem,
+                             criado_em, atualizado_em)
+                            VALUES (?, ?, ?, 1, ?, 'area_especial', 'vazia', 1, 0, 0, 0, ?, ?, ?, ?)''',
+                        (cam, rua, pos, cod, area_key, area_key, now, now),
+                    )
+    try:
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def _obter_vaga_area_especial(conn, area_key):
+    cfg = _load_areas_especiais_config()
+    cam = int(cfg.get('camara') or _WMS_CAMARA_ESPECIAL)
+    meta = _area_especial_por_chave(area_key)
+    if not meta:
+        return None, f'Área especial desconhecida: {area_key}'
+    t_loc = _tbl(conn, 'wms_localizacao')
+    row = conn.execute(
+        f'''SELECT * FROM {t_loc}
+            WHERE camara = ? AND area = ?
+              AND status = 'vazia'
+              AND {_bloqueio_off_sql(conn, 'bloqueio_entrada')}
+            ORDER BY posicao ASC
+            LIMIT 1''',
+        (cam, (meta.get('area') or area_key).lower()),
+    ).fetchone()
+    if not row:
+        lbl = meta.get('label') or area_key
+        return None, f'Sem vaga livre em {lbl} ({meta.get("slots")} posições).'
+    loc = _format_locacao(row)
+    lbl = meta.get('label') or area_key
+    loc['texto'] = f'{lbl} · posição {loc.get("posicao")} ({loc.get("codigo_endereco")})'
+    loc['zona_label'] = lbl.upper()
+    return loc, None
+
+
+def _sugerir_destino_area_especial(conn, area_key):
+    loc, err = _obter_vaga_area_especial(conn, area_key)
+    meta = _area_especial_por_chave(area_key) or {}
+    motivo = [f'Área especial: {meta.get("label") or area_key}']
+    if err:
+        motivo.append(err)
+    if not loc:
+        return _putaway_resposta(None, motivo, '', 0, 0, 'area_especial_cheia', None)
+    motivo.append(f'Endereço {loc.get("codigo_endereco")}')
+    return _putaway_resposta(loc, motivo, '', 0, 0, None, 'area_especial')
+
+
+def _coletar_ocupacao_areas_especiais(conn):
+    _ensure_areas_especiais_localizacoes(conn)
+    cfg = _load_areas_especiais_config()
+    cam = int(cfg.get('camara') or _WMS_CAMARA_ESPECIAL)
+    t_loc = _tbl(conn, 'wms_localizacao')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_item = _tbl(conn, 'wms_palete_item')
+    out = []
+    for meta in cfg.get('areas') or []:
+        area_key = (meta.get('area') or '').strip().lower()
+        slots = int(meta.get('slots') or 0)
+        rows = conn.execute(
+            f'''SELECT l.id, l.codigo_endereco, l.posicao, l.status, l.rua,
+                       p.id AS palete_id, p.etiqueta, p.status AS palete_status,
+                       (SELECT COALESCE(SUM(i.quantidade_caixas), 0) FROM {t_item} i WHERE i.palete_id = p.id) AS qtd_caixas
+                FROM {t_loc} l
+                LEFT JOIN {t_pal} p ON p.localizacao_id = l.id
+                    AND p.status IN ('armazenado', 'bloqueado', 'em_stage', 'separado')
+                WHERE l.camara = ? AND l.area = ?
+                ORDER BY l.posicao ASC''',
+            (cam, area_key),
+        ).fetchall()
+        posicoes = []
+        ocupadas = 0
+        for r in rows or []:
+            rd = _row_dict(r) or {}
+            st = (rd.get('status') or '').lower()
+            if st == 'ocupada':
+                ocupadas += 1
+            posicoes.append({
+                'posicao': rd.get('posicao'),
+                'codigo_endereco': rd.get('codigo_endereco'),
+                'status': st,
+                'palete_id': rd.get('palete_id'),
+                'etiqueta': rd.get('etiqueta'),
+                'palete_status': rd.get('palete_status'),
+                'qtd_caixas': int(rd.get('qtd_caixas') or 0),
+            })
+        while len(posicoes) < slots:
+            posicoes.append({
+                'posicao': len(posicoes) + 1,
+                'codigo_endereco': None,
+                'status': 'nao_criada',
+                'palete_id': None,
+                'etiqueta': None,
+                'palete_status': None,
+                'qtd_caixas': 0,
+            })
+        livres = max(0, slots - ocupadas)
+        out.append({
+            'area': area_key,
+            'rua': meta.get('rua'),
+            'label': meta.get('label') or area_key,
+            'slots': slots,
+            'ocupadas': ocupadas,
+            'livres': livres,
+            'percentual_ocupacao': round(100.0 * ocupadas / slots, 1) if slots else 0,
+            'posicoes': posicoes,
+        })
+    return {
+        'camara': cam,
+        'descricao': cfg.get('descricao'),
+        'areas': out,
+        'total_slots': sum(x['slots'] for x in out),
+        'total_ocupadas': sum(x['ocupadas'] for x in out),
+        'total_livres': sum(x['livres'] for x in out),
+    }
+
+
 def _obter_vaga_stage_doca(conn, doca):
     t_loc = _tbl(conn, 'wms_localizacao')
     rua = f'D{int(doca)}'
@@ -3081,16 +3427,22 @@ def _confirmar_armazenagem_palete(conn, palete_id, codigo_endereco):
         if orig:
             conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = NOW() WHERE id = ?", (orig,))
         conn.execute(
-            f"UPDATE {t_pal} SET localizacao_id = ?, status = 'armazenado', atualizado_em = NOW() WHERE id = ?",
+            f'''UPDATE {t_pal} SET localizacao_id = ?,
+                status = CASE WHEN bloqueio_tipo IS NOT NULL AND TRIM(COALESCE(bloqueio_tipo, '')) != ''
+                              THEN 'bloqueado' ELSE 'armazenado' END,
+                atualizado_em = NOW() WHERE id = ?''',
             (dest_id, pid),
         )
     else:
         conn.execute(f"UPDATE {t_loc} SET status = 'ocupada', atualizado_em = ? WHERE id = ?", (now, dest_id))
         if orig:
             conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = ? WHERE id = ?", (now, orig))
+        pal_st = conn.execute(f'SELECT bloqueio_tipo FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
+        pst = (_row_dict(pal_st) or {}).get('bloqueio_tipo')
+        novo_st = 'bloqueado' if pst and str(pst).strip() else 'armazenado'
         conn.execute(
-            f"UPDATE {t_pal} SET localizacao_id = ?, status = 'armazenado', atualizado_em = ? WHERE id = ?",
-            (dest_id, now, pid),
+            f'UPDATE {t_pal} SET localizacao_id = ?, status = ?, atualizado_em = ? WHERE id = ?',
+            (dest_id, novo_st, now, pid),
         )
     pal_rd = _row_dict(pal) or {}
     rid = pal_rd.get('recebimento_id')
@@ -3114,18 +3466,42 @@ def _confirmar_armazenagem_palete(conn, palete_id, codigo_endereco):
         loc_fmt['movimentacao_id'] = mov_id
         loc_fmt['movimentacao_status'] = 'concluida'
         loc_fmt['recebimento_status'] = rec_status
+        try:
+            n_lanc = _registrar_entrada_classificada_estoque_sp(conn, palete_id)
+            if n_lanc:
+                loc_fmt['estoque_sp_classificados'] = n_lanc
+        except Exception:
+            pass
     return loc_fmt, None
 
 
 def _aplicar_bloqueios_palete(conn, palete_id, estado_fisico, data_validade, temperatura):
     bloqueios = []
     t_pal = _tbl(conn, 'wms_palete')
-    if estado_fisico in ('avaria', 'deteriorado'):
-        tipo = 'QC' if estado_fisico == 'avaria' else 'deteriorado'
-        bloqueios.append(tipo)
+    disp = _estado_recebimento_para_disposicao(estado_fisico)
+    if disp == 'avaria':
+        bloqueios.append('avaria')
         conn.execute(
-            f'UPDATE {t_pal} SET bloqueio_tipo = ?, bloqueio_motivo = ?, status = ? WHERE id = ?',
-            (tipo, f'Estado palete: {estado_fisico}', 'bloqueado', palete_id),
+            f'UPDATE {t_pal} SET bloqueio_tipo = ?, bloqueio_motivo = ?, status = ?, estado_fisico = ? WHERE id = ?',
+            ('QC', 'Entrada classificada: avaria (descarte avariado)', 'bloqueado', 'avaria', palete_id),
+        )
+    elif disp == 'descarte_perdas':
+        bloqueios.append('descarte_perdas')
+        conn.execute(
+            f'UPDATE {t_pal} SET bloqueio_tipo = ?, bloqueio_motivo = ?, status = ?, estado_fisico = ? WHERE id = ?',
+            ('descarte_perdas', 'Entrada classificada: descarte / perdas', 'bloqueado', 'descarte_perdas', palete_id),
+        )
+    elif disp == 'palete_bloqueado':
+        bloqueios.append('palete_bloqueado')
+        conn.execute(
+            f'UPDATE {t_pal} SET bloqueio_tipo = ?, bloqueio_motivo = ?, status = ?, estado_fisico = ? WHERE id = ?',
+            ('palete_bloqueado', 'Entrada classificada: palete bloqueado', 'bloqueado', 'palete_bloqueado', palete_id),
+        )
+    elif (estado_fisico or '').lower() == 'deteriorado':
+        bloqueios.append('descarte_perdas')
+        conn.execute(
+            f'UPDATE {t_pal} SET bloqueio_tipo = ?, bloqueio_motivo = ?, status = ?, estado_fisico = ? WHERE id = ?',
+            ('deteriorado', 'Estado palete: deteriorado', 'bloqueado', 'deteriorado', palete_id),
         )
     if data_validade:
         try:
@@ -4269,6 +4645,7 @@ def api_wms_recebimentos():
                 conn.close()
                 return jsonify({'erro': 'Informe a data de validade na bipagem.'}), 400
             estado = data.get('estado_palete') or 'bom'
+            disposicao = _estado_recebimento_para_disposicao(estado)
             lote = (item.get('lote') or '').strip() or None
             rg_up = (item.get('rg_caixa') or item.get('up') or '').strip() or None
             n_item_nf = item.get('n_item_nf')
@@ -4281,6 +4658,7 @@ def api_wms_recebimentos():
                 conn.close()
                 return jsonify({'erro': 'Informe a quantidade de caixas (mínimo 1).'}), 400
             _ensure_wms_palete_item_nf_columns(conn)
+            _ensure_wms_palete_item_disposicao(conn)
             existentes = conn.execute(
                 f'SELECT id, n_item_nf, sku FROM {t_item} WHERE palete_id = ?', (pid,)
             ).fetchall()
@@ -4295,21 +4673,29 @@ def api_wms_recebimentos():
             conn.execute(
                 f'''INSERT INTO {t_item}
                     (palete_id, sku, descricao, lote, data_producao, data_validade, sif,
-                     quantidade_caixas, peso_liquido, rg_caixa, n_item_nf, criado_em)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                     quantidade_caixas, peso_liquido, rg_caixa, n_item_nf, disposicao_estoque, criado_em)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (
                     pid, sku, item.get('descricao'), lote, dp,
                     dv, item.get('sif'),
                     qtd_cx, item.get('peso_liquido'),
-                    rg_up, n_item_nf, now,
+                    rg_up, n_item_nf, disposicao, now,
                 ),
             )
             bloqueios = _aplicar_bloqueios_palete(conn, pid, estado, dv, item.get('temperatura'))
-            sug = _sugerir_putaway(conn, sku, lote, dp, 'pulmao')
-            if not sug.get('codigo_endereco'):
-                sug_pick = _sugerir_putaway(conn, sku, lote, dp, 'picking')
-                if sug_pick.get('codigo_endereco'):
-                    sug = sug_pick
+            t_rp = _tbl(conn, 'wms_recebimento_palete')
+            conn.execute(
+                f'UPDATE {t_rp} SET estado_palete = ? WHERE palete_id = ?',
+                (estado if disposicao else 'bom', pid),
+            )
+            if disposicao:
+                sug = _sugerir_destino_area_especial(conn, disposicao)
+            else:
+                sug = _sugerir_putaway(conn, sku, lote, dp, 'pulmao')
+                if not sug.get('codigo_endereco'):
+                    sug_pick = _sugerir_putaway(conn, sku, lote, dp, 'picking')
+                    if sug_pick.get('codigo_endereco'):
+                        sug = sug_pick
             pal = conn.execute(f'SELECT etiqueta FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
             etiqueta = (pal['etiqueta'] if isinstance(pal, dict) else pal[0]) if pal else None
             mov_id = _criar_mov_pendente_putaway(conn, pid, sug, 'Aguardando bip da longarina')
@@ -4333,10 +4719,15 @@ def api_wms_recebimentos():
                 'palete_id': pid,
                 'etiqueta': etiqueta,
                 'bloqueios': bloqueios,
+                'disposicao_estoque': disposicao,
                 'sugestao': sug,
                 'movimentacao_id': mov_id,
                 'movimentacao_status': 'pendente' if mov_id else None,
-                'mensagem': 'Datas registradas na bipagem. Status será atualizado após confirmar armazenagem.',
+                'mensagem': (
+                    'Produto classificado como ' + disposicao.replace('_', ' ') + '. Será lançado no Estoque SP ao guardar.'
+                    if disposicao else
+                    'Datas registradas na bipagem. Status será atualizado após confirmar armazenagem.'
+                ),
             })
 
         if acao == 'sugerir_destino':
@@ -5280,6 +5671,23 @@ def api_wms_relatorios():
         conn.close()
         if not data:
             return jsonify({'erro': f'Tipo de relatório inválido: {tipo}'}), 400
+        return jsonify(data)
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/areas-especiais', methods=['GET'])
+def api_wms_areas_especiais():
+    """Ocupação das áreas especiais (câmara 98): descarte, avaria, retrabalho, MG, reentregas."""
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        data = _coletar_ocupacao_areas_especiais(conn)
+        conn.close()
         return jsonify(data)
     except Exception as e:
         try:

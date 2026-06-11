@@ -3674,7 +3674,72 @@ function _wmsMostrarSubtab(tab) {
     else if (tab === 'historico-nf') wmsInitHistoricoNfAba();
     else if (tab === 'relatorios') wmsInitRelatoriosAba();
     else if (tab === 'separacao') loadWmsSeparacao();
+    else if (tab === 'areas-especiais') loadWmsAreasEspeciais();
     else if (tab === 'inventario') loadWmsInventarios();
+}
+
+async function loadWmsAreasEspeciais() {
+    var grid = document.getElementById('wms-areas-especiais-grid');
+    if (grid) grid.innerHTML = '<p class="loading">Carregando ocupação...</p>';
+    try {
+        var data = await _wmsFetchGet('/wms/areas-especiais', 45000);
+        if (!data || data.erro) {
+            if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar.')) + '</p>';
+            return;
+        }
+        var elT = document.getElementById('wms-ae-total-slots');
+        var elO = document.getElementById('wms-ae-total-ocup');
+        var elL = document.getElementById('wms-ae-total-livre');
+        if (elT) elT.textContent = String(data.total_slots || 0);
+        if (elO) elO.textContent = String(data.total_ocupadas || 0);
+        if (elL) elL.textContent = String(data.total_livres || 0);
+        if (!grid) return;
+        var areas = data.areas || [];
+        if (!areas.length) {
+            grid.innerHTML = '<p>Nenhuma área configurada.</p>';
+            return;
+        }
+        grid.innerHTML = areas.map(function(a) {
+            var pct = a.percentual_ocupacao || 0;
+            var corBar = pct >= 90 ? '#c62828' : (pct >= 70 ? '#ef6c00' : '#2e7d32');
+            var posHtml = (a.posicoes || []).map(function(p) {
+                var cls = p.status === 'ocupada' ? 'background:#ffcdd2;' : (p.status === 'vazia' ? 'background:#e8f5e9;' : 'background:#f5f5f5;');
+                var tit = p.status === 'ocupada'
+                    ? ('Palete ' + (p.etiqueta || p.palete_id || '?') + (p.qtd_caixas ? ' · ' + p.qtd_caixas + ' cx' : ''))
+                    : (p.codigo_endereco || 'Pos ' + p.posicao);
+                return '<div title="' + escHtml(tit) + '" style="min-width:72px;padding:6px 8px;border-radius:6px;font-size:11px;text-align:center;' + cls + '">'
+                    + escHtml(String(p.posicao)) + '<br><span style="opacity:.85;">' + escHtml(p.status === 'ocupada' ? 'ocup.' : 'livre') + '</span></div>';
+            }).join('');
+            return '<div class="conferencia-bloco form-container" style="margin-bottom:16px;padding:14px;background:#fafafa;border-left:4px solid ' + corBar + ';">'
+                + '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-bottom:10px;">'
+                + '<div><strong>' + escHtml(a.label || a.area) + '</strong>'
+                + ' <span style="color:#666;font-size:12px;">(rua ' + escHtml(a.rua || '') + ')</span></div>'
+                + '<div style="font-size:13px;">' + escHtml(a.ocupadas) + '/' + escHtml(a.slots) + ' ocupadas · '
+                + escHtml(a.livres) + ' livres · ' + escHtml(pct) + '%</div></div>'
+                + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + posHtml + '</div></div>';
+        }).join('');
+    } catch (e) {
+        if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;">' + escHtml((e && e.message) || 'Erro.') + '</p>';
+    }
+}
+
+function wmsAtualizarAvisoEstadoEntrada() {
+    var sel = document.getElementById('wms-pal-estado');
+    var aviso = document.getElementById('wms-pal-estado-aviso');
+    if (!sel || !aviso) return;
+    var v = (sel.value || 'bom').toLowerCase();
+    var map = {
+        avaria: 'Mercadoria avariada — guardar na área AVARIADO (câm. 98) e lançar na aba AVARIA do Estoque SP.',
+        descarte_perdas: 'Descarte / perdas — guardar na área DESCARTE (câm. 98) e lançar na aba DESCARTE / PERDAS.',
+        palete_bloqueado: 'Palete bloqueado — guardar na área PALETE BLOQUEADO (câm. 98) e lançar na aba correspondente do Estoque SP.'
+    };
+    if (map[v]) {
+        aviso.textContent = map[v];
+        aviso.style.display = 'block';
+    } else {
+        aviso.textContent = '';
+        aviso.style.display = 'none';
+    }
 }
 
 function initWmsEnderecamento() {
@@ -3751,6 +3816,12 @@ function initWmsEnderecamento() {
     if (bDest) bDest.addEventListener('click', wmsConfirmarDestino);
     var bPick = document.getElementById('btn-wms-picking');
     if (bPick) bPick.addEventListener('click', loadWmsPickingLista);
+    var selEstado = document.getElementById('wms-pal-estado');
+    if (selEstado && !selEstado.dataset.bound) {
+        selEstado.dataset.bound = '1';
+        selEstado.addEventListener('change', wmsAtualizarAvisoEstadoEntrada);
+        wmsAtualizarAvisoEstadoEntrada();
+    }
     var bStageBip = document.getElementById('btn-wms-stage-bip');
     if (bStageBip) bStageBip.addEventListener('click', wmsBipSeparacaoStage);
     var bValidSaida = document.getElementById('btn-wms-validar-saida');
@@ -3768,6 +3839,8 @@ function initWmsEnderecamento() {
     if (bFin) bFin.addEventListener('click', wmsFinalizarRecebimento);
     var bInv = document.getElementById('btn-wms-novo-inventario');
     if (bInv) bInv.addEventListener('click', wmsCriarInventario);
+    var bAe = document.getElementById('btn-wms-areas-especiais-atualizar');
+    if (bAe) bAe.addEventListener('click', loadWmsAreasEspeciais);
     var bRedis = document.getElementById('btn-wms-redistribuir');
     if (bRedis) bRedis.addEventListener('click', wmsRedistribuirLayout);
     var bCtrlBusca = document.getElementById('btn-wms-ctrl-buscar');
@@ -3786,7 +3859,7 @@ function initWmsEnderecamento() {
     if (bRelCsv) bRelCsv.addEventListener('click', wmsExportarRelatorioCsv);
 
     window._wmsIniciarModulo = function(tab) {
-        var abasWms = ['painel', 'localizacoes', 'etiquetas-longarina', 'produtos', 'movimentacoes', 'recebimento', 'controle-paletes', 'historico-nf', 'relatorios', 'separacao', 'inventario', 'pesquisa'];
+        var abasWms = ['painel', 'localizacoes', 'etiquetas-longarina', 'produtos', 'movimentacoes', 'recebimento', 'controle-paletes', 'historico-nf', 'relatorios', 'separacao', 'areas-especiais', 'inventario', 'pesquisa'];
         var t = (tab || 'painel').trim();
         if (abasWms.indexOf(t) === -1) t = 'painel';
         _wmsMostrarSubtab(t);
@@ -5167,6 +5240,9 @@ async function wmsBipProduto() {
             window._wmsBipResumo.palete = data.etiqueta || window._wmsBipResumo.palete || '';
             wmsBipAtualizarCodigoPaleteUI(window._wmsBipResumo.palete);
             var txt = 'Produto conferido no palete ' + (data.etiqueta || '');
+            if (data.disposicao_estoque) {
+                txt += ' — Classificação: ' + String(data.disposicao_estoque).replace(/_/g, ' ');
+            }
             if (data.bloqueios && data.bloqueios.length) txt += ' — Bloqueios: ' + data.bloqueios.join(', ');
             if (msg) msg.textContent = txt;
             _wmsMostrarSugestao(data.sugestao);
@@ -5177,7 +5253,7 @@ async function wmsBipProduto() {
             await wmsGarantirSugestaoDestino(true);
             wmsBipAtualizarResumos();
             var itemLbl = skuResolved.n_item != null ? ('Item ' + skuResolved.n_item + ' · ') : '';
-            showMessage('Produto OK (' + itemLbl + 'clique em Imprimir etiqueta, cole no palete e depois em «Etiqueta colada — ir guardar»).', 'success');
+            showMessage(data.mensagem || ('Produto OK (' + itemLbl + 'clique em Imprimir etiqueta, cole no palete e depois em «Etiqueta colada — ir guardar»).'), 'success');
             wmsAtualizarPainelNfDescarga();
         } else {
             wmsMostrarErroBipProduto((data && data.erro) || 'Erro ao confirmar produto.');
