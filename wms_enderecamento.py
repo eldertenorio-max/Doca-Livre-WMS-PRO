@@ -738,6 +738,9 @@ def _enriquecer_documento_nf_wms(conn, doc):
     doc = dict(doc)
     doc['recebimento_wms_id'] = rec.get('id') if rec else None
     doc['recebimento_wms_status'] = rec.get('status') if rec else None
+    st_wms = (doc.get('recebimento_wms_status') or '').lower()
+    doc['wms_bloqueado'] = st_wms == 'finalizado'
+    doc['descarga_reabrivel'] = bool(doc.get('recebimento_concluido') and not doc['wms_bloqueado'])
     qtd_wms = _quantidades_wms_recebimento(conn, doc.get('recebimento_wms_id'))
     qtd_arm = _quantidades_wms_armazenadas_recebimento(conn, doc.get('recebimento_wms_id'))
     por_linha = _quantidades_por_linha_nf(conn, doc.get('recebimento_wms_id'), doc.get('itens') or [])
@@ -842,6 +845,45 @@ def _concluir_terceiros_recebimento_wms(conn, documento_id, usuario=None):
             f'''INSERT INTO {t_ev} (documento_id, evento, valor_anterior, valor_novo, usuario, criado_em, detalhes)
                 VALUES (?, 'recebimento_concluido', '0', '1', ?, ?, 'via_wms_enderecamento')''',
             (int(documento_id), user, now),
+        )
+    except Exception:
+        pass
+    return True, None
+
+
+def _reabrir_terceiros_recebimento_wms(conn, documento_id, usuario=None, motivo='exclusao_wms'):
+    """Reabre pendência de recebimento no módulo descarga (ex.: ao excluir/recomeçar WMS)."""
+    if not documento_id or not _terceiros_tabelas_existem(conn):
+        return False, 'Documento terceiros indisponível.'
+    t_doc = _tbl_terceiros_doc(conn)
+    t_ev = _tbl_terceiros_eventos(conn)
+    row = conn.execute(
+        f'SELECT id, recebimento_concluido FROM {t_doc} WHERE id = ?', (int(documento_id),)
+    ).fetchone()
+    if not row:
+        return False, 'Documento terceiros não encontrado.'
+    rd = _row_dict(row) or {}
+    if not _terceiros_bool_sim_local(rd.get('recebimento_concluido')):
+        return True, None
+    user = (usuario or _usuario() or 'wms').strip()
+    now = _now_iso()
+    if _is_pg(conn):
+        conn.execute(
+            f'''UPDATE {t_doc} SET recebimento_concluido = FALSE, recebimento_concluido_em = NULL,
+                recebimento_concluido_por = NULL, atualizado_em = NOW(), atualizado_por = ? WHERE id = ?''',
+            (user, int(documento_id)),
+        )
+    else:
+        conn.execute(
+            f'''UPDATE {t_doc} SET recebimento_concluido = 0, recebimento_concluido_em = NULL,
+                recebimento_concluido_por = NULL, atualizado_em = ?, atualizado_por = ? WHERE id = ?''',
+            (now, user, int(documento_id)),
+        )
+    try:
+        conn.execute(
+            f'''INSERT INTO {t_ev} (documento_id, evento, valor_anterior, valor_novo, usuario, criado_em, detalhes)
+                VALUES (?, 'recebimento_concluido', '1', '0', ?, ?, ?)''',
+            (int(documento_id), user, now, motivo or 'via_wms_enderecamento'),
         )
     except Exception:
         pass
@@ -2343,10 +2385,14 @@ def _excluir_recebimento_wms(conn, recebimento_id):
     _ensure_wms_palete_controle_table(conn)
     t_ctrl = _tbl(conn, 'wms_palete_controle')
 
-    rec = conn.execute(f'SELECT id, status FROM {t_rec} WHERE id = ?', (recebimento_id,)).fetchone()
+    rec = conn.execute(
+        f'SELECT id, status, terceiros_documento_id, numero_nf FROM {t_rec} WHERE id = ?',
+        (recebimento_id,),
+    ).fetchone()
     if not rec:
         return None, 'Recebimento não encontrado.'
     rec_rd = _row_dict(rec) or {}
+    doc_ter = rec_rd.get('terceiros_documento_id')
     st_rec = (rec_rd.get('status') or '').lower()
     if st_rec == 'finalizado':
         return None, 'Recebimento já finalizado — não pode ser excluído. Consulte o Histórico NF.'
@@ -2397,10 +2443,19 @@ def _excluir_recebimento_wms(conn, recebimento_id):
     conn.execute(f'DELETE FROM {t_cqr} WHERE recebimento_id = ?', (recebimento_id,))
     conn.execute(f'DELETE FROM {t_rec} WHERE id = ?', (recebimento_id,))
 
+    terceiros_reaberto = False
+    if doc_ter:
+        ok_ter, _err_ter = _reabrir_terceiros_recebimento_wms(
+            conn, int(doc_ter), motivo='exclusao_recebimento_wms',
+        )
+        terceiros_reaberto = bool(ok_ter)
+
     return {
         'ok': True,
         'paletes_removidos': len(palete_ids),
         'enderecos_liberados': len(armazenados),
+        'terceiros_reaberto': terceiros_reaberto,
+        'terceiros_documento_id': int(doc_ter) if doc_ter else None,
     }, None
 
 
@@ -4022,6 +4077,36 @@ def api_wms_recebimentos():
             conn.commit()
             conn.close()
             return jsonify({'ok': True, 'palete_id': pid, 'etiqueta': etiqueta, 'bloqueios': bloqueios})
+
+        if acao == 'reabrir_descarga':
+            doc_ter = data.get('terceiros_documento_id') or data.get('documento_id')
+            numero_nf = (data.get('numero_nf') or '').strip()
+            if not doc_ter and numero_nf:
+                found, _err_nf = _buscar_documento_terceiros_por_nf(conn, numero_nf)
+                if found:
+                    doc_ter = found.get('documento_id')
+            if not doc_ter:
+                conn.close()
+                return jsonify({'erro': 'Informe terceiros_documento_id ou numero_nf.'}), 400
+            rec_wms = _buscar_recebimento_wms_por_nf(conn, documento_id=doc_ter, numero_nf=numero_nf)
+            if rec_wms and (rec_wms.get('status') or '').lower() == 'finalizado':
+                conn.close()
+                return jsonify({
+                    'erro': 'NF já finalizada no WMS — não é possível reabrir a descarga.',
+                }), 400
+            ok_ter, err_ter = _reabrir_terceiros_recebimento_wms(
+                conn, int(doc_ter), motivo='reabertura_wms_manual',
+            )
+            if not ok_ter:
+                conn.close()
+                return jsonify({'erro': err_ter or 'Não foi possível reabrir a descarga.'}), 400
+            conn.commit()
+            conn.close()
+            return jsonify({
+                'ok': True,
+                'terceiros_documento_id': int(doc_ter),
+                'recebimento_concluido': False,
+            })
 
         if acao == 'excluir':
             rid = data.get('recebimento_id')

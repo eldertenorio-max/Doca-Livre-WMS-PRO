@@ -494,6 +494,15 @@ body.hub-modulos-aberto .container {
 .wms-rec-fase--etq-prod .wms-rec-fase-num { background: #f9a825; color: #333; }
 .wms-rec-fase--bip .wms-rec-fase-titulo { background: #f3e5f5; }
 .wms-rec-fase--bip .wms-rec-fase-num { background: #7b1fa2; }
+.wms-rec-fase--bip.wms-rec-fase--aberto {
+    box-shadow: 0 0 0 3px #ce93d8, 0 4px 16px rgba(123, 31, 162, 0.2);
+    animation: wms-passo-aberto-pulse 1.6s ease-out 1;
+}
+@keyframes wms-passo-aberto-pulse {
+    0% { box-shadow: 0 0 0 0 #e1bee7, 0 2px 8px rgba(123, 31, 162, 0.15); }
+    40% { box-shadow: 0 0 0 6px #ce93d8, 0 4px 16px rgba(123, 31, 162, 0.25); }
+    100% { box-shadow: 0 0 0 3px #ce93d8, 0 4px 16px rgba(123, 31, 162, 0.2); }
+}
 /* Bipagem — passo a passo dinâmico */
 .wms-bip-stepper {
     display: flex;

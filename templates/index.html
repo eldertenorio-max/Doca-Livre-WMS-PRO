@@ -2697,18 +2697,11 @@
                             <div class="wms-rec-fase-corpo">
                                 <p class="wms-rec-fase-desc">Consulte os itens da nota. Na montagem do palete, bipe o <strong>EAN ou SKU</strong> (pode digitar ou ler da coluna abaixo). Uma única <strong>etiqueta de identificação</strong> no palete traz produto, código de 22 caracteres e endereço de guardar.</p>
                                 <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px;">
-                                    <button type="button" class="btn btn-primary" id="btn-wms-iniciar-bipagem">Montar paletes — abrir passo a passo</button>
+                                    <button type="button" class="btn btn-primary" id="btn-wms-iniciar-bipagem" onclick="wmsIniciarBipagemNf()">Montar paletes — abrir passo a passo</button>
                                 </div>
                                 <div class="table-container"><table class="data-table"><thead><tr><th>Item NF</th><th>SKU</th><th>Descrição</th><th>Qtd NF</th><th>Qtd bipada</th><th>Status</th><th>Cód. barras (EAN)</th></tr></thead><tbody id="wms-tbody-rec-nf-itens"></tbody></table></div>
                             </div>
                         </section>
-
-                        <details class="wms-rec-fase" style="margin-bottom: 16px;">
-                            <summary class="wms-rec-fase-titulo" style="cursor: pointer; list-style: none;"><span class="wms-rec-fase-num" style="background:#607d8b;">≡</span><span>Recebimentos WMS em andamento (histórico da aba)</span></summary>
-                            <div class="wms-rec-fase-corpo">
-                                <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>NF</th><th>Fornecedor</th><th>Placa</th><th>Status</th><th>Ações</th></tr></thead><tbody id="wms-tbody-recebimentos"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody></table></div>
-                            </div>
-                        </details>
 
                         <section id="wms-recebimento-detalhe" class="wms-rec-fase wms-rec-fase--bip" style="display: none;">
                             <h3 class="wms-rec-fase-titulo"><span class="wms-rec-fase-num">B</span><span>Montar palete — 2 passos</span></h3>
@@ -2808,6 +2801,13 @@
                                 </div>
                             </div>
                         </section>
+
+                        <details class="wms-rec-fase" style="margin-bottom: 16px;">
+                            <summary class="wms-rec-fase-titulo" style="cursor: pointer; list-style: none;"><span class="wms-rec-fase-num" style="background:#607d8b;">≡</span><span>Recebimentos WMS em andamento (histórico da aba)</span></summary>
+                            <div class="wms-rec-fase-corpo">
+                                <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>NF</th><th>Fornecedor</th><th>Placa</th><th>Status</th><th>Ações</th></tr></thead><tbody id="wms-tbody-recebimentos"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody></table></div>
+                            </div>
+                        </details>
                     </div>
                     <div id="wms-panel-controle-paletes" class="wms-inner-panel" hidden>
                         <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Bipe a <strong>etiqueta do palete (22 caracteres)</strong> para consultar status, registrar <strong>saída</strong> (palete saiu do armazém) e <strong>retorno</strong> (voltou). Entradas automáticas são geradas no recebimento e na armazenagem.</p>
