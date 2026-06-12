@@ -109,25 +109,31 @@ _sse_lock = threading.Lock()
 
 def _broadcast_atualizar():
     """Notifica todos os clientes e envia totais para atualização imediata (sem esperar novo GET)."""
+    def _emit():
+        try:
+            conn = get_db()
+            row = conn.execute(
+                'SELECT COUNT(*) as c, COALESCE(SUM(quantidade), 0) as s FROM produtos_bipados'
+            ).fetchone()
+            conn.close()
+            payload = json.dumps({
+                't': 'atualizar',
+                'total_bipados': row['c'] if row else 0,
+                'soma_quantidades': int(row['s']) if row else 0
+            })
+        except Exception:
+            payload = 'atualizar'
+        with _sse_lock:
+            for q in _sse_queues:
+                try:
+                    q.put_nowait(payload)
+                except Exception:
+                    pass
+
     try:
-        conn = get_db()
-        row = conn.execute(
-            'SELECT COUNT(*) as c, COALESCE(SUM(quantidade), 0) as s FROM produtos_bipados'
-        ).fetchone()
-        conn.close()
-        payload = json.dumps({
-            't': 'atualizar',
-            'total_bipados': row['c'] if row else 0,
-            'soma_quantidades': int(row['s']) if row else 0
-        })
+        threading.Thread(target=_emit, daemon=True).start()
     except Exception:
-        payload = 'atualizar'
-    with _sse_lock:
-        for q in _sse_queues:
-            try:
-                q.put_nowait(payload)
-            except Exception:
-                pass
+        _emit()
 
 # Configuração do banco de dados e upload (pasta gravável)
 DB_NAME = os.path.join(_BASE_DIR, 'controle_carregamento.db')
@@ -923,15 +929,21 @@ def _pg_auditoria_sync_desligar(conn):
         conn.execute("SET LOCAL session_replication_role = replica")
 
 
+_SCHEMA_ENSURE_DONE = set()
+
+
 def _ensure_pg_produtos_bipados_fluxo(conn):
     """Garante coluna fluxo em produtos_bipados (Postgres). Migrações antigas sem commit perdiam o ALTER."""
     if getattr(conn, 'kind', None) != 'pg':
+        return
+    if 'pg_produtos_bipados_fluxo' in _SCHEMA_ENSURE_DONE:
         return
     try:
         conn.execute(
             "ALTER TABLE public.produtos_bipados ADD COLUMN IF NOT EXISTS fluxo TEXT DEFAULT 'carregamento'"
         )
         conn.commit()
+        _SCHEMA_ENSURE_DONE.add('pg_produtos_bipados_fluxo')
     except Exception:
         try:
             conn.rollback()
@@ -945,6 +957,9 @@ DISPOSICOES_ESTOQUE_SP = frozenset({'reentrega', 'avaria', 'descarte_perdas', 'p
 def _ensure_produtos_bipados_disposicao(conn):
     """Coluna disposicao_estoque: reentrega, avaria, descarte_perdas, palete_bloqueado."""
     is_pg = getattr(conn, 'kind', None) == 'pg'
+    cache_key = 'pb_disposicao_pg' if is_pg else 'pb_disposicao_sqlite'
+    if cache_key in _SCHEMA_ENSURE_DONE:
+        return
     tbl = 'public.produtos_bipados' if is_pg else 'produtos_bipados'
     try:
         if is_pg:
@@ -955,6 +970,7 @@ def _ensure_produtos_bipados_disposicao(conn):
             if 'disposicao_estoque' not in cols:
                 conn.execute('ALTER TABLE produtos_bipados ADD COLUMN disposicao_estoque TEXT')
                 conn.commit()
+        _SCHEMA_ENSURE_DONE.add(cache_key)
     except Exception:
         try:
             conn.rollback()
@@ -2733,6 +2749,59 @@ _PRODUTOS_BIPADOS_INSERT_PG_SQL = """INSERT INTO produtos_bipados
    VALUES %s"""
 
 
+def _mapa_codigo_interno_por_barras(conn, codigos_barras):
+    """Resolve codigo_interno por EAN/DUN em lote (evita N queries em gravar-bipagem)."""
+    codigos = []
+    vistos = set()
+    for cb in codigos_barras or []:
+        s = str(cb or '').strip()
+        if s and s != '-' and s not in vistos:
+            vistos.add(s)
+            codigos.append(s)
+    if not codigos or not _usa_banco_para_dados():
+        return {}
+    ds = _get_latest_dataset_id(conn)
+    if not ds:
+        return {}
+    mapa = {}
+    chunk_size = 150
+    for i in range(0, len(codigos), chunk_size):
+        chunk = codigos[i:i + chunk_size]
+        ph = ','.join(['?'] * len(chunk))
+        try:
+            rows = conn.execute(
+                """SELECT codigo_interno, ean, dun FROM base_codigo_barras
+                   WHERE dataset_id = ?
+                     AND (
+                       TRIM(COALESCE(ean, '')) IN (""" + ph + """)
+                       OR TRIM(COALESCE(dun, '')) IN (""" + ph + """)
+                     )""",
+                [str(ds)] + chunk + chunk,
+            ).fetchall()
+        except Exception:
+            continue
+        for row in rows or []:
+            r = dict(row) if hasattr(row, 'keys') else row
+            ci = str((r.get('codigo_interno') if hasattr(r, 'get') else (r[0] if len(r) > 0 else '')) or '').strip()
+            if not ci:
+                continue
+            for campo in ('ean', 'dun'):
+                val = str((r.get(campo) if hasattr(r, 'get') else '') or '').strip()
+                if not val:
+                    continue
+                mapa[val] = ci
+                dig = re.sub(r'\D', '', val)
+                if dig:
+                    mapa[dig] = ci
+    for cb in codigos:
+        if cb in mapa:
+            continue
+        dig = re.sub(r'\D', '', cb)
+        if dig and dig in mapa:
+            mapa[cb] = mapa[dig]
+    return mapa
+
+
 def _mapa_unidades_romaneio_viagem(conn, id_viagem):
     """Mapa codigo_produto -> unidade do romaneio (uma query; evita abrir planilha por item)."""
     id_norm = _normalizar_id_viagem(id_viagem)
@@ -2824,6 +2893,23 @@ def gravar_bipagem_viagem(id_viagem):
     pulados = 0
     agora = datetime.now(timezone.utc)
     mapa_unidades = _mapa_unidades_romaneio_viagem(conn, id_norm)
+    precisa_lookup = []
+    for it in itens:
+        if not isinstance(it, dict):
+            continue
+        try:
+            qtd = int(it.get('quantidade') or 0)
+        except (TypeError, ValueError):
+            qtd = 0
+        if qtd <= 0:
+            continue
+        cb_pre = _normalizar_codigo_barras(str(it.get('codigo_barras') or '').strip())
+        ci_pre = str(it.get('codigo_interno') or it.get('codigo_produto') or '').strip()
+        if (not cb_pre or cb_pre == '-') and ci_pre:
+            cb_pre = ci_pre
+        if not ci_pre and cb_pre and cb_pre != '-':
+            precisa_lookup.append(cb_pre)
+    mapa_codigo_interno = _mapa_codigo_interno_por_barras(conn, precisa_lookup)
     params_insert = []
     try:
         _pg_auditoria_sync_desligar(conn)
@@ -2864,17 +2950,17 @@ def gravar_bipagem_viagem(id_viagem):
                 unidade = ''
             peso = str(it.get('peso') or '').strip()
             if not codigo_interno and cb and cb != '-':
-                info = buscar_produto_na_planilha(cb)
-                if info and not info.get('erro') and info.get('codigo_produto'):
-                    codigo_interno = str(info.get('codigo_produto') or '').strip()
+                codigo_interno = (
+                    mapa_codigo_interno.get(cb)
+                    or mapa_codigo_interno.get(re.sub(r'\D', '', cb))
+                    or ''
+                )
             if not unidade and codigo_interno:
                 unidade = (
                     mapa_unidades.get(codigo_interno)
                     or mapa_unidades.get(_normalizar_codigo_produto(codigo_interno) or '')
                     or ''
                 )
-                if not unidade and not _usa_banco_para_dados() and id_norm:
-                    unidade = get_unidade_romaneio(id_norm, codigo_interno) or ''
             disposicao_estoque = _normalizar_disposicao_estoque(it.get('disposicao_estoque'), fluxo=fluxo)
             params_insert.append(
                 (

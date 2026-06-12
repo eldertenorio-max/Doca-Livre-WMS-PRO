@@ -858,15 +858,13 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
     if (btnD) btnD.disabled = true;
     var salvou = false;
     var periodoAntesGravar = _conferenciaObterPeriodoBipagemLocal(idViagem);
+    _conferenciaAtivarAbaExtrato(idViagem, { semLoading: true });
+    _conferenciaPreencherExtratoInstantaneo(idViagem, { periodoLocal: periodoAntesGravar });
     try {
         window._conferenciaSalvandoNoComprovante = true;
         window._conferenciaGravarCancelado = false;
         window._conferenciaGravarAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        if (window.ravexLoadingShow) window.ravexLoadingShow('Gravando bipagem no servidor… Aguarde.');
-        _ravexLoadingSetCancelVisible(true, _conferenciaCancelarGravacaoComprovante);
         var flushOk = await _flushTodasPendenciasConferencia();
-        _ravexLoadingSetCancelVisible(false);
-        if (window.ravexLoadingHide) window.ravexLoadingHide();
         if (window._conferenciaGravarCancelado || (flushOk && flushOk.cancelado)) {
             return false;
         }
@@ -883,8 +881,6 @@ async function _conferenciaSalvarBipagemEGerarExtrato() {
         _conferenciaSalvarSessao({ id_viagem: idViagem, comprovante_gerado: true, tem_rascunho: false });
         _limparPendenciasConferenciaTimers();
         salvou = true;
-        _conferenciaAtivarAbaExtrato(idViagem, { semLoading: true });
-        _conferenciaPreencherExtratoInstantaneo(idViagem, { periodoLocal: periodoAntesGravar });
         showMessage('Bipagem salva. Extrato atualizado.', 'success');
         _conferenciaAtualizarAvisoRascunho();
         void loadExtrato(idViagem, { forcar: true, silencioso: true });
@@ -1033,11 +1029,27 @@ function _conferenciaColetarItensTabelaParaGravar() {
     return itens;
 }
 
+function _conferenciaIndiceLinhasTabelaConferencia() {
+    var tbody = document.getElementById('tbody-conferencia');
+    var indice = { porBarras: {}, porCodigo: {} };
+    if (!tbody) return indice;
+    var C = window._CONF_COL;
+    var rows = tbody.querySelectorAll('tr');
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row.cells || row.cells.length < 12 || row.querySelector('td[colspan]')) continue;
+        var cbLinha = (row.cells[C.COD_BARRAS].textContent || '').trim();
+        var ciLinha = (row.getAttribute('data-codigo') || row.cells[C.COD_PRODUTO].textContent || '').trim();
+        if (cbLinha && cbLinha !== '-') indice.porBarras[cbLinha] = row;
+        if (ciLinha) indice.porCodigo[ciLinha] = row;
+    }
+    return indice;
+}
+
 function _conferenciaConsolidarBipsDisposicao() {
     var log = window._conferenciaBipsDisposicao || [];
     if (!log.length) return [];
     var map = {};
-    var tbody = document.getElementById('tbody-conferencia');
     var C = window._CONF_COL;
     log.forEach(function(b) {
         var cb = String(b.codigo_barras || '').trim();
@@ -1060,31 +1072,33 @@ function _conferenciaConsolidarBipsDisposicao() {
         map[key].quantidade += parseInt(b.quantidade, 10) || 0;
         if (!map[key].produto && b.produto) map[key].produto = String(b.produto).trim();
     });
+    var indice = _conferenciaIndiceLinhasTabelaConferencia();
     Object.keys(map).forEach(function(k) {
         var it = map[k];
-        if (!tbody) return;
-        var rows = tbody.querySelectorAll('tr');
-        for (var i = 0; i < rows.length; i++) {
-            var row = rows[i];
-            if (!row.cells || row.cells.length < 12) continue;
-            var cbLinha = (row.cells[C.COD_BARRAS].textContent || '').trim();
-            var ciLinha = (row.getAttribute('data-codigo') || row.cells[C.COD_PRODUTO].textContent || '').trim();
-            if ((it.codigo_barras && cbLinha === it.codigo_barras) || (it.codigo_interno && ciLinha === it.codigo_interno)) {
-                if (!it.produto) it.produto = (row.cells[C.PRODUTO].textContent || '').trim();
-                it.unidade = (row.cells[C.UN].textContent || '').trim();
-                it.peso = (row.cells[C.PESO].textContent || '').trim();
-                if (!it.codigo_interno) it.codigo_interno = ciLinha;
-                break;
-            }
-        }
+        var row = indice.porBarras[it.codigo_barras] || (it.codigo_interno ? indice.porCodigo[it.codigo_interno] : null);
+        if (!row || !row.cells) return;
+        if (!it.produto) it.produto = (row.cells[C.PRODUTO].textContent || '').trim();
+        it.unidade = (row.cells[C.UN].textContent || '').trim();
+        it.peso = (row.cells[C.PESO].textContent || '').trim();
+        if (!it.codigo_interno) it.codigo_interno = (row.getAttribute('data-codigo') || row.cells[C.COD_PRODUTO].textContent || '').trim();
     });
     return Object.keys(map).map(function(k) { return map[k]; }).filter(function(it) { return it.quantidade > 0; });
 }
 
 function _conferenciaColetarItensParaGravar() {
+    var fromTable = _conferenciaColetarItensTabelaParaGravar();
+    var log = window._conferenciaBipsDisposicao || [];
+    var temDispEspecial = false;
+    for (var i = 0; i < log.length; i++) {
+        if (log[i] && log[i].disposicao_estoque) {
+            temDispEspecial = true;
+            break;
+        }
+    }
+    if (!temDispEspecial && fromTable.length) return fromTable;
     var fromLog = _conferenciaConsolidarBipsDisposicao();
     if (fromLog && fromLog.length) return fromLog;
-    return _conferenciaColetarItensTabelaParaGravar();
+    return fromTable;
 }
 
 /** Monta lista do extrato a partir da tabela da conferência (instantâneo após gerar comprovante). */
