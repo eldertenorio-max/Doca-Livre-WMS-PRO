@@ -3363,13 +3363,21 @@ def _aplicar_filtro_expedicao_sql(sql, params, ids_filtro, col='id_viagem'):
 COORDENADOR_PADRAO = 'ASTROGILDO RODRIGUES DOS SANTOS'
 
 
+def _coordenador_resposta_api(val):
+    """Não devolve o coordenador padrão legado como valor preenchido na tela."""
+    s = (val or '').strip()
+    if not s or s.upper() == COORDENADOR_PADRAO.upper():
+        return ''
+    return s
+
+
 @app.route('/api/viagem/<id_viagem>/info', methods=['GET'])
 def get_viagem_info(id_viagem):
     """Retorna data expedição, placa, identificador da rota, motorista e responsáveis (override ou planilha)."""
     if not id_viagem:
         return jsonify({
             'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': '',
-            'coordenador': COORDENADOR_PADRAO, 'conferente': '', 'ajudante1': '', 'ajudante2': '',
+            'coordenador': '', 'conferente': '', 'ajudante1': '', 'ajudante2': '',
             'id_roteiro': '', 'id_viagem': ''
         })
     info = _get_viagem_info_planilha(id_viagem)
@@ -3377,7 +3385,7 @@ def get_viagem_info(id_viagem):
         info = {'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': '', 'id_roteiro': '', 'id_viagem': id_viagem}
     info.setdefault('id_roteiro', '')
     info.setdefault('id_viagem', id_viagem)
-    info.setdefault('coordenador', COORDENADOR_PADRAO)
+    info.setdefault('coordenador', '')
     info.setdefault('conferente', '')
     info.setdefault('ajudante1', '')
     info.setdefault('ajudante2', '')
@@ -3405,12 +3413,13 @@ def get_viagem_info(id_viagem):
         if motorista_val:
             info['motorista'] = motorista_val.strip() if isinstance(motorista_val, str) else str(motorista_val).strip()
     if row_r:
-        info['coordenador'] = (row_r.get('coordenador') if hasattr(row_r, 'get') else (row_r[0] if len(row_r) > 0 else None) or '').strip() or COORDENADOR_PADRAO
+        raw_coord = (row_r.get('coordenador') if hasattr(row_r, 'get') else (row_r[0] if len(row_r) > 0 else None) or '').strip()
+        info['coordenador'] = _coordenador_resposta_api(raw_coord)
         info['conferente'] = (row_r.get('conferente') if hasattr(row_r, 'get') else (row_r[1] if len(row_r) > 1 else None) or '').strip()
         info['ajudante1'] = (row_r.get('ajudante1') if hasattr(row_r, 'get') else (row_r[2] if len(row_r) > 2 else None) or '').strip()
         info['ajudante2'] = (row_r.get('ajudante2') if hasattr(row_r, 'get') else (row_r[3] if len(row_r) > 3 else None) or '').strip()
     else:
-        info['coordenador'] = COORDENADOR_PADRAO
+        info['coordenador'] = ''
     return jsonify(info)
 
 
@@ -3476,7 +3485,7 @@ def set_viagem_responsaveis(id_viagem):
     if not id_viagem:
         return jsonify({'erro': 'ID do roteiro não informado'}), 400
     data = request.get_json(silent=True) or {}
-    coordenador = (data.get('coordenador') or '').strip() or COORDENADOR_PADRAO
+    coordenador = (data.get('coordenador') or '').strip()
     conferente = (data.get('conferente') or '').strip()
     ajudante1 = (data.get('ajudante1') or '').strip()
     ajudante2 = (data.get('ajudante2') or '').strip()
@@ -4340,7 +4349,7 @@ def get_conferencia(id_viagem=None):
                 'placa': meta.get('placa') or '',
                 'motorista': meta.get('motorista') or '',
                 'data_expedicao': meta.get('data_expedicao') or '',
-                'coordenador': meta.get('coordenador') or COORDENADOR_PADRAO,
+                'coordenador': _coordenador_resposta_api(meta.get('coordenador')),
                 'conferente': meta.get('conferente') or '',
                 'ajudante1': meta.get('ajudante1') or '',
                 'ajudante2': meta.get('ajudante2') or '',
@@ -7516,17 +7525,17 @@ def _conferencia_enriquecer_meta_pg(conn, ds, id_para_lookup, id_busca, meta):
             if not meta.get('motorista'):
                 meta['motorista'] = str((row.get('motorista') if hasattr(row, 'get') else (row[3] if len(row) > 3 else '')) or '').strip()
             coord = (row.get('coordenador') if hasattr(row, 'get') else (row[4] if len(row) > 4 else None) or '').strip()
-            meta['coordenador'] = coord or COORDENADOR_PADRAO
+            meta['coordenador'] = _coordenador_resposta_api(coord)
             meta['conferente'] = (row.get('conferente') if hasattr(row, 'get') else (row[5] if len(row) > 5 else None) or '').strip()
             meta['ajudante1'] = (row.get('ajudante1') if hasattr(row, 'get') else (row[6] if len(row) > 6 else None) or '').strip()
             meta['ajudante2'] = (row.get('ajudante2') if hasattr(row, 'get') else (row[7] if len(row) > 7 else None) or '').strip()
         else:
-            meta.setdefault('coordenador', COORDENADOR_PADRAO)
+            meta.setdefault('coordenador', '')
             meta.setdefault('conferente', '')
             meta.setdefault('ajudante1', '')
             meta.setdefault('ajudante2', '')
     except Exception:
-        meta.setdefault('coordenador', COORDENADOR_PADRAO)
+        meta.setdefault('coordenador', '')
         meta.setdefault('conferente', '')
         meta.setdefault('ajudante1', '')
         meta.setdefault('ajudante2', '')
@@ -7750,13 +7759,13 @@ def _get_viagem_info_dict(id_viagem):
     """Retorna dict com dados da viagem (para exportação)."""
     if not id_viagem:
         return {'data_expedicao': '', 'placa': '', 'identificador_rota': '', 'motorista': '',
-                'coordenador': COORDENADOR_PADRAO, 'conferente': '', 'ajudante1': '', 'ajudante2': ''}
+                'coordenador': '', 'conferente': '', 'ajudante1': '', 'ajudante2': ''}
     info = _get_viagem_info_planilha(id_viagem) or {}
     info.setdefault('data_expedicao', '')
     info.setdefault('placa', '')
     info.setdefault('identificador_rota', '')
     info.setdefault('motorista', '')
-    info.setdefault('coordenador', COORDENADOR_PADRAO)
+    info.setdefault('coordenador', '')
     info.setdefault('conferente', '')
     info.setdefault('ajudante1', '')
     info.setdefault('ajudante2', '')
@@ -7771,7 +7780,7 @@ def _get_viagem_info_dict(id_viagem):
     if row_m and row_m[0]:
         info['motorista'] = row_m[0].strip()
     if row_r:
-        info['coordenador'] = (row_r[0] or '').strip() or COORDENADOR_PADRAO
+        info['coordenador'] = _coordenador_resposta_api((row_r[0] or '').strip())
         info['conferente'] = (row_r[1] or '').strip()
         info['ajudante1'] = (row_r[2] or '').strip()
         info['ajudante2'] = (row_r[3] or '').strip()

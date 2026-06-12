@@ -16509,8 +16509,6 @@ function atualizarSugestoesRotaConferencia() {
     loadColaboradoresMotoristas(true);
 }
 
-const COORDENADOR_PADRAO = 'ASTROGILDO RODRIGUES DOS SANTOS';
-
 function _aplicarExtrasConferenciaResponse(conferencia, idViagem, isDev) {
     if (!conferencia || isDev) return;
     var setVal = function(id, val) {
@@ -16522,7 +16520,7 @@ function _aplicarExtrasConferenciaResponse(conferencia, idViagem, isDev) {
         if (el) el.value = (val && String(val).trim()) ? val : '';
     };
     if (conferencia.coordenador !== undefined || conferencia.conferente !== undefined) {
-        setInput('viagem-coordenador', (conferencia.coordenador && String(conferencia.coordenador).trim()) ? conferencia.coordenador : COORDENADOR_PADRAO);
+        setInput('viagem-coordenador', conferencia.coordenador || '');
         setInput('viagem-conferente', conferencia.conferente || '');
         setInput('viagem-ajudante1', conferencia.ajudante1 || '');
         setInput('viagem-ajudante2', conferencia.ajudante2 || '');
@@ -16571,7 +16569,7 @@ async function loadViagemInfo(idViagem) {
             if (data.identificador_rota !== undefined && data.identificador_rota !== null && String(data.identificador_rota).trim()) setVal('viagem-identificador-rota', data.identificador_rota);
             else setVal('viagem-identificador-rota', data.identificador_rota || '-');
             if (data.motorista !== undefined && data.motorista !== null && String(data.motorista).trim()) setMotorista(data.motorista);
-            setInput('viagem-coordenador', (data.coordenador && String(data.coordenador).trim()) ? data.coordenador : COORDENADOR_PADRAO);
+            setInput('viagem-coordenador', data.coordenador || '');
             setInput('viagem-conferente', data.conferente || '');
             setInput('viagem-ajudante1', data.ajudante1 || '');
             setInput('viagem-ajudante2', data.ajudante2 || '');
@@ -16584,7 +16582,7 @@ async function loadViagemInfo(idViagem) {
             setPlaca('');
             setVal('viagem-identificador-rota', '-');
             setMotorista('');
-            setInput('viagem-coordenador', COORDENADOR_PADRAO);
+            setInput('viagem-coordenador', '');
             setInput('viagem-conferente', '');
             setInput('viagem-ajudante1', '');
             setInput('viagem-ajudante2', '');
@@ -16596,7 +16594,7 @@ async function loadViagemInfo(idViagem) {
         setPlaca('');
         setVal('viagem-identificador-rota', '-');
         setMotorista('');
-        setInput('viagem-coordenador', COORDENADOR_PADRAO);
+        setInput('viagem-coordenador', '');
         setInput('viagem-conferente', '');
         setInput('viagem-ajudante1', '');
         setInput('viagem-ajudante2', '');
@@ -16645,7 +16643,7 @@ async function salvarPlacaViagem() {
 async function salvarResponsaveisViagem() {
     const idViagem = document.getElementById('id-viagem-hidden').value.trim() || document.getElementById('id-viagem').value.trim();
     if (!idViagem) return;
-    const coordenador = (document.getElementById('viagem-coordenador') && document.getElementById('viagem-coordenador').value.trim()) || COORDENADOR_PADRAO;
+    const coordenador = (document.getElementById('viagem-coordenador') && document.getElementById('viagem-coordenador').value.trim()) || '';
     const conferente = (document.getElementById('viagem-conferente') && document.getElementById('viagem-conferente').value.trim()) || '';
     const ajudante1 = (document.getElementById('viagem-ajudante1') && document.getElementById('viagem-ajudante1').value.trim()) || '';
     const ajudante2 = (document.getElementById('viagem-ajudante2') && document.getElementById('viagem-ajudante2').value.trim()) || '';
