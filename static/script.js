@@ -17470,7 +17470,6 @@ async function loadConferencia(idViagem = null, opts) {
                 var elD = L('data-expedicao'); if (elD) elD.textContent = (conferencia.data_expedicao && String(conferencia.data_expedicao).trim()) ? conferencia.data_expedicao : '-';
                 if (conferencia.id_viagem && String(conferencia.id_viagem).trim()) {
                     var h = L('id-viagem-hidden'); if (h) h.value = conferencia.id_viagem;
-                    var i = L('id-viagem'); if (i) i.value = conferencia.id_viagem;
                 }
                 if (!isDev) {
                     _preencherDatalist('datalist-placas', listaPlacas, [
@@ -17516,10 +17515,15 @@ async function loadConferencia(idViagem = null, opts) {
                 return undefined;
             }
             if (conferenciaUI.length === 0) {
+                if (!isDev && !opts._retriedViagem && conferencia.id_viagem && String(conferencia.id_viagem).trim() !== String(idViagem).trim()) {
+                    return loadConferencia(conferencia.id_viagem, Object.assign({}, opts, { _retriedViagem: true }));
+                }
                 var msgVazio = (isDev && (!window._devolucaoNfAtiva || !window._devolucaoNfAtiva.id))
                     ? 'Inicie uma NF e bip os itens do retorno.'
                     : (isDev ? 'Nenhum item bipado nesta NF ainda. Escaneie o retorno.' : 'Nenhum item encontrado para esta viagem no romaneio.');
-                if (!isDev && conferencia.ja_baixado_ravex === false && conferencia.aviso_ravex) {
+                if (!isDev && conferencia.aviso_romaneio_vazio) {
+                    msgVazio = conferencia.aviso_romaneio_vazio;
+                } else if (!isDev && conferencia.ja_baixado_ravex === false && conferencia.aviso_ravex) {
                     msgVazio = conferencia.aviso_ravex;
                 }
                 tbody.innerHTML = '<tr><td colspan="12" class="loading">' + escapeHtml(msgVazio) + '</td></tr>';

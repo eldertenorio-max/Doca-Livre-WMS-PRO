@@ -3423,6 +3423,55 @@ def get_viagem_info(id_viagem):
     return jsonify(info)
 
 
+def _ravex_romaneio_info_por_ids(conn, dataset_id, ids):
+    """Conta itens no romaneio para uma lista de IDs (roteiro/viagem)."""
+    ids = [str(x).strip() for x in (ids or []) if str(x or '').strip()]
+    if not ids or not dataset_id:
+        return None
+    ph = ','.join(['?'] * len(ids))
+    try:
+        row = conn.execute(
+            f"""SELECT COUNT(*)::int AS n, MAX(importado_em) AS ultimo,
+                       MAX(TRIM(COALESCE(id_viagem::text, ''))) AS id_viagem,
+                       MAX(TRIM(COALESCE(id_roteiro::text, ''))) AS id_roteiro
+                FROM romaneio_por_item
+                WHERE dataset_id = ?
+                  AND (
+                    TRIM(COALESCE(id_viagem::text, '')) IN ({ph})
+                    OR TRIM(COALESCE(id_roteiro::text, '')) IN ({ph})
+                  )""",
+            [str(dataset_id)] + ids + ids,
+        ).fetchone()
+    except Exception:
+        try:
+            row = conn.execute(
+                f"""SELECT COUNT(*) AS n, MAX(importado_em) AS ultimo,
+                           MAX(id_viagem) AS id_viagem,
+                           MAX(id_roteiro) AS id_roteiro
+                    FROM romaneio_por_item
+                    WHERE dataset_id = ?
+                      AND (
+                        TRIM(COALESCE(id_viagem, '')) IN ({ph})
+                        OR TRIM(COALESCE(id_roteiro, '')) IN ({ph})
+                      )""",
+                [str(dataset_id)] + ids + ids,
+            ).fetchone()
+        except Exception:
+            return None
+    if not row:
+        return None
+    n = int((row.get('n') if hasattr(row, 'get') else row[0]) or 0)
+    if n <= 0:
+        return None
+    return {
+        'itens_romaneio': n,
+        'importado_em': row.get('ultimo') if hasattr(row, 'get') else (row[1] if len(row) > 1 else None),
+        'fonte': 'romaneio',
+        'id_viagem': str((row.get('id_viagem') if hasattr(row, 'get') else (row[2] if len(row) > 2 else '')) or '').strip(),
+        'id_roteiro': str((row.get('id_roteiro') if hasattr(row, 'get') else (row[3] if len(row) > 3 else '')) or '').strip(),
+    }
+
+
 @app.route('/api/viagem/<id_viagem>/motorista', methods=['PUT', 'PATCH'])
 def set_viagem_motorista(id_viagem):
     """Salva o motorista alterado para a viagem (override)."""
@@ -4116,26 +4165,193 @@ def _agrupar_romaneio_rows_por_codigo_produto(romaneio_rows, mapa_ean, mapa_dun,
     return linhas
 
 
-_ROMANEIO_CONFERENCIA_SQL = """SELECT id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
-                  placa, motorista, data_expedicao
-           FROM romaneio_por_item
-           WHERE dataset_id = ? AND {coluna} = ?
-           ORDER BY row_index
-           LIMIT ?"""
+_ROMANEIO_CONFERENCIA_COLS = """id_roteiro, id_viagem, identificador_rota, codigo_produto, descricao, quantidade, unidade, peso_bruto,
+                  placa, motorista, data_expedicao"""
+
+
+def _conferencia_ids_busca_variantes(id_input):
+    """IDs equivalentes para buscar romaneio (roteiro ou viagem digitados)."""
+    ids = []
+    vistos = set()
+
+    def _add(val):
+        s = str(val or '').strip()
+        if not s or s in vistos:
+            return
+        vistos.add(s)
+        ids.append(s)
+
+    _add(id_input)
+    _add(_normalizar_id_viagem(id_input))
+    return ids
+
+
+def _conferencia_expandir_ids_romaneio(conn, ids, dataset_id=None):
+    """Inclui o par viagem/roteiro gravado no romaneio (ex.: busca 741740 → também 19306305)."""
+    ids = list(ids or [])
+    vistos = set(ids)
+    if not ids:
+        return ids
+    ph = ','.join(['?'] * len(ids))
+    params = list(ids) + list(ids)
+    sql = (
+        f"""SELECT DISTINCT TRIM(COALESCE(id_viagem::text, '')) AS id_v,
+                   TRIM(COALESCE(id_roteiro::text, '')) AS id_r
+            FROM romaneio_por_item
+            WHERE (
+              TRIM(COALESCE(id_viagem::text, '')) IN ({ph})
+              OR TRIM(COALESCE(id_roteiro::text, '')) IN ({ph})
+            )"""
+    )
+    if dataset_id:
+        sql = (
+            f"""SELECT DISTINCT TRIM(COALESCE(id_viagem::text, '')) AS id_v,
+                       TRIM(COALESCE(id_roteiro::text, '')) AS id_r
+                FROM romaneio_por_item
+                WHERE dataset_id = ?
+                  AND (
+                    TRIM(COALESCE(id_viagem::text, '')) IN ({ph})
+                    OR TRIM(COALESCE(id_roteiro::text, '')) IN ({ph})
+                  )"""
+        )
+        params = [str(dataset_id)] + params
+    try:
+        rows = conn.execute(sql, params).fetchall()
+    except Exception:
+        return ids
+    for row in rows or []:
+        for key in ('id_v', 'id_r'):
+            val = str((row.get(key) if hasattr(row, 'get') else '') or '').strip()
+            if val and val not in vistos:
+                vistos.add(val)
+                ids.append(val)
+    return ids
+
+
+def _conferencia_enriquecer_ids_de_importacao(conn, ids, dataset_id=None):
+    """Completa IDs a partir do histórico ravex_importacoes (roteiro ↔ viagem)."""
+    ids = list(ids or [])
+    vistos = set(ids)
+    if not ids:
+        return ids
+    ph = ','.join(['?'] * len(ids))
+    params = list(ids) + list(ids) + list(ids)
+    sql = f"""SELECT parametros FROM ravex_importacoes
+              WHERE status IN ('OK', 'OK_COM_ERROS', 'DUPLICADO')
+                AND (
+                  TRIM(COALESCE(parametros->>'id_viagem', '')) IN ({ph})
+                  OR TRIM(COALESCE(parametros->>'id_roteiro', '')) IN ({ph})
+                  OR TRIM(COALESCE(parametros->>'id_informado', '')) IN ({ph})
+                )
+              ORDER BY criado_em DESC NULLS LAST
+              LIMIT 12"""
+    if dataset_id:
+        sql = sql.replace(
+            'WHERE status',
+            'WHERE dataset_id = ?::uuid AND status',
+            1,
+        )
+        params = [str(dataset_id)] + params
+    try:
+        rows = conn.execute(sql, params).fetchall()
+    except Exception:
+        return ids
+    for row in rows or []:
+        params_json = row.get('parametros') if hasattr(row, 'get') else (row[0] if row else None)
+        if isinstance(params_json, str):
+            try:
+                params_json = json.loads(params_json)
+            except Exception:
+                params_json = {}
+        if not isinstance(params_json, dict):
+            continue
+        for key in ('id_viagem', 'id_roteiro', 'id_informado'):
+            _val = str(params_json.get(key) or '').strip()
+            if _val and _val not in vistos:
+                vistos.add(_val)
+                ids.append(_val)
+        for vid in params_json.get('viagens_importadas') or []:
+            _val = str(vid or '').strip()
+            if _val and _val not in vistos:
+                vistos.add(_val)
+                ids.append(_val)
+    return ids
+
+
+def _conferencia_resolver_dataset_id(conn, id_busca):
+    """Dataset onde o romaneio deste roteiro/viagem está gravado (prioriza o ativo)."""
+    ds_ativo = _get_latest_dataset_id(conn)
+    ids = _conferencia_ids_busca_variantes(id_busca)
+    ids = _conferencia_expandir_ids_romaneio(conn, ids)
+    ids = _conferencia_enriquecer_ids_de_importacao(conn, ids)
+    if not ids:
+        return ds_ativo
+    ph = ','.join(['?'] * len(ids))
+
+    def _tem_no_dataset(ds):
+        if not ds:
+            return False
+        try:
+            row = conn.execute(
+                f"""SELECT 1 FROM romaneio_por_item
+                    WHERE dataset_id = ?
+                      AND (
+                        TRIM(COALESCE(id_viagem::text, '')) IN ({ph})
+                        OR TRIM(COALESCE(id_roteiro::text, '')) IN ({ph})
+                      )
+                    LIMIT 1""",
+                [str(ds)] + ids + ids,
+            ).fetchone()
+        except Exception:
+            return False
+        return bool(row)
+
+    if ds_ativo and _tem_no_dataset(ds_ativo):
+        return ds_ativo
+    try:
+        row = conn.execute(
+            f"""SELECT dataset_id FROM romaneio_por_item
+                WHERE TRIM(COALESCE(id_viagem::text, '')) IN ({ph})
+                   OR TRIM(COALESCE(id_roteiro::text, '')) IN ({ph})
+                ORDER BY importado_em DESC NULLS LAST
+                LIMIT 1""",
+            ids + ids,
+        ).fetchone()
+    except Exception:
+        row = None
+    if row:
+        ds = row.get('dataset_id') if hasattr(row, 'get') else (row[0] if len(row) > 0 else None)
+        if ds:
+            return ds
+    return ds_ativo
 
 
 def _conferencia_buscar_romaneio_rows(conn, ds, id_busca, limit_romaneio):
-    """Busca romaneio usando índice (id_viagem ou id_roteiro), sem TRIM/OR lento."""
-    params_base = (str(ds), id_busca, limit_romaneio)
-    rows = conn.execute(
-        _ROMANEIO_CONFERENCIA_SQL.format(coluna='id_viagem::text'),
-        params_base,
-    ).fetchall()
-    if not rows:
+    """Busca romaneio por roteiro ou viagem (TRIM, variantes e par roteiro↔viagem)."""
+    id_busca = str(id_busca or '').strip()
+    if not id_busca or not ds:
+        return []
+    ids = _conferencia_ids_busca_variantes(id_busca)
+    ids = _conferencia_expandir_ids_romaneio(conn, ids, dataset_id=ds)
+    ids = _conferencia_enriquecer_ids_de_importacao(conn, ids, dataset_id=ds)
+    if not ids:
+        return []
+    ph = ','.join(['?'] * len(ids))
+    try:
         rows = conn.execute(
-            _ROMANEIO_CONFERENCIA_SQL.format(coluna='id_roteiro::text'),
-            params_base,
+            f"""SELECT {_ROMANEIO_CONFERENCIA_COLS}
+                FROM romaneio_por_item
+                WHERE dataset_id = ?
+                  AND (
+                    TRIM(COALESCE(id_viagem::text, '')) IN ({ph})
+                    OR TRIM(COALESCE(id_roteiro::text, '')) IN ({ph})
+                  )
+                ORDER BY row_index
+                LIMIT ?""",
+            [str(ds)] + ids + ids + [int(limit_romaneio)],
         ).fetchall()
+    except Exception:
+        rows = []
     return rows or []
 
 
@@ -4149,10 +4365,10 @@ def _conferencia_build_lista_pg(conn, id_viagem, fluxo_req='carregamento', limit
         fluxo_req = 'carregamento'
     id_viagem_norm = _normalizar_id_viagem(id_viagem)
     _ensure_pg_produtos_bipados_fluxo(conn)
-    ds = _get_latest_dataset_id(conn)
+    id_busca = (id_viagem_norm or id_viagem or '').strip()
+    ds = _conferencia_resolver_dataset_id(conn, id_busca)
     if not ds:
         return [], {}, '', 'Nenhum dataset ativo. Importe a base primeiro.'
-    id_busca = (id_viagem_norm or id_viagem or '').strip()
     try:
         limit_romaneio = min(2000, max(200, int(limit_romaneio)))
     except (TypeError, ValueError):
@@ -4311,7 +4527,7 @@ def get_conferencia(id_viagem=None):
             if err_build:
                 conn.close()
                 return jsonify({'erro': err_build}), 400
-            ds = _get_latest_dataset_id(conn)
+            ds = _conferencia_resolver_dataset_id(conn, id_busca)
             id_para_lookup = id_para_bipados or id_busca
             meta = _conferencia_enriquecer_meta_pg(conn, ds, id_para_lookup, id_busca, meta)
             carregar_motivos = request.args.get('motivos', '1').strip().lower() not in ('0', 'false', 'no')
@@ -4332,18 +4548,40 @@ def get_conferencia(id_viagem=None):
                 fim_str = ''
             ja_baixado_ravex = True
             aviso_ravex = ''
+            aviso_romaneio_vazio = ''
+            info_b = None
             verificar_baixado = request.args.get('verificar_baixado', '1').strip().lower() not in ('0', 'false', 'no')
-            if verificar_baixado and ds:
-                ja_b, _info_b = _ravex_id_input_ja_baixado(conn, ds, id_busca)
+            if verificar_baixado:
+                ja_b, info_b = _ravex_id_input_ja_baixado(conn, ds, id_busca)
                 ja_baixado_ravex = bool(ja_b)
                 if not ja_baixado_ravex:
                     aviso_ravex = _ravex_mensagem_nao_baixado(id_busca)
-            conn.close()
             total_romaneio = len(resultado)
+            id_roteiro_resp = meta.get('id_roteiro') or ''
+            if not id_roteiro_resp and info_b:
+                id_roteiro_resp = str(info_b.get('id_roteiro') or '').strip()
+            if not id_viagem_resposta and info_b:
+                id_viagem_resposta = str(info_b.get('id_viagem') or '').strip()
+            if total_romaneio == 0 and ja_baixado_ravex and info_b:
+                n_rom = int(info_b.get('itens_romaneio') or 0)
+                id_v_hist = str(info_b.get('id_viagem') or '').strip()
+                id_r_hist = str(info_b.get('id_roteiro') or '').strip()
+                if n_rom > 0 and id_v_hist and id_v_hist != id_busca:
+                    aviso_romaneio_vazio = (
+                        'Romaneio com %s itens vinculado à viagem %s (roteiro %s). '
+                        'Recarregue a página e busque novamente; a bipagem usa o ID da viagem.'
+                        % (n_rom, id_v_hist, id_r_hist or id_busca)
+                    )
+                elif info_b.get('fonte') == 'historico' and n_rom <= 0:
+                    aviso_romaneio_vazio = (
+                        'Este ID consta como baixado no Ravex, mas o romaneio está vazio no banco. '
+                        'Reimporte pela aba Importar Ravex.'
+                    )
+            conn.close()
             return jsonify({
                 'lista': resultado,
                 'lista_ja_agregada': True,
-                'id_roteiro': meta.get('id_roteiro') or '',
+                'id_roteiro': id_roteiro_resp,
                 'id_viagem': id_viagem_resposta,
                 'identificador_rota': meta.get('identificador_rota') or '',
                 'placa': meta.get('placa') or '',
@@ -4359,6 +4597,7 @@ def get_conferencia(id_viagem=None):
                 'limit_romaneio': limit_romaneio,
                 'ja_baixado_ravex': ja_baixado_ravex,
                 'aviso_ravex': aviso_ravex,
+                'aviso_romaneio_vazio': aviso_romaneio_vazio,
             })
         except Exception as e:
             try:
@@ -4864,71 +5103,60 @@ def _ravex_viagens_ja_baixadas_batch(conn, dataset_id, id_viagens):
 
 
 def _ravex_id_input_ja_baixado(conn, dataset_id, id_input):
-    """Verifica se o ID informado (roteiro ou viagem) já foi baixado no dataset ativo."""
+    """Verifica se o ID informado (roteiro ou viagem) já foi baixado (romaneio ou histórico)."""
     id_norm = str(id_input or '').strip()
-    if not id_norm or not dataset_id:
+    if not id_norm:
         return False, None
-    ds = str(dataset_id)
-    info = None
-
-    def _info_romaneio(row):
-        n = int((row.get('n') if hasattr(row, 'get') else row[0]) or 0)
-        if n <= 0:
-            return None
-        ultimo = row.get('ultimo') if hasattr(row, 'get') else (row[1] if len(row) > 1 else None)
-        id_viagem = str((row.get('id_viagem') if hasattr(row, 'get') else (row[2] if len(row) > 2 else '')) or '').strip()
-        id_roteiro = str((row.get('id_roteiro') if hasattr(row, 'get') else (row[3] if len(row) > 3 else '')) or '').strip()
-        return {
-            'itens_romaneio': n,
-            'importado_em': ultimo,
-            'fonte': 'romaneio',
-            'id_viagem': id_viagem,
-            'id_roteiro': id_roteiro,
-            'id_informado': id_norm,
-        }
-
-    sql_viagem = """SELECT COUNT(*)::int AS n, MAX(importado_em) AS ultimo,
-                           MAX(id_viagem::text) AS id_viagem,
-                           MAX(id_roteiro::text) AS id_roteiro
-                    FROM romaneio_por_item
-                    WHERE dataset_id = ? AND id_viagem::text = ?"""
-    sql_roteiro = """SELECT COUNT(*)::int AS n, MAX(importado_em) AS ultimo,
-                            MAX(id_viagem::text) AS id_viagem,
-                            MAX(id_roteiro::text) AS id_roteiro
-                     FROM romaneio_por_item
-                     WHERE dataset_id = ? AND id_roteiro::text = ?"""
-    try:
-        row = conn.execute(sql_viagem, (ds, id_norm)).fetchone()
-        info = _info_romaneio(row) if row else None
-        if not info:
-            row = conn.execute(sql_roteiro, (ds, id_norm)).fetchone()
-            info = _info_romaneio(row) if row else None
-    except Exception:
-        sql_viagem = sql_viagem.replace('::int', '').replace('::text', '')
-        sql_roteiro = sql_roteiro.replace('::int', '').replace('::text', '')
-        row = conn.execute(sql_viagem, (ds, id_norm)).fetchone()
-        info = _info_romaneio(row) if row else None
-        if not info:
-            row = conn.execute(sql_roteiro, (ds, id_norm)).fetchone()
-            info = _info_romaneio(row) if row else None
-    if info:
-        return True, info
-    try:
-        hist = conn.execute(
-            """SELECT criado_em, total_itens, parametros
-               FROM ravex_importacoes
-               WHERE dataset_id = ? AND status IN ('OK', 'OK_COM_ERROS', 'DUPLICADO')
-                 AND (
-                   TRIM(COALESCE(parametros->>'id_viagem', '')) = ?
-                   OR TRIM(COALESCE(parametros->>'id_roteiro', '')) = ?
-                   OR TRIM(COALESCE(parametros->>'id_informado', '')) = ?
-                 )
-               ORDER BY criado_em DESC
-               LIMIT 1""",
-            (str(dataset_id), id_norm, id_norm, id_norm),
-        ).fetchone()
-    except Exception:
-        hist = None
+    ids = _conferencia_ids_busca_variantes(id_norm)
+    ids = _conferencia_expandir_ids_romaneio(conn, ids)
+    ids = _conferencia_enriquecer_ids_de_importacao(conn, ids)
+    ds_lista = []
+    if dataset_id:
+        ds_lista.append(str(dataset_id))
+    ds_resolvido = _conferencia_resolver_dataset_id(conn, id_norm)
+    if ds_resolvido and str(ds_resolvido) not in ds_lista:
+        ds_lista.append(str(ds_resolvido))
+    for ds in ds_lista:
+        info = _ravex_romaneio_info_por_ids(conn, ds, ids)
+        if info:
+            info['id_informado'] = id_norm
+            return True, info
+    ph = ','.join(['?'] * len(ids)) if ids else ''
+    hist = None
+    if ids:
+        try:
+            hist = conn.execute(
+                f"""SELECT criado_em, total_itens, parametros
+                   FROM ravex_importacoes
+                   WHERE status IN ('OK', 'OK_COM_ERROS', 'DUPLICADO')
+                     AND (
+                       TRIM(COALESCE(parametros->>'id_viagem', '')) IN ({ph})
+                       OR TRIM(COALESCE(parametros->>'id_roteiro', '')) IN ({ph})
+                       OR TRIM(COALESCE(parametros->>'id_informado', '')) IN ({ph})
+                     )
+                   ORDER BY criado_em DESC NULLS LAST
+                   LIMIT 1""",
+                ids + ids + ids,
+            ).fetchone()
+        except Exception:
+            hist = None
+    if not hist and dataset_id and ids:
+        try:
+            hist = conn.execute(
+                f"""SELECT criado_em, total_itens, parametros
+                   FROM ravex_importacoes
+                   WHERE dataset_id = ? AND status IN ('OK', 'OK_COM_ERROS', 'DUPLICADO')
+                     AND (
+                       TRIM(COALESCE(parametros->>'id_viagem', '')) IN ({ph})
+                       OR TRIM(COALESCE(parametros->>'id_roteiro', '')) IN ({ph})
+                       OR TRIM(COALESCE(parametros->>'id_informado', '')) IN ({ph})
+                     )
+                   ORDER BY criado_em DESC
+                   LIMIT 1""",
+                [str(dataset_id)] + ids + ids + ids,
+            ).fetchone()
+        except Exception:
+            hist = None
     if hist:
         criado = hist.get('criado_em') if hasattr(hist, 'get') else (hist[0] if hist else None)
         total_h = int((hist.get('total_itens') if hasattr(hist, 'get') else (hist[1] if len(hist) > 1 else 0)) or 0)
