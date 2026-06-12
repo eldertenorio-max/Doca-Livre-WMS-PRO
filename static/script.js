@@ -1443,6 +1443,7 @@ function initEventosStream() {
 
 // Inicialização
 document.addEventListener('DOMContentLoaded', function() {
+    initModuloSidebars();
     initModulos();
     initTabs();
     if (typeof prefetchBaixadosRavex === 'function') {
@@ -2624,6 +2625,134 @@ function initNavegacaoRapida() {
             irParaEntrada(e);
         }
     });
+}
+
+var _SIDEBAR_ICONES = {
+    carregamento: {
+        painel: '📊', 'importar-ravex': '📥', 'baixa-ravex': '✅', conferencia: '📋', extrato: '🧾',
+        romaneio: '📦', relatorios: '📈', divergencias: '⚠️', base: '🏷️'
+    },
+    devolucoes: {
+        painel: '📊', conferencia: '📋', extrato: '🧾', 'baixa-ravex': '✅', relatorios: '📈', divergencias: '⚠️'
+    },
+    terceiros: {
+        painel: '📊', 'enviar-xml': '📤', 'pendencia-recebimento': '⏳', 'fornecedores-recebidos': '✔️',
+        'pendentes-lancamento': '📝', 'notas-lancadas': '📄', 'pendencias-mg': '🚚', 'notas-enviadas-mg': '📨',
+        'recebimentos-mg': '📬', relatorios: '📈', historico: '🕐'
+    },
+    'estoque-sp': {
+        'estoque-atual': '📦', saida: '📤', 'entrada-devolucao': '↩️', 'entrada-terceiros': '🏭',
+        reentregas: '🔄', avaria: '💥', 'descarte-perdas': '🗑️', 'palete-bloqueado': '🔒'
+    },
+    wms: {
+        painel: '📊', 'etiquetas-longarina': '🏷️', localizacoes: '📍', produtos: '📦', movimentacoes: '↔️',
+        recebimento: '📥', 'controle-paletes': '🧱', 'historico-nf': '🕐', relatorios: '📈', separacao: '✂️',
+        'areas-especiais': '⭐', inventario: '🔢', pesquisa: '🔍'
+    }
+};
+
+var _SIDEBAR_MODULO_META = {
+    carregamento: { icon: '🚛', label: 'Carga / Expedição' },
+    devolucoes: { icon: '↩️', label: 'Retorno' },
+    terceiros: { icon: '🏭', label: 'Descarga / Recebimento' },
+    'estoque-sp': { icon: '📦', label: 'Estoque SP' },
+    wms: { icon: '🗺️', label: 'Endereçamento WMS' }
+};
+
+function _sidebarEnhanceButton(btn, attrKey, iconMap) {
+    if (!btn || btn.querySelector('.sidebar-icon')) return;
+    var key = btn.getAttribute(attrKey);
+    if (!key) return;
+    var label = (btn.getAttribute('title') || btn.textContent || '').trim();
+    var icon = btn.getAttribute('data-icon') || (iconMap && iconMap[key]) || '📄';
+    btn.setAttribute('title', label);
+    btn.setAttribute('aria-label', label);
+    btn.innerHTML = '<span class="sidebar-icon" aria-hidden="true">' + icon + '</span><span class="sidebar-label">' + escapeHtml(label) + '</span>';
+}
+
+function _sidebarInjectHeaderFooter(nav, moduloKey) {
+    if (!nav || nav.querySelector('.modulo-sidebar-header')) return;
+    var meta = _SIDEBAR_MODULO_META[moduloKey] || { icon: '📁', label: 'Módulo' };
+    var header = document.createElement('div');
+    header.className = 'modulo-sidebar-header';
+    header.innerHTML = '<span class="sidebar-icon" aria-hidden="true">' + meta.icon + '</span><span class="sidebar-label">' + escapeHtml(meta.label) + '</span>';
+    nav.insertBefore(header, nav.firstChild);
+    var footer = document.createElement('div');
+    footer.className = 'modulo-sidebar-footer';
+    footer.innerHTML = '<a href="/entrada" class="sidebar-footer-btn" title="Trocar módulo"><span class="sidebar-icon" aria-hidden="true">🏠</span><span class="sidebar-label">Trocar módulo</span></a>';
+    nav.appendChild(footer);
+}
+
+function _sidebarWrapContainer(container, nav, attrKey, iconMap, moduloKey) {
+    if (!container || !nav || nav.classList.contains('modulo-sidebar-ready')) return;
+    container.classList.add('modulo-layout');
+    if (container.firstElementChild !== nav) {
+        container.insertBefore(nav, container.firstElementChild);
+    }
+    nav.classList.add('modulo-sidebar', 'modulo-sidebar-ready');
+
+    var botoes = Array.from(nav.querySelectorAll(':scope > .tab-button'));
+    var navInner = document.createElement('div');
+    navInner.className = 'modulo-sidebar-nav';
+    botoes.forEach(function(btn) { navInner.appendChild(btn); });
+
+    _sidebarInjectHeaderFooter(nav, moduloKey);
+    var footer = nav.querySelector('.modulo-sidebar-footer');
+    nav.insertBefore(navInner, footer || null);
+
+    botoes.forEach(function(btn) { _sidebarEnhanceButton(btn, attrKey, iconMap); });
+
+    if (!container.querySelector(':scope > .modulo-main')) {
+        var main = document.createElement('div');
+        main.className = 'modulo-main';
+        var child = nav.nextElementSibling;
+        while (child) {
+            var next = child.nextElementSibling;
+            main.appendChild(child);
+            child = next;
+        }
+        container.appendChild(main);
+    }
+}
+
+function initModuloSidebars() {
+    var carreg = document.getElementById('modulo-carregamento');
+    if (carreg) {
+        var navC = carreg.querySelector(':scope > nav.tabs');
+        if (navC) _sidebarWrapContainer(carreg, navC, 'data-tab', _SIDEBAR_ICONES.carregamento, 'carregamento');
+    }
+    var dev = document.getElementById('modulo-devolucoes');
+    if (dev) {
+        var contDev = dev.querySelector('.devolucoes-conteudo');
+        var navDev = contDev && contDev.querySelector(':scope > nav.devolucoes-subtabs');
+        if (contDev && navDev && navDev.querySelector('[data-dev-tab]')) {
+            _sidebarWrapContainer(contDev, navDev, 'data-dev-tab', _SIDEBAR_ICONES.devolucoes, 'devolucoes');
+        }
+    }
+    var ter = document.getElementById('modulo-terceiros');
+    if (ter) {
+        var contTer = ter.querySelector('.devolucoes-conteudo');
+        var navTer = contTer && contTer.querySelector(':scope > nav.devolucoes-subtabs');
+        if (contTer && navTer && navTer.querySelector('[data-ter-tab]')) {
+            _sidebarWrapContainer(contTer, navTer, 'data-ter-tab', _SIDEBAR_ICONES.terceiros, 'terceiros');
+        }
+    }
+    var est = document.getElementById('modulo-estoque-sp');
+    if (est) {
+        var contEst = est.querySelector('.devolucoes-conteudo');
+        var navEst = contEst && contEst.querySelector(':scope > nav.devolucoes-subtabs');
+        if (contEst && navEst && navEst.querySelector('[data-estoque-tab]')) {
+            _sidebarWrapContainer(contEst, navEst, 'data-estoque-tab', _SIDEBAR_ICONES['estoque-sp'], 'estoque-sp');
+        }
+    }
+    var wmsMod = document.getElementById('modulo-enderecamento-wms');
+    if (wmsMod) {
+        var contWms = wmsMod.querySelector('.devolucoes-conteudo');
+        var navWms = contWms && contWms.querySelector(':scope > nav.devolucoes-subtabs');
+        if (contWms && navWms && navWms.querySelector('[data-wms-tab]')) {
+            _sidebarWrapContainer(contWms, navWms, 'data-wms-tab', _SIDEBAR_ICONES.wms, 'wms');
+        }
+    }
 }
 
 function initModulos() {
@@ -5850,8 +5979,8 @@ var _modErroMsg = _carregErroMsg;
 var _modFetchGet = _carregFetchGet;
 
 function initTabs() {
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
+    const tabButtons = document.querySelectorAll('#modulo-carregamento .tab-button[data-tab]');
+    const tabContents = document.querySelectorAll('#modulo-carregamento .tab-content');
     
     tabButtons.forEach(button => {
         button.addEventListener('mouseenter', function() {

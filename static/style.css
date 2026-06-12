@@ -389,10 +389,15 @@ body.hub-modulos-aberto .container {
     display: none !important;
 }
 
-#modulo-carregamento .content {
+#modulo-carregamento.modulo-layout {
+    overflow: hidden;
+}
+
+#modulo-carregamento .modulo-main.content {
     height: auto;
     flex: 1;
     min-height: 0;
+    padding: 30px;
 }
 
 .modulo-vazio {
@@ -406,10 +411,17 @@ body.hub-modulos-aberto .container {
 .modulo-devolucoes {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
+    overflow: hidden;
     background: #fafbfc;
     display: flex;
     flex-direction: column;
+}
+
+.modulo-devolucoes > .devolucoes-conteudo.modulo-layout {
+    flex: 1;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
 }
 
 .devolucoes-conteudo {
