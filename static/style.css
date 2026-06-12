@@ -3712,6 +3712,20 @@ body.conferencia-lista-maximizada-aberta {
     border: 1px solid #f5c6cb;
 }
 
+.message.warning {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffc107;
+    top: 50%;
+    left: 50%;
+    right: auto;
+    transform: translate(-50%, -50%);
+    max-width: min(560px, 92vw);
+    pointer-events: auto;
+    text-align: center;
+    line-height: 1.45;
+}
+
 /* Seção de Importação */
 .import-section {
     background: #f9f9f9;

@@ -13606,7 +13606,7 @@ function initForms() {
     }
     window.ravexLoadingShow = ravexLoadingShow;
     window.ravexLoadingHide = ravexLoadingHide;
-    function ravexErrorShow(msg) {
+    function _ravexOverlayAlertShow(msg, kind) {
         var el = document.getElementById('ravex-loading-overlay');
         var text = document.getElementById('ravex-loading-text');
         var box = document.getElementById('ravex-loading-box');
@@ -13614,15 +13614,25 @@ function initForms() {
         var errorActions = document.getElementById('ravex-error-actions');
         var okBtn = document.getElementById('ravex-overlay-ok');
         _ravexLoadingSetCancelVisible(false);
-        if (el && text) {
-            text.textContent = msg || 'Erro ao processar.';
-            if (box) box.classList.add('ravex-loading-box--error');
-            if (barTrack) barTrack.style.display = 'none';
-            if (errorActions) errorActions.style.display = 'block';
-            el.style.display = 'flex';
-            if (okBtn) okBtn.onclick = function() { ravexLoadingHide(); };
+        if (!el || !text) return;
+        text.textContent = msg || (kind === 'warning' ? 'Aviso.' : 'Erro ao processar.');
+        if (box) {
+            box.classList.remove('ravex-loading-box--error', 'ravex-loading-box--warning');
+            box.classList.add(kind === 'warning' ? 'ravex-loading-box--warning' : 'ravex-loading-box--error');
         }
+        if (barTrack) barTrack.style.display = 'none';
+        if (errorActions) errorActions.style.display = 'block';
+        el.style.display = 'flex';
+        if (okBtn) okBtn.onclick = function() { ravexLoadingHide(); };
     }
+    function ravexErrorShow(msg) {
+        _ravexOverlayAlertShow(msg, 'error');
+    }
+    function ravexWarningShow(msg) {
+        _ravexOverlayAlertShow(msg, 'warning');
+    }
+    window.ravexErrorShow = ravexErrorShow;
+    window.ravexWarningShow = ravexWarningShow;
     function normalizarDataYYYYMMDD(val) {
         if (!val || val.length < 10) return val;
         if (val.charAt(4) === '-' && val.charAt(7) === '-') return val.substring(0, 10);
@@ -13639,8 +13649,7 @@ function initForms() {
             resultadoEl.style.border = '1px solid #ffc107';
             resultadoEl.innerHTML = msg;
         }
-        if (typeof showMessage === 'function') showMessage(msg, 'warning');
-        if (typeof ravexLoadingHide === 'function') ravexLoadingHide();
+        ravexWarningShow(msg);
         if (typeof _cacheBaixadosRavexInvalidar === 'function') _cacheBaixadosRavexInvalidar('carregamento');
         if (typeof loadBaixadosRavex === 'function') void loadBaixadosRavex('carregamento', { forcar: true });
     }
@@ -19075,23 +19084,31 @@ function getDiferencaClass(diferenca) {
     return 'status-FALTA';
 }
 
-// Mostrar mensagem
+// Mostrar mensagem (avisos longos: modal centralizado; sucesso: canto superior)
 function showMessage(text, type) {
-    // Criar elemento de mensagem se não existir
-    let messageDiv = document.querySelector('.message');
+    type = type || 'success';
+    var txt = String(text || '').trim();
+    if (!txt) return;
+    if (type === 'warning' && txt.length > 72 && typeof window.ravexWarningShow === 'function') {
+        window.ravexWarningShow(txt);
+        return;
+    }
+    if (type === 'error' && txt.length > 72 && typeof window.ravexErrorShow === 'function') {
+        window.ravexErrorShow(txt);
+        return;
+    }
+    var messageDiv = document.querySelector('.message.toast-active');
     if (!messageDiv) {
         messageDiv = document.createElement('div');
-        messageDiv.className = 'message';
-        document.querySelector('.content').insertBefore(messageDiv, document.querySelector('.content').firstChild);
+        messageDiv.className = 'message toast-active';
+        document.body.appendChild(messageDiv);
     }
-    
-    messageDiv.textContent = text;
-    messageDiv.className = `message ${type}`;
+    messageDiv.textContent = txt;
+    messageDiv.className = 'message toast-active ' + type;
     messageDiv.style.display = 'block';
-    
-    setTimeout(() => {
+    setTimeout(function() {
         messageDiv.style.display = 'none';
-    }, 3000);
+    }, type === 'success' ? 3000 : 5000);
 }
 
 // Importar planilha do diretório local
