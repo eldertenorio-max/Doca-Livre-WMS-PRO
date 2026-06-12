@@ -2795,11 +2795,32 @@ var _SIDEBAR_MODULO_META = {
     wms: { icon: '🗺️', label: 'Endereçamento WMS' }
 };
 
-function _sidebarEnhanceButton(btn, attrKey, iconMap) {
+var _SIDEBAR_LABELS = {
+    terceiros: {
+        painel: 'PAINEL',
+        'enviar-xml': '1° ENVIAR XML',
+        'pendencia-recebimento': '2° PENDÊNCIA DE RECEBIMENTO',
+        'fornecedores-recebidos': '3° FORNECEDORES RECEBIDOS',
+        'pendentes-lancamento': '4° NFS PENDENTES DE LANÇAMENTO',
+        'notas-lancadas': '5° NOTAS FISCAIS LANÇADAS',
+        'pendencias-mg': '6° PENDÊNCIAS ENVIO MG',
+        'notas-enviadas-mg': '7° NOTAS ENVIADAS PARA MG',
+        'recebimentos-mg': '8° RECEBIMENTOS DE MG',
+        relatorios: 'RELATÓRIOS',
+        historico: 'HISTÓRICO'
+    }
+};
+
+function _sidebarEnhanceButton(btn, attrKey, iconMap, moduloKey) {
     if (!btn || btn.querySelector('.sidebar-icon')) return;
     var key = btn.getAttribute(attrKey);
     if (!key) return;
-    var label = (btn.getAttribute('title') || btn.textContent || '').trim();
+    var mapLabels = moduloKey && _SIDEBAR_LABELS[moduloKey];
+    var label = (btn.getAttribute('data-sidebar-label')
+        || (mapLabels && mapLabels[key])
+        || (btn.textContent || '').trim()
+        || btn.getAttribute('title')
+        || '').trim();
     var icon = btn.getAttribute('data-icon') || (iconMap && iconMap[key]) || '📄';
     btn.setAttribute('title', label);
     btn.setAttribute('aria-label', label);
@@ -2836,7 +2857,7 @@ function _sidebarWrapContainer(container, nav, attrKey, iconMap, moduloKey) {
     var footer = nav.querySelector('.modulo-sidebar-footer');
     nav.insertBefore(navInner, footer || null);
 
-    botoes.forEach(function(btn) { _sidebarEnhanceButton(btn, attrKey, iconMap); });
+    botoes.forEach(function(btn) { _sidebarEnhanceButton(btn, attrKey, iconMap, moduloKey); });
 
     if (!container.querySelector(':scope > .modulo-main')) {
         var main = document.createElement('div');

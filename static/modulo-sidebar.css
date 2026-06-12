@@ -3,7 +3,7 @@
 :root {
     --app-header-h: 72px;
     --sidebar-w-collapsed: 56px;
-    --sidebar-w-expanded: 220px;
+    --sidebar-w-expanded: 268px;
 }
 
 .container {
@@ -169,11 +169,11 @@
 
 .modulo-sidebar:hover .sidebar-label {
     opacity: 1;
-    max-width: 170px;
+    max-width: 220px;
 }
 
 .modulo-sidebar:hover .modulo-sidebar-header .sidebar-label {
-    max-width: 170px;
+    max-width: 220px;
 }
 
 .sidebar-footer-btn {
