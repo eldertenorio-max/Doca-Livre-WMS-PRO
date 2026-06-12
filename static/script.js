@@ -273,6 +273,164 @@ function _conferenciaEnfileirarRemoveLocal(codigoBarras, qtd) {
 
 window._conferenciaUltimoBip = { codigo: '', em: 0 };
 
+/** Lê o código de barras exibido na célula da tabela de conferência. */
+function _conferenciaLerCodigoBarrasCelula(cell) {
+    if (!cell) return '';
+    var el = cell.querySelector('.conf-cb-val');
+    if (el) {
+        var v = (el.textContent || '').trim();
+        return (v === '-' || !v) ? '' : v;
+    }
+    var t = (cell.textContent || '').trim();
+    return (t === '-' || !t) ? '' : t;
+}
+
+function _htmlCelulaCodigoBarrasConferencia(codigoBarras, codigoProduto) {
+    codigoProduto = (codigoProduto || '').toString().trim();
+    var cb = normalizarCodigoBarrasDuplicado((codigoBarras || '').toString().trim());
+    var exibir = cb || '-';
+    var clsVal = cb ? '' : ' conf-cb-val--vazio';
+    return '<div class="conf-cb-wrap" data-codigo-produto="' + escapeHtml(codigoProduto) + '">'
+        + '<span class="conf-cb-display">'
+        + '<span class="conf-cb-val' + clsVal + '">' + escapeHtml(exibir) + '</span>'
+        + '<button type="button" class="conf-cb-edit-btn" data-conf-cb-edit="1" title="Editar ou cadastrar código de barras" aria-label="Editar código de barras">✏️</button>'
+        + '</span>'
+        + '<span class="conf-cb-edit-form" hidden>'
+        + '<input type="text" class="conf-cb-input" placeholder="EAN ou DUN" autocomplete="off">'
+        + '<button type="button" class="conf-cb-save-btn" data-conf-cb-save="1" title="Salvar na base">✓</button>'
+        + '<button type="button" class="conf-cb-cancel-btn" data-conf-cb-cancel="1" title="Cancelar">✗</button>'
+        + '</span></div>';
+}
+
+function _conferenciaRenderCelulaCodigoBarras(cell, codigoBarras, codigoProduto) {
+    if (!cell) return;
+    cell.innerHTML = _htmlCelulaCodigoBarrasConferencia(codigoBarras, codigoProduto);
+}
+
+function _conferenciaFecharEdicaoCodigoBarras(wrap, restaurar) {
+    if (!wrap) return;
+    var display = wrap.querySelector('.conf-cb-display');
+    var form = wrap.querySelector('.conf-cb-edit-form');
+    var inp = wrap.querySelector('.conf-cb-input');
+    if (form) form.hidden = true;
+    if (display) display.hidden = false;
+    if (inp && restaurar !== false) inp.value = _conferenciaLerCodigoBarrasCelula(wrap.closest('td')) || '';
+    wrap.classList.remove('conf-cb-wrap--editando');
+}
+
+function _conferenciaAbrirEdicaoCodigoBarras(wrap) {
+    if (!wrap) return;
+    document.querySelectorAll('.conf-cb-wrap--editando').forEach(function(w) {
+        if (w !== wrap) _conferenciaFecharEdicaoCodigoBarras(w);
+    });
+    var display = wrap.querySelector('.conf-cb-display');
+    var form = wrap.querySelector('.conf-cb-edit-form');
+    var inp = wrap.querySelector('.conf-cb-input');
+    var atual = _conferenciaLerCodigoBarrasCelula(wrap.closest('td'));
+    if (display) display.hidden = true;
+    if (form) form.hidden = false;
+    if (inp) {
+        inp.value = atual;
+        setTimeout(function() { inp.focus(); inp.select(); }, 0);
+    }
+    wrap.classList.add('conf-cb-wrap--editando');
+}
+
+async function _conferenciaConfirmarEdicaoCodigoBarras(row, wrap) {
+    if (!row || !wrap) return;
+    var inp = wrap.querySelector('.conf-cb-input');
+    var novoCodigo = normalizarCodigoBarrasDuplicado((inp && inp.value || '').trim());
+    if (!novoCodigo) {
+        showMessage('Informe o código EAN ou DUN.', 'warning');
+        if (inp) inp.focus();
+        return;
+    }
+    var C = window._CONF_COL;
+    var codigoProduto = (wrap.getAttribute('data-codigo-produto') || row.getAttribute('data-codigo') || '').trim();
+    if (!codigoProduto) {
+        codigoProduto = (row.cells[C.COD_PRODUTO] && row.cells[C.COD_PRODUTO].textContent || '').trim();
+    }
+    if (!codigoProduto || codigoProduto === '-') {
+        showMessage('Código interno do produto não encontrado na linha.', 'error');
+        return;
+    }
+    var produto = (row.cells[C.PRODUTO] && row.cells[C.PRODUTO].textContent || '').trim();
+    var unidade = (row.cells[C.UN] && row.cells[C.UN].textContent || '').trim();
+    var peso = (row.cells[C.PESO] && row.cells[C.PESO].textContent || '').trim();
+    if (peso === '-') peso = '';
+    var saveBtn = wrap.querySelector('[data-conf-cb-save]');
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+        var resp = await fetchAPI('/base-item/vincular-codigo', {
+            method: 'POST',
+            body: JSON.stringify({
+                codigo_interno: codigoProduto,
+                codigo_barras: novoCodigo,
+                tipo_codigo: _inferirTipoCodigoBarras(novoCodigo),
+                descricao: produto,
+                unidade: unidade !== '-' ? unidade : '',
+                peso: peso
+            })
+        });
+        if (!resp || resp.erro) {
+            showMessage((resp && resp.erro) || 'Não foi possível salvar o código na base.', 'error');
+            return;
+        }
+        _conferenciaFecharEdicaoCodigoBarras(wrap, false);
+        _atualizarCodigoBarrasLinhaConferencia(codigoProduto, novoCodigo);
+        showMessage(resp.mensagem || 'Código de barras salvo na base.', 'success');
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
+
+function initConferenciaCodigoBarrasInline() {
+    function bind(tbodyId) {
+        var tbody = document.getElementById(tbodyId);
+        if (!tbody || tbody._confCbInlineBound) return;
+        tbody._confCbInlineBound = true;
+        tbody.addEventListener('mousedown', function(e) {
+            if (e.target.closest('[data-conf-cb-edit], [data-conf-cb-save], [data-conf-cb-cancel], .conf-cb-input')) {
+                window._ignorarBlurBipagemConferencia = true;
+                setTimeout(function() { window._ignorarBlurBipagemConferencia = false; }, 400);
+            }
+        }, { passive: true });
+        tbody.addEventListener('click', function(e) {
+            var wrap = e.target.closest('.conf-cb-wrap');
+            if (!wrap) return;
+            var row = wrap.closest('tr');
+            if (e.target.closest('[data-conf-cb-edit]')) {
+                e.preventDefault();
+                e.stopPropagation();
+                _conferenciaAbrirEdicaoCodigoBarras(wrap);
+            } else if (e.target.closest('[data-conf-cb-save]')) {
+                e.preventDefault();
+                e.stopPropagation();
+                void _conferenciaConfirmarEdicaoCodigoBarras(row, wrap);
+            } else if (e.target.closest('[data-conf-cb-cancel]')) {
+                e.preventDefault();
+                e.stopPropagation();
+                _conferenciaFecharEdicaoCodigoBarras(wrap);
+            }
+        });
+        tbody.addEventListener('keydown', function(e) {
+            var inp = e.target.closest('.conf-cb-input');
+            if (!inp) return;
+            var wrap = inp.closest('.conf-cb-wrap');
+            var row = wrap && wrap.closest('tr');
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                void _conferenciaConfirmarEdicaoCodigoBarras(row, wrap);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                _conferenciaFecharEdicaoCodigoBarras(wrap);
+            }
+        });
+    }
+    bind('tbody-conferencia');
+    bind('dev-tbody-conferencia');
+}
+
 /** Índices das colunas da tabela ITENS DA VIAGEM (conferência carregamento e devolução). */
 window._CONF_COL = {
     STATUS: 0,
@@ -315,7 +473,7 @@ function _conferenciaObterEstadoLinhaBipagem(codigoBarrasStr, codigoProdutoStr) 
         if (!row.cells || row.cells.length < 12) continue;
         var dataCodigo = (row.getAttribute && row.getAttribute('data-codigo')) || '';
         var C = window._CONF_COL;
-        var cbLinha = (row.cells[C.COD_BARRAS].textContent || '').trim();
+        var cbLinha = _conferenciaLerCodigoBarrasCelula(row.cells[C.COD_BARRAS]);
         var cpLinha = (row.cells[C.COD_PRODUTO].textContent || '').trim();
         var cbValido = cbLinha && cbLinha !== '-';
         var match = (codigoProdutoStr && (cpLinha === codigoProdutoStr || dataCodigo === codigoProdutoStr))
@@ -345,7 +503,7 @@ function _atualizarCodigoBarrasLinhaConferencia(codigoProduto, codigoBarras) {
     var C = window._CONF_COL;
     var cellCb = row.cells[C.COD_BARRAS];
     if (cellCb) {
-        cellCb.innerHTML = '<strong>' + escapeHtml(codigoBarras) + '</strong>';
+        _conferenciaRenderCelulaCodigoBarras(cellCb, codigoBarras, codigoProduto);
     }
     var cellAviso = row.cells[C.AVISO];
     if (cellAviso) {
@@ -367,7 +525,7 @@ function _conferenciaAtualizarCelulaAcaoLinha(row, stLinha, novaQtdBipada, novaQ
     var C = window._CONF_COL;
     var cellAcao = row.cells[C.ACAO];
     if (!cellAcao) return;
-    var codigoBarrasLinha = (row.cells[C.COD_BARRAS].textContent || '').trim();
+    var codigoBarrasLinha = _conferenciaLerCodigoBarrasCelula(row.cells[C.COD_BARRAS]);
     var produtoNome = (row.cells[C.PRODUTO].textContent || '').trim();
     var btns = _htmlBotoesAcaoConferencia({
         codigo_barras: codigoBarrasLinha,
@@ -984,7 +1142,7 @@ async function _conferenciaPersistirAddNoServidor(codigoBarras, quantidade) {
                 tbody.querySelectorAll('tr').forEach(function(row) {
                     if (!row.cells || row.cells.length < 12) return;
                     var C = window._CONF_COL;
-                    var cb = (row.cells[C.COD_BARRAS].textContent || '').trim();
+                    var cb = _conferenciaLerCodigoBarrasCelula(row.cells[C.COD_BARRAS]);
                     if (cb !== codigoBarras) return;
                     if (!override.produto) override.produto = (row.cells[C.PRODUTO].textContent || '').trim();
                     if (!override.codigo_interno) override.codigo_interno = (row.getAttribute('data-codigo') || row.cells[C.COD_PRODUTO].textContent || '').trim();
@@ -1012,7 +1170,7 @@ function _conferenciaColetarItensTabelaParaGravar() {
         var C = window._CONF_COL;
         var qtdBip = parseInt(row.cells[C.BIPADO].textContent, 10) || 0;
         if (qtdBip <= 0) continue;
-        var codigoBarras = (row.cells[C.COD_BARRAS].textContent || '').trim();
+        var codigoBarras = _conferenciaLerCodigoBarrasCelula(row.cells[C.COD_BARRAS]);
         var codigoInterno = (row.getAttribute('data-codigo') || row.cells[C.COD_PRODUTO].textContent || '').trim();
         if ((!codigoBarras || codigoBarras === '-') && !codigoInterno) continue;
         itens.push({
@@ -1038,7 +1196,7 @@ function _conferenciaIndiceLinhasTabelaConferencia() {
     for (var i = 0; i < rows.length; i++) {
         var row = rows[i];
         if (!row.cells || row.cells.length < 12 || row.querySelector('td[colspan]')) continue;
-        var cbLinha = (row.cells[C.COD_BARRAS].textContent || '').trim();
+        var cbLinha = _conferenciaLerCodigoBarrasCelula(row.cells[C.COD_BARRAS]);
         var ciLinha = (row.getAttribute('data-codigo') || row.cells[C.COD_PRODUTO].textContent || '').trim();
         if (cbLinha && cbLinha !== '-') indice.porBarras[cbLinha] = row;
         if (ciLinha) indice.porCodigo[ciLinha] = row;
@@ -1119,7 +1277,7 @@ function _conferenciaMontarExtratoDaTabela() {
         var motivo = motivoInput ? motivoInput.value.trim() : (row.cells[C.MOTIVO].textContent || '').trim();
         var avisoCell = row.cells[C.AVISO].textContent || '';
         lista.push({
-            codigo_barras: (row.cells[C.COD_BARRAS].textContent || '').trim(),
+            codigo_barras: _conferenciaLerCodigoBarrasCelula(row.cells[C.COD_BARRAS]),
             codigo_produto: codigoInterno,
             produto: (row.cells[C.PRODUTO].textContent || '').trim(),
             quantidade_produto: qtdProd,
@@ -1260,7 +1418,7 @@ async function _conferenciaPersistirBipagemVisivelNaTabela() {
         var C = window._CONF_COL;
         var qtdBip = parseInt(row.cells[C.BIPADO].textContent, 10) || 0;
         if (qtdBip <= 0) continue;
-        var cod = (row.cells[C.COD_BARRAS].textContent || '').trim();
+        var cod = _conferenciaLerCodigoBarrasCelula(row.cells[C.COD_BARRAS]);
         if (!cod || cod === '-') continue;
         var res = await _conferenciaPersistirAddNoServidor(cod, qtdBip);
         if (res && res.ok) ok++;
@@ -1468,6 +1626,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initNavegacaoRapida();
     initHubModulosOverlay();
     initConferenciaTabelaAcoes();
+    initConferenciaCodigoBarrasInline();
     initModalZerarItens();
     initConferenciaSessaoModais();
     initBaixadosRavexFiltros('carregamento');
@@ -2515,30 +2674,7 @@ function _abrirModalFlex(id) {
 }
 
 function initCadastroRapidoCodigoBarras() {
-    function bind(btnId) {
-        var btn = document.getElementById(btnId);
-        if (!btn || btn._cadastroRapidoBound) return;
-        btn._cadastroRapidoBound = true;
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            var idV = window._getIdViagemAtivo && window._getIdViagemAtivo();
-            if (!idV) {
-                showMessage('Carregue a viagem (ID do roteiro) antes de cadastrar o código.', 'warning');
-                return;
-            }
-            var cb = window._elBipagem('codigo-barras');
-            if (cb && !(cb.value || '').trim()) {
-                showMessage('Digite ou escaneie o código de barras primeiro.', 'warning');
-                if (cb.focus) cb.focus();
-                return;
-            }
-            document.getElementById('modal-produto-nao-cadastrado').style.display = 'none';
-            void window._abrirModalCadastroItemFromBipagem();
-        });
-    }
-    bind('btn-cadastrar-codigo-bipagem');
-    bind('btn-dev-cadastrar-codigo-bipagem');
+    /* Cadastro rápido movido para edição inline na coluna Cód. barras (✏️). */
 }
 
 function initConferenciaTabelaAcoes() {
@@ -15998,7 +16134,7 @@ function atualizarQuantidadeBipadaNaTabela(codigoBarras, quantidade, codigoProdu
         const dataCodigo = (row.getAttribute && row.getAttribute('data-codigo')) || '';
         const cellCodigoBarras = row.cells[C.COD_BARRAS];
         const cellCodigoProduto = row.cells[C.COD_PRODUTO];
-        const codigoBarrasLinha = (cellCodigoBarras && cellCodigoBarras.textContent) ? (cellCodigoBarras.textContent || '').trim() : '';
+        const codigoBarrasLinha = _conferenciaLerCodigoBarrasCelula(cellCodigoBarras);
         const codigoProdutoLinha = (cellCodigoProduto && cellCodigoProduto.textContent) ? (cellCodigoProduto.textContent || '').trim() : '';
         const match = (codigoProdutoStr && (codigoProdutoLinha === codigoProdutoStr || dataCodigo === codigoProdutoStr)) || (codigoBarrasStr && codigoBarrasLinha === codigoBarrasStr);
         if (!match) continue;
@@ -17425,7 +17561,7 @@ function _htmlLinhaConferenciaTabela(item, idViagem, motivosEmEdicao) {
     return '<tr class="' + rowClass + '" data-codigo="' + (item.codigo_produto || '') + '">'
         + '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>'
         + '<td><input type="text" class="input-motivo-divergencia" data-id-viagem="' + escHtml(idViagem) + '" data-codigo-produto="' + codigoProdutoEsc + '" value="' + motivoVal + '" placeholder="Motivo da divergência" onblur="salvarMotivoDivergencia(this)" title="Escreva o motivo e saia do campo para salvar"></td>'
-        + '<td><strong>' + codigoBarras + '</strong></td>'
+        + '<td class="conf-td-codigo-barras">' + _htmlCelulaCodigoBarrasConferencia(item.codigo_barras, item.codigo_produto) + '</td>'
         + '<td><strong style="color: #1976D2;">' + (item.codigo_produto || '-') + '</strong></td>'
         + '<td>' + (item.produto || '-') + '</td>'
         + '<td><strong>' + (item.quantidade_produto || 0) + '</strong></td>'

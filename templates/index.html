@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ system_name }} — WMS</title>
     <link rel="icon" href="{{ url_for('static', filename='stock-system-logo.svg') }}" type="image/svg+xml">
-    <link rel="stylesheet" href="../static/style.css?v=20260602g">
+    <link rel="stylesheet" href="../static/style.css?v=20260602i">
     <link rel="stylesheet" href="../static/stock-system.css">
     <link rel="stylesheet" href="../static/entrada-modulos.css">
-    <link rel="stylesheet" href="../static/modulo-sidebar.css?v=20260602g">
+    <link rel="stylesheet" href="../static/modulo-sidebar.css?v=20260602i">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
@@ -477,10 +477,7 @@
                             <h3 class="conferencia-bloco-4-titulo">4. CONFERÊNCIA</h3>
                             <div class="form-row">
                                 <div class="form-group form-group-codigo-barras">
-                                    <label for="codigo-barras" class="label-com-acao-cadastro">
-                                        <span>Código de Barras *</span>
-                                        <button type="button" class="btn-cadastrar-codigo-mini" id="btn-cadastrar-codigo-bipagem" title="Vincular este código a um item do romaneio">cadastrar</button>
-                                    </label>
+                                    <label for="codigo-barras">Código de Barras *</label>
                                     <input type="text" id="codigo-barras" required autofocus placeholder="Digite ou escaneie">
                                 </div>
                                 <div class="form-group">
@@ -1315,10 +1312,7 @@
                                     <h3 class="conferencia-bloco-4-titulo">4. CONFERÊNCIA DE DEVOLUÇÕES</h3>
                                     <div class="form-row">
                                         <div class="form-group">
-                                            <label for="dev-codigo-barras" class="label-com-acao-cadastro">
-                                                <span>Código de Barras *</span>
-                                                <button type="button" class="btn-cadastrar-codigo-mini" id="btn-dev-cadastrar-codigo-bipagem" title="Vincular este código a um item do romaneio">cadastrar</button>
-                                            </label>
+                                            <label for="dev-codigo-barras">Código de Barras *</label>
                                             <input type="text" id="dev-codigo-barras" placeholder="Digite ou escaneie">
                                         </div>
                                         <div class="form-group">
@@ -3565,6 +3559,6 @@
         </div>
     </div>
 
-    <script src="../static/script.js?v=20260602g"></script>
+    <script src="../static/script.js?v=20260602h"></script>
 </body>
 </html>
