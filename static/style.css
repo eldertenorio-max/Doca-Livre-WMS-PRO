@@ -4201,18 +4201,24 @@ body.conferencia-lista-maximizada-aberta {
     body.print-extrato #dev-extrato-para-imprimir table.data-table tbody tr.row-excedente td:nth-child(11) strong {
         color: #fff !important;
     }
-    /* Ocultar colunas pouco usadas na impressão (motivo e código de barras) */
-    body.print-extrato #tabela-extrato th:nth-child(2),
-    body.print-extrato #tabela-extrato td:nth-child(2),
+    /* Ocultar código de barras na impressão (economia de espaço; motivo permanece visível) */
     body.print-extrato #tabela-extrato th:nth-child(3),
     body.print-extrato #tabela-extrato td:nth-child(3),
-    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(2),
-    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(2),
     body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(3),
     body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(3) {
         display: none !important;
     }
-    /* Larguras (após ocultar motivo e código de barras) */
+    /* Larguras (após ocultar código de barras) */
+    body.print-extrato #tabela-extrato th:nth-child(2),
+    body.print-extrato #tabela-extrato td:nth-child(2),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(2),
+    body.print-extrato #dev-extrato-para-imprimir table.data-table td:nth-child(2) {
+        width: 12%;
+        min-width: 18mm;
+        font-size: 6.5pt;
+        word-wrap: break-word;
+        overflow-wrap: anywhere;
+    }
     body.print-extrato #tabela-extrato th:nth-child(1),
     body.print-extrato #tabela-extrato td:nth-child(1),
     body.print-extrato #dev-extrato-para-imprimir table.data-table th:nth-child(1),
