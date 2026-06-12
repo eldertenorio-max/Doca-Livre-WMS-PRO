@@ -4680,6 +4680,19 @@ def _ravex_bulk_insert_romaneio_pg(conn, params):
         cur.executemany(_ROMANEIO_INSERT_SQL.replace('?', '%s'), params)
 
 
+def _ravex_proximo_row_index_romaneio(conn, ds):
+    """Próximo row_index livre no dataset (PK é dataset_id + row_index, global por dataset)."""
+    row = conn.execute(
+        """SELECT COALESCE(MAX(row_index), 0) AS mx FROM romaneio_por_item WHERE dataset_id = ?""",
+        (str(ds),),
+    ).fetchone()
+    if row is None:
+        return 0
+    if hasattr(row, 'get'):
+        return int(row.get('mx') or 0)
+    return int(row[0] or 0)
+
+
 def _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas, id_roteiro=None):
     """Remove romaneio anterior da viagem e grava linhas com executemany."""
     if not linhas:
@@ -4688,20 +4701,30 @@ def _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas, id_roteiro=None):
     id_viagem_del = str(id_viagem or '').strip()
     if id_roteiro_del and (not id_viagem_del or id_viagem_del == id_roteiro_del):
         conn.execute(
-            """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_roteiro = ?""",
+            """DELETE FROM romaneio_por_item
+               WHERE dataset_id = ? AND TRIM(COALESCE(id_roteiro::text, '')) = ?""",
             (str(ds), id_roteiro_del),
         )
         id_viagem_grav = id_viagem_del or id_roteiro_del
     else:
+        id_viagem_norm = str(_normalizar_id_viagem(id_viagem_del) or id_viagem_del).strip()
         conn.execute(
-            """DELETE FROM romaneio_por_item WHERE dataset_id = ? AND id_viagem = ?""",
-            (str(ds), id_viagem_del),
+            """DELETE FROM romaneio_por_item
+               WHERE dataset_id = ?
+                 AND (
+                   TRIM(COALESCE(id_viagem::text, '')) = ?
+                   OR TRIM(COALESCE(id_viagem::text, '')) = ?
+                 )""",
+            (str(ds), id_viagem_del, id_viagem_norm),
         )
         id_viagem_grav = id_viagem_del
+    next_row_index = _ravex_proximo_row_index_romaneio(conn, ds)
     importado_em = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     params = []
     for L in linhas:
+        next_row_index += 1
         try:
+            L['row_index'] = next_row_index
             L['importado_em'] = importado_em
         except Exception:
             pass
