@@ -18097,7 +18097,7 @@ async function loadConferencia(idViagem = null, opts) {
                 }
                 var msgVazio = (isDev && (!window._devolucaoNfAtiva || !window._devolucaoNfAtiva.id))
                     ? 'Inicie uma NF e bip os itens do retorno.'
-                    : (isDev ? 'Nenhum item bipado nesta NF ainda. Escaneie o retorno.' : 'Nenhum item encontrado para esta viagem no romaneio.');
+                    : (isDev ? 'Nenhum item encontrado nesta NF para bipar. Verifique se o romaneio foi baixado da Ravex.' : 'Nenhum item encontrado para esta viagem no romaneio.');
                 if (!isDev && conferencia.aviso_romaneio_vazio) {
                     msgVazio = conferencia.aviso_romaneio_vazio;
                 } else if (!isDev && conferencia.ja_baixado_ravex === false && conferencia.aviso_ravex) {
