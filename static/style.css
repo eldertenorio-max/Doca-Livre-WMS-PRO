@@ -2723,10 +2723,66 @@ body.conferencia-lista-maximizada-aberta {
     box-sizing: border-box;
     vertical-align: middle;
 }
-/* Campo Motivo: mesma linguagem visual do cabeçalho (#366092) e dos botões (.btn-primary) */
-#tabela-conferencia-container .data-table input.input-motivo-divergencia,
-#dev-tabela-conferencia-container .data-table input.input-motivo-divergencia,
-.data-table.tabela-divergencias-roteiro input.input-motivo-divergencia,
+/* Campo Motivo divergência: tabela de opções + observação */
+#tabela-conferencia-container .data-table .motivo-div-wrap,
+#dev-tabela-conferencia-container .data-table .motivo-div-wrap,
+.data-table.tabela-divergencias-roteiro .motivo-div-wrap {
+    min-width: 200px;
+    max-width: 280px;
+}
+.motivo-div-tabela {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+.motivo-div-tabela td {
+    padding: 3px 4px;
+    vertical-align: top;
+    border: none;
+    background: transparent;
+}
+.motivo-div-check-lbl {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    cursor: pointer;
+    line-height: 1.3;
+    color: #333;
+    font-weight: 500;
+}
+.motivo-div-check {
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+.input-motivo-obs {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 8px;
+    font-size: 12px;
+    line-height: 1.35;
+    border: 1px solid #b0bec5;
+    border-radius: 4px;
+    resize: vertical;
+    min-height: 44px;
+    font-family: inherit;
+    color: #333;
+    background: #fff;
+}
+.input-motivo-obs::placeholder {
+    color: #78909c;
+}
+.input-motivo-obs:focus {
+    outline: none;
+    border-color: #366092;
+    box-shadow: 0 0 0 2px rgba(54, 96, 146, 0.2);
+}
+#tabela-conferencia-container .data-table .td-motivo-divergencia,
+#dev-tabela-conferencia-container .data-table .td-motivo-divergencia,
+.data-table.tabela-divergencias-roteiro .td-motivo-divergencia {
+    min-width: 200px;
+    vertical-align: top !important;
+}
 #modulo-terceiros #ter-recebimento-area-bipagem .data-table input.input-motivo-terceiros-nf {
     width: 100%;
     min-width: 120px;
@@ -2744,21 +2800,10 @@ body.conferencia-lista-maximizada-aberta {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
     transition: background 0.2s ease, box-shadow 0.2s ease;
 }
-#tabela-conferencia-container .data-table input.input-motivo-divergencia::placeholder,
-#dev-tabela-conferencia-container .data-table input.input-motivo-divergencia::placeholder,
-.data-table.tabela-divergencias-roteiro input.input-motivo-divergencia::placeholder,
 #modulo-terceiros #ter-recebimento-area-bipagem .data-table input.input-motivo-terceiros-nf::placeholder {
     color: rgba(255, 255, 255, 0.82);
     font-weight: 500;
 }
-#tabela-conferencia-container .data-table input.input-motivo-divergencia:hover,
-#dev-tabela-conferencia-container .data-table input.input-motivo-divergencia:hover,
-.data-table.tabela-divergencias-roteiro input.input-motivo-divergencia:hover {
-    background: #2a4d6f;
-}
-#tabela-conferencia-container .data-table input.input-motivo-divergencia:focus,
-#dev-tabela-conferencia-container .data-table input.input-motivo-divergencia:focus,
-.data-table.tabela-divergencias-roteiro input.input-motivo-divergencia:focus,
 #modulo-terceiros #ter-recebimento-area-bipagem .data-table input.input-motivo-terceiros-nf:hover,
 #modulo-terceiros #ter-recebimento-area-bipagem .data-table input.input-motivo-terceiros-nf:focus {
     outline: none;

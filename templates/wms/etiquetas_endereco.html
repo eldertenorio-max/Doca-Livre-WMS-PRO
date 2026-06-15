@@ -162,6 +162,20 @@
     background: #fff;
   }
 
+  .camara-etq {
+    border-bottom: 0.8pt solid #000;
+    padding: 1.4mm 2mm;
+    font-size: 6.5pt;
+    font-weight: 900;
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.35px;
+    line-height: 1.15;
+    background: #e3f2fd;
+    color: #0d47a1;
+  }
+
   @media print {
     body { background: #fff; padding: 0; margin: 0; }
     .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
@@ -181,13 +195,14 @@
 {% if agrupado_por_camara %}
 {% for bloco in agrupado_por_camara %}
 <div class="bloco-camara">
-  <div class="camara-titulo">Câmara {{ bloco.camara }} — {{ bloco.faixas|length }} coluna(s) · {{ bloco.total_niveis }} etiqueta(s)</div>
+  <div class="camara-titulo">{{ bloco.camara_nome or ('Câmara ' ~ bloco.camara) }} — {{ bloco.faixas|length }} coluna(s) · {{ bloco.total_niveis }} etiqueta(s)</div>
   {% for faixa in bloco.faixas %}
   <div class="bloco-faixa">
     <div class="faixa-titulo">Coluna {{ faixa.titulo }} — {{ faixa.etiquetas|length }} nível(is)</div>
     <div class="faixa">
       {% for e in faixa.etiquetas %}
       <div class="etq-loc">
+        <div class="camara-etq">{{ e.camara_nome or ('Câmara ' ~ e.camara) }}</div>
         <table class="addr-table" aria-label="Endereço {{ e.dotted }}">
           <colgroup><col><col><col><col><col style="width: 12mm"></colgroup>
           <tr>
@@ -223,6 +238,7 @@
   <div class="faixa">
     {% for e in faixa.etiquetas %}
     <div class="etq-loc">
+      <div class="camara-etq">{{ e.camara_nome or ('Câmara ' ~ e.camara) }}</div>
       <table class="addr-table" aria-label="Endereço {{ e.dotted }}">
         <colgroup>
           <col><col><col><col>

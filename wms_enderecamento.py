@@ -97,6 +97,37 @@ def _now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _map_nomes_camaras(conn):
+    """Mapa código → nome/descrição da câmara (wms_camara)."""
+    if not conn or not _wms_tabelas_existem(conn):
+        return {}
+    try:
+        rows = conn.execute(
+            f'SELECT codigo, descricao FROM {_tbl(conn, "wms_camara")} ORDER BY codigo',
+        ).fetchall()
+    except Exception:
+        return {}
+    out = {}
+    for r in rows or []:
+        rd = _row_dict(r) or {}
+        cod = int(rd.get('codigo') or 0)
+        if not cod:
+            continue
+        desc = str(rd.get('descricao') or '').strip()
+        out[cod] = desc or ('Câmara %s' % cod)
+    return out
+
+
+def _nome_camara_label(conn, camara, nomes=None):
+    cam = int(camara or 0)
+    if nomes is None and conn:
+        nomes = _map_nomes_camaras(conn)
+    nome = (nomes or {}).get(cam) if nomes else None
+    if nome:
+        return nome
+    return 'Câmara %s' % cam if cam else ''
+
+
 def _codigo_endereco(camara, rua, posicao, nivel):
     return f'{int(camara):02d}-{str(rua).strip().upper()}-{int(posicao):02d}-{int(nivel)}'
 
@@ -5143,7 +5174,7 @@ def api_wms_zoneamento():
         return jsonify({'erro': str(e)}), 500
 
 
-def _loc_etiqueta_data(loc):
+def _loc_etiqueta_data(loc, nomes_camara=None):
     """Dados para etiqueta de longarina (modelo Rua · Prédio · Nível · Apto + barcode 21.13.1.1)."""
     d = _row_dict(loc) or {}
     cam = int(d.get('camara') or 0)
@@ -5154,11 +5185,14 @@ def _loc_etiqueta_data(loc):
     cod = (d.get('codigo_endereco') or _codigo_endereco(cam, rua, pos, niv)).upper()
     bc_long = _barcode_longarina(cam, pos, niv, apto=apto)
     picking = niv == 1 or (d.get('zona_armazenagem') or '').lower() == 'picking'
+    cam_nome = _nome_camara_label(None, cam, nomes_camara)
     return {
         'rua_num': str(cam),
         'predio': str(pos),
         'nivel': str(niv),
         'apto': str(apto),
+        'camara': str(cam),
+        'camara_nome': cam_nome,
         'codigo': cod,
         'barcode': bc_long,
         'dotted': bc_long,
@@ -5168,11 +5202,11 @@ def _loc_etiqueta_data(loc):
     }
 
 
-def _agrupar_etiquetas_faixas(loc_rows):
+def _agrupar_etiquetas_faixas(loc_rows, nomes_camara=None):
     """Agrupa localizações em faixas (coluna = mesma rua+prédio+apto, níveis ordenados)."""
     grupos = {}
     for loc in loc_rows:
-        e = _loc_etiqueta_data(loc)
+        e = _loc_etiqueta_data(loc, nomes_camara=nomes_camara)
         chave = (e['rua_num'], e['predio'], e['apto'])
         grupos.setdefault(chave, []).append(e)
     faixas = []
@@ -5189,12 +5223,18 @@ def _agrupar_etiquetas_faixas(loc_rows):
     return faixas, total
 
 
-def _agrupar_faixas_por_camara(faixas):
+def _agrupar_faixas_por_camara(faixas, nomes_camara=None):
     blocos = {}
     for f in faixas:
         cam = str((f.get('camara') or (f.get('etiquetas') or [{}])[0].get('rua_num') or ''))
         if cam not in blocos:
-            blocos[cam] = {'camara': cam, 'faixas': [], 'total_niveis': 0}
+            cam_i = int(cam) if str(cam).isdigit() else 0
+            blocos[cam] = {
+                'camara': cam,
+                'camara_nome': _nome_camara_label(None, cam_i, nomes_camara) if cam_i else ('Câmara %s' % cam),
+                'faixas': [],
+                'total_niveis': 0,
+            }
         blocos[cam]['faixas'].append(f)
         blocos[cam]['total_niveis'] += len(f.get('etiquetas') or [])
     return [blocos[k] for k in sorted(blocos.keys(), key=lambda x: int(x) if str(x).isdigit() else x)]
@@ -5284,7 +5324,8 @@ def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo
         rows = conn.execute(sql, tuple(params)).fetchall()
     if not rows:
         return None, 'Nenhum endereço encontrado. Use o painel WMS para gerar o layout ou clique em Atualizar resumo.'
-    faixas, total = _agrupar_etiquetas_faixas(rows)
+    nomes_camara = _map_nomes_camaras(conn)
+    faixas, total = _agrupar_etiquetas_faixas(rows, nomes_camara=nomes_camara)
     if codigo:
         titulo = codigo
     elif todas:
@@ -5292,10 +5333,10 @@ def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo
     elif camara and rua and posicao:
         titulo = f'Coluna câm {camara} · rua {rua} · pos {posicao}'
     elif camara:
-        titulo = f'Câmara {camara}'
+        titulo = _nome_camara_label(conn, camara, nomes_camara)
     else:
         titulo = 'Lote'
-    agrupado = _agrupar_faixas_por_camara(faixas) if (todas or (camara and not rua and not posicao)) else None
+    agrupado = _agrupar_faixas_por_camara(faixas, nomes_camara=nomes_camara) if (todas or (camara and not rua and not posicao)) else None
     html = render_template(
         'wms/etiquetas_endereco.html',
         faixas=faixas,

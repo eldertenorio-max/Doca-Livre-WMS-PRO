@@ -7704,6 +7704,26 @@ def update_romaneio():
     conn.close()
     return jsonify({'success': True})
 
+def _formatar_motivo_divergencia(raw):
+    """Converte motivo salvo (texto livre ou JSON) para exibição legível."""
+    if raw is None:
+        return ''
+    s = str(raw).strip()
+    if not s:
+        return ''
+    if s.startswith('{'):
+        try:
+            o = json.loads(s)
+            if isinstance(o, dict):
+                parts = list(o.get('motivos') or [])
+                obs = (o.get('observacao') or '').strip()
+                if obs:
+                    parts.append('Obs: ' + obs)
+                return '; '.join(parts) if parts else ''
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    return s
+
 def _carregar_motivos_divergencia(lista, conn=None):
     """Adiciona o campo 'motivo_divergencia' em cada item da lista (id_viagem + codigo_produto)."""
     if not lista:
@@ -8106,7 +8126,7 @@ def export_divergencias_excel():
             ws.cell(row=row_idx, column=10, value=item.get('quantidade_falta'))
             ws.cell(row=row_idx, column=11, value=qtd_sobra)
             ws.cell(row=row_idx, column=12, value=item.get('aviso_sobra') or '')
-            ws.cell(row=row_idx, column=13, value=item.get('motivo_divergencia') or '')
+            ws.cell(row=row_idx, column=13, value=_formatar_motivo_divergencia(item.get('motivo_divergencia')))
         nome_arquivo = 'divergencias_itens.xlsx'
     elif tipo == 'roteiros':
         ws = wb.active
@@ -8185,7 +8205,7 @@ def export_divergencias_excel():
                 ws.cell(row=linha, column=9, value=item.get('aviso_sobra') or '')
                 ws.cell(row=linha, column=10, value=item.get('quantidade_falta'))
                 ws.cell(row=linha, column=11, value=item.get('quantidade_sobra') or 0)
-                ws.cell(row=linha, column=12, value=item.get('motivo_divergencia') or '')
+                ws.cell(row=linha, column=12, value=_formatar_motivo_divergencia(item.get('motivo_divergencia')))
                 linha += 1
             linha += 2  # linhas em branco entre roteiros
         nome_arquivo = 'divergencias_pagina_completa.xlsx'
@@ -8269,7 +8289,10 @@ def export_relatorio_bipados():
         c.font = header_font
     for row_idx, row in enumerate(rows, 2):
         for col_idx, (key, _) in enumerate(cols_in_order, 1):
-            ws.cell(row=row_idx, column=col_idx, value=row.get(key))
+            val = row.get(key)
+            if key == 'motivo_divergencia':
+                val = _formatar_motivo_divergencia(val)
+            ws.cell(row=row_idx, column=col_idx, value=val)
     nome_arquivo = 'relatorio_tudo_que_foi_bipado.xlsx'
     buf = BytesIO()
     wb.save(buf)
@@ -8324,7 +8347,10 @@ def _relatorio_bipados_periodo(data_inicio, data_fim, data_expedicao_inicio=None
         ws.cell(row=1, column=col_idx, value=lb).font = header_font
     for row_idx, row in enumerate(rows, 2):
         for col_idx, (key, _) in enumerate(cols, 1):
-            ws.cell(row=row_idx, column=col_idx, value=row.get(key))
+            val = row.get(key)
+            if key == 'motivo_divergencia':
+                val = _formatar_motivo_divergencia(val)
+            ws.cell(row=row_idx, column=col_idx, value=val)
     return wb
 
 
@@ -8907,7 +8933,7 @@ def export_relatorio_extrato_excel():
         c.font = header_font
     for row_idx, item in enumerate(itens, 4):
         ws.cell(row=row_idx, column=1, value=item.get('status_bipado') or '')
-        ws.cell(row=row_idx, column=2, value=item.get('motivo_divergencia') or '')
+        ws.cell(row=row_idx, column=2, value=_formatar_motivo_divergencia(item.get('motivo_divergencia')))
         ws.cell(row=row_idx, column=3, value=item.get('codigo_barras') or '')
         ws.cell(row=row_idx, column=4, value=item.get('codigo_produto') or '')
         ws.cell(row=row_idx, column=5, value=item.get('produto') or '')

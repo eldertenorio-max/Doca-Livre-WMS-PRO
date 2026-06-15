@@ -462,6 +462,88 @@ window._EXTRATO_COL = {
     FALTA: 10
 };
 
+window.MOTIVOS_DIVERGENCIA_OPCOES = [
+    'Avaria durante o carregamento',
+    'Produtos inseridos a mais que o pedido'
+];
+
+function _motivoDivergenciaParse(raw) {
+    var s = (raw || '').trim();
+    if (!s) return { motivos: [], observacao: '' };
+    if (s.charAt(0) === '{') {
+        try {
+            var o = JSON.parse(s);
+            if (o && typeof o === 'object') {
+                return {
+                    motivos: Array.isArray(o.motivos) ? o.motivos.filter(Boolean) : [],
+                    observacao: (o.observacao || '').toString()
+                };
+            }
+        } catch (e) {}
+    }
+    return { motivos: [], observacao: s };
+}
+
+function _motivoDivergenciaSerialize(motivos, observacao) {
+    var m = (motivos || []).filter(Boolean);
+    var obs = (observacao || '').trim();
+    if (m.length === 0 && !obs) return '';
+    if (m.length === 0) return obs;
+    return JSON.stringify({ motivos: m, observacao: obs });
+}
+
+function _motivoDivergenciaTextoExibicao(raw) {
+    var p = _motivoDivergenciaParse(raw);
+    var parts = p.motivos.slice();
+    if (p.observacao.trim()) parts.push('Obs: ' + p.observacao.trim());
+    var txt = parts.join('; ');
+    return txt || (raw || '').trim();
+}
+
+function _motivoDivergenciaLerWrap(wrap) {
+    if (!wrap) return '';
+    var motivos = [];
+    wrap.querySelectorAll('.motivo-div-check:checked').forEach(function(cb) {
+        motivos.push(cb.value);
+    });
+    var obsEl = wrap.querySelector('.input-motivo-obs');
+    var obs = obsEl ? (obsEl.value || '').trim() : '';
+    return _motivoDivergenciaSerialize(motivos, obs);
+}
+
+function _motivoDivergenciaHtmlCelula(idViagem, codigoProduto, motivoRaw, overrideSerialized) {
+    var raw = overrideSerialized !== undefined ? overrideSerialized : motivoRaw;
+    var parsed = _motivoDivergenciaParse(raw);
+    var idEsc = escapeHtml(idViagem || '');
+    var codEsc = escapeHtml(codigoProduto || '');
+    var opcoes = window.MOTIVOS_DIVERGENCIA_OPCOES || [];
+    var rows = opcoes.map(function(op) {
+        var checked = parsed.motivos.indexOf(op) >= 0 ? ' checked' : '';
+        var opEsc = escapeHtml(op);
+        return '<tr><td><label class="motivo-div-check-lbl"><input type="checkbox" class="motivo-div-check" value="' + opEsc + '"' + checked + '> ' + opEsc + '</label></td></tr>';
+    }).join('');
+    var obsEsc = escapeHtml(parsed.observacao || '');
+    return '<div class="motivo-div-wrap" data-id-viagem="' + idEsc + '" data-codigo-produto="' + codEsc + '">'
+        + '<table class="motivo-div-tabela"><tbody>' + rows + '</tbody></table>'
+        + '<textarea class="input-motivo-obs" rows="2" placeholder="Observação">' + obsEsc + '</textarea>'
+        + '</div>';
+}
+
+function initMotivoDivergenciaDelegates() {
+    if (window._motivoDivergenciaBound) return;
+    window._motivoDivergenciaBound = true;
+    document.addEventListener('change', function(e) {
+        if (!e.target.classList || !e.target.classList.contains('motivo-div-check')) return;
+        var wrap = e.target.closest('.motivo-div-wrap');
+        if (wrap) void window.salvarMotivoDivergenciaCelula(wrap, { mostrarSucesso: false });
+    });
+    document.addEventListener('blur', function(e) {
+        if (!e.target.classList || !e.target.classList.contains('input-motivo-obs')) return;
+        var wrap = e.target.closest('.motivo-div-wrap');
+        if (wrap) void window.salvarMotivoDivergenciaCelula(wrap);
+    }, true);
+}
+
 function _conferenciaObterEstadoLinhaBipagem(codigoBarrasStr, codigoProdutoStr) {
     var tbody = document.getElementById(window._fluxoBipagemAtivo === 'devolucao' ? 'dev-tbody-conferencia' : 'tbody-conferencia');
     if (!tbody) return null;
@@ -1273,8 +1355,8 @@ function _conferenciaMontarExtratoDaTabela() {
         var qtdBip = parseInt(row.cells[C.BIPADO].textContent, 10) || 0;
         var qtdFalta = parseInt(row.cells[C.FALTA].textContent, 10) || 0;
         var codigoInterno = (row.getAttribute('data-codigo') || row.cells[C.COD_PRODUTO].textContent || '').trim();
-        var motivoInput = row.cells[C.MOTIVO].querySelector('input.input-motivo-divergencia');
-        var motivo = motivoInput ? motivoInput.value.trim() : (row.cells[C.MOTIVO].textContent || '').trim();
+        var motivoWrap = row.cells[C.MOTIVO].querySelector('.motivo-div-wrap');
+        var motivo = motivoWrap ? _motivoDivergenciaLerWrap(motivoWrap) : (row.cells[C.MOTIVO].textContent || '').trim();
         var avisoCell = row.cells[C.AVISO].textContent || '';
         lista.push({
             codigo_barras: _conferenciaLerCodigoBarrasCelula(row.cells[C.COD_BARRAS]),
@@ -2710,6 +2792,7 @@ function initConferenciaTabelaAcoes() {
     }
     bind('tbody-conferencia');
     bind('dev-tbody-conferencia');
+    initMotivoDivergenciaDelegates();
 }
 
 function initNavegacaoRapida() {
@@ -14260,7 +14343,7 @@ function initForms() {
         var ehCampoDigitar = function(node) {
             if (!node) return false;
             if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT') return true;
-            if (node.classList && node.classList.contains('input-motivo-divergencia')) return true;
+            if (node.classList && (node.classList.contains('input-motivo-obs') || node.classList.contains('motivo-div-check'))) return true;
             return false;
         };
         if (ehCampoDigitar(el) || ehCampoDigitar(active)) return;
@@ -17576,12 +17659,12 @@ function _htmlLinhaConferenciaTabela(item, idViagem, motivosEmEdicao) {
         quantidade_falta: item.quantidade_falta,
         sem_codigo_html: (item.quantidade_falta > 0 ? '<span style="color: #ff9800;" title="Adicione o código do produto ' + escapeHtml(item.codigo_produto || '') + ' na aba BASE com o código de barras correspondente.">⚠️ Sem código de barras</span>' : '')
     });
-    const motivoBruto = motivosEmEdicao[idViagem + '|' + (item.codigo_produto || '')] !== undefined ? motivosEmEdicao[idViagem + '|' + (item.codigo_produto || '')] : (item.motivo_divergencia || '');
-    const motivoVal = (motivoBruto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const codigoProdutoEsc = (item.codigo_produto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const motivoChave = idViagem + '|' + (item.codigo_produto || '');
+    const motivoOverride = motivosEmEdicao[motivoChave];
+    const motivoCell = _motivoDivergenciaHtmlCelula(idViagem, item.codigo_produto, item.motivo_divergencia, motivoOverride);
     return '<tr class="' + rowClass + '" data-codigo="' + (item.codigo_produto || '') + '">'
         + '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>'
-        + '<td><input type="text" class="input-motivo-divergencia" data-id-viagem="' + escHtml(idViagem) + '" data-codigo-produto="' + codigoProdutoEsc + '" value="' + motivoVal + '" placeholder="Motivo da divergência" onblur="salvarMotivoDivergencia(this)" title="Escreva o motivo e saia do campo para salvar"></td>'
+        + '<td class="td-motivo-divergencia">' + motivoCell + '</td>'
         + '<td class="conf-td-codigo-barras">' + _htmlCelulaCodigoBarrasConferencia(item.codigo_barras, item.codigo_produto) + '</td>'
         + '<td><strong style="color: #1976D2;">' + (item.codigo_produto || '-') + '</strong></td>'
         + '<td>' + (item.produto || '-') + '</td>'
@@ -17779,10 +17862,9 @@ async function loadConferencia(idViagem = null, opts) {
             // Preservar texto que o usuário está digitando nos campos Motivo ao atualizar a tabela (ex.: refresh a cada 5s)
             const motivosEmEdicao = {};
             if (tbody) {
-                tbody.querySelectorAll('.input-motivo-divergencia').forEach(function(inp) {
-                    var cod = unescapeHtml(inp.getAttribute('data-codigo-produto') || '');
-                    var chave = idViagem + '|' + cod;
-                    motivosEmEdicao[chave] = inp.value;
+                tbody.querySelectorAll('.motivo-div-wrap').forEach(function(wrap) {
+                    var cod = unescapeHtml(wrap.getAttribute('data-codigo-produto') || '');
+                    motivosEmEdicao[idViagem + '|' + cod] = _motivoDivergenciaLerWrap(wrap);
                 });
             }
             var limitInfo = L('conferencia-limit-info');
@@ -18572,7 +18654,7 @@ function _htmlStatusExtratoCelula(item) {
 }
 
 function _htmlLinhaExtratoTabela(item) {
-    const motivo = (item.motivo_divergencia || '').trim();
+    const motivo = _motivoDivergenciaTextoExibicao(item.motivo_divergencia || '');
     const qtdBip = parseInt(item.quantidade_bipada, 10) || 0;
     const qtdFalta = parseInt(item.quantidade_falta, 10) || 0;
     const avisoTexto = _avisoConferenciaBipagem(item.aviso_sobra, item.quantidade_produto || 0, qtdBip);
@@ -19121,10 +19203,10 @@ async function loadDivergencias(force) {
     if (force) divergenciasJaCarregado = false;
     // Preservar texto digitado nos campos Motivo antes de substituir o conteúdo (chave = id_viagem|codigo_produto, desescapada)
     const motivosEmEdicaoDiv = {};
-    conteudoEl.querySelectorAll('.input-motivo-divergencia').forEach(function(inp) {
-        var idV = unescapeHtml(inp.getAttribute('data-id-viagem') || '');
-        var cod = unescapeHtml(inp.getAttribute('data-codigo-produto') || '');
-        motivosEmEdicaoDiv[idV + '|' + cod] = inp.value;
+    conteudoEl.querySelectorAll('.motivo-div-wrap').forEach(function(wrap) {
+        var idV = unescapeHtml(wrap.getAttribute('data-id-viagem') || '');
+        var cod = unescapeHtml(wrap.getAttribute('data-codigo-produto') || '');
+        motivosEmEdicaoDiv[idV + '|' + cod] = _motivoDivergenciaLerWrap(wrap);
     });
     conteudoEl.innerHTML = '<p class="loading">Carregando divergências dos roteiros mais recentes (pode levar até 1 minuto)...</p>';
     let divergencias;
@@ -19231,11 +19313,11 @@ async function loadDivergencias(force) {
                         ${itens.map(item => {
                             const pack = _terConferenciaBadgeEClasseLinha(item.status_bipado);
                             const qtdSobra = item.quantidade_sobra != null ? item.quantidade_sobra : 0;
-                            const motivoBrutoDiv = motivosEmEdicaoDiv[idViagem + '|' + (item.codigo_produto || '')] !== undefined ? motivosEmEdicaoDiv[idViagem + '|' + (item.codigo_produto || '')] : (item.motivo_divergencia || '');
-                            const motivoVal = (motivoBrutoDiv || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                            const codigoProdutoEsc = (item.codigo_produto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            const motivoChaveDiv = idViagem + '|' + (item.codigo_produto || '');
+                            const motivoOverrideDiv = motivosEmEdicaoDiv[motivoChaveDiv];
+                            const motivoCellDiv = _motivoDivergenciaHtmlCelula(idViagem, item.codigo_produto, item.motivo_divergencia, motivoOverrideDiv);
                             return `<tr class="${pack.rowClass}">
-                                <td><input type="text" class="input-motivo-divergencia" data-id-viagem="${escHtml(idViagem)}" data-codigo-produto="${codigoProdutoEsc}" value="${motivoVal}" placeholder="Escreva o motivo" onblur="salvarMotivoDivergencia(this)" title="Escreva o motivo da divergência e saia do campo para salvar"></td>
+                                <td class="td-motivo-divergencia">${motivoCellDiv}</td>
                                 <td><span class="status-badge ${pack.badgeClass}">${pack.badgeText}</span></td>
                                 <td><strong>${escHtml(item.codigo_barras || '-')}</strong></td>
                                 <td><strong style="color: #1976D2;">${escHtml(item.codigo_produto || '-')}</strong></td>
@@ -19347,24 +19429,30 @@ async function loadDivergenciasDevolucao(force) {
     divergenciasDevolucaoJaCarregado = true;
 }
 
-// Salvar motivo da divergência (chamado no onblur do input na aba Divergências)
-window.salvarMotivoDivergencia = async function(inputEl) {
-    if (!inputEl || !inputEl.dataset) return;
-    const idViagem = (inputEl.dataset.idViagem || '').trim();
-    const codigoProduto = (inputEl.dataset.codigoProduto || '').trim();
-    const motivo = (inputEl.value || '').trim();
+window.salvarMotivoDivergenciaCelula = async function(wrap, opts) {
+    opts = opts || {};
+    if (!wrap || !wrap.dataset) return;
+    const idViagem = (wrap.dataset.idViagem || '').trim();
+    const codigoProduto = (wrap.dataset.codigoProduto || '').trim();
+    const motivo = _motivoDivergenciaLerWrap(wrap);
     if (!idViagem || !codigoProduto) return;
     try {
         const result = await fetchAPI('/divergencias/motivo', {
             method: 'PUT',
             body: JSON.stringify({ id_viagem: idViagem, codigo_produto: codigoProduto, motivo: motivo })
         });
-        if (result && result.success) {
+        if (result && result.success && opts.mostrarSucesso !== false) {
             showMessage('Motivo da divergência salvo.', 'success');
         }
     } catch (e) {
         showMessage('Erro ao salvar motivo.', 'error');
     }
+};
+
+window.salvarMotivoDivergencia = async function(el) {
+    if (!el) return;
+    const wrap = (el.classList && el.classList.contains('motivo-div-wrap')) ? el : (el.closest && el.closest('.motivo-div-wrap'));
+    if (wrap) return window.salvarMotivoDivergenciaCelula(wrap);
 };
 
 // Função auxiliar para classe de diferença
