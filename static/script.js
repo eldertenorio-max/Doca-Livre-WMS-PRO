@@ -3268,6 +3268,63 @@ function _devolucaoAplicarBloqueioBipagem(bloquear) {
     }
 }
 
+function _devolucaoAplicarMotivoSugeridoNf(motivo) {
+    var motSel = document.getElementById('dev-motivo-devolucao');
+    if (!motSel || !motivo) return;
+    motSel.value = motivo;
+}
+
+function _devolucaoPreencherSelectNfs(notas, aviso) {
+    var sel = document.getElementById('dev-numero-nf');
+    if (!sel) return;
+    window._devolucaoNfsDivergentes = Array.isArray(notas) ? notas : [];
+    var html = '<option value="">Selecione a NF (com divergência)</option>';
+    window._devolucaoNfsDivergentes.forEach(function(n) {
+        var num = String(n.numero_nf || '').trim();
+        if (!num) return;
+        var mot = String(n.motivo_sugerido || 'parcial').trim();
+        var label = num + ' — ' + (n.qtd_itens_divergentes || 0) + ' item(ns) divergente(s)';
+        html += '<option value="' + escapeHtml(num) + '" data-motivo="' + escapeHtml(mot) + '">' + escapeHtml(label) + '</option>';
+    });
+    sel.innerHTML = html;
+    if (aviso && !window._devolucaoNfsDivergentes.length) {
+        showMessage(aviso, 'warning');
+    }
+}
+
+async function carregarNfsDivergentesDevolucao(idViagem) {
+    if (!idViagem) {
+        _devolucaoPreencherSelectNfs([], '');
+        return;
+    }
+    var sel = document.getElementById('dev-numero-nf');
+    if (sel) sel.innerHTML = '<option value="">Carregando NFs...</option>';
+    var resp = await fetchAPI('/devolucoes/notas-divergentes?id_viagem=' + encodeURIComponent(idViagem));
+    if (!resp || resp.erro) {
+        _devolucaoPreencherSelectNfs([], (resp && resp.erro) || 'Erro ao carregar NFs divergentes.');
+        return;
+    }
+    _devolucaoPreencherSelectNfs(resp.notas || [], resp.aviso || '');
+    if ((resp.notas || []).length === 1) {
+        var unica = resp.notas[0];
+        if (sel && unica.numero_nf) {
+            sel.value = String(unica.numero_nf);
+            _devolucaoAplicarMotivoSugeridoNf(unica.motivo_sugerido || 'parcial');
+        }
+    }
+}
+
+function initDevolucaoNfSelectMotivo() {
+    var sel = document.getElementById('dev-numero-nf');
+    if (!sel || sel._devNfMotivoBound) return;
+    sel._devNfMotivoBound = true;
+    sel.addEventListener('change', function() {
+        var opt = sel.options[sel.selectedIndex];
+        var mot = opt ? (opt.getAttribute('data-motivo') || '') : '';
+        if (mot) _devolucaoAplicarMotivoSugeridoNf(mot);
+    });
+}
+
 function _devolucaoAtualizarUiNfAtiva() {
     var nf = window._devolucaoNfAtiva;
     var hid = document.getElementById('dev-devolucao-nf-id');
@@ -3290,6 +3347,7 @@ function _devolucaoAtualizarUiNfAtiva() {
 }
 
 function initDevolucaoNfFlow() {
+    initDevolucaoNfSelectMotivo();
     var btnIni = document.getElementById('dev-btn-iniciar-nf');
     var btnConc = document.getElementById('dev-btn-concluir-nf');
     if (btnIni) {
@@ -3302,8 +3360,17 @@ function initDevolucaoNfFlow() {
                 showMessage('Busque o roteiro/viagem primeiro.', 'error');
                 return;
             }
-            if (!numero || !motivo) {
-                showMessage('Informe o número da NF e o motivo da devolução.', 'error');
+            if (!numero) {
+                showMessage('Selecione uma NF com divergência.', 'error');
+                return;
+            }
+            if (!motivo) {
+                var selNf = document.getElementById('dev-numero-nf');
+                var optNf = selNf && selNf.options[selNf.selectedIndex];
+                motivo = optNf ? (optNf.getAttribute('data-motivo') || '').trim() : '';
+            }
+            if (!motivo) {
+                showMessage('Selecione o motivo da devolução.', 'error');
                 return;
             }
             if (!doca) {
@@ -3344,7 +3411,10 @@ function initDevolucaoNfFlow() {
             var motSel = document.getElementById('dev-motivo-devolucao');
             if (numInp) numInp.value = '';
             if (motSel) motSel.value = '';
-            if (idV) await carregarListaNfsDevolucao(idV);
+            if (idV) {
+                await carregarListaNfsDevolucao(idV);
+                await carregarNfsDivergentesDevolucao(idV);
+            }
         });
     }
 }
@@ -3408,7 +3478,9 @@ async function carregarContextoDevolucaoViagem(idViagem) {
         if (hid) hid.value = (info.id_viagem && String(info.id_viagem).trim()) || idViagem;
     }
     _habilitarBlocosDevolucao(true);
-    await carregarListaNfsDevolucao((document.getElementById('dev-id-viagem-hidden') && document.getElementById('dev-id-viagem-hidden').value.trim()) || idViagem);
+    var idResolved = (document.getElementById('dev-id-viagem-hidden') && document.getElementById('dev-id-viagem-hidden').value.trim()) || idViagem;
+    await carregarNfsDivergentesDevolucao(idResolved);
+    await carregarListaNfsDevolucao(idResolved);
     _devolucaoAtualizarUiNfAtiva();
 }
 
@@ -17365,6 +17437,19 @@ window.buscarItensViagemDevolucao = async function() {
     window._devolucaoNfAtiva = null;
     var sucesso = false;
     try {
+        if (typeof ravexVerificarIdJaBaixado === 'function' && typeof ravexPostImportarRomaneio === 'function') {
+            showOverlay('Verificando romaneio na base...');
+            var verBaixado = await ravexVerificarIdJaBaixado(idInput, abortCtrl ? abortCtrl.signal : undefined);
+            if (!cancelado && verBaixado && !verBaixado.ja_baixado) {
+                showOverlay('Baixando romaneio atualizado da Ravex...');
+                var impRom = await ravexPostImportarRomaneio({ id: idInput }, abortCtrl ? abortCtrl.signal : undefined);
+                if (!impRom.ok && impRom.data && impRom.data.erro && !cancelado) {
+                    showMessage(impRom.data.erro, 'warning');
+                }
+            }
+        }
+        if (cancelado) return;
+        showOverlay('Carregando NFs com divergência e dados do roteiro...');
         await carregarContextoDevolucaoViagem(idInput);
         if (cancelado) return;
         idViagem = _devolucaoGetIdViagemAtivo() || idInput;

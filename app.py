@@ -10376,6 +10376,235 @@ def get_painel_completo():
             'erro': str(e)
         }), 200
 
+def _devolucao_nf_numero_de_obj(nf):
+    if not isinstance(nf, dict):
+        return ''
+    return str(
+        nf.get('numero') or nf.get('numeroNF') or nf.get('numeroNf') or nf.get('nf') or ''
+    ).strip()
+
+
+def _devolucao_item_codigo_produto(item):
+    if not isinstance(item, dict):
+        return ''
+    prod = item.get('produto') or {}
+    return str(
+        item.get('codigo') or item.get('referenciaItem') or prod.get('codigo') or ''
+    ).strip()
+
+
+def _devolucao_inferir_motivo_nf(codigos_nf, diverg_map, bipado_map):
+    codigos_nf = [c for c in (codigos_nf or []) if c]
+    if not codigos_nf:
+        return 'parcial'
+    for cod in codigos_nf:
+        div = diverg_map.get(cod) or {}
+        mot_raw = (div.get('motivo_divergencia') or '').lower()
+        if 'reentrega' in mot_raw:
+            return 'reentrega'
+    algum_bipado = any(int(bipado_map.get(c, 0) or 0) > 0 for c in codigos_nf)
+    if not algum_bipado:
+        return 'total'
+    return 'parcial'
+
+
+def _devolucao_mapa_bipado_carregamento(conn, id_viagem, id_norm):
+    out = {}
+    rows = conn.execute(
+        '''SELECT codigo_interno, SUM(quantidade) AS qtd
+           FROM produtos_bipados
+           WHERE TRIM(COALESCE(id_viagem, '')) IN (?, ?)
+             AND COALESCE(fluxo, 'carregamento') = 'carregamento'
+           GROUP BY codigo_interno''',
+        (id_viagem, id_norm),
+    ).fetchall()
+    for r in rows or []:
+        cod = ((r.get('codigo_interno') if hasattr(r, 'get') else r[0]) or '').strip()
+        q = int((r.get('qtd') if hasattr(r, 'get') else (r[1] if len(r) > 1 else 0)) or 0)
+        if cod:
+            out[cod] = out.get(cod, 0) + q
+    return out
+
+
+def _devolucao_lista_divergencias_carregamento(conn, id_viagem):
+    id_viagem = (id_viagem or '').strip()
+    id_norm = _normalizar_id_viagem(id_viagem) or id_viagem
+    lista = _conferencia_lista_interna(
+        id_viagem, 'carregamento', conn=conn, somente_divergencias=True,
+    )
+    if not lista and id_norm != id_viagem:
+        lista = _conferencia_lista_interna(
+            id_norm, 'carregamento', conn=conn, somente_divergencias=True,
+        )
+    _carregar_motivos_divergencia(lista, conn)
+    diverg_map = {}
+    divergent_codes = set()
+    for it in lista or []:
+        cod = (it.get('codigo_produto') or '').strip()
+        if cod:
+            divergent_codes.add(cod)
+            diverg_map[cod] = dict(it)
+    return id_norm, divergent_codes, diverg_map
+
+
+def _devolucao_item_esperado_linha(cod, div, qtd_nf, id_viagem):
+    q_rom = int(div.get('quantidade_produto') or 0) if div else int(qtd_nf or 0)
+    q_bip = int(div.get('quantidade_bipada') or 0) if div else 0
+    q_falta = int(div.get('quantidade_falta') or 0) if div else max(0, q_rom - q_bip)
+    q_sobra = int(div.get('quantidade_sobra') or 0) if div else max(0, q_bip - q_rom)
+    q_retorno = q_sobra if q_sobra > 0 else (q_falta if q_falta > 0 else int(qtd_nf or 0))
+    if q_retorno <= 0:
+        q_retorno = int(qtd_nf or 0) or q_rom
+    return {
+        'codigo_produto': cod,
+        'codigo_barras': (div.get('codigo_barras') or '-') if div else '-',
+        'produto': (div.get('produto') or '') if div else '',
+        'quantidade_produto': q_retorno,
+        'quantidade_bipada': 0,
+        'quantidade_falta': q_retorno,
+        'quantidade_sobra': 0,
+        'quantidade_saida': q_bip,
+        'unidade': (div.get('unidade') or '-') if div else '-',
+        'peso_bruto': (div.get('peso_bruto') or '') if div else '',
+        'status_bipado': 'PENDENTE',
+        'aviso_sobra': '',
+        'id_viagem': id_viagem,
+        'origem_romaneio': True,
+        'modo_devolucao_nf': True,
+        'motivo_divergencia': (div.get('motivo_divergencia') or '') if div else '',
+    }
+
+
+def _devolucao_notas_divergentes_ravex(id_viagem, conn=None, numero_nf_filtro=None):
+    """NFs da viagem (Ravex) que possuem ao menos um item divergente no carregamento."""
+    id_viagem = (id_viagem or '').strip()
+    if not id_viagem:
+        return {'notas': [], 'aviso': 'Informe o roteiro/viagem.', 'total_divergencias': 0, 'id_viagem': ''}
+    fechar = False
+    if conn is None:
+        conn = get_db()
+        fechar = True
+    try:
+        id_norm, divergent_codes, diverg_map = _devolucao_lista_divergencias_carregamento(conn, id_viagem)
+        bipado_map = _devolucao_mapa_bipado_carregamento(conn, id_viagem, id_norm)
+        if not divergent_codes:
+            return {
+                'notas': [],
+                'aviso': 'Nenhuma divergência encontrada no carregamento deste roteiro.',
+                'total_divergencias': 0,
+                'id_viagem': id_norm,
+            }
+        if not obter_notas_fiscais_viagem or not obter_itens_nota_fiscal or not ravex_get_token:
+            return {
+                'notas': [],
+                'aviso': 'API Ravex indisponível para listar notas fiscais.',
+                'total_divergencias': len(divergent_codes),
+                'id_viagem': id_norm,
+            }
+        try:
+            token = ravex_get_token()
+        except Exception as e:
+            return {
+                'notas': [],
+                'aviso': 'Falha ao autenticar na Ravex: %s' % str(e),
+                'total_divergencias': len(divergent_codes),
+                'id_viagem': id_norm,
+            }
+        vid_api = id_norm
+        try:
+            vid_api = int(id_norm)
+        except (TypeError, ValueError):
+            pass
+        nfs = obter_notas_fiscais_viagem(token, vid_api) or []
+        nf_pairs = []
+        for nf in nfs:
+            nf_id = nf.get('id') or nf.get('Id')
+            numero = _devolucao_nf_numero_de_obj(nf)
+            if nf_id and numero:
+                if numero_nf_filtro and numero != str(numero_nf_filtro).strip():
+                    continue
+                nf_pairs.append((nf, nf_id, numero))
+        itens_por_nf = {}
+        if nf_pairs:
+            def _fetch(pair):
+                _nf, nf_id, _num = pair
+                try:
+                    return nf_id, obter_itens_nota_fiscal(token, vid_api, nf_id) or []
+                except Exception:
+                    return nf_id, []
+
+            from concurrent.futures import ThreadPoolExecutor
+            workers = min(8, max(2, len(nf_pairs)))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for nf_id, itens in pool.map(_fetch, nf_pairs):
+                    itens_por_nf[nf_id] = itens
+        notas_saida = []
+        for nf, nf_id, numero in nf_pairs:
+            itens = itens_por_nf.get(nf_id, [])
+            codigos_nf = []
+            itens_div = []
+            for item in itens or []:
+                cod = _devolucao_item_codigo_produto(item)
+                if not cod or cod not in divergent_codes:
+                    continue
+                qtd_nf = int(item.get('quantidade') or 0)
+                codigos_nf.append(cod)
+                div = diverg_map.get(cod) or {}
+                itens_div.append(_devolucao_item_esperado_linha(cod, div, qtd_nf, id_norm))
+            if not codigos_nf:
+                continue
+            motivo_sug = _devolucao_inferir_motivo_nf(codigos_nf, diverg_map, bipado_map)
+            notas_saida.append({
+                'numero_nf': numero,
+                'nota_fiscal_id': nf_id,
+                'motivo_sugerido': motivo_sug,
+                'motivo_label': _motivo_devolucao_label(motivo_sug),
+                'qtd_itens_divergentes': len(codigos_nf),
+                'qtd_itens_nf': len(itens or []),
+                'itens': itens_div,
+            })
+        notas_saida.sort(key=lambda x: str(x.get('numero_nf') or ''))
+        aviso = ''
+        if not notas_saida and divergent_codes:
+            aviso = 'Há divergência no carregamento, mas nenhuma NF da Ravex contém esses itens.'
+        return {
+            'notas': notas_saida,
+            'aviso': aviso,
+            'total_divergencias': len(divergent_codes),
+            'id_viagem': id_norm,
+        }
+    finally:
+        if fechar:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _devolucao_itens_esperados_nf(conn, id_viagem, numero_nf):
+    data = _devolucao_notas_divergentes_ravex(id_viagem, conn=conn, numero_nf_filtro=numero_nf)
+    for nota in data.get('notas') or []:
+        if str(nota.get('numero_nf') or '').strip() == str(numero_nf or '').strip():
+            return nota.get('itens') or []
+    return []
+
+
+@app.route('/api/devolucoes/notas-divergentes', methods=['GET'])
+def api_devolucoes_notas_divergentes():
+    """NFs do roteiro na Ravex que contêm itens divergentes no carregamento."""
+    id_viagem = (request.args.get('id_viagem') or '').strip()
+    if not id_viagem:
+        return jsonify({'erro': 'Informe id_viagem'}), 400
+    try:
+        return jsonify(_devolucao_notas_divergentes_ravex(id_viagem))
+    except Exception as e:
+        try:
+            app.logger.exception('notas-divergentes: %s', e)
+        except Exception:
+            pass
+        return jsonify({'erro': str(e), 'notas': []}), 500
+
+
 @app.route('/api/devolucoes/notas', methods=['GET'])
 def api_devolucoes_notas_listar():
     """Lista NFs de devolução de um roteiro/viagem."""
@@ -10522,7 +10751,12 @@ def api_devolucoes_conferencia_nf(id_viagem):
         if not nf_row:
             conn.close()
             return jsonify({'erro': 'NF não encontrada.'}), 404
+        nf_d = dict(nf_row) if hasattr(nf_row, 'keys') else {
+            'id': nf_row[0], 'numero_nf': nf_row[1], 'motivo': nf_row[2], 'status': nf_row[3], 'doca': nf_row[4],
+        }
         lista = _devolucao_conferencia_lista_nf(conn, id_viagem, devolucao_nf_id)
+        if not lista:
+            lista = _devolucao_itens_esperados_nf(conn, id_viagem, nf_d.get('numero_nf'))
         id_norm = _normalizar_id_viagem(id_viagem) or id_viagem
         info = _get_viagem_info_dict(id_norm)
         meta = {
@@ -10533,9 +10767,6 @@ def api_devolucoes_conferencia_nf(id_viagem):
             'id_roteiro': info.get('id_roteiro', '') if info.get('id_roteiro') else '',
         }
         conn.close()
-        nf_d = dict(nf_row) if hasattr(nf_row, 'keys') else {
-            'id': nf_row[0], 'numero_nf': nf_row[1], 'motivo': nf_row[2], 'status': nf_row[3], 'doca': nf_row[4],
-        }
         return jsonify({
             'lista': lista,
             'id_viagem': id_viagem,

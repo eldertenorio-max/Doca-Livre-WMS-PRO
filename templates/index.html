@@ -6,7 +6,7 @@
     <title>{{ system_name }} — WMS</title>
     {% from '_app_head_icons.html' import app_head_icons %}
     {{ app_head_icons() }}
-    <link rel="stylesheet" href="../static/style.css?v=20260602p">
+    <link rel="stylesheet" href="../static/style.css?v=20260602q">
     <link rel="stylesheet" href="../static/stock-system.css">
     <link rel="stylesheet" href="../static/entrada-modulos.css">
     <link rel="stylesheet" href="../static/modulo-sidebar.css?v=20260602j">
@@ -1236,7 +1236,7 @@
 
                                 <div class="conferencia-bloco conferencia-bloco-3 form-container" style="background: #fff8e1; border-left: 4px solid #1976D2;">
                                     <h3 style="margin-top: 0; color: #1976D2;">3. NOTA FISCAL DE DEVOLUÇÃO</h3>
-                                    <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Use o <strong>mesmo ID de roteiro/viagem</strong> da saída. Selecione a NF e o motivo; depois bip o retorno. Ao terminar, marque a NF como concluída.</p>
+                                    <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Use o <strong>mesmo ID de roteiro/viagem</strong> da saída. Ao buscar o roteiro, o sistema lista só as <strong>NFs com divergência</strong> no carregamento e sugere o motivo automaticamente.</p>
                                     <input type="hidden" id="dev-devolucao-nf-id" value="">
                                     <div id="dev-nf-ativa-banner" class="dev-nf-ativa-banner" style="display: none;">
                                         <strong>NF em andamento:</strong>
@@ -1245,7 +1245,9 @@
                                     <div class="form-row" id="dev-nf-form-nova">
                                         <div class="form-group">
                                             <label for="dev-numero-nf">Número da NF *</label>
-                                            <input type="text" id="dev-numero-nf" placeholder="Número da nota fiscal">
+                                            <select id="dev-numero-nf" title="Notas fiscais com divergência no carregamento">
+                                                <option value="">Selecione a NF (com divergência)</option>
+                                            </select>
                                         </div>
                                         <div class="form-group">
                                             <label for="dev-motivo-devolucao">Motivo *</label>
@@ -3560,6 +3562,6 @@
         </div>
     </div>
 
-    <script src="../static/script.js?v=20260602o"></script>
+    <script src="../static/script.js?v=20260602q"></script>
 </body>
 </html>
