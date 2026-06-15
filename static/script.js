@@ -540,7 +540,7 @@ function _motivoDivergenciaHtmlCelula(idViagem, codigoProduto, motivoRaw, overri
         + '</button>'
         + '<div class="motivo-div-ms-panel" role="listbox">' + optsHtml + '</div>'
         + '</div>'
-        + '<textarea class="input-motivo-obs" rows="2" placeholder="Observação">' + obsEsc + '</textarea>'
+        + '<textarea class="input-motivo-obs" rows="1" placeholder="Observação">' + obsEsc + '</textarea>'
         + '</div>';
 }
 
