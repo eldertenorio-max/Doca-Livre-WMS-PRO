@@ -2815,7 +2815,8 @@ body.conferencia-lista-maximizada-aberta {
     flex: 1;
 }
 .input-motivo-obs {
-    width: 100%;
+    width: calc(100% - 12px);
+    max-width: calc(100% - 12px);
     box-sizing: border-box;
     padding: 5px 8px;
     font-size: 12px;
