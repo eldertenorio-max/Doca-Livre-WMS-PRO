@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Stock System WMS">
+  <defs>
+    <linearGradient id="ssg-icon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0ea5e9"/>
+      <stop offset="100%" style="stop-color:#0369a1"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="#f0f2f5"/>
+  <rect x="96" y="96" width="320" height="320" rx="70" fill="url(#ssg-icon)"/>
+  <path d="M176 272h140M176 224h100M176 320h120" stroke="#fff" stroke-width="20" stroke-linecap="round"/>
+  <rect x="286" y="190" width="90" height="90" rx="15" fill="none" stroke="#fff" stroke-width="15"/>
+</svg>

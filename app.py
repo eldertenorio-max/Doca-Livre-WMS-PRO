@@ -1911,6 +1911,44 @@ def raiz():
     return redirect(url_for('login'))
 
 
+@app.route('/manifest.webmanifest')
+def manifest_app():
+    """Manifest PWA — ícone na tela inicial e instalação na barra de tarefas."""
+    icons = [
+        {
+            'src': url_for('static', filename='icons/icon-192.png'),
+            'sizes': '192x192',
+            'type': 'image/png',
+            'purpose': 'any',
+        },
+        {
+            'src': url_for('static', filename='icons/icon-512.png'),
+            'sizes': '512x512',
+            'type': 'image/png',
+            'purpose': 'any',
+        },
+        {
+            'src': url_for('static', filename='icons/icon-512.png'),
+            'sizes': '512x512',
+            'type': 'image/png',
+            'purpose': 'maskable',
+        },
+    ]
+    return jsonify({
+        'name': '%s WMS' % SYSTEM_NAME,
+        'short_name': SYSTEM_NAME,
+        'description': SYSTEM_TAGLINE,
+        'start_url': url_for('entrada_modulos'),
+        'scope': '/',
+        'display': 'standalone',
+        'background_color': '#f0f2f5',
+        'theme_color': '#0369a1',
+        'orientation': 'any',
+        'lang': 'pt-BR',
+        'icons': icons,
+    }), 200, {'Content-Type': 'application/manifest+json; charset=utf-8'}
+
+
 @app.route('/entrada')
 def entrada_modulos():
     """Tela inicial pós-login: escolha do módulo (três botões)."""
