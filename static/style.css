@@ -2723,37 +2723,64 @@ body.conferencia-lista-maximizada-aberta {
     box-sizing: border-box;
     vertical-align: middle;
 }
-/* Campo Motivo divergência: tabela de opções + observação */
+/* Campo Motivo divergência: multiseleção (chips) + observação */
 #tabela-conferencia-container .data-table .motivo-div-wrap,
 #dev-tabela-conferencia-container .data-table .motivo-div-wrap,
 .data-table.tabela-divergencias-roteiro .motivo-div-wrap {
-    min-width: 200px;
-    max-width: 280px;
+    min-width: 210px;
+    max-width: 300px;
 }
-.motivo-div-tabela {
-    width: 100%;
-    border-collapse: collapse;
+.motivo-div-hint {
+    font-size: 10px;
+    font-weight: 600;
+    color: #546e7a;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+.motivo-div-chips {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
     margin-bottom: 6px;
-    font-size: 12px;
 }
-.motivo-div-tabela td {
-    padding: 3px 4px;
-    vertical-align: top;
-    border: none;
-    background: transparent;
-}
-.motivo-div-check-lbl {
+.motivo-div-chip {
     display: flex;
     align-items: flex-start;
-    gap: 6px;
+    gap: 7px;
+    padding: 5px 8px;
+    border: 1.5px solid #b0bec5;
+    border-radius: 5px;
+    background: #fff;
     cursor: pointer;
     line-height: 1.3;
-    color: #333;
-    font-weight: 500;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    user-select: none;
+}
+.motivo-div-chip:hover {
+    border-color: #366092;
+    background: #f5f9fc;
+}
+.motivo-div-chip--on {
+    border-color: #366092;
+    background: #e3edf7;
+    box-shadow: inset 0 0 0 1px rgba(54, 96, 146, 0.15);
 }
 .motivo-div-check {
     margin-top: 2px;
     flex-shrink: 0;
+    accent-color: #366092;
+    cursor: pointer;
+}
+.motivo-div-chip-txt {
+    font-size: 12px;
+    font-weight: 500;
+    color: #333;
+    flex: 1;
+}
+.motivo-div-chip--on .motivo-div-chip-txt {
+    font-weight: 600;
+    color: #1a3a5c;
 }
 .input-motivo-obs {
     width: 100%;

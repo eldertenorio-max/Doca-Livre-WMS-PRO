@@ -481,6 +481,8 @@ function _motivoDivergenciaParse(raw) {
             }
         } catch (e) {}
     }
+    var opcoes = window.MOTIVOS_DIVERGENCIA_OPCOES || [];
+    if (opcoes.indexOf(s) >= 0) return { motivos: [s], observacao: '' };
     return { motivos: [], observacao: s };
 }
 
@@ -488,7 +490,6 @@ function _motivoDivergenciaSerialize(motivos, observacao) {
     var m = (motivos || []).filter(Boolean);
     var obs = (observacao || '').trim();
     if (m.length === 0 && !obs) return '';
-    if (m.length === 0) return obs;
     return JSON.stringify({ motivos: m, observacao: obs });
 }
 
@@ -517,16 +518,45 @@ function _motivoDivergenciaHtmlCelula(idViagem, codigoProduto, motivoRaw, overri
     var idEsc = escapeHtml(idViagem || '');
     var codEsc = escapeHtml(codigoProduto || '');
     var opcoes = window.MOTIVOS_DIVERGENCIA_OPCOES || [];
-    var rows = opcoes.map(function(op) {
-        var checked = parsed.motivos.indexOf(op) >= 0 ? ' checked' : '';
+    var chips = opcoes.map(function(op, idx) {
+        var checked = parsed.motivos.indexOf(op) >= 0;
         var opEsc = escapeHtml(op);
-        return '<tr><td><label class="motivo-div-check-lbl"><input type="checkbox" class="motivo-div-check" value="' + opEsc + '"' + checked + '> ' + opEsc + '</label></td></tr>';
+        var selClass = checked ? ' motivo-div-chip--on' : '';
+        return '<label class="motivo-div-chip' + selClass + '">'
+            + '<input type="checkbox" class="motivo-div-check" value="' + opEsc + '"' + (checked ? ' checked' : '') + '>'
+            + '<span class="motivo-div-chip-txt">' + opEsc + '</span></label>';
     }).join('');
     var obsEsc = escapeHtml(parsed.observacao || '');
     return '<div class="motivo-div-wrap" data-id-viagem="' + idEsc + '" data-codigo-produto="' + codEsc + '">'
-        + '<table class="motivo-div-tabela"><tbody>' + rows + '</tbody></table>'
+        + '<div class="motivo-div-hint">Marque um ou mais motivos:</div>'
+        + '<div class="motivo-div-chips" role="group" aria-label="Motivos da divergência">' + chips + '</div>'
         + '<textarea class="input-motivo-obs" rows="2" placeholder="Observação">' + obsEsc + '</textarea>'
         + '</div>';
+}
+
+function _motivoDivergenciaChaveWrap(wrap) {
+    if (!wrap) return '';
+    return (wrap.getAttribute('data-id-viagem') || wrap.dataset.idViagem || '') + '|'
+        + (wrap.getAttribute('data-codigo-produto') || wrap.dataset.codigoProduto || '');
+}
+
+function _motivoDivergenciaAtualizarChips(wrap) {
+    if (!wrap) return;
+    wrap.querySelectorAll('.motivo-div-chip').forEach(function(chip) {
+        var cb = chip.querySelector('.motivo-div-check');
+        chip.classList.toggle('motivo-div-chip--on', !!(cb && cb.checked));
+    });
+}
+
+function _motivoDivergenciaAgendarSalvar(wrap, opts) {
+    if (!wrap) return;
+    window._motivoDivergenciaSaveTimers = window._motivoDivergenciaSaveTimers || {};
+    var key = _motivoDivergenciaChaveWrap(wrap);
+    if (window._motivoDivergenciaSaveTimers[key]) clearTimeout(window._motivoDivergenciaSaveTimers[key]);
+    window._motivoDivergenciaSaveTimers[key] = setTimeout(function() {
+        delete window._motivoDivergenciaSaveTimers[key];
+        void window.salvarMotivoDivergenciaCelula(wrap, opts);
+    }, 400);
 }
 
 function initMotivoDivergenciaDelegates() {
@@ -534,13 +564,19 @@ function initMotivoDivergenciaDelegates() {
     window._motivoDivergenciaBound = true;
     document.addEventListener('change', function(e) {
         if (!e.target.classList || !e.target.classList.contains('motivo-div-check')) return;
+        e.stopPropagation();
         var wrap = e.target.closest('.motivo-div-wrap');
-        if (wrap) void window.salvarMotivoDivergenciaCelula(wrap, { mostrarSucesso: false });
+        if (!wrap) return;
+        _motivoDivergenciaAtualizarChips(wrap);
+        _motivoDivergenciaAgendarSalvar(wrap, { mostrarSucesso: false });
     });
+    document.addEventListener('click', function(e) {
+        if (e.target.closest && e.target.closest('.motivo-div-wrap')) e.stopPropagation();
+    }, true);
     document.addEventListener('blur', function(e) {
         if (!e.target.classList || !e.target.classList.contains('input-motivo-obs')) return;
         var wrap = e.target.closest('.motivo-div-wrap');
-        if (wrap) void window.salvarMotivoDivergenciaCelula(wrap);
+        if (wrap) _motivoDivergenciaAgendarSalvar(wrap, { mostrarSucesso: true });
     }, true);
 }
 
@@ -14343,7 +14379,7 @@ function initForms() {
         var ehCampoDigitar = function(node) {
             if (!node) return false;
             if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT') return true;
-            if (node.classList && (node.classList.contains('input-motivo-obs') || node.classList.contains('motivo-div-check'))) return true;
+            if (node.classList && (node.classList.contains('input-motivo-obs') || node.classList.contains('motivo-div-check') || (node.closest && node.closest('.motivo-div-wrap')))) return true;
             return false;
         };
         if (ehCampoDigitar(el) || ehCampoDigitar(active)) return;
