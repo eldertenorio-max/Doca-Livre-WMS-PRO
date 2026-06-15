@@ -1,0 +1,18 @@
+---
+description: Commit e push automaticos apos alteracoes no projeto
+alwaysApply: true
+---
+
+# Deploy automatico (Sistema WMS)
+
+Apos concluir qualquer alteracao de codigo neste repositorio:
+
+1. Faca **commit** e **push** automaticamente — o usuario nao precisa pedir "suba".
+2. Remote: `wms` / branch `main` (deploy Render: https://sistema-wms.onrender.com).
+3. Siga o protocolo de seguranca do git (sem force push, sem alterar git config).
+4. Mensagem de commit curta no estilo do repo (`feat:`, `fix:`, etc.).
+5. Informe o hash do commit e que o deploy foi enviado.
+6. Nao commitar arquivos sensiveis (`.env`, credenciais).
+7. Se nao houver mudancas para commitar, nao criar commit vazio.
+
+Excecao: se o usuario pedir explicitamente para **nao** subir ou so revisar, respeitar.
