@@ -1076,6 +1076,15 @@ def _motivo_devolucao_label(motivo):
     }.get(m, motivo or '')
 
 
+def _devolucao_status_label(status):
+    s = (status or '').strip().lower()
+    return {
+        'em_andamento': 'Em andamento',
+        'concluida': 'Concluída',
+        'cancelada': 'Cancelada',
+    }.get(s, status or '')
+
+
 def _row_devolucao_nf_dict(row):
     if not row:
         return None
@@ -1088,6 +1097,7 @@ def _row_devolucao_nf_dict(row):
         'motivo': (g('motivo') if g else row[3]) or '',
         'motivo_label': _motivo_devolucao_label((g('motivo') if g else row[3]) or ''),
         'status': (g('status') if g else row[4]) or 'em_andamento',
+        'status_label': _devolucao_status_label((g('status') if g else row[4]) or 'em_andamento'),
         'doca': (g('doca') if g else (row[5] if len(row) > 5 else '')) or '',
         'criado_em': _fmt_datahora_br(g('criado_em') if g else (row[6] if len(row) > 6 else '')),
         'concluida_em': _fmt_datahora_br(g('concluida_em') if g else (row[7] if len(row) > 7 else '')),
@@ -10906,6 +10916,7 @@ def api_devolucoes_notas_listar():
                 'criado_por': row[8], 'concluida_por': row[9],
             }
         d['motivo_label'] = _motivo_devolucao_label(d.get('motivo'))
+        d['status_label'] = _devolucao_status_label(d.get('status'))
         d['criado_em'] = _fmt_datahora_br(d.get('criado_em'))
         d['concluida_em'] = _fmt_datahora_br(d.get('concluida_em'))
         notas.append(d)
@@ -11004,6 +11015,101 @@ def api_devolucoes_notas_concluir(nf_id):
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'id': nf_id})
+
+
+@app.route('/api/devolucoes/notas/<int:nf_id>/cancelar', methods=['POST'])
+def api_devolucoes_notas_cancelar(nf_id):
+    """Cancela NF em andamento: apaga bipagens desta NF e libera início de outra."""
+    conn = get_db()
+    _ensure_devolucao_nf_schema(conn)
+    _ensure_pg_produtos_bipados_fluxo(conn)
+    try:
+        row = conn.execute(
+            'SELECT id, id_viagem, numero_nf, status FROM devolucao_nota_fiscal WHERE id = ?',
+            (nf_id,),
+        ).fetchone()
+        if not row:
+            conn.close()
+            return jsonify({'success': False, 'erro': 'NF não encontrada.'}), 404
+        st = (row.get('status') if hasattr(row, 'get') else row[3]) or ''
+        if st != 'em_andamento':
+            conn.close()
+            return jsonify({'success': False, 'erro': 'Só é possível cancelar NF em andamento.'}), 400
+        conn.execute(
+            """DELETE FROM produtos_bipados
+               WHERE devolucao_nf_id = ? AND COALESCE(fluxo, 'carregamento') = 'devolucao'""",
+            (nf_id,),
+        )
+        if getattr(conn, 'kind', None) == 'pg':
+            conn.execute(
+                """UPDATE devolucao_nota_fiscal SET status = 'cancelada' WHERE id = %s""",
+                (nf_id,),
+            )
+        else:
+            conn.execute(
+                """UPDATE devolucao_nota_fiscal SET status = 'cancelada' WHERE id = ?""",
+                (nf_id,),
+            )
+        conn.commit()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    _broadcast_atualizar()
+    return jsonify({
+        'success': True,
+        'id': nf_id,
+        'mensagem': 'NF cancelada. Você pode iniciar outra nota fiscal.',
+    })
+
+
+@app.route('/api/devolucoes/conferencia/<id_viagem>/zerar', methods=['POST'])
+def api_devolucoes_zerar_conferencia(id_viagem):
+    """Zera toda a conferência de devoluções do roteiro/viagem e cancela NFs em andamento."""
+    id_viagem = (id_viagem or '').strip()
+    if not id_viagem:
+        return jsonify({'erro': 'Informe o roteiro/viagem.'}), 400
+    conn = get_db()
+    _ensure_devolucao_nf_schema(conn)
+    _ensure_pg_produtos_bipados_fluxo(conn)
+    try:
+        ids = _devolucao_ids_consulta(conn, id_viagem) or [id_viagem]
+        id_norm = _normalizar_id_viagem(id_viagem) or id_viagem
+        if id_norm not in ids:
+            ids.append(id_norm)
+        ids = [x for x in ids if x]
+        if not ids:
+            ids = [id_viagem]
+        ph = ','.join(['?'] * len(ids))
+        is_pg = getattr(conn, 'kind', None) == 'pg'
+        col_viagem = 'TRIM(COALESCE(id_viagem::text, \'\'))' if is_pg else 'TRIM(COALESCE(id_viagem, \'\'))'
+        cur = conn.execute(
+            f"""DELETE FROM produtos_bipados
+               WHERE {col_viagem} IN ({ph})
+                 AND COALESCE(fluxo, 'carregamento') = 'devolucao'""",
+            tuple(ids),
+        )
+        removidos = getattr(cur, 'rowcount', None) if cur else None
+        conn.execute(
+            f"""UPDATE devolucao_nota_fiscal SET status = 'cancelada'
+               WHERE {col_viagem} IN ({ph}) AND status = 'em_andamento'""",
+            tuple(ids),
+        )
+        for vid in ids:
+            _limpar_periodo_bipagem(conn, vid, 'devolucao')
+        conn.commit()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    _broadcast_atualizar()
+    return jsonify({
+        'success': True,
+        'mensagem': 'Conferência de devoluções zerada. NFs em andamento foram canceladas.',
+        'removidos': removidos,
+    })
 
 
 @app.route('/api/devolucoes/conferencia/<id_viagem>', methods=['GET'])

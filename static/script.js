@@ -3332,6 +3332,7 @@ function _devolucaoAtualizarUiNfAtiva() {
     var txt = document.getElementById('dev-nf-ativa-texto');
     var btnIni = document.getElementById('dev-btn-iniciar-nf');
     var btnConc = document.getElementById('dev-btn-concluir-nf');
+    var btnCanc = document.getElementById('dev-btn-cancelar-nf');
     var formNova = document.getElementById('dev-nf-form-nova');
     if (hid) hid.value = nf && nf.id ? String(nf.id) : '';
     if (banner) banner.style.display = nf && nf.id ? 'block' : 'none';
@@ -3341,15 +3342,62 @@ function _devolucaoAtualizarUiNfAtiva() {
     var emAndamento = nf && nf.status === 'em_andamento';
     if (btnIni) btnIni.style.display = emAndamento ? 'none' : '';
     if (btnConc) btnConc.style.display = emAndamento ? '' : 'none';
+    if (btnCanc) btnCanc.style.display = emAndamento ? '' : 'none';
     if (formNova) formNova.style.display = emAndamento ? 'none' : '';
     _devolucaoAplicarBloqueioBipagem(!emAndamento);
     _devolucaoAplicarDisposicaoPadraoNf();
+}
+
+async function cancelarNfDevolucao(nfId) {
+    if (!nfId) return;
+    var nf = window._devolucaoNfAtiva;
+    var rotulo = nf && nf.numero_nf ? ('NF ' + nf.numero_nf) : 'esta NF';
+    var ok = await _conferenciaConfirmarAcaoModal(
+        'Cancelar bipagem da NF',
+        'Os itens já bipados em ' + rotulo + ' serão apagados e a NF será cancelada. Você poderá iniciar outra nota fiscal. Deseja continuar?',
+        'Sim, cancelar NF'
+    );
+    if (!ok) return;
+    var resp = await fetchAPI('/devolucoes/notas/' + encodeURIComponent(nfId) + '/cancelar', { method: 'POST', body: '{}' });
+    if (!resp || !resp.success) {
+        showMessage((resp && resp.erro) || 'Não foi possível cancelar a NF.', 'error');
+        return;
+    }
+    showMessage(resp.mensagem || 'NF cancelada.', 'success');
+    if (window._devolucaoNfAtiva && window._devolucaoNfAtiva.id === nfId) {
+        window._devolucaoNfAtiva = null;
+        _devolucaoAtualizarUiNfAtiva();
+        var tbody = document.getElementById('dev-tbody-conferencia');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="12" class="loading">Selecione ou inicie outra NF para bipar.</td></tr>';
+        var numInp = document.getElementById('dev-numero-nf');
+        var motSel = document.getElementById('dev-motivo-devolucao');
+        if (numInp) numInp.value = '';
+        if (motSel) motSel.value = '';
+    }
+    var idV = _devolucaoGetIdViagemAtivo();
+    if (idV) await carregarListaNfsDevolucao(idV);
 }
 
 function initDevolucaoNfFlow() {
     initDevolucaoNfSelectMotivo();
     var btnIni = document.getElementById('dev-btn-iniciar-nf');
     var btnConc = document.getElementById('dev-btn-concluir-nf');
+    var btnCanc = document.getElementById('dev-btn-cancelar-nf');
+    var btnZerarRota = document.getElementById('dev-btn-zerar-conferencia-rota');
+    if (btnCanc && !btnCanc._devBound) {
+        btnCanc._devBound = true;
+        btnCanc.addEventListener('click', function() {
+            var nf = window._devolucaoNfAtiva;
+            if (nf && nf.id) void cancelarNfDevolucao(nf.id);
+        });
+    }
+    if (btnZerarRota && !btnZerarRota._devBound) {
+        btnZerarRota._devBound = true;
+        btnZerarRota.addEventListener('click', function() {
+            window._fluxoBipagemAtivo = 'devolucao';
+            abrirModalZerarItens();
+        });
+    }
     if (btnIni) {
         btnIni.addEventListener('click', async function() {
             var idV = _devolucaoGetIdViagemAtivo();
@@ -3434,10 +3482,14 @@ async function carregarListaNfsDevolucao(idViagem) {
         return;
     }
     tbody.innerHTML = notas.map(function(n) {
-        var st = n.status === 'concluida' ? 'Concluída' : 'Em andamento';
-        var btn = n.status === 'em_andamento'
-            ? '<button type="button" class="btn btn-secondary btn-sm" data-dev-abrir-nf="' + n.id + '">Continuar</button>'
-            : '—';
+        var st = n.status_label || (n.status === 'concluida' ? 'Concluída' : (n.status === 'cancelada' ? 'Cancelada' : 'Em andamento'));
+        var btn = '';
+        if (n.status === 'em_andamento') {
+            btn = '<button type="button" class="btn btn-secondary btn-sm" data-dev-abrir-nf="' + n.id + '">Continuar</button>'
+                + ' <button type="button" class="btn btn-danger btn-sm" data-dev-cancelar-nf="' + n.id + '">Cancelar</button>';
+        } else {
+            btn = '—';
+        }
         return '<tr><td>' + escHtml(n.numero_nf) + '</td><td>' + escHtml(n.motivo_label || n.motivo) + '</td><td>' + escHtml(st) + '</td><td>' + escHtml(n.criado_em || '-') + '</td><td>' + btn + '</td></tr>';
     }).join('');
     tbody.querySelectorAll('[data-dev-abrir-nf]').forEach(function(btn) {
@@ -3448,6 +3500,12 @@ async function carregarListaNfsDevolucao(idViagem) {
             window._devolucaoNfAtiva = nota;
             _devolucaoAtualizarUiNfAtiva();
             await loadConferenciaDevolucaoNf(nfId);
+        });
+    });
+    tbody.querySelectorAll('[data-dev-cancelar-nf]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var nfId = parseInt(btn.getAttribute('data-dev-cancelar-nf'), 10);
+            if (nfId) void cancelarNfDevolucao(nfId);
         });
     });
     var aberta = notas.find(function(n) { return n.status === 'em_andamento'; });
@@ -3495,8 +3553,10 @@ function _habilitarBlocosDevolucao(sim) {
     });
     var titulo = document.getElementById('dev-titulo-lista-wrapper');
     var tabela = document.getElementById('dev-tabela-conferencia-container');
+    var btnZerarRota = document.getElementById('dev-btn-zerar-conferencia-rota');
     if (titulo) titulo.style.display = sim ? 'flex' : 'none';
     if (tabela) tabela.style.display = sim ? 'block' : 'none';
+    if (btnZerarRota) btnZerarRota.style.display = sim ? '' : 'none';
 }
 
 async function loadConferenciaDevolucaoNf(nfId) {
@@ -17570,46 +17630,66 @@ async function _executarZerarBipagemViagem(idViagem) {
     _zerarTabelaConferenciaNoDOM();
     var fluxo = window._fluxoBipagemAtivo === 'devolucao' ? 'devolucao' : 'carregamento';
     try {
-        var result = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '/zerar', {
-            method: 'POST',
-            body: JSON.stringify({ id_viagem: idViagem, fluxo: fluxo })
-        });
+        var result;
+        if (fluxo === 'devolucao') {
+            result = await fetchAPI('/devolucoes/conferencia/' + encodeURIComponent(idViagem) + '/zerar', {
+                method: 'POST',
+                body: '{}'
+            });
+            window._devolucaoNfAtiva = null;
+            _devolucaoAtualizarUiNfAtiva();
+        } else {
+            result = await fetchAPI('/conferencia/' + encodeURIComponent(idViagem) + '/zerar', {
+                method: 'POST',
+                body: JSON.stringify({ id_viagem: idViagem, fluxo: fluxo })
+            });
+        }
         if (result && result.success) {
             showMessage(result.mensagem || 'Bipagem zerada. Você pode bipar novamente.', 'success');
             if (_conferenciaUsaRascunhoLocal()) {
                 _conferenciaSalvarSessao({ id_viagem: idViagem, comprovante_gerado: false, tem_rascunho: false });
             }
+            if (fluxo === 'devolucao') {
+                var tbodyDev = document.getElementById('dev-tbody-conferencia');
+                if (tbodyDev) tbodyDev.innerHTML = '<tr><td colspan="12" class="loading">Selecione ou inicie outra NF para bipar.</td></tr>';
+                var idDev = _devolucaoGetIdViagemAtivo() || idViagem;
+                if (idDev) await carregarListaNfsDevolucao(idDev);
+                if (typeof limparCamposDevolucao === 'function') limparCamposDevolucao();
+            } else {
+                await reloadConferenciaAtiva(idViagem, {
+                    forcar: true,
+                    forcarIgnorarPendencias: true,
+                    descartarPendencias: true,
+                    aguardarBipagem: false
+                });
+                await loadPeriodoCarregamento(idViagem);
+                loadEstatisticas();
+                if (typeof limparCamposConferencia === 'function') {
+                    limparCamposConferencia();
+                }
+            }
+            return true;
+        }
+        showMessage((result && result.erro) || 'Não foi possível zerar', 'error');
+        if (fluxo !== 'devolucao') {
             await reloadConferenciaAtiva(idViagem, {
                 forcar: true,
                 forcarIgnorarPendencias: true,
                 descartarPendencias: true,
                 aguardarBipagem: false
             });
-            await loadPeriodoCarregamento(idViagem);
-            loadEstatisticas();
-            if (typeof limparCamposConferencia === 'function' && window._fluxoBipagemAtivo !== 'devolucao') {
-                limparCamposConferencia();
-            } else if (typeof limparCamposDevolucao === 'function') {
-                limparCamposDevolucao();
-            }
-            return true;
         }
-        showMessage((result && result.erro) || 'Não foi possível zerar', 'error');
-        await reloadConferenciaAtiva(idViagem, {
-            forcar: true,
-            forcarIgnorarPendencias: true,
-            descartarPendencias: true,
-            aguardarBipagem: false
-        });
         return false;
     } catch (error) {
         showMessage('Erro ao zerar bipagem', 'error');
-        await reloadConferenciaAtiva(idViagem, {
-            forcar: true,
-            forcarIgnorarPendencias: true,
-            descartarPendencias: true,
-            aguardarBipagem: false
-        });
+        if (fluxo !== 'devolucao') {
+            await reloadConferenciaAtiva(idViagem, {
+                forcar: true,
+                forcarIgnorarPendencias: true,
+                descartarPendencias: true,
+                aguardarBipagem: false
+            });
+        }
         return false;
     }
 }
@@ -17647,6 +17727,25 @@ window.abrirModalZerarItens = function() {
     const modal = document.getElementById('modal-zerar-itens');
     const checkbox = document.getElementById('aceite-zerar-itens');
     const btnConfirmar = document.getElementById('btn-confirmar-zerar');
+    const isDev = window._fluxoBipagemAtivo === 'devolucao';
+    if (modal) {
+        var h3 = modal.querySelector('h3');
+        var p = modal.querySelector('p');
+        var lblSpan = checkbox && checkbox.parentElement ? checkbox.parentElement.querySelector('span') : null;
+        if (isDev) {
+            if (h3) h3.textContent = 'Zerar conferência de devoluções';
+            if (p) {
+                p.innerHTML = 'Isso irá <strong>apagar todas as bipagens de retorno</strong> do roteiro/viagem <strong>' + escapeHtml(idViagem) + '</strong>, <strong>cancelar NFs em andamento</strong> e permitir começar do zero. Esta ação não pode ser desfeita.';
+            }
+            if (lblSpan) lblSpan.textContent = 'Aceito zerar toda a conferência de devoluções deste roteiro';
+        } else {
+            if (h3) h3.textContent = 'Zerar todos os itens';
+            if (p) {
+                p.innerHTML = 'Isso irá <strong>apagar todos os itens bipados</strong> desta viagem. Você poderá bipar novamente do zero.';
+            }
+            if (lblSpan) lblSpan.textContent = 'Aceito zerar todos os itens desta viagem';
+        }
+    }
     if (checkbox) checkbox.checked = false;
     if (btnConfirmar) btnConfirmar.disabled = true;
     if (modal) {

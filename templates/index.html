@@ -1272,6 +1272,8 @@
                                     <div class="form-row" style="gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
                                         <button type="button" class="btn btn-primary" id="dev-btn-iniciar-nf">▶ Iniciar NF</button>
                                         <button type="button" class="btn btn-success" id="dev-btn-concluir-nf" style="display: none;">✅ NF concluída</button>
+                                        <button type="button" class="btn btn-danger" id="dev-btn-cancelar-nf" style="display: none;" title="Parar bipagem desta NF e iniciar outra">⏹ Parar / cancelar NF</button>
+                                        <button type="button" class="btn btn-danger btn-bloco4-zerar" id="dev-btn-zerar-conferencia-rota" style="display: none;" title="Apagar todas as bipagens de retorno deste roteiro">🗑️ Zerar conferência deste roteiro</button>
                                     </div>
                                     <div class="form-row">
                                         <div class="form-group">
@@ -1359,7 +1361,7 @@
                                         <div class="conferencia-btns-grupo">
                                             <button type="submit" class="btn btn-primary btn-bloco4 btn-bloco4-bipar">✅ Bipar devolução</button>
                                             <button type="button" class="btn btn-secondary btn-bloco4" onclick="limparCamposDevolucao()" title="Limpar campos">🧹 Limpar campos</button>
-                                            <button type="button" class="btn btn-danger btn-bloco4 btn-bloco4-zerar" id="dev-btn-zerar-bipados" onclick="abrirModalZerarItens()" style="display: none;" title="Zerar todos os itens bipados">🗑️ Zerar devoluções</button>
+                                            <button type="button" class="btn btn-danger btn-bloco4 btn-bloco4-zerar" id="dev-btn-zerar-bipados" onclick="window._fluxoBipagemAtivo='devolucao'; abrirModalZerarItens();" style="display: none;" title="Zerar todas as bipagens de retorno deste roteiro">🗑️ Zerar devoluções</button>
                                         </div>
                                         <div class="conferencia-resumo-group">
                                             <div class="conferencia-resumo-rapido">
