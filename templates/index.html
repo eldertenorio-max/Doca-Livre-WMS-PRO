@@ -6,7 +6,7 @@
     <title>{{ system_name }} — WMS</title>
     {% from '_app_head_icons.html' import app_head_icons %}
     {{ app_head_icons() }}
-    <link rel="stylesheet" href="../static/style.css?v=20260602l">
+    <link rel="stylesheet" href="../static/style.css?v=20260602m">
     <link rel="stylesheet" href="../static/stock-system.css">
     <link rel="stylesheet" href="../static/entrada-modulos.css">
     <link rel="stylesheet" href="../static/modulo-sidebar.css?v=20260602j">
@@ -497,7 +497,7 @@
                                     <label for="disposicao-estoque">Classificação estoque</label>
                                     <select id="disposicao-estoque" title="Destino do item no estoque SP">
                                         <option value="">Normal (expedição)</option>
-                                        <option value="avaria">Descarte avariado</option>
+                                        <option value="avaria">Avariado</option>
                                         <option value="descarte_perdas">Descarte / perdas</option>
                                         <option value="palete_bloqueado">Palete bloqueado</option>
                                     </select>
@@ -1333,7 +1333,7 @@
                                             <select id="dev-disposicao-estoque" title="Destino do item no retorno parcial">
                                                 <option value="">Normal (entrada estoque)</option>
                                                 <option value="reentrega">Reentrega</option>
-                                                <option value="avaria">Descarte avariado</option>
+                                                <option value="avaria">Avariado</option>
                                                 <option value="descarte_perdas">Descarte / perdas</option>
                                                 <option value="palete_bloqueado">Palete bloqueado</option>
                                             </select>
@@ -3560,6 +3560,6 @@
         </div>
     </div>
 
-    <script src="../static/script.js?v=20260602l"></script>
+    <script src="../static/script.js?v=20260602m"></script>
 </body>
 </html>

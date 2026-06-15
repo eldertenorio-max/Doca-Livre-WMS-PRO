@@ -512,24 +512,34 @@ function _motivoDivergenciaLerWrap(wrap) {
     return _motivoDivergenciaSerialize(motivos, obs);
 }
 
+function _motivoDivergenciaTextoTrigger(motivos) {
+    if (!motivos || motivos.length === 0) return '';
+    if (motivos.length === 1) return motivos[0];
+    return motivos.length + ' motivos selecionados';
+}
+
 function _motivoDivergenciaHtmlCelula(idViagem, codigoProduto, motivoRaw, overrideSerialized) {
     var raw = overrideSerialized !== undefined ? overrideSerialized : motivoRaw;
     var parsed = _motivoDivergenciaParse(raw);
     var idEsc = escapeHtml(idViagem || '');
     var codEsc = escapeHtml(codigoProduto || '');
     var opcoes = window.MOTIVOS_DIVERGENCIA_OPCOES || [];
-    var chips = opcoes.map(function(op, idx) {
+    var triggerTxt = _motivoDivergenciaTextoTrigger(parsed.motivos);
+    var placeholderClass = triggerTxt ? '' : ' motivo-div-ms-label--placeholder';
+    var optsHtml = opcoes.map(function(op) {
         var checked = parsed.motivos.indexOf(op) >= 0;
         var opEsc = escapeHtml(op);
-        var selClass = checked ? ' motivo-div-chip--on' : '';
-        return '<label class="motivo-div-chip' + selClass + '">'
-            + '<input type="checkbox" class="motivo-div-check" value="' + opEsc + '"' + (checked ? ' checked' : '') + '>'
-            + '<span class="motivo-div-chip-txt">' + opEsc + '</span></label>';
+        return '<label class="motivo-div-ms-opt"><input type="checkbox" class="motivo-div-check" value="' + opEsc + '"' + (checked ? ' checked' : '') + '><span>' + opEsc + '</span></label>';
     }).join('');
     var obsEsc = escapeHtml(parsed.observacao || '');
     return '<div class="motivo-div-wrap" data-id-viagem="' + idEsc + '" data-codigo-produto="' + codEsc + '">'
-        + '<div class="motivo-div-hint">Marque um ou mais motivos:</div>'
-        + '<div class="motivo-div-chips" role="group" aria-label="Motivos da divergência">' + chips + '</div>'
+        + '<div class="motivo-div-ms">'
+        + '<button type="button" class="motivo-div-ms-trigger" aria-haspopup="listbox" aria-expanded="false">'
+        + '<span class="motivo-div-ms-label' + placeholderClass + '">' + escapeHtml(triggerTxt || 'Motivo da divergência') + '</span>'
+        + '<span class="motivo-div-ms-caret" aria-hidden="true">▾</span>'
+        + '</button>'
+        + '<div class="motivo-div-ms-panel" role="listbox">' + optsHtml + '</div>'
+        + '</div>'
         + '<textarea class="input-motivo-obs" rows="2" placeholder="Observação">' + obsEsc + '</textarea>'
         + '</div>';
 }
@@ -540,12 +550,69 @@ function _motivoDivergenciaChaveWrap(wrap) {
         + (wrap.getAttribute('data-codigo-produto') || wrap.dataset.codigoProduto || '');
 }
 
-function _motivoDivergenciaAtualizarChips(wrap) {
+function _motivoDivergenciaAtualizarTrigger(wrap) {
     if (!wrap) return;
-    wrap.querySelectorAll('.motivo-div-chip').forEach(function(chip) {
-        var cb = chip.querySelector('.motivo-div-check');
-        chip.classList.toggle('motivo-div-chip--on', !!(cb && cb.checked));
+    var label = wrap.querySelector('.motivo-div-ms-label');
+    if (!label) return;
+    var motivos = [];
+    wrap.querySelectorAll('.motivo-div-check:checked').forEach(function(cb) {
+        motivos.push(cb.value);
     });
+    var txt = _motivoDivergenciaTextoTrigger(motivos);
+    label.textContent = txt || 'Motivo da divergência';
+    label.classList.toggle('motivo-div-ms-label--placeholder', !txt);
+}
+
+function _motivoDivergenciaLimparPainelPos(panel) {
+    if (!panel) return;
+    panel.style.position = '';
+    panel.style.top = '';
+    panel.style.left = '';
+    panel.style.width = '';
+    panel.style.zIndex = '';
+}
+
+function _motivoDivergenciaPosicionarPainel(wrap) {
+    var trigger = wrap && wrap.querySelector('.motivo-div-ms-trigger');
+    var panel = wrap && wrap.querySelector('.motivo-div-ms-panel');
+    if (!trigger || !panel) return;
+    var rect = trigger.getBoundingClientRect();
+    panel.style.position = 'fixed';
+    panel.style.top = Math.round(rect.bottom + 2) + 'px';
+    panel.style.left = Math.round(rect.left) + 'px';
+    panel.style.width = Math.round(rect.width) + 'px';
+    panel.style.zIndex = '10050';
+}
+
+function _motivoDivergenciaFecharPainel(wrap) {
+    if (!wrap) return;
+    var ms = wrap.querySelector('.motivo-div-ms');
+    var trigger = wrap.querySelector('.motivo-div-ms-trigger');
+    var panel = wrap.querySelector('.motivo-div-ms-panel');
+    if (ms) ms.classList.remove('motivo-div-ms--open');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    _motivoDivergenciaLimparPainelPos(panel);
+}
+
+function _motivoDivergenciaFecharTodosPainels(excetoWrap) {
+    document.querySelectorAll('.motivo-div-ms--open').forEach(function(ms) {
+        var w = ms.closest('.motivo-div-wrap');
+        if (!excetoWrap || w !== excetoWrap) _motivoDivergenciaFecharPainel(w);
+    });
+}
+
+function _motivoDivergenciaTogglePainel(wrap) {
+    if (!wrap) return;
+    var ms = wrap.querySelector('.motivo-div-ms');
+    var trigger = wrap.querySelector('.motivo-div-ms-trigger');
+    if (!ms || !trigger) return;
+    var aberto = ms.classList.contains('motivo-div-ms--open');
+    _motivoDivergenciaFecharTodosPainels();
+    if (!aberto) {
+        ms.classList.add('motivo-div-ms--open');
+        trigger.setAttribute('aria-expanded', 'true');
+        _motivoDivergenciaPosicionarPainel(wrap);
+    }
 }
 
 function _motivoDivergenciaAgendarSalvar(wrap, opts) {
@@ -567,12 +634,33 @@ function initMotivoDivergenciaDelegates() {
         e.stopPropagation();
         var wrap = e.target.closest('.motivo-div-wrap');
         if (!wrap) return;
-        _motivoDivergenciaAtualizarChips(wrap);
+        _motivoDivergenciaAtualizarTrigger(wrap);
         _motivoDivergenciaAgendarSalvar(wrap, { mostrarSucesso: false });
     });
     document.addEventListener('click', function(e) {
-        if (e.target.closest && e.target.closest('.motivo-div-wrap')) e.stopPropagation();
+        var trigger = e.target.closest && e.target.closest('.motivo-div-ms-trigger');
+        if (trigger) {
+            e.preventDefault();
+            e.stopPropagation();
+            _motivoDivergenciaTogglePainel(trigger.closest('.motivo-div-wrap'));
+            return;
+        }
+        if (e.target.closest && e.target.closest('.motivo-div-ms-panel')) {
+            e.stopPropagation();
+            return;
+        }
+        if (e.target.closest && e.target.closest('.motivo-div-wrap')) {
+            e.stopPropagation();
+            return;
+        }
+        _motivoDivergenciaFecharTodosPainels();
     }, true);
+    document.addEventListener('scroll', function() {
+        _motivoDivergenciaFecharTodosPainels();
+    }, true);
+    window.addEventListener('resize', function() {
+        _motivoDivergenciaFecharTodosPainels();
+    });
     document.addEventListener('blur', function(e) {
         if (!e.target.classList || !e.target.classList.contains('input-motivo-obs')) return;
         var wrap = e.target.closest('.motivo-div-wrap');
@@ -14379,7 +14467,7 @@ function initForms() {
         var ehCampoDigitar = function(node) {
             if (!node) return false;
             if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT') return true;
-            if (node.classList && (node.classList.contains('input-motivo-obs') || node.classList.contains('motivo-div-check') || (node.closest && node.closest('.motivo-div-wrap')))) return true;
+            if (node.classList && (node.classList.contains('input-motivo-obs') || node.classList.contains('motivo-div-check') || node.classList.contains('motivo-div-ms-trigger') || (node.closest && node.closest('.motivo-div-wrap')))) return true;
             return false;
         };
         if (ehCampoDigitar(el) || ehCampoDigitar(active)) return;

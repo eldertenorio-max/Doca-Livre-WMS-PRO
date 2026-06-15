@@ -2723,64 +2723,96 @@ body.conferencia-lista-maximizada-aberta {
     box-sizing: border-box;
     vertical-align: middle;
 }
-/* Campo Motivo divergência: multiseleção (chips) + observação */
+/* Campo Motivo divergência: dropdown multiseleção + observação */
 #tabela-conferencia-container .data-table .motivo-div-wrap,
 #dev-tabela-conferencia-container .data-table .motivo-div-wrap,
 .data-table.tabela-divergencias-roteiro .motivo-div-wrap {
-    min-width: 210px;
-    max-width: 300px;
+    min-width: 200px;
+    max-width: 280px;
 }
-.motivo-div-hint {
-    font-size: 10px;
-    font-weight: 600;
-    color: #546e7a;
-    margin-bottom: 5px;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-}
-.motivo-div-chips {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
+.motivo-div-ms {
+    position: relative;
     margin-bottom: 6px;
 }
-.motivo-div-chip {
+.motivo-div-ms-trigger {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: #fff;
+    background: #366092;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: left;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+    font-family: inherit;
+}
+.motivo-div-ms-trigger:hover {
+    background: #2a4d6f;
+}
+.motivo-div-ms--open .motivo-div-ms-trigger {
+    background: #2a4d6f;
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px #366092;
+}
+.motivo-div-ms-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.motivo-div-ms-label--placeholder {
+    font-weight: 500;
+    opacity: 0.88;
+}
+.motivo-div-ms-caret {
+    flex-shrink: 0;
+    font-size: 11px;
+    opacity: 0.92;
+    line-height: 1;
+}
+.motivo-div-ms-panel {
+    display: none;
+    background: #fff;
+    border: 1px solid #b0bec5;
+    border-radius: 5px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+    padding: 4px 0;
+    max-height: 180px;
+    overflow-y: auto;
+}
+.motivo-div-ms--open .motivo-div-ms-panel {
+    display: block;
+}
+.motivo-div-ms-opt {
     display: flex;
     align-items: flex-start;
-    gap: 7px;
-    padding: 5px 8px;
-    border: 1.5px solid #b0bec5;
-    border-radius: 5px;
-    background: #fff;
+    gap: 8px;
+    padding: 8px 10px;
     cursor: pointer;
-    line-height: 1.3;
-    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    font-size: 12px;
+    line-height: 1.35;
+    color: #333;
     user-select: none;
 }
-.motivo-div-chip:hover {
-    border-color: #366092;
-    background: #f5f9fc;
+.motivo-div-ms-opt:hover {
+    background: #f0f6fb;
 }
-.motivo-div-chip--on {
-    border-color: #366092;
-    background: #e3edf7;
-    box-shadow: inset 0 0 0 1px rgba(54, 96, 146, 0.15);
-}
-.motivo-div-check {
+.motivo-div-ms-opt input {
     margin-top: 2px;
     flex-shrink: 0;
     accent-color: #366092;
     cursor: pointer;
 }
-.motivo-div-chip-txt {
-    font-size: 12px;
-    font-weight: 500;
-    color: #333;
+.motivo-div-ms-opt span {
     flex: 1;
-}
-.motivo-div-chip--on .motivo-div-chip-txt {
-    font-weight: 600;
-    color: #1a3a5c;
 }
 .input-motivo-obs {
     width: 100%;
