@@ -28,6 +28,14 @@ LABELS = {
     'avaria': 'AVARIA',
 }
 
+# Ruas válidas por câmara (layout Endereçamento Novo)
+RUAS_VALIDAS = {
+    11: frozenset('AB'),
+    12: frozenset('CD'),
+    13: frozenset('EF'),
+    21: frozenset('GH'),
+}
+
 
 def _detectar_acao(descricao: str) -> str | None:
     d = (descricao or '').strip().upper()
@@ -61,6 +69,9 @@ def parsear_planilha(path: str) -> dict:
         except (TypeError, ValueError):
             continue
         if not camara_atual:
+            continue
+        ruas_ok = RUAS_VALIDAS.get(camara_atual)
+        if ruas_ok and rua not in ruas_ok:
             continue
         desc = str(row[4]).strip() if pd.notna(row[4]) else ''
         acao = _detectar_acao(desc)

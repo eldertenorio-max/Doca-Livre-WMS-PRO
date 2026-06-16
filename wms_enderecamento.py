@@ -178,7 +178,7 @@ def _resolver_codigo_endereco_bip(codigo):
     return None
 
 
-_WMS_CAMARA_TOTAIS_PADRAO = {11: 138, 12: 134, 13: 138, 21: 82}
+_WMS_CAMARA_TOTAIS_PADRAO = {11: 144, 12: 133, 13: 142, 21: 28}
 _WMS_CAMARA_STAGE = 99
 _WMS_CAMARA_ESPECIAL = 98
 _WMS_STAGE_SLOTS_POR_DOCA = 40
@@ -201,10 +201,10 @@ def _layout_camaras_config():
     if not os.path.isfile(path):
         return {
             'camaras': [
-                {'codigo': 11, 'ruas': ['U', 'V'], 'niveis': 5, 'total_posicoes': 138},
-                {'codigo': 12, 'ruas': ['X', 'Y'], 'niveis': 5, 'total_posicoes': 134},
-                {'codigo': 13, 'ruas': ['W', 'Z'], 'niveis': 5, 'total_posicoes': 138},
-                {'codigo': 21, 'ruas': ['R'], 'niveis': 5, 'total_posicoes': 82},
+                {'codigo': 11, 'ruas': ['A', 'B'], 'niveis': 5, 'total_posicoes': 144},
+                {'codigo': 12, 'ruas': ['C', 'D'], 'niveis': 5, 'total_posicoes': 133},
+                {'codigo': 13, 'ruas': ['E', 'F'], 'niveis': 5, 'total_posicoes': 142},
+                {'codigo': 21, 'ruas': ['G', 'H'], 'niveis': 2, 'total_posicoes': 28},
             ]
         }
     with open(path, encoding='utf-8') as f:
@@ -2215,10 +2215,10 @@ def _seed_wms_defaults(conn):
         return
     now = _now_iso()
     camaras = [
-        (11, 'Câmara 11', 138),
-        (12, 'Câmara 12', 134),
-        (13, 'Câmara 13', 138),
-        (21, 'Câmara 21', 82),
+        (11, 'Câmara 11', 144),
+        (12, 'Câmara 12', 133),
+        (13, 'Câmara 13', 142),
+        (21, 'Câmara 21', 28),
     ]
     for cod, desc, tot in camaras:
         if _is_pg(conn):
