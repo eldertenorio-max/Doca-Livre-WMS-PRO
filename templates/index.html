@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="../static/stock-system.css">
     <link rel="stylesheet" href="../static/entrada-modulos.css">
     <link rel="stylesheet" href="../static/modulo-sidebar.css?v=20260602j">
-    <link rel="stylesheet" href="../static/wms-mapa-3d.css?v=20260602a">
+    <link rel="stylesheet" href="../static/wms-mapa-3d.css?v=20260603e">
     <script type="importmap">
     {
         "imports": {
@@ -19,6 +19,7 @@
         }
     }
     </script>
+    <script type="module" src="{{ url_for('static', filename='wms-mapa-3d.js') }}?v=20260603e"></script>
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
@@ -3615,6 +3616,6 @@
         </div>
     </div>
 
-    <script src="../static/script.js?v=20260603d"></script>
+    <script src="../static/script.js?v=20260603e"></script>
 </body>
 </html>

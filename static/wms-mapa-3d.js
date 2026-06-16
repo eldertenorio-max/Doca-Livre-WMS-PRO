@@ -1,6 +1,9 @@
 /**
  * Visualização 3D do layout WMS — Three.js r160 (ESM + import map).
  */
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
 (function (global) {
     'use strict';
 
@@ -26,8 +29,6 @@
     var state = {
         prefix: 'wms-mapa3d',
         inited: false,
-        THREE: null,
-        OrbitControls: null,
         scene: null,
         camera: null,
         renderer: null,
@@ -45,9 +46,12 @@
         _canvas: null,
         _onPointerMove: null,
         _onClick: null,
-        _onWindowResize: null,
-        _threePromise: null
+        _onWindowResize: null
     };
+
+    function ensureThree() {
+        return Promise.resolve();
+    }
 
     function $(part) {
         return document.getElementById(state.prefix + '-' + part);
@@ -55,24 +59,6 @@
 
     function escapeHtml(s) {
         return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-
-    function ensureThree() {
-        if (state.THREE && state.OrbitControls) return Promise.resolve();
-        if (state._threePromise) return state._threePromise;
-        state._threePromise = import('three')
-            .then(function (mod) {
-                state.THREE = mod;
-                return import('three/addons/controls/OrbitControls.js');
-            })
-            .then(function (mod) {
-                state.OrbitControls = mod.OrbitControls;
-            })
-            .catch(function (e) {
-                state._threePromise = null;
-                throw new Error('Falha ao carregar Three.js: ' + ((e && e.message) || e));
-            });
-        return state._threePromise;
     }
 
     function hex(c) {
@@ -111,7 +97,6 @@
         state.pickables = [];
         state.slotIndex = [];
         if (!state.rackGroup) return;
-        var THREE = state.THREE;
         while (state.rackGroup.children.length) {
             var ch = state.rackGroup.children[0];
             state.rackGroup.remove(ch);
@@ -133,9 +118,8 @@
     }
 
     function buildRack(data) {
-        var THREE = state.THREE;
         clearRack();
-        if (!data || !data.camaras || !data.camaras.length || !state.rackGroup || !THREE) return;
+        if (!data || !data.camaras || !data.camaras.length || !state.rackGroup) return;
 
         var boxGeo = new THREE.BoxGeometry(SLOT_W, SLOT_H * 0.92, SLOT_D);
         var dummy = new THREE.Object3D();
@@ -203,8 +187,7 @@
     }
 
     function centerCameraOnRack() {
-        if (!state.rackGroup || !state.camera || !state.controls || !state.THREE) return;
-        var THREE = state.THREE;
+        if (!state.rackGroup || !state.camera || !state.controls) return;
         var box = new THREE.Box3().setFromObject(state.rackGroup);
         if (box.isEmpty()) return;
         var center = box.getCenter(new THREE.Vector3());
@@ -371,8 +354,6 @@
             return Promise.resolve();
         }
         return ensureThree().then(function () {
-            var THREE = state.THREE;
-            var OrbitControls = state.OrbitControls;
             var canvas = $('canvas');
             var wrap = $('wrap');
             if (!canvas || !wrap) throw new Error('Área do mapa 3D não encontrada (' + state.prefix + ')');
@@ -457,4 +438,4 @@
         getPrefix: function () { return state.prefix; },
         dispose: disposeInternal
     };
-})(window);
+})(typeof window !== 'undefined' ? window : globalThis);
