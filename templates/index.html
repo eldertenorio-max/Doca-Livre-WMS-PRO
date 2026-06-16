@@ -2728,11 +2728,11 @@
                             <div class="wms-rec-fase-corpo">
                                 <p class="wms-rec-fase-desc" style="margin-bottom: 10px;">Faça isso <strong>antes</strong> do recebimento. Cada nível da coluna ganha <strong>uma etiqueta fixa</strong> colada na longarina (formato horizontal 60×40 mm). O código de bipagem <strong>12.14.1</strong> não muda — paletes entram e saem, a placa fica.</p>
                                 <div class="info-text" style="margin-bottom: 12px; padding: 10px 12px; background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; font-size: 12px; line-height: 1.5;">
-                                    <strong>Como imprimir na Zebra ZD220 (sem ZebraDesigner):</strong><br>
-                                    1. Clique em <strong>Baixar ZPL</strong> — salva um arquivo <code>.prn</code> (texto com comandos da impressora).<br>
-                                    2. Abra <strong>Zebra Setup Utilities</strong> (instalado com o driver ZDesigner).<br>
-                                    3. Selecione a ZD220 → <strong>Open Communication</strong> → <strong>Send file</strong> → escolha o <code>.prn</code>.<br>
-                                    <span style="color:#c62828;"><strong>Não</strong> abra o arquivo no ZebraDesigner Essentials — ele não abre projetos <code>.nsln</code> e o <code>.prn</code> do WMS não é um projeto do Designer.</span> Para só conferir o conteúdo: clique direito no <code>.prn</code> → Abrir com → <strong>Bloco de notas</strong> (deve começar com <code>^XA</code>).
+                                    <strong>Como imprimir na Zebra ZD220:</strong><br>
+                                    <strong>A)</strong> Baixe o <code>.prn</code> aqui no WMS → use o script <a href="/static/zebra/enviar_prn_zebra.bat" download>enviar_prn_zebra.bat</a> (arraste o <code>.prn</code> em cima dele). Precisa do driver <strong>ZDesigner ZD220</strong> instalado.<br>
+                                    <strong>B)</strong> Instale o <a href="https://www.zebra.com/setup" target="_blank" rel="noopener">Zebra Setup Utilities</a> (grátis, vem com o driver) → <em>Send file</em> → escolha o <code>.prn</code>.<br>
+                                    <strong>C)</strong> Driver ZD220: <a href="https://www.zebra.com/br/pt/support-downloads/printers/desktop/zd220.html" target="_blank" rel="noopener">página de suporte ZD220</a> → aba Downloads → Windows Driver.<br>
+                                    <span style="color:#555;">Não abra o <code>.prn</code> no ZebraDesigner Essentials — use o script ou o Setup Utilities. Para só ver o conteúdo: Bloco de notas (começa com <code>^XA</code>).</span>
                                 </div>
                                 <div id="wms-etq-resumo-box" class="extrato-resumo-box" style="margin-bottom: 12px;">
                                     <p class="loading" style="margin:0;">Carregando resumo do armazém…</p>

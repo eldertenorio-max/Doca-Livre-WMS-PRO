@@ -5577,7 +5577,7 @@ async function _wmsBaixarZplUrl(url, nomeArquivo) {
             URL.revokeObjectURL(a.href);
             a.remove();
         }, 300);
-        showMessage('Arquivo .prn baixado. Zebra Setup Utilities → Open Communication → Send file → escolha o arquivo. Não abra no ZebraDesigner.', 'success');
+        showMessage('Arquivo .prn baixado. Arraste sobre enviar_prn_zebra.bat (aba ETQ. LONGARINA) ou use Zebra Setup Utilities.', 'success');
     } catch (e) {
         showMessage((e && e.message) || 'Erro ao baixar ZPL.', 'error');
     }
