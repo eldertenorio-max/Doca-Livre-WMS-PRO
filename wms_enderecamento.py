@@ -1106,6 +1106,18 @@ def _resolver_linha_nf_bipagem(doc, sku, n_item_nf=None):
     return None
 
 
+def _doc_descarga_reabrivel_wms(doc):
+    """Espelha wmsDocDescargaReabrivel no frontend."""
+    if not doc or not doc.get('recebimento_concluido'):
+        return False
+    st = (doc.get('recebimento_wms_status') or '').lower()
+    if st == 'finalizado' or doc.get('wms_bloqueado'):
+        return False
+    if doc.get('descarga_reabrivel') is not None:
+        return bool(doc.get('descarga_reabrivel'))
+    return not doc.get('recebimento_wms_id')
+
+
 def _quantidades_wms_recebimento(conn, recebimento_id):
     if not recebimento_id:
         return {}
@@ -5602,6 +5614,72 @@ def api_wms_recebimentos():
             conn.commit()
             conn.close()
             return jsonify({'ok': True, 'palete_id': pid, 'etiqueta': etiqueta, 'bloqueios': bloqueios})
+
+        if acao == 'iniciar_bipagem':
+            numero_nf = (data.get('numero_nf') or '').strip()
+            if not numero_nf:
+                conn.close()
+                return jsonify({'erro': 'Informe numero_nf.'}), 400
+            doc, err = _buscar_documento_terceiros_por_nf(conn, numero_nf)
+            if err:
+                conn.close()
+                return jsonify({'erro': err}), 404
+            doc = _enriquecer_documento_nf_wms(conn, doc)
+            st_wms = (doc.get('recebimento_wms_status') or '').lower()
+            if st_wms == 'finalizado' or doc.get('wms_bloqueado'):
+                conn.close()
+                return jsonify({'erro': 'NF já finalizada no WMS — consulte o Histórico NF.'}), 400
+            reabriu = False
+            if doc.get('recebimento_concluido'):
+                if not _doc_descarga_reabrivel_wms(doc):
+                    conn.close()
+                    return jsonify({
+                        'erro': 'Recebimento concluído na descarga e não pode ser reaberto pelo WMS.',
+                    }), 400
+                ter_doc = doc.get('documento_id') or data.get('terceiros_documento_id')
+                if not ter_doc:
+                    conn.close()
+                    return jsonify({'erro': 'Documento da NF não encontrado para reabrir descarga.'}), 400
+                ok_ter, err_ter = _reabrir_terceiros_recebimento_wms(
+                    conn, int(ter_doc), motivo='iniciar_bipagem_wms',
+                )
+                if not ok_ter:
+                    conn.close()
+                    return jsonify({'erro': err_ter or 'Não foi possível reabrir a descarga.'}), 400
+                reabriu = True
+                doc['recebimento_concluido'] = False
+                doc['descarga_reabrivel'] = False
+            ter_doc_id = data.get('terceiros_documento_id') or doc.get('documento_id')
+            ter_area = (data.get('terceiros_area') or doc.get('area') or '').strip().lower()
+            fornecedor = data.get('fornecedor') or doc.get('fornecedor')
+            placa = data.get('placa') or doc.get('placa')
+            origem = 'carreta' if ter_area == 'carreta' else ('terceiros' if ter_doc_id else 'manual')
+            new_id, reutilizado, st_rec = _obter_ou_criar_recebimento_wms(
+                conn,
+                numero_nf=numero_nf,
+                fornecedor=fornecedor,
+                placa=placa,
+                origem=origem,
+                ter_doc_id=ter_doc_id,
+                ter_area=ter_area or None,
+                now=now,
+            )
+            doc['recebimento_wms_id'] = new_id
+            doc['recebimento_wms_status'] = st_rec
+            doc = _enriquecer_documento_nf_wms(conn, doc)
+            if doc.pop('_wms_descarga_reaberta', None):
+                reabriu = True
+            conn.commit()
+            conn.close()
+            return jsonify({
+                'ok': True,
+                'id': new_id,
+                'reutilizado': reutilizado,
+                'status': st_rec,
+                'documento': doc,
+                'reabriu_descarga': reabriu,
+                'mensagem': 'Recebimento em andamento reutilizado.' if reutilizado else None,
+            })
 
         if acao == 'reabrir_descarga':
             doc_ter = data.get('terceiros_documento_id') or data.get('documento_id')

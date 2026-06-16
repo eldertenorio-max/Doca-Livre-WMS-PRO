@@ -1952,6 +1952,12 @@ def raiz():
     return redirect(url_for('login'))
 
 
+@app.route('/api/health')
+def api_health():
+    """Health check leve para proxy/hospedagem (Render)."""
+    return jsonify({'ok': True}), 200
+
+
 @app.route('/manifest.webmanifest')
 def manifest_app():
     """Manifest PWA — ícone na tela inicial e instalação na barra de tarefas."""

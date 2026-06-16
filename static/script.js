@@ -6323,44 +6323,37 @@ async function wmsIniciarBipagemNf() {
         }
         if (!window._wmsNfDoc) {
             await wmsBuscarNfDescarga();
-        } else {
-            await wmsAtualizarPainelNfDescarga();
         }
         if (!window._wmsNfDoc) return;
-        if (!(await wmsGarantirDescargaAbertaParaWms(window._wmsNfDoc, nf.trim()))) return;
-        await wmsAtualizarPainelNfDescarga();
-        if (!window._wmsNfDoc) return;
-        var rid = window._wmsNfDoc.recebimento_wms_id;
-        if (!rid) {
-            var terDoc = (document.getElementById('wms-rec-terceiros-doc-id') || {}).value || '';
-            var body = {
+        var terDoc = (document.getElementById('wms-rec-terceiros-doc-id') || {}).value
+            || window._wmsNfDoc.documento_id || '';
+        var data = await fetchAPIComTimeout('/wms/recebimentos', {
+            method: 'POST',
+            body: JSON.stringify({
+                acao: 'iniciar_bipagem',
                 numero_nf: nf.trim(),
                 fornecedor: (document.getElementById('wms-rec-fornecedor') || {}).value || '',
                 placa: (document.getElementById('wms-rec-placa') || {}).value || '',
                 terceiros_documento_id: terDoc ? parseInt(terDoc, 10) : null,
                 terceiros_area: (document.getElementById('wms-rec-terceiros-area') || {}).value || ''
-            };
-            var data = await fetchAPIComTimeout('/wms/recebimentos', {
-                method: 'POST',
-                body: JSON.stringify(body)
-            }, 60000);
-            if (!data || !data.ok) {
-                showMessage((data && data.erro) || 'Erro ao criar recebimento.', 'error');
-                return;
-            }
-            rid = data.id;
-            window._wmsNfDoc.recebimento_wms_id = rid;
-            window._wmsNfDoc.recebimento_wms_status = data.status || 'aguardando';
-            wmsAtualizarBotaoExcluirRecebimentoNf();
-            if (data.reutilizado) {
-                showMessage(data.mensagem || ('Recebimento #' + rid + ' em andamento reutilizado.'), 'info');
-            }
-            loadWmsRecebimentos();
+            })
+        }, 90000);
+        if (!data || !data.ok) {
+            showMessage((data && data.erro) || 'Erro ao abrir bipagem — tente de novo em alguns segundos.', 'error');
+            return;
         }
+        if (data.documento) wmsPreencherPainelNfDescarga(data.documento);
+        var rid = data.id;
         if (!rid) {
             showMessage('Não foi possível abrir o recebimento WMS.', 'error');
             return;
         }
+        if (data.reutilizado) {
+            showMessage(data.mensagem || ('Recebimento #' + rid + ' em andamento reutilizado.'), 'info');
+        } else if (data.reabriu_descarga) {
+            showMessage('Descarga reaberta — pode continuar a bipagem no WMS.', 'info');
+        }
+        loadWmsRecebimentos();
         wmsSincronizarRecebimentoAberto(rid, { resetarPalete: true });
         _wmsRevelarPassoAPassoBipagem(true);
         showMessage('Passo a passo aberto — bipe o EAN/SKU do produto e confirme lote e datas.', 'success');
@@ -16233,8 +16226,20 @@ function mensagemErroRespostaNaoJson(status, corpoTexto) {
 }
 
 // API Calls
-/** POST/PUT com limite de tempo (evita botão «A guardar…» preso para sempre se o servidor não responder). */
+/** POST/PUT com limite de tempo e retry em 502/503 (Render acordando). */
 async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
+    timeoutMs = timeoutMs == null || timeoutMs < 5000 ? 35000 : timeoutMs;
+    var maxTent = 3;
+    var ultimo = null;
+    for (var t = 0; t < maxTent; t++) {
+        ultimo = await _fetchAPIComTimeoutUma(endpoint, options, timeoutMs);
+        if (!ultimo || !ultimo._falhaGateway || t >= maxTent - 1) return ultimo;
+        await new Promise(function(resolve) { setTimeout(resolve, 1800 * (t + 1)); });
+    }
+    return ultimo;
+}
+
+async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
     timeoutMs = timeoutMs == null || timeoutMs < 5000 ? 35000 : timeoutMs;
     var ac = new AbortController();
     var externalSignal = options && options.signal;
