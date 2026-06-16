@@ -8,6 +8,8 @@
   :root {
     --lw: 3in;
     --lh: 2in;
+    --ink: #000000;
+    --paper: #ffffff;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -21,7 +23,7 @@
     font-family: Arial, Helvetica, sans-serif;
     background: #eee;
     padding: 6px;
-    color: #000;
+    color: var(--ink);
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -52,130 +54,214 @@
   .etq {
     width: var(--lw);
     height: var(--lh);
-    border: 1pt solid #000;
-    padding: 0.06in 0.08in;
-    background: #fff;
+    border: 2pt solid var(--ink);
+    background: var(--paper);
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
 
-  .etq-destino .etq {
-    justify-content: center;
-    text-align: center;
-    padding: 0.05in 0.08in;
-  }
-  .destino strong {
-    display: block;
-    font-size: 5.5pt;
-    margin-bottom: 0.03in;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: #33691e;
-  }
-  .camara-badge {
-    font-size: 7pt;
-    font-weight: bold;
-    color: #1b5e20;
-    margin-bottom: 0.03in;
-  }
-  .camara-badge span {
-    font-size: 13pt;
-    color: #c62828;
-    font-weight: 900;
-    vertical-align: middle;
-  }
-  .end-bc-label {
-    display: block;
-    font-size: 4.5pt;
-    color: #555;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    margin-bottom: 0.02in;
-  }
-  .destino .end-wms {
-    display: block;
-    font-size: 12pt;
-    font-weight: bold;
-    font-family: Consolas, monospace;
-    letter-spacing: 0.6px;
-    line-height: 1;
-    margin: 0.02in 0 0.04in;
-    color: #0d47a1;
-  }
-  .destino .bc-wrap-end { line-height: 0; margin: 0.02in 0; }
-  .destino .bc-wrap-end svg { width: 92%; height: 0.3in; }
-  .destino .end-bc {
-    display: block;
-    font-size: 7pt;
-    font-weight: 700;
-    font-family: Consolas, monospace;
-    margin-top: 0.03in;
-    color: #333;
-  }
-  .destino .end-txt {
-    display: block;
-    font-size: 5pt;
-    color: #333;
-    line-height: 1.2;
-    margin-top: 0.03in;
-    font-weight: 600;
-  }
-  .destino .end-zona {
-    display: inline-block;
-    margin-top: 0.03in;
-    padding: 0.02in 0.05in;
-    font-size: 5pt;
-    font-weight: bold;
-    background: #1565c0;
-    color: #fff;
+  .ink-block {
+    background: var(--ink) !important;
+    color: var(--paper) !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  .palete-head {
-    text-align: center;
+  /* ── Faixa destino (topo) ── */
+  .etq-destino {
     flex-shrink: 0;
-    margin-bottom: 0.03in;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    border-bottom: 1.5pt solid var(--ink);
+    min-height: 0.52in;
+    max-height: 0.58in;
   }
-  .brand {
-    font-size: 4.5pt;
-    font-weight: bold;
-    letter-spacing: 0.3px;
+  .dest-titulo {
+    width: 0.62in;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.03in;
+    font-size: 5pt;
+    font-weight: 800;
     text-transform: uppercase;
-  }
-  .tipo {
-    font-size: 4pt;
-    color: #444;
-    margin-bottom: 0.02in;
-  }
-  .bc-wrap { text-align: center; line-height: 0; margin: 0.02in 0; }
-  .bc-wrap svg { width: 94%; height: 0.28in; }
-  .codigo {
+    letter-spacing: 0.3px;
+    line-height: 1.1;
     text-align: center;
-    font-size: 6pt;
-    font-family: Consolas, monospace;
-    font-weight: bold;
-    letter-spacing: 0.4px;
-    margin-bottom: 0.03in;
+    border-right: 1.5pt solid var(--ink);
   }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 5.5pt;
+  .dest-info {
     flex: 1;
-    min-height: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0.03in 0.05in;
+    gap: 0.05in;
+    min-width: 0;
+    overflow: hidden;
   }
-  table td {
-    border: 0.5pt solid #000;
-    padding: 0.02in 0.04in;
-    vertical-align: top;
-    line-height: 1.15;
-  }
-  table td.lbl {
-    width: 26%;
-    font-weight: bold;
-    background: #f5f5f5;
+  .dest-wms {
+    flex-shrink: 0;
+    font-size: 11pt;
+    font-weight: 900;
+    font-family: Consolas, 'Courier New', monospace;
+    letter-spacing: 0.5px;
+    line-height: 1;
     white-space: nowrap;
   }
+  .dest-camara {
+    flex-shrink: 0;
+    font-size: 5.5pt;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .dest-camara b {
+    font-size: 9pt;
+    font-weight: 900;
+  }
+  .dest-bc {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    line-height: 0;
+  }
+  .dest-bc svg {
+    width: 100%;
+    max-width: 0.85in;
+    height: 0.22in;
+  }
+  .dest-bip {
+    flex-shrink: 0;
+    text-align: right;
+    line-height: 1.1;
+  }
+  .dest-bip .lbl {
+    display: block;
+    font-size: 4pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+  }
+  .dest-bip .val {
+    display: block;
+    font-size: 6.5pt;
+    font-weight: 800;
+    font-family: Consolas, monospace;
+  }
+  .dest-loc {
+    flex-shrink: 0;
+    max-width: 0.95in;
+    font-size: 4pt;
+    font-weight: 700;
+    line-height: 1.1;
+    text-align: right;
+  }
+
+  /* ── Corpo palete ── */
+  .etq-body {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .etq-palete-bc {
+    width: 1.15in;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.03in 0.04in;
+    border-right: 1.5pt solid var(--ink);
+  }
+  .brand {
+    font-size: 4pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+    text-align: center;
+    margin-bottom: 0.02in;
+    line-height: 1;
+  }
+  .bc-wrap { width: 100%; text-align: center; line-height: 0; }
+  .bc-wrap svg { width: 100%; height: 0.30in; }
+  .codigo {
+    margin-top: 0.02in;
+    font-size: 4.5pt;
+    font-family: Consolas, monospace;
+    font-weight: 800;
+    text-align: center;
+    line-height: 1;
+    word-break: break-all;
+  }
+
+  .etq-dados {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    font-size: 5pt;
+    line-height: 1.15;
+  }
+  .dados-row {
+    display: flex;
+    flex-direction: row;
+    border-bottom: 1pt solid var(--ink);
+    min-height: 0;
+  }
+  .dados-row:last-child { border-bottom: none; flex: 1; }
+  .dados-cell {
+    padding: 0.02in 0.04in;
+    border-right: 1pt solid var(--ink);
+    overflow: hidden;
+  }
+  .dados-cell:last-child { border-right: none; }
+  .dados-cell .lbl {
+    display: block;
+    font-size: 4pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 0.01in;
+  }
+  .dados-cell .val {
+    font-weight: 700;
+    word-break: break-word;
+  }
+  .dados-cell.w-sku { width: 28%; }
+  .dados-cell.w-lote { width: 22%; }
+  .dados-cell.w-dt { width: 25%; }
+  .dados-cell.w-cx { width: 25%; }
+  .dados-desc {
+    flex: 1;
+    padding: 0.02in 0.04in;
+    overflow: hidden;
+  }
+  .dados-desc .lbl {
+    font-size: 4pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.01in;
+  }
+  .dados-desc .val {
+    font-size: 5pt;
+    font-weight: 700;
+    line-height: 1.12;
+    max-height: 0.34in;
+    overflow: hidden;
+  }
+
+  .etq-sem-destino .etq-palete-bc {
+    width: 1.25in;
+  }
+  .etq-sem-destino .bc-wrap svg { height: 0.38in; }
+  .etq-sem-destino .dados-desc .val { max-height: 0.55in; }
 
   @media print {
     @page { size: 3in 2in landscape; margin: 0; }
@@ -193,15 +279,9 @@
       margin: 0 !important;
       padding: 0 !important;
       position: relative;
-      page-break-after: always;
-      break-after: page;
-      page-break-inside: avoid;
-      break-inside: avoid;
-      overflow: hidden;
-    }
-    .etq-page:last-child {
       page-break-after: auto;
       break-after: auto;
+      overflow: hidden;
     }
     .etq {
       position: absolute;
@@ -210,7 +290,11 @@
       width: var(--lw) !important;
       height: var(--lh) !important;
       margin: 0 !important;
-      border: none !important;
+      border: 2pt solid #000 !important;
+    }
+    .ink-block {
+      background: #000 !important;
+      color: #fff !important;
     }
   }
 </style>
@@ -218,57 +302,78 @@
 <body>
 <div class="toolbar">
   <button type="button" onclick="window.print()">Imprimir</button>
-  <p class="zebra-hint">ZD220: <strong>3″×2″</strong> paisagem · margens <strong>Nenhuma</strong> · escala <strong>100%</strong> · sem cabeçalho/rodapé.</p>
+  <p class="zebra-hint">ZD220: <strong>1 etiqueta</strong> 3″×2″ paisagem · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>.</p>
 </div>
 
-{% if endereco_barcode or destino or codigo_wms %}
-<div class="etq-page etq-destino">
-  <div class="etq destino">
-    <strong>Guardar em — longarina</strong>
-    {% if camara %}
-    <div class="camara-badge">Câmara <span>{{ camara }}</span></div>
-    {% endif %}
-    {% if codigo_wms %}
-    <span class="end-bc-label">Endereço WMS</span>
-    <span class="end-wms">{{ codigo_wms }}</span>
-    {% endif %}
-    {% if codigo_wms or endereco_barcode %}
-    <div class="bc-wrap-end">
-      <svg id="bc-endereco" data-code="{{ codigo_wms or endereco_barcode }}"></svg>
-    </div>
-    {% endif %}
-    {% if endereco_barcode and (not codigo_wms or endereco_barcode != codigo_wms) %}
-    <span class="end-bc-label">Bip longarina (Câm · Col · Nív)</span>
-    <span class="end-bc">{{ endereco_barcode }}</span>
-    {% endif %}
-    {% if endereco_texto %}
-    <span class="end-txt">{{ endereco_texto }}</span>
-    {% elif camara and rua and coluna and nivel %}
-    <span class="end-txt">Câmara {{ camara }} · Rua {{ rua }} · Col {{ coluna }} · Nív {{ nivel }}{% if zona %} ({{ zona }}){% endif %}</span>
-    {% endif %}
-    {% if zona and not endereco_texto %}<span class="end-zona">{{ zona }}</span>{% endif %}
-  </div>
-</div>
-{% endif %}
+<div class="etq-page">
+  <div class="etq{% if not (endereco_barcode or destino or codigo_wms) %} etq-sem-destino{% endif %}">
 
-<div class="etq-page etq-palete">
-  <div class="etq">
-    <div class="palete-head">
-      <div class="brand">Ultrapão · Stock System WMS</div>
-      <div class="tipo">ETIQUETA DE IDENTIFICAÇÃO — palete</div>
-      <div class="bc-wrap">
-        <svg id="bc-palete" data-code="{{ etiqueta }}"></svg>
+    {% if endereco_barcode or destino or codigo_wms %}
+    <div class="etq-destino">
+      <div class="dest-titulo ink-block">Guardar em</div>
+      <div class="dest-info">
+        {% if codigo_wms %}<div class="dest-wms">{{ codigo_wms }}</div>{% endif %}
+        {% if camara %}<div class="dest-camara">Câm <b>{{ camara }}</b></div>{% endif %}
+        {% if codigo_wms or endereco_barcode %}
+        <div class="dest-bc">
+          <svg id="bc-endereco" data-code="{{ codigo_wms or endereco_barcode }}"></svg>
+        </div>
+        {% endif %}
+        {% if endereco_barcode and (not codigo_wms or endereco_barcode != codigo_wms) %}
+        <div class="dest-bip">
+          <span class="lbl">Bip</span>
+          <span class="val">{{ endereco_barcode }}</span>
+        </div>
+        {% endif %}
+        {% if endereco_texto %}
+        <div class="dest-loc">{{ endereco_texto }}</div>
+        {% elif camara and rua and coluna and nivel %}
+        <div class="dest-loc">Câm {{ camara }} · {{ rua }} · Col {{ coluna }} · Nív {{ nivel }}{% if zona %} · {{ zona }}{% endif %}</div>
+        {% endif %}
       </div>
-      <div class="codigo">{{ etiqueta }}</div>
     </div>
-    <table>
-      <tr><td class="lbl">SKU</td><td>{{ sku or '—' }}</td></tr>
-      <tr><td class="lbl">Descrição</td><td>{{ descricao or '—' }}</td></tr>
-      <tr><td class="lbl">Lote</td><td>{{ lote or '—' }}</td></tr>
-      <tr><td class="lbl">Dt. prod.</td><td>{{ data_producao or '—' }}</td></tr>
-      <tr><td class="lbl">Validade</td><td>{{ data_validade or '—' }}</td></tr>
-      <tr><td class="lbl">Caixas</td><td>{{ qtd if qtd is not none else '—' }}{% if up %} · UP {{ up }}{% endif %}</td></tr>
-    </table>
+    {% endif %}
+
+    <div class="etq-body">
+      <div class="etq-palete-bc">
+        <div class="brand">Ultrapão · WMS</div>
+        <div class="bc-wrap">
+          <svg id="bc-palete" data-code="{{ etiqueta }}"></svg>
+        </div>
+        <div class="codigo">{{ etiqueta }}</div>
+      </div>
+      <div class="etq-dados">
+        <div class="dados-row">
+          <div class="dados-cell w-sku">
+            <span class="lbl">SKU</span>
+            <span class="val">{{ sku or '—' }}</span>
+          </div>
+          <div class="dados-cell w-lote">
+            <span class="lbl">Lote</span>
+            <span class="val">{{ lote or '—' }}</span>
+          </div>
+          <div class="dados-cell w-dt">
+            <span class="lbl">Produção</span>
+            <span class="val">{{ data_producao or '—' }}</span>
+          </div>
+          <div class="dados-cell w-cx">
+            <span class="lbl">Caixas</span>
+            <span class="val">{{ qtd if qtd is not none else '—' }}{% if up %} · UP {{ up }}{% endif %}</span>
+          </div>
+        </div>
+        <div class="dados-row">
+          <div class="dados-cell w-dt">
+            <span class="lbl">Validade</span>
+            <span class="val">{{ data_validade or '—' }}</span>
+          </div>
+          <div class="dados-desc" style="flex:1;border-right:none;">
+            <span class="lbl">Descrição</span>
+            <span class="val">{{ descricao or '—' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -285,8 +390,8 @@
       }, opts || {}));
     } catch (e) { console.warn(e); }
   }
-  renderBc('bc-palete', { width: 1.1, height: 24 });
-  renderBc('bc-endereco', { width: 1.05, height: 26 });
+  renderBc('bc-palete', { width: 1.15, height: 26 });
+  renderBc('bc-endereco', { width: 1.0, height: 18 });
   {% if auto_print %}
   window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 400); });
   {% endif %}
