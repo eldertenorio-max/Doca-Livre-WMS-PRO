@@ -2727,26 +2727,14 @@
                             <h3 class="wms-rec-fase-titulo"><span class="wms-rec-fase-num">1</span><span>Instalação no rack — pregue todas as longarinas (passo zero)</span></h3>
                             <div class="wms-rec-fase-corpo">
                                 <p class="wms-rec-fase-desc" style="margin-bottom: 10px;">Faça isso <strong>antes</strong> do recebimento. Cada nível da coluna ganha <strong>uma etiqueta fixa</strong> colada na longarina (formato horizontal 60×40 mm). O código de bipagem <strong>12.14.1</strong> não muda — paletes entram e saem, a placa fica.</p>
-                                <div class="info-text" style="margin-bottom: 12px; padding: 10px 12px; background: #e8f5e9; border: 1px solid #81c784; border-radius: 8px; font-size: 12px; line-height: 1.55;">
-                                    <strong>Seu layout Etiqueta.nlbl (ZebraDesigner):</strong><br>
-                                    1. No Designer: <strong>Arquivo → Abrir → Etiqueta.nlbl</strong> (funciona no Essentials).<br>
-                                    2. No WMS: clique <strong>CSV para Designer</strong> e vincule os campos <code>camara, rua, coluna, nivel, barcode, codigo_wms, zona</code> ao texto/código de barras do seu modelo.<br>
-                                    3. Imprima pelo Designer com os dados do CSV (lote) — ou use <strong>Imprimir na Zebra</strong> aqui no WMS (gera ZPL automático, sem abrir o .nlbl).<br>
-                                    <span style="color:#555;">Arquivo <code>.nsln</code> = projeto completo (só Professional). O seu <code>.nlbl</code> é só a etiqueta — abre no Essentials.</span>
-                                </div>
-                                <div class="info-text" style="margin-bottom: 12px; padding: 10px 12px; background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; font-size: 12px; line-height: 1.5;">
-                                    <strong>Imprimir direto do WMS (recomendado):</strong> instale <a href="https://www.zebra.com/us/en/support-downloads/software/developer-tools/browser-print.html" target="_blank" rel="noopener">Zebra Browser Print</a> → abra <a href="https://localhost:9101/ssl_support" target="_blank" rel="noopener">localhost:9101/ssl_support</a> (aceitar certificado) → use os botões <strong>Imprimir na Zebra</strong>.<br>
-                                    Sem Browser Print: baixe <code>.prn</code> e use <a href="/static/zebra/enviar_prn_zebra.bat" download>enviar_prn_zebra.bat</a> (arraste o arquivo em cima).
-                                </div>
+                                <p class="info-text" style="margin-bottom: 12px; padding: 8px 10px; background: #fff8e1; border: 1px solid #ffcc80; border-radius: 6px; font-size: 12px;">Impressão: driver Zebra <strong>60×40 mm</strong> · Chrome margens <strong>Nenhuma</strong> · escala <strong>100%</strong>.</p>
                                 <div id="wms-etq-resumo-box" class="extrato-resumo-box" style="margin-bottom: 12px;">
                                     <p class="loading" style="margin:0;">Carregando resumo do armazém…</p>
                                 </div>
                                 <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px;">
-                                    <button type="button" class="btn btn-success btn-lg" id="btn-wms-etq-todas">Imprimir na Zebra — todas</button>
-                                    <button type="button" class="btn btn-primary btn-sm" id="btn-wms-etq-csv-todas">CSV para Designer</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-prn-todas">Baixar .prn</button>
+                                    <button type="button" class="btn btn-success btn-lg" id="btn-wms-etq-todas">Imprimir TODAS as longarinas</button>
                                     <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-resumo-atualizar">Atualizar resumo</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-demo">Prévia HTML (demo)</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-demo">Ver modelo (demo)</button>
                                 </div>
                                 <p class="info-text" style="margin: 0; font-size: 12px;">Cada coluna tem <strong>5 níveis</strong>: 1 PICKING (nível 1) + 4 PULMÃO (níveis 2–5). Se mudou o layout, no <strong>Painel WMS</strong> clique em «Recalcular distribuição» antes de imprimir.</p>
                             </div>
@@ -2763,9 +2751,8 @@
                                 <div class="form-group"><label>Câmara</label><select id="wms-etq-camara" style="min-width: 140px;"><option value="">Selecione</option></select></div>
                                 <div class="form-group"><label>Rua interna</label><select id="wms-etq-rua" style="min-width: 100px;"><option value="">Selecione</option></select></div>
                                 <div class="form-group"><label>Prédio (coluna)</label><select id="wms-etq-pos" style="min-width: 110px;"><option value="">Selecione</option></select></div>
-                                <button type="button" class="btn btn-primary" id="btn-wms-etq-coluna">Imprimir na Zebra — coluna</button>
-                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-csv-coluna">CSV Designer</button>
-                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-camara">Imprimir — câmara</button>
+                                <button type="button" class="btn btn-primary" id="btn-wms-etq-coluna">Imprimir 1 coluna</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-camara">Imprimir câmara</button>
                             </div>
                             <p id="wms-etq-coluna-info" class="info-text" style="display:none; margin: 8px 0 0 0; font-size: 12px;"></p>
                         </section>
@@ -2773,8 +2760,7 @@
                             <h3 class="wms-rec-fase-titulo" style="margin-bottom: 12px;"><span class="wms-rec-fase-num">3</span><span>Uma posição avulsa</span></h3>
                             <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end;">
                                 <div class="form-group" style="flex: 1; min-width: 200px;"><label>Código</label><input type="text" id="wms-etq-codigo-unico" placeholder="12.14.1 ou 12-C-14-1"></div>
-                                <button type="button" class="btn btn-secondary" id="btn-wms-etq-unico">Imprimir na Zebra</button>
-                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-csv-unico">CSV Designer</button>
+                                <button type="button" class="btn btn-secondary" id="btn-wms-etq-unico">Imprimir 1 etiqueta</button>
                             </div>
                         </section>
                     </div>

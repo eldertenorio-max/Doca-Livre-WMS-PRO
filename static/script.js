@@ -5305,16 +5305,10 @@ function initWmsEnderecamento() {
     });
     var bEtqCol = document.getElementById('btn-wms-etq-coluna');
     if (bEtqCol) bEtqCol.addEventListener('click', wmsImprimirEtqColuna);
-    var bEtqCsvCol = document.getElementById('btn-wms-etq-csv-coluna');
-    if (bEtqCsvCol) bEtqCsvCol.addEventListener('click', wmsBaixarEtqCsvColuna);
     var bEtqCam = document.getElementById('btn-wms-etq-camara');
     if (bEtqCam) bEtqCam.addEventListener('click', wmsImprimirEtqCamara);
     var bEtqTodas = document.getElementById('btn-wms-etq-todas');
     if (bEtqTodas) bEtqTodas.addEventListener('click', wmsImprimirEtqTodasLongarinas);
-    var bEtqCsvTodas = document.getElementById('btn-wms-etq-csv-todas');
-    if (bEtqCsvTodas) bEtqCsvTodas.addEventListener('click', wmsBaixarEtqCsvTodasLongarinas);
-    var bEtqPrnTodas = document.getElementById('btn-wms-etq-prn-todas');
-    if (bEtqPrnTodas) bEtqPrnTodas.addEventListener('click', wmsBaixarEtqPrnTodasLongarinas);
     var bEtqRes = document.getElementById('btn-wms-etq-resumo-atualizar');
     if (bEtqRes) bEtqRes.addEventListener('click', function() {
         loadWmsEtqLongarinaResumo({ forcarSync: true, recarregarOpcoes: true });
@@ -5323,8 +5317,6 @@ function initWmsEnderecamento() {
     if (bEtqDemo) bEtqDemo.addEventListener('click', wmsImprimirEtqDemo);
     var bEtqUnico = document.getElementById('btn-wms-etq-unico');
     if (bEtqUnico) bEtqUnico.addEventListener('click', wmsImprimirEtqUnico);
-    var bEtqCsvUnico = document.getElementById('btn-wms-etq-csv-unico');
-    if (bEtqCsvUnico) bEtqCsvUnico.addEventListener('click', wmsBaixarEtqCsvUnico);
     var etqCodUnico = document.getElementById('wms-etq-codigo-unico');
     if (etqCodUnico && !etqCodUnico.dataset.bound) {
         etqCodUnico.dataset.bound = '1';
@@ -5552,7 +5544,7 @@ async function loadWmsLocalizacoes() {
             var cod = escHtml(r.codigo_endereco || '');
             var bcLong = escHtml(r.barcode_longarina || '');
             var codJs = String(r.codigo_endereco || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            return '<tr><td>' + cod + '</td><td><strong>' + bcLong + '</strong></td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(catCol) + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-primary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">ZPL</button> <button type="button" class="btn btn-sm btn-secondary" onclick="wmsPreviaEtqEndereco(\'' + codJs + '\')">HTML</button></td></tr>';
+            return '<tr><td>' + cod + '</td><td><strong>' + bcLong + '</strong></td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(catCol) + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Longarina</button></td></tr>';
         }).join('') : '<tr><td colspan="10">Nenhuma localização. Clique em Atualizar ou use o painel para recalcular o layout.</td></tr>';
     } catch (e) {
         if (tb) {
@@ -5567,131 +5559,7 @@ function _wmsAbrirEtiquetaUrl(url) {
     if (!w) showMessage('Pop-up bloqueado — libere pop-ups para imprimir etiquetas.', 'error');
 }
 
-async function _wmsBaixarZplUrl(url, nomeArquivo) {
-    try {
-        var resp = await fetch(url, { credentials: 'same-origin' });
-        if (!resp.ok) {
-            var err = {};
-            try { err = await resp.json(); } catch (e) { /* ignore */ }
-            throw new Error((err && err.erro) || ('Erro ' + resp.status));
-        }
-        var blob = await resp.blob();
-        var a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = nomeArquivo || 'longarinas.prn';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(function() {
-            URL.revokeObjectURL(a.href);
-            a.remove();
-        }, 300);
-        showMessage('Arquivo .prn baixado.', 'success');
-    } catch (e) {
-        showMessage((e && e.message) || 'Erro ao baixar ZPL.', 'error');
-    }
-}
-
-async function _wmsBaixarCsvUrl(url, nomeArquivo) {
-    try {
-        var resp = await fetch(url, { credentials: 'same-origin' });
-        if (!resp.ok) {
-            var err = {};
-            try { err = await resp.json(); } catch (e) { /* ignore */ }
-            throw new Error((err && err.erro) || ('Erro ' + resp.status));
-        }
-        var blob = await resp.blob();
-        var a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = nomeArquivo || 'longarinas.csv';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(function() {
-            URL.revokeObjectURL(a.href);
-            a.remove();
-        }, 300);
-        showMessage('CSV baixado — use no ZebraDesigner com seu Etiqueta.nlbl.', 'success');
-    } catch (e) {
-        showMessage((e && e.message) || 'Erro ao baixar CSV.', 'error');
-    }
-}
-
-function _wmsCarregarBrowserPrintScript(src) {
-    return new Promise(function(resolve, reject) {
-        if (window.BrowserPrint) { resolve(window.BrowserPrint); return; }
-        var s = document.createElement('script');
-        s.src = src;
-        s.onload = function() {
-            if (window.BrowserPrint) resolve(window.BrowserPrint);
-            else reject(new Error('Biblioteca Browser Print não inicializou.'));
-        };
-        s.onerror = function() { reject(new Error('Falha ao carregar ' + src)); };
-        document.head.appendChild(s);
-    });
-}
-
-async function _wmsCarregarBrowserPrint() {
-    if (window.BrowserPrint) return window.BrowserPrint;
-    return _wmsCarregarBrowserPrintScript('/static/zebra/BrowserPrint-3.1.250.min.js');
-}
-
-async function _wmsImprimirZplNaZebra(zplUrl) {
-    await _wmsCarregarBrowserPrint();
-    var resp = await fetch(zplUrl, { credentials: 'same-origin' });
-    if (!resp.ok) {
-        var err = {};
-        try { err = await resp.json(); } catch (e) { /* ignore */ }
-        throw new Error((err && err.erro) || ('Erro ' + resp.status));
-    }
-    var zpl = await resp.text();
-    return new Promise(function(resolve, reject) {
-        window.BrowserPrint.getDefaultDevice('printer', function(device) {
-            if (!device) {
-                window.BrowserPrint.getLocalDevices(function(devs) {
-                    var list = (devs || []).filter(function(d) {
-                        return d && d.deviceType === 'printer';
-                    });
-                    if (!list.length) {
-                        reject(new Error('Nenhuma impressora Zebra no Browser Print.'));
-                        return;
-                    }
-                    list[0].send(zpl, function() { resolve(list[0]); }, reject);
-                }, reject);
-                return;
-            }
-            device.send(zpl, function() { resolve(device); }, reject);
-        }, reject);
-    });
-}
-
-async function _wmsImprimirOuBaixarZpl(zplUrl, nomeArquivo) {
-    try {
-        await _wmsImprimirZplNaZebra(zplUrl);
-        showMessage('Etiqueta enviada para a impressora Zebra.', 'success');
-    } catch (e) {
-        var msg = (e && e.message) || 'Browser Print indisponível';
-        if (confirm(msg + '\n\nInstale Zebra Browser Print (zebra.com/browserprint) e abra https://localhost:9101/ssl_support\n\nBaixar .prn para imprimir manualmente?')) {
-            await _wmsBaixarZplUrl(zplUrl, nomeArquivo);
-        }
-    }
-}
-
 window.wmsImprimirEtqEndereco = function(codigo) {
-    if (!codigo) return;
-    _wmsImprimirOuBaixarZpl(
-        '/api/wms/etiqueta/endereco/zpl?codigo=' + encodeURIComponent(codigo),
-        'longarina_' + String(codigo).replace(/[^\w.-]+/g, '_') + '.prn'
-    );
-};
-
-window.wmsBaixarEtqEnderecoCsv = function(codigo) {
-    if (!codigo) return;
-    _wmsBaixarCsvUrl(
-        '/api/wms/etiqueta/endereco/csv?codigo=' + encodeURIComponent(codigo),
-        'longarina_' + String(codigo).replace(/[^\w.-]+/g, '_') + '.csv'
-    );
-};
-
-window.wmsPreviaEtqEndereco = function(codigo) {
     if (!codigo) return;
     _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/endereco?codigo=' + encodeURIComponent(codigo));
 };
@@ -5702,10 +5570,10 @@ function wmsImprimirEtqColuna() {
     var pos = (document.getElementById('wms-etq-pos') || {}).value || '';
     if (!cam) { showMessage('Selecione a câmara (Rua).', 'error'); return; }
     if (!rua || !pos) { showMessage('Selecione a rua interna e o prédio (coluna).', 'error'); return; }
-    var url = '/api/wms/etiqueta/enderecos/zpl?camara=' + encodeURIComponent(cam) +
+    var url = '/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam) +
         '&rua=' + encodeURIComponent(rua) + '&posicao=' + encodeURIComponent(pos);
-    _wmsImprimirOuBaixarZpl(url, 'longarinas_' + cam + '_' + rua + '_' + pos + '.prn');
-}
+    _wmsAbrirEtiquetaUrl(url);
+};
 
 window._wmsEtqOpcoes = null;
 window._wmsEtqFiltroLock = false;
@@ -5915,8 +5783,8 @@ async function loadWmsEtqLongarinaOpcoes() {
 function wmsImprimirEtqCamara() {
     var cam = (document.getElementById('wms-etq-camara') || {}).value || '';
     if (!cam) { showMessage('Selecione a câmara.', 'error'); return; }
-    if (!confirm('Imprimir na Zebra todas as longarinas da câmara ' + cam + '?')) return;
-    _wmsImprimirOuBaixarZpl('/api/wms/etiqueta/enderecos/zpl?camara=' + encodeURIComponent(cam), 'longarinas_camara_' + cam + '.prn');
+    if (!confirm('Imprimir todas as longarinas da câmara ' + cam + '?')) return;
+    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam));
 }
 
 async function loadWmsEtqLongarinaResumo(opcoes) {
@@ -5980,41 +5848,14 @@ function loadWmsEtiquetasLongarinaAba() {
 function wmsImprimirEtqTodasLongarinas() {
     var box = document.getElementById('wms-etq-resumo-box');
     var txt = box ? box.textContent : '';
-    var msg = 'Imprimir na Zebra TODAS as etiquetas de longarina do armazém';
+    var msg = 'Imprimir TODAS as etiquetas de longarina do armazém';
     if (txt && txt.indexOf('Total') >= 0) {
         msg += ' (' + txt.replace(/\s+/g, ' ').trim().slice(0, 120) + '…)?';
     } else {
         msg += '? O arquivo pode ser grande.';
     }
     if (!confirm(msg)) return;
-    _wmsImprimirOuBaixarZpl('/api/wms/etiqueta/enderecos/zpl?todas=1', 'longarinas_armazem.prn');
-}
-
-function wmsBaixarEtqCsvColuna() {
-    var cam = (document.getElementById('wms-etq-camara') || {}).value || '';
-    var rua = ((document.getElementById('wms-etq-rua') || {}).value || '').trim().toUpperCase();
-    var pos = (document.getElementById('wms-etq-pos') || {}).value || '';
-    if (!cam || !rua || !pos) { showMessage('Selecione câmara, rua e coluna.', 'error'); return; }
-    _wmsBaixarCsvUrl(
-        '/api/wms/etiqueta/enderecos/csv?camara=' + encodeURIComponent(cam) + '&rua=' + encodeURIComponent(rua) + '&posicao=' + encodeURIComponent(pos),
-        'longarinas_' + cam + '_' + rua + '_' + pos + '.csv'
-    );
-}
-
-function wmsBaixarEtqCsvTodasLongarinas() {
-    if (!confirm('Baixar CSV de todas as longarinas para o ZebraDesigner?')) return;
-    _wmsBaixarCsvUrl('/api/wms/etiqueta/enderecos/csv?todas=1', 'longarinas_armazem.csv');
-}
-
-function wmsBaixarEtqPrnTodasLongarinas() {
-    if (!confirm('Baixar .prn de todas as longarinas?')) return;
-    _wmsBaixarZplUrl('/api/wms/etiqueta/enderecos/zpl?todas=1', 'longarinas_armazem.prn');
-}
-
-function wmsBaixarEtqCsvUnico() {
-    var cod = ((document.getElementById('wms-etq-codigo-unico') || {}).value || '').trim();
-    if (!cod) { showMessage('Informe o código.', 'warning'); return; }
-    wmsBaixarEtqEnderecoCsv(cod);
+    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?todas=1');
 }
 
 function wmsImprimirEtqUnico() {

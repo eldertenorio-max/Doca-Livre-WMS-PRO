@@ -2,30 +2,23 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=60mm">
 <title>Etiquetas longarina WMS{% if titulo %} — {{ titulo }}{% endif %}</title>
-<script>
-(function() {
-  if (/\bzebra=portrait\b/i.test(location.search))
-    document.documentElement.classList.add('zebra-portrait');
-})();
-</script>
 <style>
   :root {
     --lw: 60mm;
     --lh: 40mm;
-    --ink: #000000;
-    --paper: #ffffff;
+    --ink: #000;
+    --paper: #fff;
+    --row-top: 13.6mm;
+    --row-mid: 16.8mm;
+    --row-bot: 9.6mm;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  @page { size: 60mm 40mm; margin: 0; }
+  @page { size: 60mm 40mm landscape; margin: 0; }
 
-  html, body {
-    margin: 0;
-    padding: 0;
-    max-width: none;
-  }
+  html, body { width: var(--lw); }
   body {
     font-family: Arial, Helvetica, sans-serif;
     background: #e0e0e0;
@@ -59,9 +52,8 @@
     padding: 8px 4px 10px; border-bottom: 2px solid #1565c0; margin-bottom: 10px;
   }
   .faixa-titulo { font-size: 11px; color: #555; padding: 0 0 6px 2px; }
-  .faixa { display: flex; flex-direction: column; gap: 2mm; width: var(--lw); }
+  .faixa { width: var(--lw); }
 
-  /* Página = folha de impressão; .etiqueta = área útil 60×40 */
   .etq-page {
     width: var(--lw);
     height: var(--lh);
@@ -69,46 +61,25 @@
     overflow: hidden;
     background: var(--paper);
     position: relative;
-    display: block;
   }
+
   .etq-loc,
   .etiqueta {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    border: 2pt solid var(--ink);
+    inset: 0;
+    width: var(--lw);
+    height: var(--lh);
+    border: 0.5mm solid var(--ink);
     background: var(--paper);
     display: grid;
-    grid-template-rows: 34fr 42fr 24fr;
+    grid-template-rows: var(--row-top) var(--row-mid) var(--row-bot);
     overflow: hidden;
-    box-sizing: border-box;
   }
 
-  /* Rolo retrato 40×60: gira conteúdo (só se ?zebra=portrait) */
-  html.zebra-portrait .etq-page {
-    width: 40mm;
-    height: 60mm;
-    position: relative;
-  }
-  html.zebra-portrait .etq-loc,
-  html.zebra-portrait .etiqueta {
-    position: absolute;
-    top: 0; left: 0;
-    width: 60mm;
-    height: 40mm;
-    transform: rotate(90deg) translateY(-40mm);
-    transform-origin: top left;
-  }
-
-  /* ── Topo: Câmara · Rua · Coluna · Nível ── */
   .etq-top {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    border-bottom: 2pt solid var(--ink);
+    border-bottom: 0.4mm solid var(--ink);
     min-height: 0;
   }
   .loc-col {
@@ -116,40 +87,34 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.5mm 0.2mm;
-    border-right: 1pt solid var(--ink);
+    border-right: 0.3mm solid var(--ink);
     min-width: 0;
     height: 100%;
+    padding: 0.3mm;
   }
   .loc-col:last-child { border-right: none; }
   .loc-lbl {
-    font-size: 6.5pt;
+    font-size: 5.5pt;
     font-weight: 700;
-    letter-spacing: 0.3px;
     text-transform: uppercase;
     line-height: 1;
-    margin-bottom: 0.6mm;
-    white-space: nowrap;
+    margin-bottom: 0.5mm;
   }
   .loc-val {
-    font-size: 24pt;
+    font-size: 22pt;
     font-weight: 900;
-    line-height: 0.82;
+    line-height: 0.85;
     font-variant-numeric: tabular-nums;
   }
-  .loc-val.letra { font-size: 22pt; }
+  .loc-val.letra { font-size: 20pt; }
 
-  /* ── Centro: barcode + endereço ── */
   .etq-bc-block {
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto;
-    grid-template-columns: 1fr;
-    width: 100%;
-    padding: 0.4mm 0.8mm 0.5mm;
-    gap: 0.6mm;
+    padding: 0.5mm 1mm;
+    gap: 0.5mm;
     min-height: 0;
-    border-bottom: 2pt solid var(--ink);
-    align-content: stretch;
+    border-bottom: 0.4mm solid var(--ink);
   }
   .bc-wrap {
     width: 100%;
@@ -162,29 +127,23 @@
   }
   .bc-wrap svg.bc {
     display: block;
-    width: 98% !important;
-    height: auto !important;
+    width: 96%;
+    height: auto;
     max-height: 100%;
   }
   .endereco {
-    width: 100%;
-    flex-shrink: 0;
     text-align: center;
-    font-size: 18px;
+    font-size: 11pt;
     font-weight: 700;
     font-family: Consolas, 'Courier New', monospace;
-    letter-spacing: 0.6px;
-    line-height: 1.15;
+    letter-spacing: 0.4px;
+    line-height: 1.1;
     white-space: nowrap;
     overflow: hidden;
-    padding: 0 0.5mm;
   }
 
-  /* ── Base: Picking / Pulmão horizontal + seta ── */
   .etq-zone-bar {
     display: flex;
-    align-items: stretch;
-    justify-content: stretch;
     min-height: 0;
   }
   .zone-inner {
@@ -194,31 +153,27 @@
     justify-content: space-between;
     width: 100%;
     height: 100%;
-    padding: 0 2.5mm;
+    padding: 0 2mm;
   }
-
   .arrow {
     width: 0;
     height: 0;
     flex-shrink: 0;
-    border-left: 6mm solid transparent;
-    border-right: 6mm solid transparent;
+    border-left: 5mm solid transparent;
+    border-right: 5mm solid transparent;
   }
-  .arrow.up { border-bottom: 8.25mm solid var(--ink); }
-  .arrow.down { border-top: 8.25mm solid var(--ink); }
-
+  .arrow.up { border-bottom: 7mm solid var(--ink); }
+  .arrow.down { border-top: 7mm solid var(--ink); }
   .zone-lbl {
-    font-size: 14pt;
+    font-size: 12pt;
     font-weight: 900;
-    letter-spacing: 1.2px;
+    letter-spacing: 1px;
     text-transform: uppercase;
     line-height: 1;
-    white-space: nowrap;
   }
-  .etq-zone-bar.destino .zone-inner { justify-content: center; padding: 0 1.5mm; }
+  .etq-zone-bar.destino .zone-inner { justify-content: center; }
   .etq-zone-bar.destino .zone-lbl {
     font-size: 8pt;
-    letter-spacing: 0.4px;
     text-align: center;
     white-space: normal;
     line-height: 1.1;
@@ -226,20 +181,21 @@
   .etq-zone-bar.destino .arrow { display: none; }
 
   @media print {
-  @page {
-    size: 60mm 40mm;
-    margin: 0;
-  }
+    @page { size: 60mm 40mm landscape; margin: 0; }
 
-    html, body {
+    html {
       width: 60mm !important;
-      height: 40mm !important;
-      min-height: 0 !important;
-      max-height: 40mm !important;
+      height: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    body {
+      width: 60mm !important;
+      height: auto !important;
       margin: 0 !important;
       padding: 0 !important;
       background: #fff !important;
-      overflow: hidden !important;
+      overflow: visible !important;
     }
 
     .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
@@ -247,8 +203,6 @@
     .bloco-camara, .bloco-faixa, .faixa {
       margin: 0 !important;
       padding: 0 !important;
-      border: none !important;
-      display: block !important;
       width: 60mm !important;
     }
 
@@ -257,58 +211,35 @@
       height: 40mm !important;
       margin: 0 !important;
       padding: 0 !important;
-      position: relative !important;
-      display: block !important;
       overflow: hidden !important;
+      position: relative !important;
       page-break-after: always;
       break-after: page;
+      break-inside: avoid;
     }
-    .etq-page:last-child { page-break-after: auto; break-after: auto; }
+    .etq-page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
 
     .etq-loc,
     .etiqueta {
       position: absolute !important;
       top: 0 !important;
       left: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
+      width: 60mm !important;
+      height: 40mm !important;
       margin: 0 !important;
       padding: 0 !important;
+      border: 0.5mm solid #000 !important;
       display: grid !important;
-      grid-template-rows: 34fr 42fr 24fr !important;
-      border: 2pt solid #000 !important;
-      box-sizing: border-box !important;
+      grid-template-rows: 13.6mm 16.8mm 9.6mm !important;
       background: #fff !important;
     }
 
-    .bc-wrap svg.bc {
-      width: 98% !important;
-      max-height: 100% !important;
-    }
-
-    html.zebra-portrait,
-    html.zebra-portrait body {
-      width: 40mm !important;
-      height: 60mm !important;
-      min-height: 0 !important;
-      max-height: 60mm !important;
-      overflow: hidden !important;
-    }
-    html.zebra-portrait .bloco-camara,
-    html.zebra-portrait .bloco-faixa,
-    html.zebra-portrait .faixa { width: 40mm !important; }
-    html.zebra-portrait .etq-page {
-      width: 40mm !important;
-      height: 60mm !important;
-    }
-    html.zebra-portrait .etq-loc,
-    html.zebra-portrait .etiqueta {
-      width: 60mm !important;
-      height: 40mm !important;
-      transform: rotate(90deg) translateY(-40mm) !important;
-      transform-origin: top left !important;
-    }
-
+    .loc-val { font-size: 20pt !important; }
+    .loc-val.letra { font-size: 18pt !important; }
+    .zone-lbl { font-size: 11pt !important; }
     .arrow.up { border-bottom-color: #000 !important; }
     .arrow.down { border-top-color: #000 !important; }
   }
@@ -317,10 +248,9 @@
 <body>
 <div class="toolbar">
   <p><strong>{{ total }}</strong> etiqueta(s) · <strong>60×40 mm</strong> · Zebra ZD220</p>
-  <button type="button" onclick="window.print()">Imprimir HTML</button>
-  <button type="button" class="sec" onclick="(function(){var u=location.pathname.replace(/\/?$/,'')+'/zpl'+location.search;var a=document.createElement('a');a.href=u;a.download='longarinas.prn';document.body.appendChild(a);a.click();a.remove();})()">Baixar .prn</button>
+  <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
-  <p class="zebra-hint">Imprima via <strong>Zebra Setup Utilities → Send file</strong> (arquivo <code>.prn</code>). Não use ZebraDesigner para abrir o <code>.prn</code>. Conferir no Bloco de notas: texto começa com <code>^XA</code>.</p>
+  <p class="zebra-hint">Driver: papel <strong>60×40 mm</strong> · Chrome: margens <strong>Nenhuma</strong> · escala <strong>100%</strong>.</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
@@ -401,43 +331,42 @@
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
 (function() {
-  if (document.documentElement.classList.contains('zebra-portrait')) {
-    var s = document.createElement('style');
-    s.media = 'print';
-    s.textContent = '@page { size: 40mm 60mm; margin: 0; }';
-    document.head.appendChild(s);
-  }
+  var MM_PX = 3.7795275591;
 
   function larguraUtilBarcode(wrap) {
-    if (!wrap) return 220;
-    var w = wrap.clientWidth;
-    if (w > 20) return w;
-    var page = wrap.closest('.etiqueta, .etq-loc');
-    if (page) w = page.clientWidth;
-    if (w > 20) return w;
-    var pg = wrap.closest('.etq-page');
-    if (pg) w = pg.clientWidth;
-    return w > 20 ? w : Math.round(60 * 3.7795275591);
+    if (!wrap) return Math.round(60 * MM_PX);
+    var page = wrap.closest('.etiqueta, .etq-loc, .etq-page');
+    if (page && page.clientWidth > 20) return page.clientWidth;
+    return Math.round(60 * MM_PX);
+  }
+
+  function alturaBarcode(wrap) {
+    var block = wrap && wrap.closest('.etq-bc-block');
+    if (block && block.clientHeight > 20) {
+      return Math.max(28, Math.round(block.clientHeight * 0.72));
+    }
+    return Math.round(16.8 * MM_PX * 0.65);
   }
 
   function renderBarcode(el) {
     var code = el.getAttribute('data-code') || '';
     if (!code) return;
     var wrap = el.parentElement;
-    var alvo = larguraUtilBarcode(wrap) * 0.97;
+    var alvo = larguraUtilBarcode(wrap) * 0.96;
     var modulos = Math.max(11, code.length * 11 + 35);
-    var barW = Math.max(1.5, Math.min(3, alvo / modulos));
+    var barW = Math.max(1.4, Math.min(3.2, alvo / modulos));
+    var barH = alturaBarcode(wrap);
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
         width: barW,
-        height: 48,
+        height: barH,
         displayValue: false,
         margin: 0,
         lineColor: '#000000',
         background: '#ffffff'
       });
-      el.style.width = '98%';
+      el.style.width = '96%';
       el.style.height = 'auto';
       el.style.display = 'block';
       el.removeAttribute('height');
