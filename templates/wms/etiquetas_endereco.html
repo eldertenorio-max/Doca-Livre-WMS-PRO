@@ -5,7 +5,14 @@
 <title>Etiquetas longarina WMS{% if titulo %} — {{ titulo }}{% endif %}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  @page { size: 76mm 50mm; margin: 1.5mm; }
+  /* Zebra ZD220 — rolo 76×50 mm (203 dpi) */
+  @page {
+    size: 76mm 50mm;
+    margin: 0;
+  }
+  html, body {
+    width: 76mm;
+  }
   body {
     font-family: Arial, Helvetica, sans-serif;
     background: #e0e0e0;
@@ -13,6 +20,13 @@
     color: #000;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+  .toolbar .zebra-hint {
+    flex-basis: 100%;
+    font-size: 11px;
+    color: #555;
+    margin: 4px 0 0;
+    line-height: 1.35;
   }
   .toolbar {
     position: sticky; top: 0; z-index: 9;
@@ -27,9 +41,8 @@
   }
   .toolbar button.sec { background: #555; }
 
-  .bloco-faixa { margin-bottom: 16px; page-break-inside: avoid; }
-  .bloco-camara { margin-bottom: 24px; page-break-after: always; }
-  .bloco-camara:last-child { page-break-after: auto; }
+  .bloco-faixa { margin-bottom: 16px; }
+  .bloco-camara { margin-bottom: 24px; }
   .camara-titulo {
     font-size: 13px; font-weight: 800; color: #1565c0;
     padding: 8px 4px 10px; border-bottom: 2px solid #1565c0; margin-bottom: 10px;
@@ -40,16 +53,21 @@
     gap: 2mm; width: fit-content; max-width: 100%;
   }
 
-  /* Etiqueta 76×50 mm — modelo rack (Rua · Prédio · Nível · Apto) */
+  /* Etiqueta 76×50 mm — modelo rack */
+  .etq-page {
+    width: 76mm;
+    height: 50mm;
+    margin: 0 0 2mm;
+  }
   .etq-loc {
     width: 76mm;
     height: 50mm;
+    max-height: 50mm;
     border: 1pt solid #000;
     background: #fff;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    page-break-inside: avoid;
   }
 
   .etq-main {
@@ -80,9 +98,9 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 1mm 0.5mm 1.2mm;
+    padding: 0.8mm 0.5mm 1mm;
     border-right: 0.5pt solid #000;
-    min-height: 14mm;
+    min-height: 12mm;
   }
   .addr-cell:last-child { border-right: none; }
   .addr-cell .lbl {
@@ -90,7 +108,7 @@
     font-weight: 700;
     text-transform: uppercase;
     line-height: 1;
-    margin-bottom: 1mm;
+    margin-bottom: 0.8mm;
     color: #000;
   }
   .addr-cell .val {
@@ -121,12 +139,12 @@
   }
   .bc-wrap svg {
     width: 100%;
-    max-width: 52mm;
-    height: 10.5mm;
+    max-width: 50mm;
+    height: 9.5mm;
   }
   .code-bip {
-    margin-top: 0.8mm;
-    font-size: 7.5pt;
+    margin-top: 0.5mm;
+    font-size: 7pt;
     font-weight: 700;
     font-family: 'Courier New', Consolas, monospace;
     letter-spacing: 0.5px;
@@ -192,27 +210,59 @@
   }
 
   @media print {
-    body { background: #fff; padding: 0; margin: 0; }
-    .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
-    .faixa { gap: 0; }
-    .etq-loc {
-      border: 1pt solid #000;
-      margin: 0 0 1mm 0;
-      page-break-inside: avoid;
+    html, body {
+      width: 76mm;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #fff !important;
     }
-    .bloco-faixa { margin-bottom: 2mm; }
+    .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
+    .bloco-camara, .bloco-faixa {
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+    }
+    .faixa {
+      display: block;
+      gap: 0;
+      width: 76mm;
+    }
+    .etq-page {
+      width: 76mm;
+      height: 50mm;
+      margin: 0;
+      padding: 0;
+      page-break-after: always;
+      break-after: page;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      overflow: hidden;
+    }
+    .etq-page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    .etq-loc {
+      width: 76mm;
+      height: 50mm;
+      max-height: 50mm;
+      margin: 0;
+      border: none;
+      box-shadow: none;
+    }
   }
 </style>
 </head>
 <body>
 <div class="toolbar">
-  <p><strong>{{ total }}</strong> etiqueta(s) longarina · <strong>76×50 mm</strong> · Zebra · Bipagem <strong>12.14.1</strong></p>
+  <p><strong>{{ total }}</strong> etiqueta(s) · <strong>76×50 mm</strong> · Zebra ZD220</p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
+  <p class="zebra-hint">ZD220: papel <strong>76×50 mm</strong> · margens <strong>Nenhuma</strong> · escala <strong>100%</strong> · desmarque cabeçalho/rodapé do Chrome.</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
-<div class="etq-loc">
+<div class="etq-page"><div class="etq-loc">
   <div class="etq-main">
     <div class="etq-left">
       <div class="addr-grid">
@@ -252,7 +302,7 @@
     </div>
   </div>
   <div class="etq-foot">Ultrapão · Stock System WMS</div>
-</div>
+</div></div>
 {% endmacro %}
 
 {% if agrupado_por_camara %}
@@ -289,8 +339,8 @@
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
-        width: 1.1,
-        height: 30,
+        width: 1.05,
+        height: 26,
         displayValue: false,
         margin: 0,
         lineColor: '#000000',

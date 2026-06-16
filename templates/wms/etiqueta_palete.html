@@ -5,185 +5,227 @@
 <title>Etiqueta palete {{ etiqueta }}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  @page { size: 100mm 80mm; margin: 3mm; }
+  /* Zebra ZD220 — rolo 76×50 mm (203 dpi) */
+  @page {
+    size: 76mm 50mm;
+    margin: 0;
+  }
+  html, body { width: 76mm; }
   body {
     font-family: Arial, Helvetica, sans-serif;
     background: #eee;
-    padding: 10px;
+    padding: 6px;
     color: #000;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   .toolbar {
-    max-width: 100mm; margin: 0 auto 10px;
-    display: flex; gap: 8px;
+    margin: 0 0 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
   .toolbar button {
-    flex: 1; padding: 8px; font-size: 13px; cursor: pointer;
+    padding: 8px; font-size: 13px; cursor: pointer;
     border: none; border-radius: 6px; background: #1976d2; color: #fff;
   }
+  .toolbar .zebra-hint {
+    font-size: 11px;
+    color: #555;
+    line-height: 1.35;
+  }
+
+  .etq-page {
+    width: 76mm;
+    height: 50mm;
+    margin: 0 0 2mm;
+    overflow: hidden;
+  }
   .etq {
-    width: 100mm;
-    min-height: 74mm;
-    margin: 0 auto;
-    border: 2px solid #000;
-    padding: 3mm;
+    width: 76mm;
+    height: 50mm;
+    border: 1pt solid #000;
+    padding: 1.5mm 2mm;
     background: #fff;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
-  .destino {
-    margin-bottom: 2mm;
-    border: 2pt solid #000;
-    padding: 2.5mm 3mm;
-    background: linear-gradient(180deg, #f1f8e9 0%, #e8f5e9 100%);
+
+  /* —— Etiqueta longarina (guardar em) —— */
+  .etq-destino .etq {
+    justify-content: center;
     text-align: center;
+    padding: 1.2mm 2mm;
   }
   .destino strong {
     display: block;
-    font-size: 7pt;
-    margin-bottom: 1.5mm;
+    font-size: 5.5pt;
+    margin-bottom: 0.8mm;
     text-transform: uppercase;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.4px;
     color: #33691e;
   }
   .camara-badge {
-    margin: 0 0 2mm 0;
-    font-size: 9pt;
+    font-size: 7pt;
     font-weight: bold;
     color: #1b5e20;
-    letter-spacing: 0.3px;
+    margin-bottom: 0.6mm;
   }
   .camara-badge span {
-    display: inline-block;
-    margin-left: 2px;
-    font-size: 22pt;
-    line-height: 1;
+    font-size: 14pt;
     color: #c62828;
     font-weight: 900;
     vertical-align: middle;
   }
   .end-bc-label {
     display: block;
-    font-size: 6.5pt;
+    font-size: 4.5pt;
     color: #555;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
-    margin-bottom: 0.5mm;
-  }
-  .destino .end-bc {
-    display: block;
-    font-size: 8.5pt;
-    font-weight: 600;
-    font-family: Consolas, monospace;
-    letter-spacing: 0.6px;
-    line-height: 1.1;
-    margin: 0.8mm 0 0;
-    color: #546e7a;
+    letter-spacing: 0.3px;
+    margin-bottom: 0.3mm;
   }
   .destino .end-wms {
     display: block;
-    font-size: 19pt;
+    font-size: 13pt;
     font-weight: bold;
     font-family: Consolas, monospace;
-    letter-spacing: 1.2px;
-    line-height: 1.1;
-    margin: 0.5mm 0 1mm;
+    letter-spacing: 0.8px;
+    line-height: 1;
+    margin: 0.3mm 0 0.6mm;
     color: #0d47a1;
   }
-  .destino .bc-wrap-end {
-    text-align: center;
-    margin: 0 0 0.5mm;
-  }
-  .destino .bc-wrap-end svg {
-    width: 90%;
-    height: 11mm;
+  .destino .bc-wrap-end { line-height: 0; margin: 0.3mm 0; }
+  .destino .bc-wrap-end svg { width: 92%; height: 8mm; }
+  .destino .end-bc {
+    display: block;
+    font-size: 7pt;
+    font-weight: 700;
+    font-family: Consolas, monospace;
+    letter-spacing: 0.4px;
+    margin-top: 0.5mm;
+    color: #333;
   }
   .destino .end-txt {
     display: block;
-    font-size: 8pt;
-    color: #212121;
-    line-height: 1.35;
-    margin-top: 1.2mm;
+    font-size: 5pt;
+    color: #333;
+    line-height: 1.2;
+    margin-top: 0.5mm;
     font-weight: 600;
   }
   .destino .end-zona {
     display: inline-block;
-    margin-top: 1mm;
-    padding: 0.5mm 2mm;
-    font-size: 7pt;
+    margin-top: 0.5mm;
+    padding: 0.3mm 1.5mm;
+    font-size: 5pt;
     font-weight: bold;
     background: #1565c0;
     color: #fff;
-    border-radius: 2px;
   }
+
+  /* —— Etiqueta palete —— */
   .palete-head {
     text-align: center;
-    border-bottom: 1pt solid #ccc;
-    padding-bottom: 1.5mm;
-    margin-bottom: 1.5mm;
-  }
-  .bc-wrap { text-align: center; margin: 0.5mm 0; }
-  .bc-wrap svg { width: 92%; height: 11mm; }
-  .codigo {
-    text-align: center;
-    font-size: 9pt;
-    font-family: Consolas, monospace;
-    font-weight: bold;
-    letter-spacing: 1px;
-    margin-bottom: 1mm;
+    flex-shrink: 0;
+    margin-bottom: 0.8mm;
   }
   .brand {
-    font-size: 7pt;
+    font-size: 4.5pt;
     font-weight: bold;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
     text-transform: uppercase;
-    margin-bottom: 0.5mm;
   }
   .tipo {
-    font-size: 6.5pt;
+    font-size: 4pt;
     color: #444;
-    margin-bottom: 1.5mm;
+    margin-bottom: 0.5mm;
+  }
+  .bc-wrap { text-align: center; line-height: 0; margin: 0.3mm 0; }
+  .bc-wrap svg { width: 94%; height: 7.5mm; }
+  .codigo {
+    text-align: center;
+    font-size: 6pt;
+    font-family: Consolas, monospace;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5mm;
   }
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 8pt;
+    font-size: 5.5pt;
+    flex: 1;
+    min-height: 0;
   }
   table td {
     border: 0.5pt solid #000;
-    padding: 1mm 1.5mm;
+    padding: 0.5mm 1mm;
     vertical-align: top;
+    line-height: 1.15;
   }
   table td.lbl {
-    width: 28%;
+    width: 26%;
     font-weight: bold;
     background: #f5f5f5;
+    white-space: nowrap;
   }
+
   @media print {
-    body { background: #fff; padding: 0; }
+    html, body {
+      width: 76mm;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #fff !important;
+    }
     .toolbar { display: none !important; }
+    .etq-page {
+      width: 76mm;
+      height: 50mm;
+      margin: 0;
+      padding: 0;
+      page-break-after: always;
+      break-after: page;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      overflow: hidden;
+    }
+    .etq-page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    .etq {
+      border: none;
+      box-shadow: none;
+    }
   }
 </style>
 </head>
 <body>
 <div class="toolbar">
   <button type="button" onclick="window.print()">Imprimir</button>
+  <p class="zebra-hint">ZD220: papel <strong>76×50 mm</strong> · margens <strong>Nenhuma</strong> · escala <strong>100%</strong> · desmarque cabeçalho/rodapé.</p>
 </div>
-<div class="etq">
-  {% if endereco_barcode or destino or codigo_wms %}
-  <div class="destino">
+
+{% if endereco_barcode or destino or codigo_wms %}
+<div class="etq-page etq-destino">
+  <div class="etq destino">
     <strong>Guardar em — longarina</strong>
     {% if camara %}
     <div class="camara-badge">Câmara <span>{{ camara }}</span></div>
     {% endif %}
+    {% if codigo_wms %}
     <span class="end-bc-label">Endereço WMS</span>
-    {% if codigo_wms %}<span class="end-wms">{{ codigo_wms }}</span>{% endif %}
+    <span class="end-wms">{{ codigo_wms }}</span>
+    {% endif %}
     {% if codigo_wms or endereco_barcode %}
     <div class="bc-wrap-end">
       <svg id="bc-endereco" data-code="{{ codigo_wms or endereco_barcode }}"></svg>
     </div>
     {% endif %}
     {% if endereco_barcode and (not codigo_wms or endereco_barcode != codigo_wms) %}
-    <span class="end-bc-label" style="margin-top:0.8mm;">Bip longarina (Câm · Col · Nív)</span>
+    <span class="end-bc-label">Bip longarina (Câm · Col · Nív)</span>
     <span class="end-bc">{{ endereco_barcode }}</span>
     {% endif %}
     {% if endereco_texto %}
@@ -193,25 +235,30 @@
     {% endif %}
     {% if zona and not endereco_texto %}<span class="end-zona">{{ zona }}</span>{% endif %}
   </div>
-  {% endif %}
-  <div class="palete-head">
-    <div class="brand">Ultrapão · Stock System WMS</div>
-    <div class="tipo">ETIQUETA DE IDENTIFICAÇÃO — palete (22 caracteres)</div>
-    <div class="bc-wrap">
-      <svg id="bc-palete" data-code="{{ etiqueta }}"></svg>
-    </div>
-    <div class="codigo">{{ etiqueta }}</div>
-  </div>
-  <table>
-    <tr><td class="lbl">SKU</td><td>{{ sku or '—' }}</td></tr>
-    <tr><td class="lbl">Descrição</td><td>{{ descricao or '—' }}</td></tr>
-    <tr><td class="lbl">Lote</td><td>{{ lote or '—' }}</td></tr>
-    <tr><td class="lbl">Dt. produção</td><td>{{ data_producao or '—' }}</td></tr>
-    <tr><td class="lbl">Validade</td><td>{{ data_validade or '—' }}</td></tr>
-    <tr><td class="lbl">Caixas</td><td>{{ qtd if qtd is not none else '—' }}</td></tr>
-    {% if up %}<tr><td class="lbl">UP</td><td>{{ up }}</td></tr>{% endif %}
-  </table>
 </div>
+{% endif %}
+
+<div class="etq-page etq-palete">
+  <div class="etq">
+    <div class="palete-head">
+      <div class="brand">Ultrapão · Stock System WMS</div>
+      <div class="tipo">ETIQUETA DE IDENTIFICAÇÃO — palete</div>
+      <div class="bc-wrap">
+        <svg id="bc-palete" data-code="{{ etiqueta }}"></svg>
+      </div>
+      <div class="codigo">{{ etiqueta }}</div>
+    </div>
+    <table>
+      <tr><td class="lbl">SKU</td><td>{{ sku or '—' }}</td></tr>
+      <tr><td class="lbl">Descrição</td><td>{{ descricao or '—' }}</td></tr>
+      <tr><td class="lbl">Lote</td><td>{{ lote or '—' }}</td></tr>
+      <tr><td class="lbl">Dt. prod.</td><td>{{ data_producao or '—' }}</td></tr>
+      <tr><td class="lbl">Validade</td><td>{{ data_validade or '—' }}</td></tr>
+      <tr><td class="lbl">Caixas</td><td>{{ qtd if qtd is not none else '—' }}{% if up %} · UP {{ up }}{% endif %}</td></tr>
+    </table>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
 (function() {
@@ -221,12 +268,12 @@
     if (!code) return;
     try {
       JsBarcode(el, code, Object.assign({
-        format: 'CODE128', displayValue: false, margin: 1, lineColor: '#000', background: '#fff'
+        format: 'CODE128', displayValue: false, margin: 0, lineColor: '#000', background: '#fff'
       }, opts || {}));
     } catch (e) { console.warn(e); }
   }
-  renderBc('bc-palete', { width: 1.5, height: 40 });
-  renderBc('bc-endereco', { width: 1.3, height: 34 });
+  renderBc('bc-palete', { width: 1.1, height: 24 });
+  renderBc('bc-endereco', { width: 1.05, height: 26 });
   {% if auto_print %}
   window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 400); });
   {% endif %}
