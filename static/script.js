@@ -5570,14 +5570,14 @@ async function _wmsBaixarZplUrl(url, nomeArquivo) {
         var blob = await resp.blob();
         var a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = nomeArquivo || 'longarinas.zpl';
+        a.download = nomeArquivo || 'longarinas.prn';
         document.body.appendChild(a);
         a.click();
         setTimeout(function() {
             URL.revokeObjectURL(a.href);
             a.remove();
         }, 300);
-        showMessage('ZPL baixado — envie para a Zebra (Setup Utilities ou Designer).', 'success');
+        showMessage('Arquivo .prn baixado — abra no ZebraDesigner ou envie pela Zebra Setup Utilities.', 'success');
     } catch (e) {
         showMessage((e && e.message) || 'Erro ao baixar ZPL.', 'error');
     }
@@ -5587,7 +5587,7 @@ window.wmsImprimirEtqEndereco = function(codigo) {
     if (!codigo) return;
     _wmsBaixarZplUrl(
         '/api/wms/etiqueta/endereco/zpl?codigo=' + encodeURIComponent(codigo),
-        'longarina_' + String(codigo).replace(/[^\w.-]+/g, '_') + '.zpl'
+        'longarina_' + String(codigo).replace(/[^\w.-]+/g, '_') + '.prn'
     );
 };
 
@@ -5604,7 +5604,7 @@ function wmsImprimirEtqColuna() {
     if (!rua || !pos) { showMessage('Selecione a rua interna e o prédio (coluna).', 'error'); return; }
     var url = '/api/wms/etiqueta/enderecos/zpl?camara=' + encodeURIComponent(cam) +
         '&rua=' + encodeURIComponent(rua) + '&posicao=' + encodeURIComponent(pos);
-    _wmsBaixarZplUrl(url, 'longarinas_' + cam + '_' + rua + '_' + pos + '.zpl');
+    _wmsBaixarZplUrl(url, 'longarinas_' + cam + '_' + rua + '_' + pos + '.prn');
 }
 
 window._wmsEtqOpcoes = null;
@@ -5816,7 +5816,7 @@ function wmsImprimirEtqCamara() {
     var cam = (document.getElementById('wms-etq-camara') || {}).value || '';
     if (!cam) { showMessage('Selecione a câmara.', 'error'); return; }
     if (!confirm('Baixar ZPL de todas as longarinas da câmara ' + cam + '?')) return;
-    _wmsBaixarZplUrl('/api/wms/etiqueta/enderecos/zpl?camara=' + encodeURIComponent(cam), 'longarinas_camara_' + cam + '.zpl');
+    _wmsBaixarZplUrl('/api/wms/etiqueta/enderecos/zpl?camara=' + encodeURIComponent(cam), 'longarinas_camara_' + cam + '.prn');
 }
 
 async function loadWmsEtqLongarinaResumo(opcoes) {
@@ -5887,7 +5887,7 @@ function wmsImprimirEtqTodasLongarinas() {
         msg += '? O arquivo pode ser grande.';
     }
     if (!confirm(msg)) return;
-    _wmsBaixarZplUrl('/api/wms/etiqueta/enderecos/zpl?todas=1', 'longarinas_armazem.zpl');
+    _wmsBaixarZplUrl('/api/wms/etiqueta/enderecos/zpl?todas=1', 'longarinas_armazem.prn');
 }
 
 function wmsImprimirEtqUnico() {

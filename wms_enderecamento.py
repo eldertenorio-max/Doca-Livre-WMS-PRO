@@ -6480,8 +6480,8 @@ def api_wms_etiqueta_modelo():
 def _resposta_zpl_longarina(zpl, nome_arquivo='longarinas'):
     safe = re.sub(r'[^\w\-.]+', '_', str(nome_arquivo or 'longarinas'))[:80]
     return make_response(zpl, 200, {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Content-Disposition': f'attachment; filename="{safe}.zpl"',
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': f'attachment; filename="{safe}.prn"',
     })
 
 

@@ -318,9 +318,9 @@
 <div class="toolbar">
   <p><strong>{{ total }}</strong> etiqueta(s) · <strong>60×40 mm</strong> · Zebra ZD220</p>
   <button type="button" onclick="window.print()">Imprimir HTML</button>
-  <button type="button" class="sec" onclick="(function(){var u=location.pathname.replace(/\/?$/,'')+'/zpl'+location.search;var a=document.createElement('a');a.href=u;a.download='longarinas.zpl';document.body.appendChild(a);a.click();a.remove();})()">Baixar ZPL</button>
+  <button type="button" class="sec" onclick="(function(){var u=location.pathname.replace(/\/?$/,'')+'/zpl'+location.search;var a=document.createElement('a');a.href=u;a.download='longarinas.prn';document.body.appendChild(a);a.click();a.remove();})()">Baixar .prn</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
-  <p class="zebra-hint">Recomendado: <strong>Baixar ZPL</strong> e imprimir via Zebra Setup Utilities ou ZebraDesigner 3 (driver ZDesigner 60×40 mm). Prévia HTML só para conferência.</p>
+  <p class="zebra-hint">Recomendado: <strong>Baixar .prn</strong> (ZPL) e imprimir via Zebra Setup Utilities ou ZebraDesigner 3. Arquivo <code>.prn</code> evita abrir com programa errado no Windows.</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
