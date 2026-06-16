@@ -169,7 +169,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.04in 0.08in;
+    padding: 0.04in 0.10in;
     min-width: 0;
     overflow: hidden;
     background: var(--paper);
@@ -181,8 +181,8 @@
   }
   .bc-wrap svg {
     width: 100%;
-    max-width: 1.50in;
-    height: 0.36in;
+    max-width: 1.95in;
+    height: 0.38in;
   }
   .code-bip {
     margin-top: 0.04in;
@@ -203,37 +203,15 @@
     white-space: nowrap;
   }
 
-  .etq-zone {
-    width: 0.50in;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.04in;
-    padding: 0.05in 0.04in;
-    text-align: center;
-    border-left: 1.5pt solid var(--ink);
-  }
-  .etq-zone.picking { justify-content: flex-end; padding-bottom: 0.08in; }
-  .etq-zone.pulmao { justify-content: flex-start; padding-top: 0.08in; }
-
-  .zone-icon {
-    font-size: 9pt;
+  .scan-zone {
+    margin-top: 0.04in;
+    font-size: 6.5pt;
     font-weight: 900;
-    line-height: 1;
-  }
-  .zone-txt {
-    font-size: 5.5pt;
-    font-weight: 900;
-    letter-spacing: 0.3px;
-    line-height: 1;
+    letter-spacing: 0.5px;
     text-transform: uppercase;
+    line-height: 1;
     white-space: nowrap;
-  }
-  .etq-zone.outline {
-    background: var(--paper);
-    color: var(--ink);
+    text-align: center;
   }
 
   .etq-foot {
@@ -332,22 +310,14 @@
       <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
       <div class="code-bip">{{ e.barcode }}</div>
       {% if e.codigo_wms %}<div class="code-wms">{{ e.codigo_wms }}</div>{% endif %}
+      {% if e.destino_fixo %}
+      <div class="scan-zone">{{ e.destino_label or e.zona }}</div>
+      {% elif e.picking %}
+      <div class="scan-zone">Picking ▼</div>
+      {% else %}
+      <div class="scan-zone">Pulmão ▲</div>
+      {% endif %}
     </div>
-    {% if e.destino_fixo %}
-    <div class="etq-zone ink-block destino">
-      <div class="zone-txt">{{ e.destino_label or e.zona }}</div>
-    </div>
-    {% elif e.picking %}
-    <div class="etq-zone ink-block picking">
-      <span class="zone-txt">Picking</span>
-      <span class="zone-icon" aria-hidden="true">▼</span>
-    </div>
-    {% else %}
-    <div class="etq-zone outline pulmao">
-      <span class="zone-icon" aria-hidden="true">▲</span>
-      <span class="zone-txt">Pulmão</span>
-    </div>
-    {% endif %}
   </div>
   <div class="etq-foot">Ultrapão · Stock System WMS</div>
 </div></div>
