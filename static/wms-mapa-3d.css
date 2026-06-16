@@ -1,0 +1,110 @@
+.wms-mapa3d-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fafafa;
+}
+
+.wms-mapa3d-toolbar .form-group {
+    margin: 0;
+}
+
+.wms-mapa3d-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    margin: 0 0 4px 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.wms-mapa3d-wrap {
+    position: relative;
+    width: 100%;
+    height: min(72vh, 640px);
+    min-height: 360px;
+    border: 1px solid #bdbdbd;
+    border-radius: 10px;
+    overflow: hidden;
+    background: linear-gradient(180deg, #eceff1 0%, #cfd8dc 100%);
+}
+
+.wms-mapa3d-wrap canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+}
+
+.wms-mapa3d-wrap canvas:active {
+    cursor: grabbing;
+}
+
+.wms-mapa3d-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.75);
+    font-size: 14px;
+    color: #37474f;
+    z-index: 2;
+}
+
+.wms-mapa3d-tooltip {
+    position: absolute;
+    pointer-events: none;
+    z-index: 3;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: rgba(33, 33, 33, 0.92);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.35;
+    max-width: 220px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.wms-mapa3d-legenda {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-top: 12px;
+    font-size: 12px;
+}
+
+.wms-mapa3d-legenda-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.wms-mapa3d-legenda-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    flex-shrink: 0;
+}
+
+.wms-mapa3d-detalhe {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-left: 4px solid #1565c0;
+    border-radius: 6px;
+    background: #e3f2fd;
+    font-size: 13px;
+}
+
+.wms-mapa3d-detalhe strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 14px;
+}

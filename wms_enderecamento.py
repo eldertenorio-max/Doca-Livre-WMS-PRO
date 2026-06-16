@@ -4281,6 +4281,84 @@ def api_wms_localizacoes():
         return jsonify({'erro': str(e)}), 500
 
 
+@bp.route('/mapa-3d', methods=['GET'])
+def api_wms_mapa_3d():
+    """Layout físico + ocupação para visualização 3D das câmaras."""
+    conn = _db()
+    ensure_wms_schema(conn)
+    _seed_wms_defaults(conn)
+    camara_filtro = request.args.get('camara', type=int)
+    t = _tbl(conn, 'wms_localizacao')
+    try:
+        total_row = conn.execute(f'SELECT COUNT(*) AS c FROM {t}').fetchone()
+        if _int_col(total_row, 'c') == 0 and request.args.get('auto_layout', '1') != '0':
+            _ensure_layout_enderecos(conn)
+        sql = (
+            f'SELECT camara, rua, posicao, nivel, codigo_endereco, status, area, '
+            f'categoria_zona, zona_armazenagem, tipo FROM {t} WHERE camara IN (11, 12, 13, 21)'
+        )
+        params = []
+        if camara_filtro:
+            sql += ' AND camara = ?'
+            params.append(camara_filtro)
+        rows = conn.execute(sql, tuple(params)).fetchall()
+        por_codigo = {}
+        for r in rows:
+            d = _row_dict(r) or {}
+            cod = (d.get('codigo_endereco') or '').strip()
+            if cod:
+                por_codigo[cod] = d
+        cfg = _layout_camaras_config()
+        camaras_out = []
+        for bloco in (cfg.get('camaras') or []):
+            cod_cam = int(bloco.get('codigo') or 0)
+            if cod_cam not in (11, 12, 13, 21):
+                continue
+            if camara_filtro and cod_cam != camara_filtro:
+                continue
+            slots = []
+            for c, rua, pos, niv, dest_acao, dest_lbl in _coords_from_bloco_layout(bloco):
+                cod_end = _codigo_endereco(c, rua, pos, niv)
+                loc = por_codigo.get(cod_end, {})
+                tipo = (loc.get('tipo') or '').strip().lower()
+                area = (loc.get('area') or '').strip().lower()
+                dest = dest_acao or (area if tipo == 'destino_fixo' else None)
+                lbl = dest_lbl
+                if not lbl and dest:
+                    lbl = _destinos_acao_labels().get(dest)
+                slots.append({
+                    'rua': rua,
+                    'posicao': pos,
+                    'nivel': niv,
+                    'codigo_endereco': cod_end,
+                    'status': (loc.get('status') or 'vazia').strip().lower(),
+                    'categoria_zona': (loc.get('categoria_zona') or '').strip().upper() or None,
+                    'zona_armazenagem': (loc.get('zona_armazenagem') or _zona_por_nivel(niv)).lower(),
+                    'destino_acao': dest,
+                    'destino_label': lbl,
+                    'tipo': tipo or ('destino_fixo' if dest else 'estoque'),
+                })
+            camaras_out.append({
+                'codigo': cod_cam,
+                'descricao': bloco.get('descricao') or f'Câmara {cod_cam}',
+                'ruas': list(bloco.get('ruas') or []),
+                'niveis': int(bloco.get('niveis') or 5),
+                'slots': slots,
+            })
+        conn.close()
+        return jsonify({
+            'camaras': camaras_out,
+            'destinos_acao': cfg.get('destinos_acao') or _destinos_acao_labels(),
+        })
+    except Exception as e:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
 @bp.route('/produtos', methods=['GET'])
 def api_wms_produtos():
     conn = _db()

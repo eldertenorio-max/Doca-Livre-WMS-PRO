@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="../static/stock-system.css">
     <link rel="stylesheet" href="../static/entrada-modulos.css">
     <link rel="stylesheet" href="../static/modulo-sidebar.css?v=20260602j">
+    <link rel="stylesheet" href="../static/wms-mapa-3d.css?v=20260602a">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
@@ -2656,6 +2657,7 @@
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab active" data-wms-tab="painel">PAINEL</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="etiquetas-longarina">ETQ. LONGARINA</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="localizacoes">LOCALIZAÇÕES</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="mapa-3d">MAPA 3D</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="produtos">PRODUTOS</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="movimentacoes">MOVIMENTAÇÕES</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="recebimento">RECEBIMENTO</button>
@@ -2695,6 +2697,30 @@
                             <p class="info-text" style="margin: 6px 0 0 0; font-size: 12px;">Para imprimir e colar no rack, use a aba <strong>ETQ. LONGARINA</strong> — modelo Rua · Prédio · Nível · Apto com código <strong>21.13.1.1</strong> para bipar na armazenagem.</p>
                         </div>
                         <div class="table-container"><table class="data-table"><thead><tr><th>Endereço WMS</th><th>Bip longarina</th><th>Câmara</th><th>Rua</th><th>Pos</th><th>Nível</th><th>Zona</th><th>Cat.</th><th>Status</th><th></th></tr></thead><tbody id="wms-tbody-localizacoes"><tr><td colspan="10" class="loading">Carregando...</td></tr></tbody></table></div>
+                    </div>
+                    <div id="wms-panel-mapa-3d" class="wms-inner-panel" hidden>
+                        <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Visualização <strong>3D interativa</strong> do layout físico (ruas, colunas e níveis). Arraste para girar, scroll para zoom. Clique em uma posição para ver o endereço.</p>
+                        <div class="wms-mapa3d-toolbar">
+                            <div class="form-group"><label>Câmara</label>
+                                <select id="wms-mapa3d-camara">
+                                    <option value="">Todas (11–21)</option>
+                                    <option value="11">11 — ruas A/B</option>
+                                    <option value="12">12 — ruas C/D</option>
+                                    <option value="13">13 — ruas E/F</option>
+                                    <option value="21">21 — ruas G/H</option>
+                                </select>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" id="btn-wms-mapa3d-atualizar">Atualizar</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-mapa3d-reset">Resetar vista</button>
+                            <label class="wms-mapa3d-check"><input type="checkbox" id="wms-mapa3d-wireframe"> Wireframe</label>
+                        </div>
+                        <div id="wms-mapa3d-wrap" class="wms-mapa3d-wrap">
+                            <canvas id="wms-mapa3d-canvas"></canvas>
+                            <div id="wms-mapa3d-loading" class="wms-mapa3d-loading" hidden>Carregando mapa 3D…</div>
+                            <div id="wms-mapa3d-tooltip" class="wms-mapa3d-tooltip" hidden></div>
+                        </div>
+                        <div id="wms-mapa3d-legenda" class="wms-mapa3d-legenda"></div>
+                        <div id="wms-mapa3d-detalhe" class="wms-mapa3d-detalhe" hidden></div>
                     </div>
                     <div id="wms-panel-etiquetas-longarina" class="wms-inner-panel" hidden>
                         <section class="wms-rec-fase wms-rec-fase--nf" style="margin-bottom: 16px;">
@@ -3564,6 +3590,6 @@
         </div>
     </div>
 
-    <script src="../static/script.js?v=20260602q"></script>
+    <script src="../static/script.js?v=20260602r"></script>
 </body>
 </html>

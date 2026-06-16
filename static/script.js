@@ -2988,7 +2988,7 @@ var _SIDEBAR_ICONES = {
         reentregas: '🔄', avaria: '💥', 'descarte-perdas': '🗑️', 'palete-bloqueado': '🔒'
     },
     wms: {
-        painel: '📊', 'etiquetas-longarina': '🏷️', localizacoes: '📍', produtos: '📦', movimentacoes: '↔️',
+        painel: '📊', 'etiquetas-longarina': '🏷️', localizacoes: '📍', 'mapa-3d': '🧊', produtos: '📦', movimentacoes: '↔️',
         recebimento: '📥', 'controle-paletes': '🧱', 'historico-nf': '🕐', relatorios: '📈', separacao: '✂️',
         'areas-especiais': '⭐', inventario: '🔢', pesquisa: '🔍'
     }
@@ -4305,6 +4305,7 @@ function _wmsMostrarSubtab(tab) {
     });
     if (tab === 'painel') loadWmsPainel();
     else if (tab === 'localizacoes') loadWmsLocalizacoes();
+    else if (tab === 'mapa-3d') loadWmsMapa3d();
     else if (tab === 'etiquetas-longarina') loadWmsEtiquetasLongarinaAba();
     else if (tab === 'produtos') loadWmsProdutos();
     else if (tab === 'movimentacoes') loadWmsMovimentacoes();
@@ -4315,6 +4316,63 @@ function _wmsMostrarSubtab(tab) {
     else if (tab === 'separacao') loadWmsSeparacao();
     else if (tab === 'areas-especiais') loadWmsAreasEspeciais();
     else if (tab === 'inventario') loadWmsInventarios();
+}
+
+var _wmsMapa3dScriptPromise = null;
+
+function _wmsCarregarScriptMapa3d() {
+    if (window.WmsMapa3d) return Promise.resolve();
+    if (_wmsMapa3dScriptPromise) return _wmsMapa3dScriptPromise;
+    _wmsMapa3dScriptPromise = new Promise(function(resolve, reject) {
+        if (document.querySelector('script[data-wms-mapa3d="1"]')) {
+            var t = setInterval(function() {
+                if (window.WmsMapa3d) { clearInterval(t); resolve(); }
+            }, 50);
+            setTimeout(function() {
+                clearInterval(t);
+                if (window.WmsMapa3d) resolve();
+                else reject(new Error('Mapa 3D indisponível'));
+            }, 8000);
+            return;
+        }
+        var s = document.createElement('script');
+        s.src = '../static/wms-mapa-3d.js?v=20260602a';
+        s.dataset.wmsMapa3d = '1';
+        s.onload = function() { resolve(); };
+        s.onerror = function() { reject(new Error('Falha ao carregar visualização 3D')); };
+        document.body.appendChild(s);
+    });
+    return _wmsMapa3dScriptPromise;
+}
+
+async function loadWmsMapa3d() {
+    var panel = document.getElementById('wms-panel-mapa-3d');
+    if (!panel || panel.hidden) return;
+    try {
+        await _wmsCarregarScriptMapa3d();
+        if (!window.WmsMapa3d) throw new Error('Módulo 3D não inicializou');
+        WmsMapa3d.setLoading(true);
+        await WmsMapa3d.init();
+        var sel = document.getElementById('wms-mapa3d-camara');
+        var cam = sel && sel.value ? sel.value : '';
+        var path = '/wms/mapa-3d' + (cam ? '?camara=' + encodeURIComponent(cam) : '');
+        var data = await _wmsFetchGet(path, 60000);
+        if (!data || data.erro) {
+            showMessage(_wmsErroMsg(data, 'Erro ao carregar mapa 3D.'), 'error');
+            WmsMapa3d.setLoading(false);
+            return;
+        }
+        var wire = document.getElementById('wms-mapa3d-wireframe');
+        WmsMapa3d.setWireframe(wire && wire.checked);
+        WmsMapa3d.build(data);
+        WmsMapa3d.setLoading(false);
+        setTimeout(function() {
+            if (window.WmsMapa3d && WmsMapa3d.resetView) WmsMapa3d.resetView();
+        }, 100);
+    } catch (e) {
+        if (window.WmsMapa3d) WmsMapa3d.setLoading(false);
+        showMessage((e && e.message) || 'Erro ao abrir mapa 3D.', 'error');
+    }
 }
 
 async function loadWmsAreasEspeciais() {
@@ -4390,6 +4448,21 @@ function initWmsEnderecamento() {
     });
     var bLoc = document.getElementById('btn-wms-localizacoes');
     if (bLoc) bLoc.addEventListener('click', loadWmsLocalizacoes);
+    var bMapa3d = document.getElementById('btn-wms-mapa3d-atualizar');
+    if (bMapa3d) bMapa3d.addEventListener('click', loadWmsMapa3d);
+    var bMapa3dReset = document.getElementById('btn-wms-mapa3d-reset');
+    if (bMapa3dReset) bMapa3dReset.addEventListener('click', function() {
+        if (window.WmsMapa3d && WmsMapa3d.resetView) WmsMapa3d.resetView();
+    });
+    var wireMapa3d = document.getElementById('wms-mapa3d-wireframe');
+    if (wireMapa3d) wireMapa3d.addEventListener('change', function() {
+        if (window.WmsMapa3d) WmsMapa3d.setWireframe(wireMapa3d.checked);
+    });
+    var selMapa3d = document.getElementById('wms-mapa3d-camara');
+    if (selMapa3d) selMapa3d.addEventListener('change', function() {
+        var p = document.getElementById('wms-panel-mapa-3d');
+        if (p && !p.hidden) loadWmsMapa3d();
+    });
     var bEtqCol = document.getElementById('btn-wms-etq-coluna');
     if (bEtqCol) bEtqCol.addEventListener('click', wmsImprimirEtqColuna);
     var bEtqCam = document.getElementById('btn-wms-etq-camara');
