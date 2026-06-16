@@ -4608,11 +4608,15 @@ async function loadWmsLocalizacoes() {
         tb.innerHTML = rows.length ? rows.map(function(r) {
             var niv = parseInt(r.nivel, 10);
             var zona = r.zona_armazenagem || (niv === 1 ? 'picking' : 'pulmao');
-            var zl = zona === 'picking' ? 'PICKING' : 'PULMÃO';
+            var zl = zona === 'picking' ? 'PICKING' : (zona === 'pulmao' ? 'PULMÃO' : String(zona).replace(/_/g, ' ').toUpperCase());
+            var catCol = r.destino_label || r.categoria_zona || r.area || '—';
+            if (r.tipo === 'destino_fixo' && r.area) {
+                catCol = r.destino_label || String(r.area).replace(/_/g, ' ').toUpperCase();
+            }
             var cod = escHtml(r.codigo_endereco || '');
             var bcLong = escHtml(r.barcode_longarina || '');
             var codJs = String(r.codigo_endereco || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            return '<tr><td>' + cod + '</td><td><strong>' + bcLong + '</strong></td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(r.categoria_zona || r.area || '—') + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Longarina</button></td></tr>';
+            return '<tr><td>' + cod + '</td><td><strong>' + bcLong + '</strong></td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(catCol) + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Longarina</button></td></tr>';
         }).join('') : '<tr><td colspan="10">Nenhuma localização. Clique em Atualizar ou use o painel para recalcular o layout.</td></tr>';
     } catch (e) {
         if (tb) {

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Sincroniza WMS endereçamento SEM planilha Excel:
+Sincroniza WMS endereçamento:
   1. Produtos + categoria A/B/C/D + planejamento (TSV em data/)
-  2. Layout de endereços + distribuição por categoria (JSON + zoneamento)
+  2. Layout de endereços a partir de data/wms_layout_camaras.json
+     (gerar da planilha: python scripts/gerar_layout_de_excel.py \"caminho/Endereçamento Novo.xlsx\")
 
 Uso:
   $env:DATABASE_URL = "postgresql://postgres:...@db....supabase.co:5432/postgres"

@@ -257,8 +257,8 @@ def _sync_wms_camara_layout(conn):
         if total <= 0:
             continue
         conn.execute(f'UPDATE {t_cam} SET total_posicoes = ? WHERE codigo = ?', (total, cod))
-        coords = _gerar_coordenadas_camara(cod, bloco.get('ruas'), bloco.get('niveis', 5), total)
-        codigos = {_codigo_endereco(c, r, p, n) for c, r, p, n in coords}
+        coords = _coords_from_bloco_layout(bloco)
+        codigos = {_codigo_endereco(c, r, p, n) for c, r, p, n, _da, _dl in coords}
         removidas += _limpar_localizacoes_orfas_vazias(conn, cod, codigos)
     try:
         conn.commit()
@@ -333,14 +333,26 @@ def _zona_por_nivel(nivel):
 
 
 def _zona_label(zona):
-    return 'PICKING' if (zona or '').lower() == 'picking' else 'PULMÃO'
+    z = (zona or '').lower()
+    if z == 'picking':
+        return 'PICKING'
+    if z in ('pulmao', ''):
+        return 'PULMÃO'
+    labels = _destinos_acao_labels()
+    return labels.get(z, z.replace('_', ' ').upper())
 
 
 def _format_locacao(loc):
     d = _row_dict(loc) or {}
     if not d:
         return {}
+    tipo = (d.get('tipo') or '').strip().lower()
+    area = (d.get('area') or '').strip().lower()
+    labels = _destinos_acao_labels()
+    destino_label = labels.get(area) if tipo == 'destino_fixo' and area else None
     zona = (d.get('zona_armazenagem') or _zona_por_nivel(d.get('nivel'))).lower()
+    if tipo == 'destino_fixo' and area:
+        zona = area
     cam = d.get('camara')
     rua = d.get('rua')
     pos = d.get('posicao')
@@ -348,11 +360,15 @@ def _format_locacao(loc):
     zl = _zona_label(zona)
     apto = _rua_para_apto(cam, rua)
     bc_long = _barcode_longarina(cam, pos, niv, apto=apto)
+    texto = f'Rua {cam} · Prédio {pos} · Nív {niv} · Apto {apto} ({zl})'
+    if destino_label:
+        texto = f'{destino_label} · {d.get("codigo_endereco") or texto}'
     return {
         **d,
         'zona_armazenagem': zona,
         'zona_label': zl,
-        'texto': f'Rua {cam} · Prédio {pos} · Nív {niv} · Apto {apto} ({zl})',
+        'destino_label': destino_label,
+        'texto': texto,
         'barcode_longarina': bc_long,
         'rua_num': str(int(cam)),
         'predio': str(int(pos)),
@@ -1481,6 +1497,41 @@ def _gerar_coordenadas_camara(camara, ruas, niveis, total):
     return out[:total]
 
 
+def _destinos_acao_labels():
+    cfg = _layout_camaras_config()
+    labels = dict(cfg.get('destinos_acao') or {})
+    labels.setdefault('envio_mg', 'ENVIO P/ MINAS')
+    labels.setdefault('retrabalho', 'RETRABALHO')
+    labels.setdefault('descarte_perdas', 'DESCARTE')
+    labels.setdefault('palete_bloqueado', 'BLOQUEADOS')
+    labels.setdefault('cafe', 'CAFE')
+    return labels
+
+
+def _coords_from_bloco_layout(bloco):
+    """Retorna [(camara, rua, posicao, nivel, destino_acao, destino_label), ...]."""
+    cod = int(bloco['codigo'])
+    ends = bloco.get('enderecos') or []
+    if ends:
+        out = []
+        labels = _destinos_acao_labels()
+        for e in ends:
+            dest = (e.get('destino_acao') or '').strip().lower() or None
+            lbl = (e.get('destino_label') or '').strip() or (labels.get(dest) if dest else None)
+            out.append((
+                cod,
+                str(e.get('rua') or '').strip().upper(),
+                int(e['posicao']),
+                int(e['nivel']),
+                dest,
+                lbl,
+            ))
+        return out
+    total = _total_posicoes_ref(cod, bloco)
+    coords = _gerar_coordenadas_camara(cod, bloco.get('ruas'), bloco.get('niveis', 5), total)
+    return [(c, r, p, n, None, None) for c, r, p, n in coords]
+
+
 def _layout_niveis_esperados():
     return {
         int(b['codigo']): max(1, int(b.get('niveis') or 5))
@@ -1557,45 +1608,59 @@ def gerar_layout_enderecos(conn, force=False):
 
     for bloco in cfg.get('camaras') or []:
         cod = int(bloco['codigo'])
-        total = _total_posicoes_ref(cod, bloco)
+        coords_full = _coords_from_bloco_layout(bloco)
+        total = len(coords_full) if coords_full else _total_posicoes_ref(cod, bloco)
         if total <= 0:
             continue
         cats = _categorias_camara_zoneamento(conn, cod)
-        seq_cat = _distribuir_categorias_em_slots(total, cats, pesos)
-        coords = _gerar_coordenadas_camara(cod, bloco.get('ruas'), bloco.get('niveis', 5), total)
+        slots_cat = [c for c in coords_full if not c[4]]
+        seq_cat = _distribuir_categorias_em_slots(len(slots_cat), cats, pesos) if slots_cat else []
         codigos_validos = []
-        for i, (cam, rua, pos, nivel) in enumerate(coords):
-            cat_z = seq_cat[i] if i < len(seq_cat) else cats[0]
+        idx_cat = 0
+        for cam, rua, pos, nivel, dest_acao, dest_lbl in coords_full:
+            if dest_acao:
+                cat_z = None
+                area = dest_acao
+                zona = dest_acao
+                tipo = 'destino_fixo'
+            else:
+                cat_z = seq_cat[idx_cat] if idx_cat < len(seq_cat) else (cats[0] if cats else 'C')
+                idx_cat += 1
+                area = cat_z
+                zona = _zona_por_nivel(nivel)
+                tipo = 'porta_palete'
             cod_end = _codigo_endereco(cam, rua, pos, nivel)
-            zona = _zona_por_nivel(nivel)
             codigos_validos.append(cod_end)
             if _is_pg(conn):
                 conn.execute(
                     f'''INSERT INTO {t_loc}
-                        (camara, rua, posicao, nivel, codigo_endereco, status, area, categoria_zona, zona_armazenagem)
-                        VALUES (?, ?, ?, ?, ?, 'vazia', ?, ?, ?)
+                        (camara, rua, posicao, nivel, codigo_endereco, tipo, status, area, categoria_zona, zona_armazenagem)
+                        VALUES (?, ?, ?, ?, ?, ?, 'vazia', ?, ?, ?)
                         ON CONFLICT (codigo_endereco) DO UPDATE SET
+                          tipo = EXCLUDED.tipo,
                           area = EXCLUDED.area,
                           categoria_zona = EXCLUDED.categoria_zona,
                           zona_armazenagem = EXCLUDED.zona_armazenagem,
                           atualizado_em = NOW()''',
-                    (cam, rua, pos, nivel, cod_end, cat_z, cat_z, zona),
+                    (cam, rua, pos, nivel, cod_end, tipo, area, cat_z, zona),
                 )
             else:
                 conn.execute(
                     f'''INSERT INTO {t_loc}
-                        (camara, rua, posicao, nivel, codigo_endereco, status, area, categoria_zona, zona_armazenagem,
+                        (camara, rua, posicao, nivel, codigo_endereco, tipo, status, area, categoria_zona, zona_armazenagem,
                          criado_em, atualizado_em)
-                        VALUES (?, ?, ?, ?, ?, 'vazia', ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, 'vazia', ?, ?, ?, ?, ?)
                         ON CONFLICT (codigo_endereco) DO UPDATE SET
+                          tipo = excluded.tipo,
                           area = excluded.area,
                           categoria_zona = excluded.categoria_zona,
                           zona_armazenagem = excluded.zona_armazenagem,
                           atualizado_em = excluded.atualizado_em''',
-                    (cam, rua, pos, nivel, cod_end, cat_z, cat_z, zona, now, now),
+                    (cam, rua, pos, nivel, cod_end, tipo, area, cat_z, zona, now, now),
                 )
             inseridas += 1
-            por_categoria[cat_z] += 1
+            if cat_z:
+                por_categoria[cat_z] += 1
 
         if force:
             _limpar_localizacoes_orfas_vazias(conn, cod, codigos_validos)
@@ -2724,6 +2789,32 @@ def _ensure_areas_especiais_localizacoes(conn):
             pass
 
 
+def _obter_vaga_destino_fixo(conn, area_key):
+    """Posição fixa no layout (câmaras 11–21) marcada na planilha de endereçamento."""
+    key = (area_key or '').strip().lower()
+    if not key:
+        return None, 'Destino não informado.'
+    t_loc = _tbl(conn, 'wms_localizacao')
+    row = conn.execute(
+        f'''SELECT * FROM {t_loc}
+            WHERE LOWER(COALESCE(area, '')) = ?
+              AND COALESCE(tipo, '') = 'destino_fixo'
+              AND status = 'vazia'
+              AND {_bloqueio_off_sql(conn, 'bloqueio_entrada')}
+            ORDER BY camara, rua, posicao, nivel
+            LIMIT 1''',
+        (key,),
+    ).fetchone()
+    if not row:
+        return None, None
+    loc = _format_locacao(row)
+    labels = _destinos_acao_labels()
+    lbl = labels.get(key, key.replace('_', ' ').upper())
+    loc['texto'] = f'{lbl} · {loc.get("codigo_endereco")}'
+    loc['zona_label'] = lbl
+    return loc, None
+
+
 def _obter_vaga_area_especial(conn, area_key):
     cfg = _load_areas_especiais_config()
     cam = int(cfg.get('camara') or _WMS_CAMARA_ESPECIAL)
@@ -2751,6 +2842,13 @@ def _obter_vaga_area_especial(conn, area_key):
 
 
 def _sugerir_destino_area_especial(conn, area_key):
+    loc_fixo, _err_fixo = _obter_vaga_destino_fixo(conn, area_key)
+    if loc_fixo:
+        labels = _destinos_acao_labels()
+        key = (area_key or '').strip().lower()
+        lbl = labels.get(key, key.replace('_', ' ').upper())
+        motivo = [f'Destino fixo: {lbl}', f'Endereço {loc_fixo.get("codigo_endereco")}']
+        return _putaway_resposta(loc_fixo, motivo, '', 0, 0, None, 'destino_fixo')
     loc, err = _obter_vaga_area_especial(conn, area_key)
     meta = _area_especial_por_chave(area_key) or {}
     motivo = [f'Área especial: {meta.get("label") or area_key}']
@@ -4153,7 +4251,7 @@ def api_wms_localizacoes():
         total_loc = _int_col(total_row, 'c')
         if total_loc == 0 and request.args.get('auto_layout', '1') != '0':
             _ensure_layout_enderecos(conn)
-        sql = f'SELECT id, camara, rua, posicao, nivel, codigo_endereco, status, area, categoria_zona, zona_armazenagem FROM {t} WHERE 1=1'
+        sql = f'SELECT id, camara, rua, posicao, nivel, codigo_endereco, status, area, categoria_zona, zona_armazenagem, tipo FROM {t} WHERE 1=1'
         params = []
         if camara:
             sql += ' AND camara = ?'

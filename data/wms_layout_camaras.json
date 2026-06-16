@@ -1,9 +1,2360 @@
 {
-  "descricao": "Layout físico CD Guarulhos — capacidade fixa por câmara (total_posicoes).",
+  "descricao": "Layout físico CD Guarulhos — Endereçamento Novo (planilha)",
+  "fonte": "Endereçamento Novo.xlsx",
+  "destinos_acao": {
+    "envio_mg": "ENVIO P/ MINAS",
+    "retrabalho": "RETRABALHO",
+    "descarte_perdas": "DESCARTE",
+    "palete_bloqueado": "BLOQUEADOS",
+    "cafe": "CAFE"
+  },
   "camaras": [
-    { "codigo": 11, "ruas": ["U", "V"], "niveis": 5, "total_posicoes": 138 },
-    { "codigo": 12, "ruas": ["X", "Y"], "niveis": 5, "total_posicoes": 134 },
-    { "codigo": 13, "ruas": ["W", "Z"], "niveis": 5, "total_posicoes": 138 },
-    { "codigo": 21, "ruas": ["R"], "niveis": 5, "total_posicoes": 82 }
+    {
+      "codigo": 11,
+      "descricao": "Câmara 11",
+      "ruas": [
+        "A",
+        "B"
+      ],
+      "niveis": 5,
+      "total_posicoes": 144,
+      "enderecos": [
+        {
+          "rua": "A",
+          "posicao": 1,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 1,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 1,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 1,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 1,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 2,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 2,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 2,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 2,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 2,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 3,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 3,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 3,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 3,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 3,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 4,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 4,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 4,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 4,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 4,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 5,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 5,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 5,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 5,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 5,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 6,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 6,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 6,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 6,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 6,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 7,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 7,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 7,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 7,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 7,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 8,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 8,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 8,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 8,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 8,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 9,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 9,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 9,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 9,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 9,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 10,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 10,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 10,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 10,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 10,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 11,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 11,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 11,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 11,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 11,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 12,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 12,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 12,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 12,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 12,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 13,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 13,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 13,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 13,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 13,
+          "nivel": 5
+        },
+        {
+          "rua": "A",
+          "posicao": 14,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 14,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 14,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 14,
+          "nivel": 4
+        },
+        {
+          "rua": "A",
+          "posicao": 15,
+          "nivel": 1
+        },
+        {
+          "rua": "A",
+          "posicao": 15,
+          "nivel": 2
+        },
+        {
+          "rua": "A",
+          "posicao": 15,
+          "nivel": 3
+        },
+        {
+          "rua": "A",
+          "posicao": 15,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 1,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 1,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 1,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 1,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 1,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 2,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 2,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 2,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 3,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 3,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 3,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 3,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 3,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 4,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 4,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 4,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 4,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 4,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 5,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 5,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 5,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 5,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 5,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 6,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 6,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 6,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 6,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 6,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 7,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 7,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 7,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 7,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 7,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 8,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 8,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 8,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 8,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 8,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 9,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 9,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 9,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 9,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 9,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 10,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 10,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 10,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 10,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 10,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 11,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 11,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 11,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 11,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 11,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 12,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 12,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 12,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 12,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 12,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 13,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 13,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 13,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 13,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 13,
+          "nivel": 5
+        },
+        {
+          "rua": "B",
+          "posicao": 14,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 14,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 14,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 14,
+          "nivel": 4
+        },
+        {
+          "rua": "B",
+          "posicao": 15,
+          "nivel": 1
+        },
+        {
+          "rua": "B",
+          "posicao": 15,
+          "nivel": 2
+        },
+        {
+          "rua": "B",
+          "posicao": 15,
+          "nivel": 3
+        },
+        {
+          "rua": "B",
+          "posicao": 15,
+          "nivel": 4
+        }
+      ]
+    },
+    {
+      "codigo": 12,
+      "descricao": "Câmara 12",
+      "ruas": [
+        "C",
+        "D"
+      ],
+      "niveis": 5,
+      "total_posicoes": 133,
+      "enderecos": [
+        {
+          "rua": "C",
+          "posicao": 1,
+          "nivel": 1
+        },
+        {
+          "rua": "C",
+          "posicao": 1,
+          "nivel": 2
+        },
+        {
+          "rua": "C",
+          "posicao": 1,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 1,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 1,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 2,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 2,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 2,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 3,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 3,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 3,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 4,
+          "nivel": 1
+        },
+        {
+          "rua": "C",
+          "posicao": 4,
+          "nivel": 2
+        },
+        {
+          "rua": "C",
+          "posicao": 4,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 4,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 4,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 5,
+          "nivel": 1
+        },
+        {
+          "rua": "C",
+          "posicao": 5,
+          "nivel": 2
+        },
+        {
+          "rua": "C",
+          "posicao": 5,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 5,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 5,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 6,
+          "nivel": 1
+        },
+        {
+          "rua": "C",
+          "posicao": 6,
+          "nivel": 2
+        },
+        {
+          "rua": "C",
+          "posicao": 6,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 6,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 6,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 7,
+          "nivel": 1
+        },
+        {
+          "rua": "C",
+          "posicao": 7,
+          "nivel": 2
+        },
+        {
+          "rua": "C",
+          "posicao": 7,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 7,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 7,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 8,
+          "nivel": 1
+        },
+        {
+          "rua": "C",
+          "posicao": 8,
+          "nivel": 2
+        },
+        {
+          "rua": "C",
+          "posicao": 8,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 8,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 8,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 9,
+          "nivel": 1
+        },
+        {
+          "rua": "C",
+          "posicao": 9,
+          "nivel": 2
+        },
+        {
+          "rua": "C",
+          "posicao": 9,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 9,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 9,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 10,
+          "nivel": 1
+        },
+        {
+          "rua": "C",
+          "posicao": 10,
+          "nivel": 2
+        },
+        {
+          "rua": "C",
+          "posicao": 10,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 10,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 10,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 11,
+          "nivel": 1
+        },
+        {
+          "rua": "C",
+          "posicao": 11,
+          "nivel": 2
+        },
+        {
+          "rua": "C",
+          "posicao": 11,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 11,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 11,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 12,
+          "nivel": 1
+        },
+        {
+          "rua": "C",
+          "posicao": 12,
+          "nivel": 2
+        },
+        {
+          "rua": "C",
+          "posicao": 12,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 12,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 12,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 13,
+          "nivel": 1
+        },
+        {
+          "rua": "C",
+          "posicao": 13,
+          "nivel": 2
+        },
+        {
+          "rua": "C",
+          "posicao": 13,
+          "nivel": 3
+        },
+        {
+          "rua": "C",
+          "posicao": 13,
+          "nivel": 4
+        },
+        {
+          "rua": "C",
+          "posicao": 13,
+          "nivel": 5
+        },
+        {
+          "rua": "C",
+          "posicao": 14,
+          "nivel": 1,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
+        },
+        {
+          "rua": "C",
+          "posicao": 14,
+          "nivel": 2,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
+        },
+        {
+          "rua": "C",
+          "posicao": 14,
+          "nivel": 3,
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
+        },
+        {
+          "rua": "C",
+          "posicao": 14,
+          "nivel": 4,
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
+        },
+        {
+          "rua": "C",
+          "posicao": 15,
+          "nivel": 1,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
+        },
+        {
+          "rua": "C",
+          "posicao": 15,
+          "nivel": 2,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
+        },
+        {
+          "rua": "C",
+          "posicao": 15,
+          "nivel": 3,
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
+        },
+        {
+          "rua": "C",
+          "posicao": 15,
+          "nivel": 4,
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
+        },
+        {
+          "rua": "D",
+          "posicao": 1,
+          "nivel": 1
+        },
+        {
+          "rua": "D",
+          "posicao": 1,
+          "nivel": 2
+        },
+        {
+          "rua": "D",
+          "posicao": 1,
+          "nivel": 3
+        },
+        {
+          "rua": "D",
+          "posicao": 1,
+          "nivel": 4
+        },
+        {
+          "rua": "D",
+          "posicao": 1,
+          "nivel": 5
+        },
+        {
+          "rua": "D",
+          "posicao": 2,
+          "nivel": 3
+        },
+        {
+          "rua": "D",
+          "posicao": 2,
+          "nivel": 4
+        },
+        {
+          "rua": "D",
+          "posicao": 2,
+          "nivel": 5
+        },
+        {
+          "rua": "D",
+          "posicao": 4,
+          "nivel": 3
+        },
+        {
+          "rua": "D",
+          "posicao": 4,
+          "nivel": 4
+        },
+        {
+          "rua": "D",
+          "posicao": 4,
+          "nivel": 5
+        },
+        {
+          "rua": "D",
+          "posicao": 5,
+          "nivel": 1
+        },
+        {
+          "rua": "D",
+          "posicao": 5,
+          "nivel": 2
+        },
+        {
+          "rua": "D",
+          "posicao": 5,
+          "nivel": 3
+        },
+        {
+          "rua": "D",
+          "posicao": 5,
+          "nivel": 4
+        },
+        {
+          "rua": "D",
+          "posicao": 5,
+          "nivel": 5
+        },
+        {
+          "rua": "D",
+          "posicao": 6,
+          "nivel": 1
+        },
+        {
+          "rua": "D",
+          "posicao": 6,
+          "nivel": 2
+        },
+        {
+          "rua": "D",
+          "posicao": 6,
+          "nivel": 3
+        },
+        {
+          "rua": "D",
+          "posicao": 6,
+          "nivel": 4
+        },
+        {
+          "rua": "D",
+          "posicao": 6,
+          "nivel": 5
+        },
+        {
+          "rua": "D",
+          "posicao": 7,
+          "nivel": 1
+        },
+        {
+          "rua": "D",
+          "posicao": 7,
+          "nivel": 2
+        },
+        {
+          "rua": "D",
+          "posicao": 7,
+          "nivel": 3
+        },
+        {
+          "rua": "D",
+          "posicao": 7,
+          "nivel": 4
+        },
+        {
+          "rua": "D",
+          "posicao": 7,
+          "nivel": 5
+        },
+        {
+          "rua": "D",
+          "posicao": 8,
+          "nivel": 1
+        },
+        {
+          "rua": "D",
+          "posicao": 8,
+          "nivel": 2
+        },
+        {
+          "rua": "D",
+          "posicao": 8,
+          "nivel": 3
+        },
+        {
+          "rua": "D",
+          "posicao": 8,
+          "nivel": 4
+        },
+        {
+          "rua": "D",
+          "posicao": 8,
+          "nivel": 5
+        },
+        {
+          "rua": "D",
+          "posicao": 9,
+          "nivel": 1
+        },
+        {
+          "rua": "D",
+          "posicao": 9,
+          "nivel": 2
+        },
+        {
+          "rua": "D",
+          "posicao": 9,
+          "nivel": 3
+        },
+        {
+          "rua": "D",
+          "posicao": 9,
+          "nivel": 4
+        },
+        {
+          "rua": "D",
+          "posicao": 9,
+          "nivel": 5
+        },
+        {
+          "rua": "D",
+          "posicao": 10,
+          "nivel": 1
+        },
+        {
+          "rua": "D",
+          "posicao": 10,
+          "nivel": 2
+        },
+        {
+          "rua": "D",
+          "posicao": 10,
+          "nivel": 3
+        },
+        {
+          "rua": "D",
+          "posicao": 10,
+          "nivel": 4
+        },
+        {
+          "rua": "D",
+          "posicao": 10,
+          "nivel": 5
+        },
+        {
+          "rua": "D",
+          "posicao": 11,
+          "nivel": 1
+        },
+        {
+          "rua": "D",
+          "posicao": 11,
+          "nivel": 2
+        },
+        {
+          "rua": "D",
+          "posicao": 11,
+          "nivel": 3
+        },
+        {
+          "rua": "D",
+          "posicao": 11,
+          "nivel": 4
+        },
+        {
+          "rua": "D",
+          "posicao": 11,
+          "nivel": 5
+        },
+        {
+          "rua": "D",
+          "posicao": 12,
+          "nivel": 1
+        },
+        {
+          "rua": "D",
+          "posicao": 12,
+          "nivel": 2
+        },
+        {
+          "rua": "D",
+          "posicao": 12,
+          "nivel": 3
+        },
+        {
+          "rua": "D",
+          "posicao": 12,
+          "nivel": 4
+        },
+        {
+          "rua": "D",
+          "posicao": 12,
+          "nivel": 5
+        },
+        {
+          "rua": "D",
+          "posicao": 13,
+          "nivel": 1
+        },
+        {
+          "rua": "D",
+          "posicao": 13,
+          "nivel": 2
+        },
+        {
+          "rua": "D",
+          "posicao": 13,
+          "nivel": 3
+        },
+        {
+          "rua": "D",
+          "posicao": 13,
+          "nivel": 4
+        },
+        {
+          "rua": "D",
+          "posicao": 13,
+          "nivel": 5
+        },
+        {
+          "rua": "D",
+          "posicao": 14,
+          "nivel": 1,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
+        },
+        {
+          "rua": "D",
+          "posicao": 14,
+          "nivel": 2,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
+        },
+        {
+          "rua": "D",
+          "posicao": 14,
+          "nivel": 3,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
+        },
+        {
+          "rua": "D",
+          "posicao": 14,
+          "nivel": 4,
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
+        },
+        {
+          "rua": "D",
+          "posicao": 15,
+          "nivel": 1,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
+        },
+        {
+          "rua": "D",
+          "posicao": 15,
+          "nivel": 2,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
+        },
+        {
+          "rua": "D",
+          "posicao": 15,
+          "nivel": 3,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
+        },
+        {
+          "rua": "D",
+          "posicao": 15,
+          "nivel": 4,
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
+        }
+      ]
+    },
+    {
+      "codigo": 13,
+      "descricao": "Câmara 13",
+      "ruas": [
+        "E",
+        "F"
+      ],
+      "niveis": 5,
+      "total_posicoes": 142,
+      "enderecos": [
+        {
+          "rua": "E",
+          "posicao": 1,
+          "nivel": 1
+        },
+        {
+          "rua": "E",
+          "posicao": 1,
+          "nivel": 2
+        },
+        {
+          "rua": "E",
+          "posicao": 1,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 1,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 1,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 2,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 2,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 2,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 3,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 3,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 3,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 4,
+          "nivel": 1
+        },
+        {
+          "rua": "E",
+          "posicao": 4,
+          "nivel": 2
+        },
+        {
+          "rua": "E",
+          "posicao": 4,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 4,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 4,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 5,
+          "nivel": 1
+        },
+        {
+          "rua": "E",
+          "posicao": 5,
+          "nivel": 2
+        },
+        {
+          "rua": "E",
+          "posicao": 5,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 5,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 5,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 6,
+          "nivel": 1
+        },
+        {
+          "rua": "E",
+          "posicao": 6,
+          "nivel": 2
+        },
+        {
+          "rua": "E",
+          "posicao": 6,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 6,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 6,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 7,
+          "nivel": 1
+        },
+        {
+          "rua": "E",
+          "posicao": 7,
+          "nivel": 2
+        },
+        {
+          "rua": "E",
+          "posicao": 7,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 7,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 7,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 8,
+          "nivel": 1
+        },
+        {
+          "rua": "E",
+          "posicao": 8,
+          "nivel": 2
+        },
+        {
+          "rua": "E",
+          "posicao": 8,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 8,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 8,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 9,
+          "nivel": 1
+        },
+        {
+          "rua": "E",
+          "posicao": 9,
+          "nivel": 2
+        },
+        {
+          "rua": "E",
+          "posicao": 9,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 9,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 9,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 10,
+          "nivel": 1
+        },
+        {
+          "rua": "E",
+          "posicao": 10,
+          "nivel": 2
+        },
+        {
+          "rua": "E",
+          "posicao": 10,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 10,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 10,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 11,
+          "nivel": 1
+        },
+        {
+          "rua": "E",
+          "posicao": 11,
+          "nivel": 2
+        },
+        {
+          "rua": "E",
+          "posicao": 11,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 11,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 11,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 12,
+          "nivel": 1
+        },
+        {
+          "rua": "E",
+          "posicao": 12,
+          "nivel": 2
+        },
+        {
+          "rua": "E",
+          "posicao": 12,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 12,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 12,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 13,
+          "nivel": 1
+        },
+        {
+          "rua": "E",
+          "posicao": 13,
+          "nivel": 2
+        },
+        {
+          "rua": "E",
+          "posicao": 13,
+          "nivel": 3
+        },
+        {
+          "rua": "E",
+          "posicao": 13,
+          "nivel": 4
+        },
+        {
+          "rua": "E",
+          "posicao": 13,
+          "nivel": 5
+        },
+        {
+          "rua": "E",
+          "posicao": 14,
+          "nivel": 1,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
+        },
+        {
+          "rua": "E",
+          "posicao": 14,
+          "nivel": 2,
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
+        },
+        {
+          "rua": "E",
+          "posicao": 14,
+          "nivel": 3,
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
+        },
+        {
+          "rua": "E",
+          "posicao": 14,
+          "nivel": 4,
+          "destino_acao": "cafe",
+          "destino_label": "CAFE"
+        },
+        {
+          "rua": "E",
+          "posicao": 15,
+          "nivel": 1,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
+        },
+        {
+          "rua": "E",
+          "posicao": 15,
+          "nivel": 2,
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
+        },
+        {
+          "rua": "E",
+          "posicao": 15,
+          "nivel": 3,
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
+        },
+        {
+          "rua": "E",
+          "posicao": 15,
+          "nivel": 4,
+          "destino_acao": "cafe",
+          "destino_label": "CAFE"
+        },
+        {
+          "rua": "F",
+          "posicao": 1,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 1,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 1,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 1,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 1,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 2,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 2,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 2,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 2,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 2,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 3,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 3,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 3,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 3,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 3,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 4,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 4,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 4,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 4,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 4,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 5,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 5,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 5,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 5,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 5,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 6,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 6,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 6,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 6,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 6,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 7,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 7,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 7,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 7,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 7,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 8,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 8,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 8,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 8,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 8,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 9,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 9,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 9,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 9,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 9,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 10,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 10,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 10,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 10,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 10,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 11,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 11,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 11,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 11,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 11,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 12,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 12,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 12,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 12,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 12,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 13,
+          "nivel": 1
+        },
+        {
+          "rua": "F",
+          "posicao": 13,
+          "nivel": 2
+        },
+        {
+          "rua": "F",
+          "posicao": 13,
+          "nivel": 3
+        },
+        {
+          "rua": "F",
+          "posicao": 13,
+          "nivel": 4
+        },
+        {
+          "rua": "F",
+          "posicao": 13,
+          "nivel": 5
+        },
+        {
+          "rua": "F",
+          "posicao": 14,
+          "nivel": 1,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
+        },
+        {
+          "rua": "F",
+          "posicao": 14,
+          "nivel": 2,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
+        },
+        {
+          "rua": "F",
+          "posicao": 14,
+          "nivel": 3,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
+        },
+        {
+          "rua": "F",
+          "posicao": 14,
+          "nivel": 4,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
+        },
+        {
+          "rua": "F",
+          "posicao": 15,
+          "nivel": 1,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
+        },
+        {
+          "rua": "F",
+          "posicao": 15,
+          "nivel": 2,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
+        },
+        {
+          "rua": "F",
+          "posicao": 15,
+          "nivel": 3,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
+        },
+        {
+          "rua": "F",
+          "posicao": 15,
+          "nivel": 4,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
+        }
+      ]
+    },
+    {
+      "codigo": 21,
+      "descricao": "Câmara 21",
+      "ruas": [
+        "G",
+        "H"
+      ],
+      "niveis": 2,
+      "total_posicoes": 28,
+      "enderecos": [
+        {
+          "rua": "G",
+          "posicao": 1,
+          "nivel": 1
+        },
+        {
+          "rua": "G",
+          "posicao": 1,
+          "nivel": 2
+        },
+        {
+          "rua": "G",
+          "posicao": 2,
+          "nivel": 1
+        },
+        {
+          "rua": "G",
+          "posicao": 2,
+          "nivel": 2
+        },
+        {
+          "rua": "G",
+          "posicao": 3,
+          "nivel": 1
+        },
+        {
+          "rua": "G",
+          "posicao": 3,
+          "nivel": 2
+        },
+        {
+          "rua": "G",
+          "posicao": 4,
+          "nivel": 1
+        },
+        {
+          "rua": "G",
+          "posicao": 4,
+          "nivel": 2
+        },
+        {
+          "rua": "G",
+          "posicao": 5,
+          "nivel": 1
+        },
+        {
+          "rua": "G",
+          "posicao": 5,
+          "nivel": 2
+        },
+        {
+          "rua": "G",
+          "posicao": 6,
+          "nivel": 1
+        },
+        {
+          "rua": "G",
+          "posicao": 6,
+          "nivel": 2
+        },
+        {
+          "rua": "G",
+          "posicao": 7,
+          "nivel": 1
+        },
+        {
+          "rua": "G",
+          "posicao": 7,
+          "nivel": 2
+        },
+        {
+          "rua": "H",
+          "posicao": 1,
+          "nivel": 1
+        },
+        {
+          "rua": "H",
+          "posicao": 1,
+          "nivel": 2
+        },
+        {
+          "rua": "H",
+          "posicao": 2,
+          "nivel": 1
+        },
+        {
+          "rua": "H",
+          "posicao": 2,
+          "nivel": 2
+        },
+        {
+          "rua": "H",
+          "posicao": 3,
+          "nivel": 1
+        },
+        {
+          "rua": "H",
+          "posicao": 3,
+          "nivel": 2
+        },
+        {
+          "rua": "H",
+          "posicao": 4,
+          "nivel": 1
+        },
+        {
+          "rua": "H",
+          "posicao": 4,
+          "nivel": 2
+        },
+        {
+          "rua": "H",
+          "posicao": 5,
+          "nivel": 1
+        },
+        {
+          "rua": "H",
+          "posicao": 5,
+          "nivel": 2
+        },
+        {
+          "rua": "H",
+          "posicao": 6,
+          "nivel": 1
+        },
+        {
+          "rua": "H",
+          "posicao": 6,
+          "nivel": 2
+        },
+        {
+          "rua": "H",
+          "posicao": 7,
+          "nivel": 1
+        },
+        {
+          "rua": "H",
+          "posicao": 7,
+          "nivel": 2
+        }
+      ]
+    }
   ]
 }
