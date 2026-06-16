@@ -128,36 +128,41 @@
   }
   .loc-val.letra { font-size: 22pt; }
 
-  /* ── Centro: barcode ── */
+  /* ── Centro: barcode + endereço ── */
   .etq-bc-block {
-    display: grid;
-    grid-template-rows: minmax(0, 1fr) 4mm;
-    align-items: stretch;
-    padding: 0.8mm 1mm 0.4mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0.5mm 1.3mm;
     min-height: 0;
     border-bottom: 2pt solid var(--ink);
   }
   .bc-wrap {
-    width: 100%;
+    flex: 1;
+    width: 95%;
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 0;
     line-height: 0;
+    padding: 0.5mm 0;
   }
-  .bc-wrap svg { width: 100%; height: 100%; min-height: 10mm; }
-  .bc-line {
+  .bc-wrap svg { width: 95%; height: 100%; min-height: 11mm; }
+  .endereco {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 7.5pt;
-    font-weight: 800;
+    font-size: 18px;
+    font-weight: 700;
     font-family: Consolas, 'Courier New', monospace;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.5px;
     line-height: 1;
     text-align: center;
     white-space: nowrap;
     overflow: hidden;
+    padding-bottom: 0.3mm;
   }
 
   /* ── Base: Picking / Pulmão horizontal + seta ── */
@@ -181,11 +186,11 @@
     width: 0;
     height: 0;
     flex-shrink: 0;
-    border-left: 5.5mm solid transparent;
-    border-right: 5.5mm solid transparent;
+    border-left: 6mm solid transparent;
+    border-right: 6mm solid transparent;
   }
-  .arrow.up { border-bottom: 7.5mm solid var(--ink); }
-  .arrow.down { border-top: 7.5mm solid var(--ink); }
+  .arrow.up { border-bottom: 8.25mm solid var(--ink); }
+  .arrow.down { border-top: 8.25mm solid var(--ink); }
 
   .zone-lbl {
     font-size: 14pt;
@@ -297,7 +302,7 @@
 
   <div class="etq-bc-block">
     <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
-    <div class="bc-line">{{ e.codigo_wms or e.codigo or e.barcode }}</div>
+    <div class="endereco">{{ e.codigo_wms or e.codigo or e.barcode }}</div>
   </div>
 
   {% if e.destino_fixo %}
@@ -364,8 +369,8 @@
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
-        width: 1.5,
-        height: 40,
+        width: 1.65,
+        height: 44,
         displayValue: false,
         margin: 0,
         lineColor: '#000000',
