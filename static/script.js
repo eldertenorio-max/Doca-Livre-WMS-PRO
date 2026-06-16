@@ -5982,7 +5982,23 @@ function wmsLimparPainelNfDescarga() {
 function _wmsStatusItemNfLabel(st) {
     st = (st || 'pendente').toLowerCase();
     if (st === 'concluido' || st === 'ok') return '<span style="color:#2e7d32;font-weight:bold;">Concluído</span>';
+    if (st === 'bipado') return '<span style="color:#1565c0;font-weight:bold;">Bipado</span>';
     return '<span style="color:#e65100;font-weight:bold;">Pendente</span>';
+}
+
+function _wmsPendenteItemNf(it) {
+    if (!it) return 0;
+    if (it.pendente_wms != null && it.pendente_wms !== '') return parseFloat(it.pendente_wms) || 0;
+    var qXml = parseFloat(it.quantidade_xml || 0);
+    var qWms = parseFloat(it.quantidade_wms || 0);
+    return Math.max(qXml - qWms, 0);
+}
+
+function _wmsItemNfPodeBipar(it) {
+    if (!it) return false;
+    var st = String(it.status_wms || 'pendente').toLowerCase();
+    if (st === 'concluido' || st === 'ok') return false;
+    return _wmsPendenteItemNf(it) > 0;
 }
 
 function wmsDocDescargaReabrivel(doc) {
@@ -6035,15 +6051,15 @@ function wmsPreencherPainelNfDescarga(doc) {
         wrap.style.display = itens.length ? 'block' : 'none';
         tb.innerHTML = itens.length ? itens.map(function(it) {
             var qWms = it.quantidade_wms != null ? it.quantidade_wms : 0;
-            var st = String(it.status_wms || 'pendente').toLowerCase();
-            var destaque = st !== 'concluido' && st !== 'ok' && !itens.some(function(o) {
-                var os = String(o.status_wms || 'pendente').toLowerCase();
-                return os !== 'concluido' && os !== 'ok' && (Number(o.n_item) || 0) < (Number(it.n_item) || 0);
+            var qPend = _wmsPendenteItemNf(it);
+            var destaque = _wmsItemNfPodeBipar(it) && !itens.some(function(o) {
+                return _wmsItemNfPodeBipar(o) && (Number(o.n_item) || 0) < (Number(it.n_item) || 0);
             });
             var trStyle = destaque ? ' style="background:#fff8e1;"' : '';
             return '<tr' + trStyle + '><td>' + escHtml(it.n_item || '') + '</td><td><strong>' + escHtml(it.sku || '—') + '</strong></td>'
                 + '<td>' + escHtml(it.descricao || '') + '</td><td>' + escHtml(it.quantidade_xml) + '</td>'
-                + '<td>' + escHtml(qWms) + '</td><td>' + _wmsStatusItemNfLabel(it.status_wms) + '</td>'
+                + '<td>' + escHtml(qWms) + (qPend > 0 ? ' <span style="color:#e65100;font-size:11px;">(faltam ' + escHtml(qPend) + ')</span>' : '') + '</td>'
+                + '<td>' + _wmsStatusItemNfLabel(it.status_wms) + '</td>'
                 + '<td>' + escHtml(it.codigo_ean || '—') + '</td></tr>';
         }).join('') : '';
     }
@@ -6161,10 +6177,9 @@ function wmsResolverCodigoProdutoNf(codigo) {
     if (!candidatos.length) return null;
     candidatos.sort(function(a, b) { return (Number(a.n_item) || 0) - (Number(b.n_item) || 0); });
     for (var j = 0; j < candidatos.length; j++) {
-        var st = String(candidatos[j].status_wms || 'pendente').toLowerCase();
-        if (st !== 'concluido' && st !== 'ok') return candidatos[j];
+        if (_wmsItemNfPodeBipar(candidatos[j])) return candidatos[j];
     }
-    return candidatos[0];
+    return null;
 }
 
 async function wmsGarantirRecebimentoAberto() {
@@ -6388,14 +6403,24 @@ function wmsInitRecebimentoIntegracaoNf() {
             var it = wmsResolverCodigoProdutoNf(skuEl.value);
             if (it) {
                 skuEl.value = it.sku || skuEl.value;
-                showMessage('Produto NF: ' + (it.descricao || it.sku), 'success');
+                var pend = _wmsPendenteItemNf(it);
+                var qtdEl = document.getElementById('wms-pal-qtd');
+                if (qtdEl && pend > 0) qtdEl.value = String(Math.floor(pend) === pend ? pend : pend);
+                showMessage('Item NF ' + (it.n_item != null ? it.n_item : '') + ' · pendente ' + pend + ' cx', 'success');
                 var up = document.getElementById('wms-pal-up');
                 if (up) up.focus();
             }
         });
         skuEl.addEventListener('blur', function() {
             var it = wmsResolverCodigoProdutoNf(skuEl.value);
-            if (it) skuEl.value = it.sku || skuEl.value;
+            if (it) {
+                skuEl.value = it.sku || skuEl.value;
+                var pend = _wmsPendenteItemNf(it);
+                var qtdEl = document.getElementById('wms-pal-qtd');
+                if (qtdEl && pend > 0 && (!qtdEl.value || parseInt(qtdEl.value, 10) < 1)) {
+                    qtdEl.value = String(Math.floor(pend) === pend ? pend : pend);
+                }
+            }
         });
     }
 }
@@ -7021,17 +7046,16 @@ async function wmsBipProduto() {
     var pid = criado.palete_id;
     var skuResolved = wmsResolverCodigoProdutoNf(skuRaw);
     if (!skuResolved) {
-        wmsMostrarErroBipProduto('Produto não encontrado nesta NF ou todas as linhas deste código já foram concluídas.');
+        wmsMostrarErroBipProduto('Produto não encontrado nesta NF ou todas as linhas deste código já foram bipadas.');
         return;
     }
-    var stLinha = String(skuResolved.status_wms || 'pendente').toLowerCase();
-    if (stLinha === 'concluido' || stLinha === 'ok') {
-        wmsMostrarErroBipProduto('Item ' + (skuResolved.n_item != null ? skuResolved.n_item : '') + ' já concluído — passe para o próximo item da NF.');
+    var qtdPend = _wmsPendenteItemNf(skuResolved);
+    if (qtdPend <= 0) {
+        wmsMostrarErroBipProduto('Item ' + (skuResolved.n_item != null ? skuResolved.n_item : '') + ' já bipado por completo — passe para a próxima linha da NF.');
         return;
     }
-    var qtdPend = skuResolved.pendente_wms != null ? parseFloat(skuResolved.pendente_wms) : parseFloat(skuResolved.quantidade_xml || 0);
     if (qtd > qtdPend) {
-        wmsMostrarErroBipProduto('Quantidade acima do pendente deste item (máx. ' + qtdPend + ' cx).');
+        wmsMostrarErroBipProduto('Quantidade acima do pendente do item ' + (skuResolved.n_item != null ? skuResolved.n_item : '') + ' (máx. ' + qtdPend + ' cx).');
         return;
     }
     var body = {

@@ -1054,6 +1054,58 @@ def _quantidades_por_linha_nf(conn, recebimento_id, doc_itens):
     return out
 
 
+def _documento_nf_do_recebimento(conn, recebimento_id):
+    if not recebimento_id:
+        return None
+    t_rec = _tbl(conn, 'wms_recebimento')
+    rec = conn.execute(
+        f'SELECT numero_nf FROM {t_rec} WHERE id = ?',
+        (int(recebimento_id),),
+    ).fetchone()
+    if not rec:
+        return None
+    numero_nf = (_row_dict(rec) or {}).get('numero_nf')
+    if not numero_nf:
+        return None
+    doc, _err = _buscar_documento_terceiros_por_nf(conn, numero_nf)
+    if not doc:
+        return None
+    return _enriquecer_documento_nf_wms(conn, doc)
+
+
+def _item_nf_coincide_sku(item, sku):
+    sku_u = (sku or '').strip().upper()
+    if not sku_u:
+        return False
+    it_sku = (item.get('sku') or '').strip().upper()
+    if it_sku and it_sku == sku_u:
+        return True
+    ean = ''.join(c for c in str(item.get('codigo_ean') or '') if c.isdigit())
+    cod = ''.join(c for c in str(sku or '') if c.isdigit())
+    if ean and cod and (ean == cod or ean.endswith(cod) or cod.endswith(ean)):
+        return True
+    return False
+
+
+def _resolver_linha_nf_bipagem(doc, sku, n_item_nf=None):
+    """Próxima linha da NF com quantidade pendente de bipagem (FIFO por n_item)."""
+    if not doc:
+        return None
+    itens = sorted(doc.get('itens') or [], key=lambda x: int(x.get('n_item') or 0))
+    if n_item_nf is not None and str(n_item_nf).strip() != '':
+        alvo = str(n_item_nf).strip()
+        for it in itens:
+            if str(it.get('n_item')) == alvo:
+                return it
+        return None
+    for it in itens:
+        if not _item_nf_coincide_sku(it, sku):
+            continue
+        if float(it.get('pendente_wms') or 0) > 0:
+            return it
+    return None
+
+
 def _quantidades_wms_recebimento(conn, recebimento_id):
     if not recebimento_id:
         return {}
@@ -1141,7 +1193,12 @@ def _enriquecer_documento_nf_wms(conn, doc):
         rd['quantidade_wms'] = q_wms
         rd['quantidade_armazenada'] = q_arm
         rd['pendente_wms'] = max(q_xml - q_wms, 0)
-        rd['status_wms'] = 'concluido' if q_arm >= q_xml and q_xml > 0 else 'pendente'
+        if q_xml > 0 and q_arm >= q_xml:
+            rd['status_wms'] = 'concluido'
+        elif q_xml > 0 and q_wms >= q_xml:
+            rd['status_wms'] = 'bipado'
+        else:
+            rd['status_wms'] = 'pendente'
         itens.append(rd)
     doc['itens'] = itens
     return doc
@@ -5302,6 +5359,27 @@ def api_wms_recebimentos():
             if qtd_cx < 1:
                 conn.close()
                 return jsonify({'erro': 'Informe a quantidade de caixas (mínimo 1).'}), 400
+            pal_rec = conn.execute(f'SELECT recebimento_id FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
+            rid_bip = (_row_dict(pal_rec) or {}).get('recebimento_id')
+            if rid_bip:
+                doc_nf = _documento_nf_do_recebimento(conn, rid_bip)
+                linha_nf = _resolver_linha_nf_bipagem(doc_nf, sku, n_item_nf)
+                if not linha_nf:
+                    conn.close()
+                    return jsonify({
+                        'erro': 'Nenhuma linha pendente de bipagem para este produto nesta NF.',
+                    }), 400
+                n_item_nf = str(linha_nf.get('n_item')) if linha_nf.get('n_item') is not None else n_item_nf
+                pendente = float(linha_nf.get('pendente_wms') or 0)
+                if qtd_cx > pendente:
+                    conn.close()
+                    max_i = int(pendente) if pendente == int(pendente) else pendente
+                    return jsonify({
+                        'erro': f'Quantidade acima do pendente do item {n_item_nf} (máx. {max_i} cx).',
+                    }), 400
+                if not item.get('descricao') and linha_nf.get('descricao'):
+                    item = dict(item)
+                    item['descricao'] = linha_nf.get('descricao')
             _ensure_wms_palete_item_nf_columns(conn)
             _ensure_wms_palete_item_disposicao(conn)
             existentes = conn.execute(
