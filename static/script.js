@@ -5957,7 +5957,7 @@ async function loadWmsRecebimentos() {
                 + 'data-wms-rec-id="' + escHtml(String(r.id)) + '" data-wms-rec-nf="' + escHtml(String(nf)) + '" '
                 + 'onclick="event.stopPropagation(); wmsExcluirRecebimento(this)" title="Excluir recebimento">Excluir</button>';
             return '<tr style="cursor:pointer;" onclick="wmsAbrirRecebimento(' + r.id + ')"><td>' + escHtml(r.id) + '</td><td>' + escHtml(r.numero_nf || '') + escHtml(vinc) + '</td><td>' + escHtml(r.fornecedor || '') + '</td><td>' + escHtml(r.placa || '') + '</td><td>' + escHtml(r.status) + (orig === 'carreta' ? ' · carreta' : '') + '</td><td>' + btnExcluir + '</td></tr>';
-        }).join('') : '<tr><td colspan="6">Nenhum recebimento.</td></tr>';
+        }).join('') : '<tr><td colspan="6">Nenhum recebimento em andamento. Finalizados ficam no Histórico NF.</td></tr>';
     } catch (e) {
         if (tb) tb.innerHTML = '<tr><td colspan="6">' + escHtml((e && e.message) || 'Erro ao carregar recebimentos.') + '</td></tr>';
         showMessage('Erro ao carregar recebimentos WMS.', 'error');
@@ -6199,7 +6199,11 @@ async function wmsGarantirRecebimentoAberto() {
         return null;
     }
     window._wmsNfDoc.recebimento_wms_id = data.id;
+    window._wmsNfDoc.recebimento_wms_status = data.status || 'aguardando';
     wmsSincronizarRecebimentoAberto(data.id, { resetarPalete: false });
+    if (data.reutilizado) {
+        showMessage(data.mensagem || ('Recebimento #' + data.id + ' em andamento reutilizado.'), 'info');
+    }
     loadWmsRecebimentos();
     return parseInt(data.id, 10);
 }
@@ -6331,8 +6335,11 @@ async function wmsIniciarBipagemNf() {
             }
             rid = data.id;
             window._wmsNfDoc.recebimento_wms_id = rid;
-            window._wmsNfDoc.recebimento_wms_status = 'aguardando';
+            window._wmsNfDoc.recebimento_wms_status = data.status || 'aguardando';
             wmsAtualizarBotaoExcluirRecebimentoNf();
+            if (data.reutilizado) {
+                showMessage(data.mensagem || ('Recebimento #' + rid + ' em andamento reutilizado.'), 'info');
+            }
             loadWmsRecebimentos();
         }
         if (!rid) {

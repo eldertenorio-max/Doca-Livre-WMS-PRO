@@ -885,12 +885,28 @@ def _buscar_documento_terceiros_por_nf(conn, numero_nf):
     }, None
 
 
-def _buscar_recebimento_wms_por_nf(conn, documento_id=None, numero_nf=None):
+_STATUS_RECEBIMENTO_WMS_ENCERRADO = frozenset({'finalizado', 'cancelado', 'concluido'})
+
+
+def _recebimento_wms_esta_ativo(rec):
+    if not rec:
+        return False
+    st = (rec.get('status') if isinstance(rec, dict) else None) or ''
+    return str(st).strip().lower() not in _STATUS_RECEBIMENTO_WMS_ENCERRADO
+
+
+def _sql_recebimento_wms_ativo(alias=''):
+    p = f'{alias}.' if alias else ''
+    return f"LOWER(COALESCE({p}status, '')) NOT IN ('finalizado', 'cancelado', 'concluido')"
+
+
+def _buscar_recebimento_wms_por_nf(conn, documento_id=None, numero_nf=None, somente_ativo=False):
     t_rec = _tbl(conn, 'wms_recebimento')
+    ativo_sql = f' AND {_sql_recebimento_wms_ativo()}' if somente_ativo else ''
     if documento_id:
         row = conn.execute(
-            f'''SELECT id, status, numero_nf FROM {t_rec}
-                WHERE terceiros_documento_id = ?
+            f'''SELECT id, status, numero_nf, terceiros_documento_id FROM {t_rec}
+                WHERE terceiros_documento_id = ?{ativo_sql}
                 ORDER BY id DESC LIMIT 1''',
             (int(documento_id),),
         ).fetchone()
@@ -899,14 +915,77 @@ def _buscar_recebimento_wms_por_nf(conn, documento_id=None, numero_nf=None):
     nf = (numero_nf or '').strip()
     if nf:
         row = conn.execute(
-            f'''SELECT id, status, numero_nf FROM {t_rec}
-                WHERE numero_nf = ?
+            f'''SELECT id, status, numero_nf, terceiros_documento_id FROM {t_rec}
+                WHERE numero_nf = ?{ativo_sql}
                 ORDER BY id DESC LIMIT 1''',
             (nf,),
         ).fetchone()
         if row:
             return _row_dict(row) or {}
     return None
+
+
+def _obter_ou_criar_recebimento_wms(conn, numero_nf=None, fornecedor=None, placa=None, doca=None,
+                                    origem=None, ter_doc_id=None, ter_area=None, now=None):
+    """Reutiliza recebimento em andamento da mesma NF/doc; evita duplicatas."""
+    now = now or _now_iso()
+    t_rec = _tbl(conn, 'wms_recebimento')
+    existente = _buscar_recebimento_wms_por_nf(
+        conn, documento_id=ter_doc_id, numero_nf=numero_nf, somente_ativo=True,
+    )
+    if existente:
+        rid = int(existente['id'])
+        sets = []
+        params = []
+        if fornecedor:
+            sets.append('fornecedor = ?')
+            params.append(fornecedor)
+        if placa:
+            sets.append('placa = ?')
+            params.append(placa)
+        if doca:
+            sets.append('doca = ?')
+            params.append(doca)
+        if ter_doc_id and not existente.get('terceiros_documento_id'):
+            sets.append('terceiros_documento_id = ?')
+            params.append(int(ter_doc_id))
+        if ter_area:
+            sets.append('terceiros_area = ?')
+            params.append(ter_area)
+        if origem:
+            sets.append('origem = ?')
+            params.append(origem)
+        if sets:
+            sets.append('atualizado_em = ' + ('NOW()' if _is_pg(conn) else '?'))
+            if not _is_pg(conn):
+                params.append(now)
+            params.append(rid)
+            conn.execute(f"UPDATE {t_rec} SET {', '.join(sets)} WHERE id = ?", tuple(params))
+        return rid, True, existente.get('status')
+
+    if _is_pg(conn):
+        cur = conn.execute(
+            f'''INSERT INTO {t_rec} (numero_nf, fornecedor, placa, doca, origem, status,
+                terceiros_documento_id, terceiros_area, criado_em, atualizado_em, criado_por)
+                VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, NOW(), NOW(), ?) RETURNING id''',
+            (
+                numero_nf, fornecedor, placa, doca, origem or 'manual',
+                ter_doc_id, ter_area or None, _usuario(),
+            ),
+        )
+        new_id = cur.fetchone()['id']
+    else:
+        conn.execute(
+            f'''INSERT INTO {t_rec} (numero_nf, fornecedor, placa, doca, origem, status,
+                terceiros_documento_id, terceiros_area, criado_em, atualizado_em, criado_por)
+                VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, ?, ?, ?)''',
+            (
+                numero_nf, fornecedor, placa, doca, origem or 'manual',
+                ter_doc_id, ter_area or None, now, now, _usuario(),
+            ),
+        )
+        new_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    return new_id, False, 'aguardando'
 
 
 def _quantidades_por_linha_nf(conn, recebimento_id, doc_itens):
@@ -1025,10 +1104,13 @@ def _quantidades_wms_armazenadas_recebimento(conn, recebimento_id):
 def _enriquecer_documento_nf_wms(conn, doc):
     if not doc:
         return doc
-    rec = _buscar_recebimento_wms_por_nf(conn, doc.get('documento_id'), doc.get('numero_nf'))
+    doc_id = doc.get('documento_id')
+    numero_nf = doc.get('numero_nf')
+    rec_ativo = _buscar_recebimento_wms_por_nf(conn, doc_id, numero_nf, somente_ativo=True)
+    rec_ultimo = rec_ativo or _buscar_recebimento_wms_por_nf(conn, doc_id, numero_nf, somente_ativo=False)
     doc = dict(doc)
-    doc['recebimento_wms_id'] = rec.get('id') if rec else None
-    doc['recebimento_wms_status'] = rec.get('status') if rec else None
+    doc['recebimento_wms_id'] = rec_ativo.get('id') if rec_ativo else None
+    doc['recebimento_wms_status'] = (rec_ativo or rec_ultimo or {}).get('status')
     st_wms = (doc.get('recebimento_wms_status') or '').lower()
     doc['wms_bloqueado'] = st_wms == 'finalizado'
     doc['descarga_reabrivel'] = bool(doc.get('recebimento_concluido') and not doc['wms_bloqueado'])
@@ -5107,9 +5189,17 @@ def api_wms_recebimentos():
                     'respostas': [dict(r) for r in resp],
                     'finalizacao': finalizacao,
                 })
-            rows = conn.execute(f'SELECT * FROM {t_rec} ORDER BY id DESC LIMIT 100').fetchall()
+            somente_andamento = request.args.get('andamento', '1').strip().lower() not in ('0', 'false', 'nao', 'não', 'all', 'todos')
+            if somente_andamento:
+                rows = conn.execute(
+                    f'''SELECT * FROM {t_rec}
+                        WHERE {_sql_recebimento_wms_ativo()}
+                        ORDER BY id DESC LIMIT 100''',
+                ).fetchall()
+            else:
+                rows = conn.execute(f'SELECT * FROM {t_rec} ORDER BY id DESC LIMIT 100').fetchall()
             conn.close()
-            return jsonify({'recebimentos': [dict(r) for r in rows]})
+            return jsonify({'recebimentos': [dict(r) for r in rows], 'somente_andamento': somente_andamento})
         except Exception as e:
             try:
                 conn.close()
@@ -5555,35 +5645,27 @@ def api_wms_recebimentos():
                 if not ter_area:
                     ter_area = found.get('area') or ''
 
-        if _is_pg(conn):
-            cur = conn.execute(
-                f'''INSERT INTO {t_rec} (numero_nf, fornecedor, placa, doca, origem, status,
-                    terceiros_documento_id, terceiros_area, criado_em, atualizado_em, criado_por)
-                    VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, NOW(), NOW(), ?) RETURNING id''',
-                (
-                    numero_nf or data.get('numero_nf'), fornecedor, placa, data.get('doca'),
-                    origem, ter_doc_id, ter_area or None, _usuario(),
-                ),
-            )
-            new_id = cur.fetchone()['id']
-        else:
-            conn.execute(
-                f'''INSERT INTO {t_rec} (numero_nf, fornecedor, placa, doca, origem, status,
-                    terceiros_documento_id, terceiros_area, criado_em, atualizado_em, criado_por)
-                    VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, ?, ?, ?)''',
-                (
-                    numero_nf or data.get('numero_nf'), fornecedor, placa, data.get('doca'),
-                    origem, ter_doc_id, ter_area or None, now, now, _usuario(),
-                ),
-            )
-            new_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        new_id, reutilizado, st_rec = _obter_ou_criar_recebimento_wms(
+            conn,
+            numero_nf=numero_nf or data.get('numero_nf'),
+            fornecedor=fornecedor,
+            placa=placa,
+            doca=data.get('doca'),
+            origem=origem,
+            ter_doc_id=ter_doc_id,
+            ter_area=ter_area or None,
+            now=now,
+        )
         conn.commit()
         conn.close()
         return jsonify({
             'ok': True,
             'id': new_id,
+            'reutilizado': reutilizado,
+            'status': st_rec,
             'terceiros_documento_id': ter_doc_id,
             'origem': origem,
+            'mensagem': 'Recebimento em andamento reutilizado.' if reutilizado else None,
         })
     except Exception as e:
         try:
