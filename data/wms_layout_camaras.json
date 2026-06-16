@@ -6,7 +6,8 @@
     "retrabalho": "RETRABALHO",
     "descarte_perdas": "DESCARTE",
     "palete_bloqueado": "BLOQUEADOS",
-    "avaria": "AVARIA"
+    "avaria": "AVARIA",
+    "reentregas": "REENTREGAS"
   },
   "camaras": [
     {
@@ -17,7 +18,7 @@
         "B"
       ],
       "niveis": 5,
-      "total_posicoes": 144,
+      "total_posicoes": 148,
       "enderecos": [
         {
           "rua": "A",
@@ -347,42 +348,72 @@
         {
           "rua": "A",
           "posicao": 14,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 14,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 14,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 14,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
+        },
+        {
+          "rua": "A",
+          "posicao": 14,
+          "nivel": 5,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 15,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 15,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 15,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 15,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
+        },
+        {
+          "rua": "A",
+          "posicao": 15,
+          "nivel": 5,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
@@ -702,42 +733,72 @@
         {
           "rua": "B",
           "posicao": 14,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 14,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 14,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 14,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
+        },
+        {
+          "rua": "B",
+          "posicao": 14,
+          "nivel": 5,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 15,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 15,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 15,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 15,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
+        },
+        {
+          "rua": "B",
+          "posicao": 15,
+          "nivel": 5,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         }
       ]
     },

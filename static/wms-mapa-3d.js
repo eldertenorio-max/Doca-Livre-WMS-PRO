@@ -19,7 +19,8 @@
         { key: 'retrabalho', label: 'RETRABALHO', color: '#ffca28' },
         { key: 'descarte_perdas', label: 'DESCARTE', color: '#8d6e63' },
         { key: 'palete_bloqueado', label: 'BLOQUEADOS', color: '#78909c' },
-        { key: 'avaria', label: 'AVARIA', color: '#ab47bc' }
+        { key: 'avaria', label: 'AVARIA', color: '#ab47bc' },
+        { key: 'reentregas', label: 'REENTREGAS', color: '#7e57c2' }
     ];
 
     var state = {
@@ -101,6 +102,7 @@
         if (dest === 'descarte_perdas') return hex('#8d6e63');
         if (dest === 'palete_bloqueado') return hex('#78909c');
         if (dest === 'avaria') return hex('#ab47bc');
+        if (dest === 'reentregas') return hex('#7e57c2');
         if ((slot.status || '') === 'ocupada') {
             var cat = (slot.categoria_zona || '').toUpperCase();
             if (cat === 'A') return hex('#e53935');

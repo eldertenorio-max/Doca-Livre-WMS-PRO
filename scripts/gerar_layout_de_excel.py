@@ -17,7 +17,8 @@ ACOES_PLANILHA = {
     'DESCARTE': 'descarte_perdas',
     'BLOQUEADOS': 'palete_bloqueado',
     'AVARIA': 'avaria',
-    'CAFE': 'avaria',
+    'REENTREGAS': 'reentregas',
+    'REENTREGA': 'reentregas',
 }
 
 LABELS = {
@@ -26,6 +27,7 @@ LABELS = {
     'descarte_perdas': 'DESCARTE',
     'palete_bloqueado': 'BLOQUEADOS',
     'avaria': 'AVARIA',
+    'reentregas': 'REENTREGAS',
 }
 
 # Ruas válidas por câmara (layout Endereçamento Novo)

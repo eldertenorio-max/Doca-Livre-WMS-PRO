@@ -190,7 +190,7 @@ def _texto_endereco_humanizado(cam, rua, pos, niv, zona_label=None, destino_labe
     return base
 
 
-_WMS_CAMARA_TOTAIS_PADRAO = {11: 144, 12: 133, 13: 142, 21: 28}
+_WMS_CAMARA_TOTAIS_PADRAO = {11: 148, 12: 133, 13: 142, 21: 28}
 _WMS_CAMARA_STAGE = 99
 _WMS_CAMARA_ESPECIAL = 98
 _WMS_STAGE_SLOTS_POR_DOCA = 40
@@ -213,7 +213,7 @@ def _layout_camaras_config():
     if not os.path.isfile(path):
         return {
             'camaras': [
-                {'codigo': 11, 'ruas': ['A', 'B'], 'niveis': 5, 'total_posicoes': 144},
+                {'codigo': 11, 'ruas': ['A', 'B'], 'niveis': 5, 'total_posicoes': 148},
                 {'codigo': 12, 'ruas': ['C', 'D'], 'niveis': 5, 'total_posicoes': 133},
                 {'codigo': 13, 'ruas': ['E', 'F'], 'niveis': 5, 'total_posicoes': 142},
                 {'codigo': 21, 'ruas': ['G', 'H'], 'niveis': 2, 'total_posicoes': 28},
@@ -1520,6 +1520,7 @@ def _destinos_acao_labels():
     labels.setdefault('descarte_perdas', 'DESCARTE')
     labels.setdefault('palete_bloqueado', 'BLOQUEADOS')
     labels.setdefault('avaria', 'AVARIA')
+    labels.setdefault('reentregas', 'REENTREGAS')
     return labels
 
 
