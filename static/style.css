@@ -4155,18 +4155,28 @@ body.conferencia-lista-maximizada-aberta {
 
 /* Mensagens */
 .message {
-    padding: 15px;
-    border-radius: 5px;
+    padding: 12px 16px;
+    border-radius: 8px;
     margin: 0;
     display: none;
     position: fixed;
-    top: 16px;
+    top: 84px;
     right: 16px;
-    z-index: 20000;
-    max-width: 520px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    z-index: 30000;
+    max-width: min(520px, calc(100vw - 32px));
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22);
     word-break: break-word;
     pointer-events: none;
+    opacity: 1;
+    background: #fff;
+    border: 1px solid #cfd8dc;
+    color: #263238;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.message.toast-active {
+    pointer-events: auto;
 }
 
 .message.success {
@@ -4179,6 +4189,12 @@ body.conferencia-lista-maximizada-aberta {
     background: #f8d7da;
     color: #721c24;
     border: 1px solid #f5c6cb;
+}
+
+.message.info {
+    background: #e3f2fd;
+    color: #0d47a1;
+    border: 1px solid #64b5f6;
 }
 
 .message.warning {
