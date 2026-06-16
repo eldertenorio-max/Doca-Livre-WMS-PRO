@@ -21,7 +21,7 @@
 
   @page { size: 60mm 40mm; margin: 0; }
 
-  html, body { width: var(--lw); }
+  html, body { width: var(--lw); height: var(--lh); }
   body {
     font-family: Arial, Helvetica, sans-serif;
     background: #e0e0e0;
@@ -63,14 +63,18 @@
     margin: 0 0 2mm;
     overflow: hidden;
     background: var(--paper);
+    position: relative;
   }
   .etq-loc {
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: var(--lw);
+    height: var(--lh);
     border: 2pt solid var(--ink);
     background: var(--paper);
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: 13.5mm minmax(0, 1fr) 10.5mm;
     overflow: hidden;
   }
 
@@ -91,7 +95,6 @@
 
   /* ── Topo: Câmara · Rua · Coluna · Nível ── */
   .etq-top {
-    flex: 0 0 32%;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     border-bottom: 2pt solid var(--ink);
@@ -102,41 +105,39 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.8mm 0.3mm;
+    padding: 0.5mm 0.2mm;
     border-right: 1pt solid var(--ink);
     min-width: 0;
+    height: 100%;
   }
   .loc-col:last-child { border-right: none; }
   .loc-lbl {
-    font-size: 6pt;
+    font-size: 6.5pt;
     font-weight: 700;
     letter-spacing: 0.3px;
     text-transform: uppercase;
     line-height: 1;
-    margin-bottom: 0.8mm;
+    margin-bottom: 0.6mm;
     white-space: nowrap;
   }
   .loc-val {
-    font-size: 22pt;
+    font-size: 24pt;
     font-weight: 900;
-    line-height: 0.85;
+    line-height: 0.82;
     font-variant-numeric: tabular-nums;
   }
-  .loc-val.letra { font-size: 20pt; }
+  .loc-val.letra { font-size: 22pt; }
 
   /* ── Centro: barcode ── */
   .etq-bc-block {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) 4mm;
     align-items: stretch;
-    justify-content: stretch;
-    padding: 1mm 1.5mm 0.5mm;
+    padding: 0.8mm 1mm 0.4mm;
     min-height: 0;
     border-bottom: 2pt solid var(--ink);
   }
   .bc-wrap {
-    flex: 1;
     width: 100%;
     display: flex;
     align-items: center;
@@ -144,13 +145,12 @@
     min-height: 0;
     line-height: 0;
   }
-  .bc-wrap svg { width: 98%; height: 100%; max-height: 13mm; }
+  .bc-wrap svg { width: 100%; height: 100%; min-height: 10mm; }
   .bc-line {
-    flex: 0 0 3.2mm;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 7pt;
+    font-size: 7.5pt;
     font-weight: 800;
     font-family: Consolas, 'Courier New', monospace;
     letter-spacing: 0.3px;
@@ -162,43 +162,40 @@
 
   /* ── Base: Picking / Pulmão horizontal + seta ── */
   .etq-zone-bar {
-    flex: 0 0 26%;
     display: flex;
     align-items: stretch;
     justify-content: stretch;
     min-height: 0;
-    border-top: none;
   }
   .zone-inner {
     display: flex;
     flex-direction: row;
     align-items: center;
-    justify-content: center;
-    gap: 3mm;
+    justify-content: space-between;
     width: 100%;
     height: 100%;
-    padding: 0 2mm;
+    padding: 0 2.5mm;
   }
 
   .arrow {
     width: 0;
     height: 0;
     flex-shrink: 0;
-    border-left: 6mm solid transparent;
-    border-right: 6mm solid transparent;
+    border-left: 5.5mm solid transparent;
+    border-right: 5.5mm solid transparent;
   }
-  .arrow.up { border-bottom: 8mm solid var(--ink); }
-  .arrow.down { border-top: 8mm solid var(--ink); }
+  .arrow.up { border-bottom: 7.5mm solid var(--ink); }
+  .arrow.down { border-top: 7.5mm solid var(--ink); }
 
   .zone-lbl {
-    font-size: 13pt;
+    font-size: 14pt;
     font-weight: 900;
     letter-spacing: 1.2px;
     text-transform: uppercase;
     line-height: 1;
     white-space: nowrap;
   }
-  .etq-zone-bar.destino .zone-inner { padding: 0 1.5mm; }
+  .etq-zone-bar.destino .zone-inner { justify-content: center; padding: 0 1.5mm; }
   .etq-zone-bar.destino .zone-lbl {
     font-size: 8pt;
     letter-spacing: 0.4px;
@@ -211,8 +208,8 @@
   @media print {
     @page { size: 60mm 40mm; margin: 0; }
     html, body {
-      width: var(--lw) !important;
-      height: var(--lh) !important;
+      width: 60mm !important;
+      height: 40mm !important;
       margin: 0 !important;
       padding: 0 !important;
       background: #fff !important;
@@ -221,21 +218,25 @@
     .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
     .bloco-camara, .bloco-faixa, .faixa {
       margin: 0 !important; padding: 0 !important; border: none !important;
-      display: block !important; width: var(--lw) !important;
+      display: block !important; width: 60mm !important;
     }
     .etq-page {
-      width: var(--lw) !important;
-      height: var(--lh) !important;
+      width: 60mm !important;
+      height: 40mm !important;
       margin: 0 !important;
       padding: 0 !important;
+      position: relative !important;
       page-break-after: always;
       break-after: page;
       overflow: hidden;
     }
     .etq-page:last-child { page-break-after: auto; break-after: auto; }
     .etq-loc {
-      width: 100% !important;
-      height: 100% !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 60mm !important;
+      height: 40mm !important;
       border: 2pt solid #000 !important;
     }
     html.zebra-portrait,
@@ -363,8 +364,8 @@
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
-        width: 1.35,
-        height: 36,
+        width: 1.5,
+        height: 40,
         displayValue: false,
         margin: 0,
         lineColor: '#000000',
