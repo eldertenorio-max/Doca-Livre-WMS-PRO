@@ -4336,7 +4336,7 @@ function _wmsCarregarScriptMapa3d() {
             return;
         }
         var s = document.createElement('script');
-        s.src = '/static/wms-mapa-3d.js?v=20260602b';
+        s.src = '/static/wms-mapa-3d.js?v=20260602c';
         s.dataset.wmsMapa3d = '1';
         s.onload = function() { resolve(); };
         s.onerror = function() { reject(new Error('Falha ao carregar visualização 3D')); };

@@ -139,6 +139,17 @@
         }
     }
 
+    function finalizeInstancedMesh(im) {
+        im.instanceMatrix.needsUpdate = true;
+        if (im.instanceColor) im.instanceColor.needsUpdate = true;
+        im.frustumCulled = false;
+        if (typeof im.computeBoundingSphere === 'function') {
+            im.computeBoundingSphere();
+        } else if (im.geometry && typeof im.geometry.computeBoundingSphere === 'function') {
+            im.geometry.computeBoundingSphere();
+        }
+    }
+
     function buildRack(data) {
         var THREE = global.THREE;
         clearRack();
@@ -163,35 +174,55 @@
             var camGroup = new THREE.Group();
             camGroup.name = 'camara-' + cam.codigo;
 
-            var mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-            var im = new THREE.InstancedMesh(boxGeo, mat, slots.length);
-            if (im.instanceMatrix && im.instanceMatrix.setUsage) {
-                im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-            }
-            im.userData = { isRack: true, camara: cam.codigo };
-
-            slots.forEach(function (slot, i) {
-                var ri = ruaIndex[slot.rua] != null ? ruaIndex[slot.rua] : 0;
-                var x = (slot.posicao - 1) * (SLOT_W + GAP_POS);
-                var y = (slot.nivel - 1) * SLOT_H;
-                var z = ri * (SLOT_D + GAP_RUA);
-                dummy.position.set(x + SLOT_W / 2, y + SLOT_H * 0.46, z + SLOT_D / 2);
-                dummy.rotation.set(0, 0, 0);
-                dummy.updateMatrix();
-                im.setMatrixAt(i, dummy.matrix);
-                col.setHex(slotColor(slot));
-                im.setColorAt(i, col);
-                state.slotIndex.push({
-                    mesh: im,
-                    instanceId: i,
-                    slot: slot,
-                    camara: cam.codigo
+            var usePerInstanceColor = typeof THREE.InstancedMesh.prototype.setColorAt === 'function';
+            var colorGroups = {};
+            if (usePerInstanceColor) {
+                colorGroups.single = slots;
+            } else {
+                slots.forEach(function (slot) {
+                    var ck = String(slotColor(slot));
+                    if (!colorGroups[ck]) colorGroups[ck] = [];
+                    colorGroups[ck].push(slot);
                 });
+            }
+
+            Object.keys(colorGroups).forEach(function (groupKey) {
+                var groupSlots = colorGroups[groupKey];
+                var matColor = usePerInstanceColor ? 0xffffff : parseInt(groupKey, 10);
+                var mat = new THREE.MeshLambertMaterial({
+                    color: matColor,
+                    vertexColors: usePerInstanceColor
+                });
+                var im = new THREE.InstancedMesh(boxGeo, mat, groupSlots.length);
+                if (im.instanceMatrix && im.instanceMatrix.setUsage) {
+                    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+                }
+                im.userData = { isRack: true, camara: cam.codigo };
+
+                groupSlots.forEach(function (slot, i) {
+                    var ri = ruaIndex[slot.rua] != null ? ruaIndex[slot.rua] : 0;
+                    var x = (slot.posicao - 1) * (SLOT_W + GAP_POS);
+                    var y = (slot.nivel - 1) * SLOT_H;
+                    var z = ri * (SLOT_D + GAP_RUA);
+                    dummy.position.set(x + SLOT_W / 2, y + SLOT_H * 0.46, z + SLOT_D / 2);
+                    dummy.rotation.set(0, 0, 0);
+                    dummy.updateMatrix();
+                    im.setMatrixAt(i, dummy.matrix);
+                    if (usePerInstanceColor) {
+                        col.setHex(slotColor(slot));
+                        im.setColorAt(i, col);
+                    }
+                    state.slotIndex.push({
+                        mesh: im,
+                        instanceId: i,
+                        slot: slot,
+                        camara: cam.codigo
+                    });
+                });
+                finalizeInstancedMesh(im);
+                camGroup.add(im);
+                state.pickables.push(im);
             });
-            im.instanceColor.needsUpdate = true;
-            im.computeBoundingSphere();
-            camGroup.add(im);
-            state.pickables.push(im);
 
             var floorW = maxPos * (SLOT_W + GAP_POS) + 2;
             var floorD = ruas.length * (SLOT_D + GAP_RUA) + 2;
