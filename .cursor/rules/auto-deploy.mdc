@@ -1,18 +1,27 @@
 ---
-description: Commit e push automaticos apos alteracoes no projeto
+description: Commit e push automaticos apos cada alteracao no projeto
 alwaysApply: true
 ---
 
 # Deploy automatico (Sistema WMS)
 
-Apos concluir qualquer alteracao de codigo neste repositorio:
+**Obrigatorio:** ao concluir qualquer alteracao de codigo neste repositorio, faca **commit + push** imediatamente — **sem esperar** o usuario pedir "suba", "commit" ou "deploy".
 
-1. Faca **commit** e **push** automaticamente — o usuario nao precisa pedir "suba".
-2. Remote: `wms` / branch `main` (deploy Render: https://sistema-wms.onrender.com).
-3. Siga o protocolo de seguranca do git (sem force push, sem alterar git config).
-4. Mensagem de commit curta no estilo do repo (`feat:`, `fix:`, etc.).
-5. Informe o hash do commit e que o deploy foi enviado.
-6. Nao commitar arquivos sensiveis (`.env`, credenciais).
-7. Se nao houver mudancas para commitar, nao criar commit vazio.
+## Fluxo (sempre ao final da tarefa)
 
-Excecao: se o usuario pedir explicitamente para **nao** subir ou so revisar, respeitar.
+1. `git status` e `git diff` — revisar o que mudou.
+2. `git add` apenas arquivos relevantes (nunca `.env`, credenciais, `__pycache__`).
+3. `git commit -m "tipo: descricao curta"` (estilo do repo: `feat:`, `fix:`, `style:`, etc.).
+4. `git push wms main`
+5. Informar o **hash do commit** e que foi enviado para producao (Render: https://sistema-wms.onrender.com).
+
+## Regras
+
+- Remote: **`wms`** · branch **`main`**
+- Sem force push, sem alterar `git config`, sem commit vazio.
+- Se o commit falhar (hook, etc.), corrigir e criar **novo** commit — nao amend salvo excecao do protocolo git.
+- Se **nao houver mudancas**, nao commitar.
+
+## Excecao
+
+So **nao** subir se o usuario pedir explicitamente para nao commitar, apenas revisar, ou trabalhar em rascunho local.
