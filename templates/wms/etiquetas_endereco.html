@@ -89,216 +89,120 @@
     height: var(--ph);
   }
 
-  .ink-block {
-    background: var(--ink) !important;
-    color: var(--paper) !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  .etq-head {
-    display: flex;
-    align-items: stretch;
-    justify-content: space-between;
-    min-height: 0.22in;
-    flex-shrink: 0;
-    padding: 0;
-  }
-  .etq-head-locs {
-    flex: 1;
-    display: flex;
-    align-items: stretch;
-    min-width: 0;
-  }
-  .head-loc {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 0.02in 0.04in;
-    border-right: 1pt solid rgba(255,255,255,0.35);
-    min-width: 0;
-  }
-  .head-loc:last-child { border-right: none; }
-  .head-lbl {
-    font-size: 4.5pt;
-    font-weight: 800;
-    letter-spacing: 0.3px;
-    text-transform: uppercase;
-    line-height: 1;
-  }
-  .head-hint {
-    font-size: 3.2pt;
-    font-weight: 600;
-    letter-spacing: 0.15px;
-    text-transform: uppercase;
-    line-height: 1;
-    margin-top: 0.008in;
-    opacity: 0.85;
-  }
-  .head-val {
-    font-size: 7.5pt;
-    font-weight: 900;
-    line-height: 1;
-    margin-top: 0.01in;
-    font-variant-numeric: tabular-nums;
-  }
-  .etq-head-badge {
-    flex-shrink: 0;
-    width: 0.42in;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.015in;
-    border-left: 1.5pt solid var(--paper);
-    font-size: 7pt;
-    font-weight: 900;
-    line-height: 1;
-    text-align: center;
-  }
-
-  .etq-body {
-    flex: 1;
-    display: flex;
-    flex-direction: row;
-    min-height: 0;
-    border-top: 1.5pt solid var(--ink);
-    overflow: hidden;
-  }
-
-  /* Coluna + Nível */
-  .etq-coords {
-    width: 0.72in;
+  /* ── Topo: Câmara · Rua · Coluna · Nível ── */
+  .etq-top {
     flex-shrink: 0;
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    border-right: 1.5pt solid var(--ink);
+    grid-template-columns: repeat(4, 1fr);
+    border-bottom: 1.5pt solid var(--ink);
+    min-height: 0.38in;
   }
-  .coord-cell {
+  .loc-col {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.02in 0.02in;
-    border-right: 1.5pt solid var(--ink);
+    padding: 0.02in 0.01in;
+    border-right: 1pt solid var(--ink);
+    min-width: 0;
   }
-  .coord-cell:nth-child(2) { border-right: none; }
-  .coord-lbl {
+  .loc-col:last-child { border-right: none; }
+  .loc-lbl {
     font-size: 4.5pt;
-    font-weight: 800;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-    line-height: 1;
-  }
-  .coord-hint {
-    font-size: 3.2pt;
     font-weight: 600;
-    letter-spacing: 0.15px;
+    letter-spacing: 0.2px;
     text-transform: uppercase;
     line-height: 1;
-    margin: 0.008in 0 0.012in;
-    color: #333;
+    margin-bottom: 0.02in;
+    white-space: nowrap;
   }
-  .coord-val {
-    font-size: 16pt;
+  .loc-val {
+    font-size: 17pt;
     font-weight: 900;
     line-height: 0.9;
     font-variant-numeric: tabular-nums;
   }
+  .loc-val.letra { font-size: 15pt; }
 
-  /* Centro — barcode + códigos */
-  .etq-center {
+  /* ── Centro: barcode ── */
+  .etq-bc-block {
     flex: 1;
     display: flex;
     flex-direction: column;
-    min-width: 0;
-    border-right: 1.5pt solid var(--ink);
-  }
-  .etq-bc {
-    flex: 1;
-    display: flex;
     align-items: center;
     justify-content: center;
     padding: 0.02in 0.04in;
     min-height: 0;
     border-bottom: 1.5pt solid var(--ink);
   }
-  .bc-wrap { width: 100%; text-align: center; line-height: 0; }
-  .bc-wrap svg { width: 100%; height: 0.32in; max-height: 100%; }
-
-  .etq-codes {
-    flex-shrink: 0;
-    height: 0.14in;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.06in;
-    padding: 0 0.04in;
-  }
-  .code-bip {
-    font-size: 6.5pt;
-    font-weight: 900;
-    font-family: Consolas, 'Courier New', monospace;
-    letter-spacing: 0.5px;
-    line-height: 1;
-    white-space: nowrap;
-  }
-  .code-wms {
-    font-size: 5.5pt;
+  .bc-wrap { width: 92%; text-align: center; line-height: 0; }
+  .bc-wrap svg { width: 100%; height: 0.30in; max-height: 100%; }
+  .bc-line {
+    margin-top: 0.02in;
+    font-size: 7pt;
     font-weight: 800;
     font-family: Consolas, 'Courier New', monospace;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.4px;
     line-height: 1;
+    text-align: center;
     white-space: nowrap;
   }
+  .bc-wms {
+    font-size: 5.5pt;
+    font-weight: 700;
+    margin-left: 0.04in;
+  }
 
-  /* Faixa direita — seta Picking / Pulmão */
-  .etq-zone {
-    width: 0.58in;
+  /* ── Base: seta + Picking / Pulmão (texto vertical) ── */
+  .etq-zone-bar {
     flex-shrink: 0;
+    height: 0.34in;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.02in 0.015in;
-    text-align: center;
+    padding: 0.02in 0.06in;
   }
-  .etq-zone.picking { justify-content: flex-end; padding-bottom: 0.04in; gap: 0.03in; }
-  .etq-zone.pulmao { justify-content: flex-start; padding-top: 0.04in; gap: 0.03in; }
+  .zone-inner {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 0.05in;
+  }
+  .etq-zone-bar.picking .zone-inner { flex-direction: row-reverse; }
 
-  .zone-lbl {
-    font-size: 7.5pt;
-    font-weight: 900;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-    line-height: 1;
-  }
   .arrow {
     width: 0;
     height: 0;
-    border-left: 0.17in solid transparent;
-    border-right: 0.17in solid transparent;
-  }
-  .arrow.down { border-top: 0.22in solid var(--ink); }
-  .arrow.up { border-bottom: 0.22in solid var(--ink); }
-  .etq-zone.destino .zone-lbl {
-    font-size: 5pt;
-    line-height: 1.15;
-    word-break: break-word;
-  }
-
-  .etq-foot {
     flex-shrink: 0;
-    height: 0.09in;
-    line-height: 0.09in;
-    font-size: 3.8pt;
-    font-weight: 700;
-    text-align: center;
-    letter-spacing: 0.35px;
-    text-transform: uppercase;
-    border-top: 1.5pt solid var(--ink);
+    border-left: 0.14in solid transparent;
+    border-right: 0.14in solid transparent;
   }
+  .arrow.up { border-bottom: 0.20in solid var(--ink); }
+  .arrow.down { border-top: 0.20in solid var(--ink); }
+
+  .zone-vtxt {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+    font-size: 9pt;
+    font-weight: 900;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .etq-zone-bar.destino .zone-vtxt {
+    writing-mode: horizontal-tb;
+    transform: none;
+    font-size: 6.5pt;
+    letter-spacing: 0.3px;
+    text-align: center;
+    max-width: 1.4in;
+    white-space: normal;
+    line-height: 1.1;
+  }
+  .etq-zone-bar.destino .arrow { display: none; }
 
   @media print {
     @page { size: 40mm 60mm; margin: 0; }
@@ -353,9 +257,8 @@
       height: 40mm !important;
       transform: none !important;
     }
-    .ink-block { background: #000 !important; color: #fff !important; }
-    .arrow.down { border-top-color: #000 !important; }
     .arrow.up { border-bottom-color: #000 !important; }
+    .arrow.down { border-top-color: #000 !important; }
   }
 </style>
 </head>
@@ -364,67 +267,58 @@
   <p><strong>{{ total }}</strong> etiqueta(s) · <strong>60×40 mm</strong> · Zebra ZD220</p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
-  <p class="zebra-hint">ZD220: etiqueta <strong>6×4 cm</strong> (40×60 mm no rolo) · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>. Se sair pela metade, use <strong>?zebra=landscape</strong> na URL.</p>
+  <p class="zebra-hint">ZD220: etiqueta <strong>6×4 cm</strong> · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>. Se sair pela metade, use <strong>?zebra=landscape</strong> na URL.</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
 <div class="etq-page"><div class="etq-loc">
-  <div class="etq-head ink-block">
-    <div class="etq-head-locs">
-      <div class="head-loc">
-        <span class="head-lbl">Câmara</span>
-        <span class="head-hint">setor / ambiente</span>
-        <span class="head-val">{{ e.camara or e.rua_num }}</span>
-      </div>
-      {% if e.rua_letra %}
-      <div class="head-loc">
-        <span class="head-lbl">Rua</span>
-        <span class="head-hint">corredor</span>
-        <span class="head-val">{{ e.rua_letra }}</span>
-      </div>
-      {% endif %}
+  <div class="etq-top">
+    <div class="loc-col">
+      <span class="loc-lbl">Câmara</span>
+      <span class="loc-val">{{ e.camara or e.rua_num }}</span>
     </div>
-    <span class="etq-head-badge">{{ e.camara or e.rua_num }}{% if e.rua_letra %}-{{ e.rua_letra }}{% endif %}</span>
+    <div class="loc-col">
+      <span class="loc-lbl">Rua</span>
+      <span class="loc-val letra">{{ e.rua_letra or '—' }}</span>
+    </div>
+    <div class="loc-col">
+      <span class="loc-lbl">Coluna</span>
+      <span class="loc-val">{{ e.predio }}</span>
+    </div>
+    <div class="loc-col">
+      <span class="loc-lbl">Nível</span>
+      <span class="loc-val">{{ e.nivel }}</span>
+    </div>
   </div>
-  <div class="etq-body">
-    <div class="etq-coords">
-      <div class="coord-cell">
-        <span class="coord-lbl">Coluna</span>
-        <span class="coord-hint">posição na rua</span>
-        <span class="coord-val">{{ e.predio }}</span>
-      </div>
-      <div class="coord-cell">
-        <span class="coord-lbl">Nível</span>
-        <span class="coord-hint">altura do palete</span>
-        <span class="coord-val">{{ e.nivel }}</span>
-      </div>
+
+  <div class="etq-bc-block">
+    <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
+    <div class="bc-line">
+      {{ e.barcode }}{% if e.codigo_wms and e.codigo_wms != e.barcode %}<span class="bc-wms">{{ e.codigo_wms }}</span>{% endif %}
     </div>
-    <div class="etq-center">
-      <div class="etq-bc">
-        <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
-      </div>
-      <div class="etq-codes">
-        <span class="code-bip">{{ e.barcode }}</span>
-        {% if e.codigo_wms %}<span class="code-wms">{{ e.codigo_wms }}</span>{% endif %}
-      </div>
+  </div>
+
+  {% if e.destino_fixo %}
+  <div class="etq-zone-bar destino">
+    <div class="zone-inner">
+      <span class="zone-vtxt">{{ e.destino_label or e.zona }}</span>
     </div>
-    {% if e.destino_fixo %}
-    <div class="etq-zone destino">
-      <span class="zone-lbl">{{ e.destino_label or e.zona }}</span>
-    </div>
-    {% elif e.picking %}
-    <div class="etq-zone picking">
-      <span class="zone-lbl">Picking</span>
+  </div>
+  {% elif e.picking %}
+  <div class="etq-zone-bar picking">
+    <div class="zone-inner">
       <div class="arrow down" aria-hidden="true"></div>
+      <span class="zone-vtxt">Picking</span>
     </div>
-    {% else %}
-    <div class="etq-zone pulmao">
-      <div class="arrow up" aria-hidden="true"></div>
-      <span class="zone-lbl">Pulmão</span>
-    </div>
-    {% endif %}
   </div>
-  <div class="etq-foot">Ultrapão · Stock System WMS</div>
+  {% else %}
+  <div class="etq-zone-bar pulmao">
+    <div class="zone-inner">
+      <div class="arrow up" aria-hidden="true"></div>
+      <span class="zone-vtxt">Pulmão</span>
+    </div>
+  </div>
+  {% endif %}
 </div></div>
 {% endmacro %}
 
@@ -468,8 +362,8 @@
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
-        width: 1.1,
-        height: 26,
+        width: 1.15,
+        height: 28,
         displayValue: false,
         margin: 0,
         lineColor: '#000000',
