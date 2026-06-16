@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=60mm">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Etiquetas longarina WMS{% if titulo %} — {{ titulo }}{% endif %}</title>
 <script>
 (function() {
@@ -21,7 +21,11 @@
 
   @page { size: 60mm 40mm; margin: 0; }
 
-  html, body { width: var(--lw); height: var(--lh); }
+  html, body {
+    margin: 0;
+    padding: 0;
+    max-width: none;
+  }
   body {
     font-family: Arial, Helvetica, sans-serif;
     background: #e0e0e0;
@@ -36,7 +40,7 @@
     background: #fff; border: 1px solid #ccc; border-radius: 8px;
     padding: 10px 14px; margin-bottom: 12px;
     display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    width: calc(var(--lw) + 12px); max-width: 100%;
+    width: calc(var(--lw) + 12px);
   }
   .toolbar p { font-size: 13px; color: #444; flex: 1; min-width: 200px; }
   .toolbar button {
@@ -57,6 +61,7 @@
   .faixa-titulo { font-size: 11px; color: #555; padding: 0 0 6px 2px; }
   .faixa { display: flex; flex-direction: column; gap: 2mm; width: var(--lw); }
 
+  /* Página = folha de impressão; .etiqueta = área útil 60×40 */
   .etq-page {
     width: var(--lw);
     height: var(--lh);
@@ -64,18 +69,23 @@
     overflow: hidden;
     background: var(--paper);
     position: relative;
+    display: block;
   }
-  .etq-loc {
+  .etq-loc,
+  .etiqueta {
     position: absolute;
     top: 0;
     left: 0;
-    width: var(--lw);
-    height: var(--lh);
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
     border: 2pt solid var(--ink);
     background: var(--paper);
     display: grid;
-    grid-template-rows: 13.5mm minmax(0, 1fr) 10.5mm;
+    grid-template-rows: 34fr 42fr 24fr;
     overflow: hidden;
+    box-sizing: border-box;
   }
 
   /* Rolo retrato 40×60: gira conteúdo (só se ?zebra=portrait) */
@@ -84,7 +94,8 @@
     height: 60mm;
     position: relative;
   }
-  html.zebra-portrait .etq-loc {
+  html.zebra-portrait .etq-loc,
+  html.zebra-portrait .etiqueta {
     position: absolute;
     top: 0; left: 0;
     width: 60mm;
@@ -153,7 +164,7 @@
     display: block;
     width: 98% !important;
     height: auto !important;
-    max-height: 12mm;
+    max-height: 100%;
   }
   .endereco {
     width: 100%;
@@ -217,8 +228,10 @@
   @media print {
     @page { size: 60mm 40mm; margin: 0; }
     html, body {
-      width: 60mm !important;
-      height: 40mm !important;
+      width: 100% !important;
+      height: 100% !important;
+      max-width: none !important;
+      max-height: none !important;
       margin: 0 !important;
       padding: 0 !important;
       background: #fff !important;
@@ -226,52 +239,64 @@
     }
     .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
     .bloco-camara, .bloco-faixa, .faixa {
-      margin: 0 !important; padding: 0 !important; border: none !important;
-      display: block !important; width: 60mm !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      display: block !important;
+      width: 100% !important;
+      max-width: none !important;
     }
     .etq-page {
-      width: 60mm !important;
-      height: 40mm !important;
+      width: 100% !important;
+      height: 100% !important;
+      min-width: 100% !important;
+      min-height: 100% !important;
+      max-width: none !important;
       margin: 0 !important;
       padding: 0 !important;
       position: relative !important;
+      display: block !important;
       page-break-after: always;
       break-after: page;
       overflow: hidden;
     }
     .etq-page:last-child { page-break-after: auto; break-after: auto; }
-    .etq-loc {
+    .etq-loc,
+    .etiqueta {
       position: absolute !important;
       top: 0 !important;
       left: 0 !important;
-      width: 60mm !important;
-      height: 40mm !important;
+      width: 100% !important;
+      height: 100% !important;
+      max-width: none !important;
+      max-height: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
       border: 2pt solid #000 !important;
+      box-sizing: border-box !important;
     }
     .bc-wrap svg.bc {
       width: 98% !important;
-      max-height: 12mm !important;
+      max-height: 100% !important;
     }
     html.zebra-portrait,
     html.zebra-portrait body {
-      width: 40mm !important;
-      height: 60mm !important;
+      width: 100% !important;
+      height: 100% !important;
     }
     html.zebra-portrait .bloco-camara,
     html.zebra-portrait .bloco-faixa,
-    html.zebra-portrait .faixa { width: 40mm !important; }
+    html.zebra-portrait .faixa { width: 100% !important; }
     html.zebra-portrait .etq-page {
-      width: 40mm !important;
-      height: 60mm !important;
+      width: 100% !important;
+      height: 100% !important;
       position: relative !important;
     }
-    html.zebra-portrait .etq-loc {
-      position: absolute !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 60mm !important;
-      height: 40mm !important;
-      transform: rotate(90deg) translateY(-40mm) !important;
+    html.zebra-portrait .etq-loc,
+    html.zebra-portrait .etiqueta {
+      width: 100% !important;
+      height: 100% !important;
+      transform: rotate(90deg) translateY(-100%) !important;
       transform-origin: top left !important;
     }
     .arrow.up { border-bottom-color: #000 !important; }
@@ -288,7 +313,7 @@
 </div>
 
 {% macro etiqueta_longarina(e) %}
-<div class="etq-page"><div class="etq-loc">
+<div class="etq-page"><div class="etq-loc etiqueta">
   <div class="etq-top">
     <div class="loc-col">
       <span class="loc-lbl">Câmara</span>
@@ -376,8 +401,11 @@
     if (!wrap) return 220;
     var w = wrap.clientWidth;
     if (w > 20) return w;
-    var page = wrap.closest('.etq-loc');
+    var page = wrap.closest('.etiqueta, .etq-loc');
     if (page) w = page.clientWidth;
+    if (w > 20) return w;
+    var pg = wrap.closest('.etq-page');
+    if (pg) w = pg.clientWidth;
     return w > 20 ? w : Math.round(60 * 3.7795275591);
   }
 
