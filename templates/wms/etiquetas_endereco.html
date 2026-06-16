@@ -2,29 +2,26 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=40mm">
+<meta name="viewport" content="width=60mm">
 <title>Etiquetas longarina WMS{% if titulo %} — {{ titulo }}{% endif %}</title>
 <script>
 (function() {
-  if (/\bzebra=landscape\b/i.test(location.search))
-    document.documentElement.classList.add('zebra-landscape');
+  if (/\bzebra=portrait\b/i.test(location.search))
+    document.documentElement.classList.add('zebra-portrait');
 })();
 </script>
 <style>
   :root {
     --lw: 60mm;
     --lh: 40mm;
-    --pw: 40mm;
-    --ph: 60mm;
     --ink: #000000;
     --paper: #ffffff;
   }
-  html.zebra-landscape { --pw: 60mm; --ph: 40mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  @page { size: 40mm 60mm; margin: 0; }
+  @page { size: 60mm 40mm; margin: 0; }
 
-  html, body { width: var(--pw); }
+  html, body { width: var(--lw); }
   body {
     font-family: Arial, Helvetica, sans-serif;
     background: #e0e0e0;
@@ -58,71 +55,74 @@
     padding: 8px 4px 10px; border-bottom: 2px solid #1565c0; margin-bottom: 10px;
   }
   .faixa-titulo { font-size: 11px; color: #555; padding: 0 0 6px 2px; }
-  .faixa { display: flex; flex-direction: column; gap: 2mm; width: var(--pw); }
+  .faixa { display: flex; flex-direction: column; gap: 2mm; width: var(--lw); }
 
   .etq-page {
-    width: var(--pw);
-    height: var(--ph);
+    width: var(--lw);
+    height: var(--lh);
     margin: 0 0 2mm;
-    position: relative;
     overflow: hidden;
     background: var(--paper);
   }
   .etq-loc {
-    width: var(--lw);
-    height: var(--lh);
-    position: absolute;
-    top: 0;
-    left: 0;
-    transform: rotate(90deg) translateY(calc(-1 * var(--lh)));
-    transform-origin: top left;
+    width: 100%;
+    height: 100%;
     border: 2pt solid var(--ink);
     background: var(--paper);
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
-  html.zebra-landscape .etq-loc {
-    transform: none;
+
+  /* Rolo retrato 40×60: gira conteúdo (só se ?zebra=portrait) */
+  html.zebra-portrait .etq-page {
+    width: 40mm;
+    height: 60mm;
     position: relative;
-    width: var(--pw);
-    height: var(--ph);
+  }
+  html.zebra-portrait .etq-loc {
+    position: absolute;
+    top: 0; left: 0;
+    width: 60mm;
+    height: 40mm;
+    transform: rotate(90deg) translateY(-40mm);
+    transform-origin: top left;
   }
 
   /* ── Topo: Câmara · Rua · Coluna · Nível ── */
   .etq-top {
-    flex-shrink: 0;
+    flex: 0 0 36%;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    border-bottom: 1.5pt solid var(--ink);
-    min-height: 0.38in;
+    border-bottom: 2pt solid var(--ink);
+    min-height: 0;
   }
   .loc-col {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.02in 0.01in;
+    padding: 0.5mm 0.3mm;
     border-right: 1pt solid var(--ink);
     min-width: 0;
   }
   .loc-col:last-child { border-right: none; }
   .loc-lbl {
-    font-size: 4.5pt;
-    font-weight: 600;
-    letter-spacing: 0.2px;
+    font-size: 5.5pt;
+    font-weight: 700;
+    letter-spacing: 0.3px;
     text-transform: uppercase;
     line-height: 1;
-    margin-bottom: 0.02in;
+    margin-bottom: 0.5mm;
     white-space: nowrap;
   }
   .loc-val {
-    font-size: 17pt;
+    font-size: 20pt;
     font-weight: 900;
-    line-height: 0.9;
+    line-height: 0.88;
     font-variant-numeric: tabular-nums;
   }
-  .loc-val.letra { font-size: 15pt; }
+  .loc-val.letra { font-size: 18pt; }
 
   /* ── Centro: barcode ── */
   .etq-bc-block {
@@ -131,15 +131,24 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.02in 0.04in;
+    padding: 0.5mm 2mm;
     min-height: 0;
-    border-bottom: 1.5pt solid var(--ink);
+    border-bottom: 2pt solid var(--ink);
   }
-  .bc-wrap { width: 92%; text-align: center; line-height: 0; }
-  .bc-wrap svg { width: 100%; height: 0.30in; max-height: 100%; }
+  .bc-wrap {
+    flex: 1;
+    width: 96%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    line-height: 0;
+  }
+  .bc-wrap svg { width: 100%; height: 100%; max-height: 11mm; }
   .bc-line {
-    margin-top: 0.02in;
-    font-size: 7pt;
+    flex-shrink: 0;
+    margin-top: 0.5mm;
+    font-size: 8pt;
     font-weight: 800;
     font-family: Consolas, 'Courier New', monospace;
     letter-spacing: 0.4px;
@@ -148,26 +157,28 @@
     white-space: nowrap;
   }
   .bc-wms {
-    font-size: 5.5pt;
+    font-size: 6.5pt;
     font-weight: 700;
-    margin-left: 0.04in;
+    margin-left: 1.5mm;
   }
 
-  /* ── Base: seta + Picking / Pulmão (texto vertical) ── */
+  /* ── Base: seta + Picking / Pulmão ── */
   .etq-zone-bar {
-    flex-shrink: 0;
-    height: 0.34in;
+    flex: 0 0 28%;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0.02in 0.06in;
+    padding: 0.5mm 2mm;
+    min-height: 0;
   }
   .zone-inner {
     display: flex;
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    gap: 0.05in;
+    gap: 2mm;
+    width: 100%;
+    height: 100%;
   }
   .etq-zone-bar.picking .zone-inner { flex-direction: row-reverse; }
 
@@ -175,19 +186,19 @@
     width: 0;
     height: 0;
     flex-shrink: 0;
-    border-left: 0.14in solid transparent;
-    border-right: 0.14in solid transparent;
+    border-left: 5mm solid transparent;
+    border-right: 5mm solid transparent;
   }
-  .arrow.up { border-bottom: 0.20in solid var(--ink); }
-  .arrow.down { border-top: 0.20in solid var(--ink); }
+  .arrow.up { border-bottom: 7mm solid var(--ink); }
+  .arrow.down { border-top: 7mm solid var(--ink); }
 
   .zone-vtxt {
     writing-mode: vertical-rl;
     text-orientation: mixed;
     transform: rotate(180deg);
-    font-size: 9pt;
+    font-size: 11pt;
     font-weight: 900;
-    letter-spacing: 0.8px;
+    letter-spacing: 1px;
     text-transform: uppercase;
     line-height: 1;
     white-space: nowrap;
@@ -195,20 +206,19 @@
   .etq-zone-bar.destino .zone-vtxt {
     writing-mode: horizontal-tb;
     transform: none;
-    font-size: 6.5pt;
+    font-size: 7.5pt;
     letter-spacing: 0.3px;
     text-align: center;
-    max-width: 1.4in;
     white-space: normal;
     line-height: 1.1;
   }
   .etq-zone-bar.destino .arrow { display: none; }
 
   @media print {
-    @page { size: 40mm 60mm; margin: 0; }
+    @page { size: 60mm 40mm; margin: 0; }
     html, body {
-      width: var(--pw) !important;
-      height: var(--ph) !important;
+      width: var(--lw) !important;
+      height: var(--lh) !important;
       margin: 0 !important;
       padding: 0 !important;
       background: #fff !important;
@@ -217,45 +227,44 @@
     .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
     .bloco-camara, .bloco-faixa, .faixa {
       margin: 0 !important; padding: 0 !important; border: none !important;
-      display: block !important; width: var(--pw) !important;
+      display: block !important; width: var(--lw) !important;
     }
     .etq-page {
-      width: var(--pw) !important;
-      height: var(--ph) !important;
+      width: var(--lw) !important;
+      height: var(--lh) !important;
       margin: 0 !important;
       padding: 0 !important;
-      position: relative;
       page-break-after: always;
       break-after: page;
       overflow: hidden;
     }
     .etq-page:last-child { page-break-after: auto; break-after: auto; }
     .etq-loc {
+      width: 100% !important;
+      height: 100% !important;
+      border: 2pt solid #000 !important;
+    }
+    html.zebra-portrait,
+    html.zebra-portrait body {
+      width: 40mm !important;
+      height: 60mm !important;
+    }
+    html.zebra-portrait .bloco-camara,
+    html.zebra-portrait .bloco-faixa,
+    html.zebra-portrait .faixa { width: 40mm !important; }
+    html.zebra-portrait .etq-page {
+      width: 40mm !important;
+      height: 60mm !important;
+      position: relative !important;
+    }
+    html.zebra-portrait .etq-loc {
       position: absolute !important;
       top: 0 !important;
       left: 0 !important;
-      width: var(--lw) !important;
-      height: var(--lh) !important;
-      transform: rotate(90deg) translateY(calc(-1 * var(--lh))) !important;
+      width: 60mm !important;
+      height: 40mm !important;
+      transform: rotate(90deg) translateY(-40mm) !important;
       transform-origin: top left !important;
-      border: 2pt solid #000 !important;
-    }
-    html.zebra-landscape,
-    html.zebra-landscape body {
-      width: 60mm !important;
-      height: 40mm !important;
-    }
-    html.zebra-landscape .bloco-camara,
-    html.zebra-landscape .bloco-faixa,
-    html.zebra-landscape .faixa { width: 60mm !important; }
-    html.zebra-landscape .etq-page {
-      width: 60mm !important;
-      height: 40mm !important;
-    }
-    html.zebra-landscape .etq-loc {
-      width: 60mm !important;
-      height: 40mm !important;
-      transform: none !important;
     }
     .arrow.up { border-bottom-color: #000 !important; }
     .arrow.down { border-top-color: #000 !important; }
@@ -264,10 +273,10 @@
 </head>
 <body>
 <div class="toolbar">
-  <p><strong>{{ total }}</strong> etiqueta(s) · <strong>60×40 mm</strong> · Zebra ZD220</p>
+  <p><strong>{{ total }}</strong> etiqueta(s) · <strong>60×40 mm</strong> horizontal · Zebra ZD220</p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
-  <p class="zebra-hint">ZD220: etiqueta <strong>6×4 cm</strong> · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>. Se sair pela metade, use <strong>?zebra=landscape</strong> na URL.</p>
+  <p class="zebra-hint">Papel <strong>60×40 mm paisagem</strong> · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>. Rolo retrato: use <strong>?zebra=portrait</strong> na URL.</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
@@ -350,10 +359,10 @@
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
 (function() {
-  if (document.documentElement.classList.contains('zebra-landscape')) {
+  if (document.documentElement.classList.contains('zebra-portrait')) {
     var s = document.createElement('style');
     s.media = 'print';
-    s.textContent = '@page { size: 60mm 40mm; margin: 0; }';
+    s.textContent = '@page { size: 40mm 60mm; margin: 0; }';
     document.head.appendChild(s);
   }
   document.querySelectorAll('svg.bc').forEach(function(el) {
@@ -362,8 +371,8 @@
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
-        width: 1.15,
-        height: 28,
+        width: 1.25,
+        height: 32,
         displayValue: false,
         margin: 0,
         lineColor: '#000000',

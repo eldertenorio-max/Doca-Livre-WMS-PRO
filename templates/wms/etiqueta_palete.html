@@ -2,32 +2,29 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=40mm">
+<meta name="viewport" content="width=60mm">
 <title>Etiqueta palete {{ etiqueta }}</title>
 <script>
 (function() {
-  if (/\bzebra=landscape\b/i.test(location.search))
-    document.documentElement.classList.add('zebra-landscape');
+  if (/\bzebra=portrait\b/i.test(location.search))
+    document.documentElement.classList.add('zebra-portrait');
 })();
 </script>
 <style>
   :root {
     --lw: 60mm;
     --lh: 40mm;
-    --pw: 40mm;
-    --ph: 60mm;
     --ink: #000000;
     --paper: #ffffff;
   }
-  html.zebra-landscape { --pw: 60mm; --ph: 40mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   @page {
-    size: 40mm 60mm;
+    size: 60mm 40mm;
     margin: 0;
   }
 
-  html, body { width: var(--pw); }
+  html, body { width: var(--lw); }
   body {
     font-family: Arial, Helvetica, sans-serif;
     background: #eee;
@@ -55,32 +52,33 @@
   }
 
   .etq-page {
-    width: var(--pw);
-    height: var(--ph);
+    width: var(--lw);
+    height: var(--lh);
     margin: 0 0 2mm;
-    position: relative;
     overflow: hidden;
     background: var(--paper);
   }
   .etq {
-    width: var(--lw);
-    height: var(--lh);
-    position: absolute;
-    top: 0;
-    left: 0;
-    transform: rotate(90deg) translateY(calc(-1 * var(--lh)));
-    transform-origin: top left;
+    width: 100%;
+    height: 100%;
     border: 2pt solid var(--ink);
     background: var(--paper);
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
-  html.zebra-landscape .etq {
-    transform: none;
+  html.zebra-portrait .etq-page {
+    width: 40mm;
+    height: 60mm;
     position: relative;
-    width: var(--pw);
-    height: var(--ph);
+  }
+  html.zebra-portrait .etq {
+    position: absolute;
+    top: 0; left: 0;
+    width: 60mm;
+    height: 40mm;
+    transform: rotate(90deg) translateY(-40mm);
+    transform-origin: top left;
   }
 
   .ink-block {
@@ -286,11 +284,11 @@
   .etq-sem-destino .dados-desc .val { max-height: 0.42in; }
 
   @media print {
-    @page { size: 40mm 60mm; margin: 0; }
+    @page { size: 60mm 40mm; margin: 0; }
 
     html, body {
-      width: var(--pw) !important;
-      height: var(--ph) !important;
+      width: var(--lw) !important;
+      height: var(--lh) !important;
       margin: 0 !important;
       padding: 0 !important;
       background: #fff !important;
@@ -298,39 +296,38 @@
     }
     .toolbar { display: none !important; }
     .etq-page {
-      width: var(--pw) !important;
-      height: var(--ph) !important;
+      width: var(--lw) !important;
+      height: var(--lh) !important;
       margin: 0 !important;
       padding: 0 !important;
-      position: relative;
       page-break-after: auto;
       break-after: auto;
       overflow: hidden;
     }
     .etq {
-      position: absolute !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: var(--lw) !important;
-      height: var(--lh) !important;
-      transform: rotate(90deg) translateY(calc(-1 * var(--lh))) !important;
-      transform-origin: top left !important;
+      width: 100% !important;
+      height: 100% !important;
       margin: 0 !important;
       border: 2pt solid #000 !important;
     }
-    html.zebra-landscape,
-    html.zebra-landscape body {
-      width: 60mm !important;
-      height: 40mm !important;
+    html.zebra-portrait,
+    html.zebra-portrait body {
+      width: 40mm !important;
+      height: 60mm !important;
     }
-    html.zebra-landscape .etq-page {
-      width: 60mm !important;
-      height: 40mm !important;
+    html.zebra-portrait .etq-page {
+      width: 40mm !important;
+      height: 60mm !important;
+      position: relative !important;
     }
-    html.zebra-landscape .etq {
+    html.zebra-portrait .etq {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
       width: 60mm !important;
       height: 40mm !important;
-      transform: none !important;
+      transform: rotate(90deg) translateY(-40mm) !important;
+      transform-origin: top left !important;
     }
     .ink-block {
       background: #000 !important;
@@ -342,7 +339,7 @@
 <body>
 <div class="toolbar">
   <button type="button" onclick="window.print()">Imprimir</button>
-  <p class="zebra-hint">ZD220: etiqueta <strong>6×4 cm</strong> (40×60 mm no rolo) · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>. Se sair pela metade, use <strong>?zebra=landscape</strong> na URL.</p>
+  <p class="zebra-hint">Papel <strong>60×40 mm paisagem</strong> · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>. Rolo retrato: <strong>?zebra=portrait</strong>.</p>
 </div>
 
 <div class="etq-page">
@@ -420,10 +417,10 @@
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
 (function() {
-  if (document.documentElement.classList.contains('zebra-landscape')) {
+  if (document.documentElement.classList.contains('zebra-portrait')) {
     var s = document.createElement('style');
     s.media = 'print';
-    s.textContent = '@page { size: 60mm 40mm; margin: 0; }';
+    s.textContent = '@page { size: 40mm 60mm; margin: 0; }';
     document.head.appendChild(s);
   }
   function renderBc(id, opts) {
