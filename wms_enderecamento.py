@@ -6142,12 +6142,13 @@ def _resumo_etiquetas_longarina(conn, sincronizar=False):
     }
 
 
-def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, auto_print=False, todas=False):
+def _buscar_rows_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False):
+    """Linhas de wms_localizacao para impressão de longarina."""
     _ensure_zona_armazenagem_column(conn)
     _ensure_layout_enderecos_atualizado(conn)
     t_loc = _tbl(conn, 'wms_localizacao')
 
-    def _buscar_rows():
+    def _buscar():
         if codigo:
             cod_busca = _resolver_codigo_endereco_bip(codigo, conn=conn) or codigo
             row = conn.execute(
@@ -6170,7 +6171,7 @@ def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo
         sql += ' ORDER BY camara, rua, posicao, nivel'
         return conn.execute(sql, tuple(params)).fetchall()
 
-    rows = _buscar_rows()
+    rows = _buscar()
     if not rows and not codigo:
         gerar_layout_enderecos(conn, force=True)
         try:
@@ -6178,7 +6179,103 @@ def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo
         except Exception:
             conn.rollback()
             raise
-        rows = _buscar_rows()
+        rows = _buscar()
+    return rows
+
+
+def _zpl_escape(texto):
+    return (str(texto or '')
+            .replace('\\', '\\\\')
+            .replace('^', '\\^')
+            .replace('~', '\\~'))
+
+
+def _zpl_etiqueta_longarina(e, dpi=203):
+    """ZPL nativo 60×40 mm para Zebra ZD220 (sem passar pelo Chrome)."""
+    dpmm = dpi / 25.4
+    w = int(round(60 * dpmm))
+    h = int(round(40 * dpmm))
+    top_h = int(round(h * 0.34))
+    mid_h = int(round(h * 0.42))
+    bot_y = top_h + mid_h
+    col_w = w // 4
+
+    cam = _zpl_escape(e.get('camara') or e.get('rua_num') or '')
+    rua = _zpl_escape(e.get('rua_letra') or '-')
+    col = _zpl_escape(e.get('predio') or '')
+    niv = _zpl_escape(e.get('nivel') or '')
+    bc = _zpl_escape(e.get('barcode') or '')
+    cod = _zpl_escape(e.get('codigo_wms') or e.get('codigo') or bc)
+
+    partes = [
+        '^XA',
+        '^MMT',
+        f'^PW{w}',
+        f'^LL{h}',
+        '^LH0,0',
+        '^CI28',
+        f'^FO0,0^GB{w},{h},4^FS',
+        f'^FO0,{top_h}^GB{w},2,2^FS',
+        f'^FO0,{bot_y}^GB{w},2,2^FS',
+    ]
+    cols = [
+        ('CAMARA', cam, 44),
+        ('RUA', rua, 40 if len(rua) > 1 else 44),
+        ('COLUNA', col, 44),
+        ('NIVEL', niv, 44),
+    ]
+    for i, (lbl, val, fs) in enumerate(cols):
+        x = i * col_w
+        partes.append(f'^FO{x},6^FB{col_w},1,0,C^A0N,13,13^FD{lbl}^FS')
+        partes.append(f'^FO{x},26^FB{col_w},1,0,C^A0N,{fs},{fs}^FD{val}^FS')
+        if i < 3:
+            partes.append(f'^FO{x + col_w},0^GB2,{top_h},2^FS')
+
+    bc_h = max(50, mid_h - 36)
+    bc_y = top_h + 6
+    partes.append(f'^FO24,{bc_y}^BY2,2,{bc_h}^BCN,{bc_h},N,N,N^FD{bc}^FS')
+    partes.append(f'^FO0,{bot_y - 26}^FB{w},1,0,C^A0N,20,20^FD{cod}^FS')
+
+    zona_y = bot_y + max(8, int((h - bot_y) * 0.28))
+    if e.get('destino_fixo'):
+        zona = _zpl_escape(e.get('destino_label') or e.get('zona') or '')
+        partes.append(f'^FO0,{zona_y}^FB{w},2,0,C^A0N,18,18^FD{zona}^FS')
+    elif e.get('picking'):
+        partes.append(f'^FO16,{zona_y}^A0N,24,24^FDPICKING^FS')
+        partes.append(f'^FO{w - 48},{zona_y - 4}^A0N,30,30^FD▼^FS')
+    else:
+        partes.append(f'^FO16,{zona_y}^A0N,24,24^FDPULMAO^FS')
+        partes.append(f'^FO{w - 48},{zona_y - 4}^A0N,30,30^FD▲^FS')
+
+    partes.append('^XZ')
+    return '\n'.join(partes)
+
+
+def _list_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False):
+    rows = _buscar_rows_etiquetas_endereco(
+        conn, camara=camara, rua=rua, posicao=posicao, codigo=codigo, todas=todas,
+    )
+    if not rows:
+        return None, 'Nenhum endereço encontrado. Use o painel WMS → «Recalcular distribuição» ou clique em Atualizar resumo na aba Etiquetas.'
+    nomes_camara = _map_nomes_camaras(conn)
+    etiquetas = [_loc_etiqueta_data(loc, nomes_camara=nomes_camara) for loc in rows]
+    return etiquetas, None
+
+
+def _render_etiquetas_endereco_zpl(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False):
+    etiquetas, err = _list_etiquetas_endereco(
+        conn, camara=camara, rua=rua, posicao=posicao, codigo=codigo, todas=todas,
+    )
+    if err:
+        return None, err
+    zpl = '\n'.join(_zpl_etiqueta_longarina(e) for e in etiquetas)
+    return zpl, None
+
+
+def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, auto_print=False, todas=False):
+    rows = _buscar_rows_etiquetas_endereco(
+        conn, camara=camara, rua=rua, posicao=posicao, codigo=codigo, todas=todas,
+    )
     if not rows:
         return None, 'Nenhum endereço encontrado. Use o painel WMS → «Recalcular distribuição» ou clique em Atualizar resumo na aba Etiquetas.'
     nomes_camara = _map_nomes_camaras(conn)
@@ -6378,6 +6475,71 @@ def api_wms_etiqueta_modelo():
         auto_print=False,
     )
     return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+
+
+def _resposta_zpl_longarina(zpl, nome_arquivo='longarinas'):
+    safe = re.sub(r'[^\w\-.]+', '_', str(nome_arquivo or 'longarinas'))[:80]
+    return make_response(zpl, 200, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Disposition': f'attachment; filename="{safe}.zpl"',
+    })
+
+
+@bp.route('/etiqueta/endereco/zpl', methods=['GET'])
+def api_wms_etiqueta_endereco_zpl():
+    """Download ZPL nativo (Zebra ZD220) — uma etiqueta."""
+    codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip()
+    if not codigo:
+        return jsonify({'erro': 'Informe codigo/endereco (ex.: 12.14.1 ou 12-C-14-1).'}), 400
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        zpl, err = _render_etiquetas_endereco_zpl(conn, codigo=codigo)
+        conn.close()
+        if err:
+            return jsonify({'erro': err}), 404
+        return _resposta_zpl_longarina(zpl, f'longarina_{codigo}')
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/etiqueta/enderecos/zpl', methods=['GET'])
+def api_wms_etiqueta_enderecos_zpl():
+    """Download ZPL em lote."""
+    conn = _db()
+    ensure_wms_schema(conn)
+    todas = (request.args.get('todas') or '').strip().lower() in ('1', 'true', 'sim', 'all')
+    camara = request.args.get('camara', type=int)
+    rua = (request.args.get('rua') or '').strip() or None
+    posicao = request.args.get('posicao', type=int)
+    if not todas and not camara and not rua and not posicao:
+        return jsonify({'erro': 'Informe todas=1, camara, ou coluna (camara+rua+posicao).'}), 400
+    try:
+        zpl, err = _render_etiquetas_endereco_zpl(
+            conn, camara=camara, rua=rua, posicao=posicao, todas=todas,
+        )
+        conn.close()
+        if err:
+            return jsonify({'erro': err}), 404
+        if todas:
+            nome = 'longarinas_armazem'
+        elif camara and rua and posicao:
+            nome = f'longarinas_{camara}_{rua}_{posicao}'
+        elif camara:
+            nome = f'longarinas_camara_{camara}'
+        else:
+            nome = 'longarinas_lote'
+        return _resposta_zpl_longarina(zpl, nome)
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
 
 
 @bp.route('/etiqueta/endereco', methods=['GET'])

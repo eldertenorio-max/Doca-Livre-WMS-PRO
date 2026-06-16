@@ -2727,13 +2727,17 @@
                             <h3 class="wms-rec-fase-titulo"><span class="wms-rec-fase-num">1</span><span>Instalação no rack — pregue todas as longarinas (passo zero)</span></h3>
                             <div class="wms-rec-fase-corpo">
                                 <p class="wms-rec-fase-desc" style="margin-bottom: 10px;">Faça isso <strong>antes</strong> do recebimento. Cada nível da coluna ganha <strong>uma etiqueta fixa</strong> colada na longarina (formato horizontal 60×40 mm). O código de bipagem <strong>12.14.1</strong> não muda — paletes entram e saem, a placa fica.</p>
+                                <div class="info-text" style="margin-bottom: 12px; padding: 10px 12px; background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; font-size: 12px; line-height: 1.45;">
+                                    <strong>Impressão Zebra ZD220 (recomendado):</strong> instale o driver <strong>ZDesigner ZD220</strong> e o <strong>Zebra Setup Utilities</strong> (vem com o driver). No WMS, clique em <strong>Baixar ZPL</strong> e envie o arquivo para a impressora.<br>
+                                    <strong>ZebraDesigner 3</strong> (Essentials é grátis em <a href="https://www.zebra.com/zebradesigner" target="_blank" rel="noopener">zebra.com/zebradesigner</a>): opcional para editar o layout; para imprimir do WMS basta abrir o <code>.zpl</code> no Designer → Imprimir, ou no Setup Utilities → <em>Send file</em>.
+                                </div>
                                 <div id="wms-etq-resumo-box" class="extrato-resumo-box" style="margin-bottom: 12px;">
                                     <p class="loading" style="margin:0;">Carregando resumo do armazém…</p>
                                 </div>
                                 <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px;">
-                                    <button type="button" class="btn btn-success btn-lg" id="btn-wms-etq-todas">Imprimir TODAS as longarinas do armazém</button>
+                                    <button type="button" class="btn btn-success btn-lg" id="btn-wms-etq-todas">Baixar ZPL — todas as longarinas</button>
                                     <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-resumo-atualizar">Atualizar resumo</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-demo">Ver modelo (demo)</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-demo">Prévia HTML (demo)</button>
                                 </div>
                                 <p class="info-text" style="margin: 0; font-size: 12px;">Cada coluna tem <strong>5 níveis</strong>: 1 PICKING (nível 1) + 4 PULMÃO (níveis 2–5). Se mudou o layout, no <strong>Painel WMS</strong> clique em «Recalcular distribuição» antes de imprimir.</p>
                             </div>
@@ -2750,8 +2754,8 @@
                                 <div class="form-group"><label>Câmara</label><select id="wms-etq-camara" style="min-width: 140px;"><option value="">Selecione</option></select></div>
                                 <div class="form-group"><label>Rua interna</label><select id="wms-etq-rua" style="min-width: 100px;"><option value="">Selecione</option></select></div>
                                 <div class="form-group"><label>Prédio (coluna)</label><select id="wms-etq-pos" style="min-width: 110px;"><option value="">Selecione</option></select></div>
-                                <button type="button" class="btn btn-primary" id="btn-wms-etq-coluna">Imprimir 1 coluna</button>
-                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-camara">Imprimir câmara</button>
+                                <button type="button" class="btn btn-primary" id="btn-wms-etq-coluna">Baixar ZPL — 1 coluna</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-camara">Baixar ZPL — câmara</button>
                             </div>
                             <p id="wms-etq-coluna-info" class="info-text" style="display:none; margin: 8px 0 0 0; font-size: 12px;"></p>
                         </section>
@@ -2759,7 +2763,7 @@
                             <h3 class="wms-rec-fase-titulo" style="margin-bottom: 12px;"><span class="wms-rec-fase-num">3</span><span>Uma posição avulsa</span></h3>
                             <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end;">
                                 <div class="form-group" style="flex: 1; min-width: 200px;"><label>Código</label><input type="text" id="wms-etq-codigo-unico" placeholder="12.14.1 ou 12-C-14-1"></div>
-                                <button type="button" class="btn btn-secondary" id="btn-wms-etq-unico">Imprimir 1 etiqueta</button>
+                                <button type="button" class="btn btn-secondary" id="btn-wms-etq-unico">Baixar ZPL — 1 etiqueta</button>
                             </div>
                         </section>
                     </div>

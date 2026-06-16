@@ -5544,7 +5544,7 @@ async function loadWmsLocalizacoes() {
             var cod = escHtml(r.codigo_endereco || '');
             var bcLong = escHtml(r.barcode_longarina || '');
             var codJs = String(r.codigo_endereco || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            return '<tr><td>' + cod + '</td><td><strong>' + bcLong + '</strong></td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(catCol) + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Longarina</button></td></tr>';
+            return '<tr><td>' + cod + '</td><td><strong>' + bcLong + '</strong></td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(catCol) + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-primary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">ZPL</button> <button type="button" class="btn btn-sm btn-secondary" onclick="wmsPreviaEtqEndereco(\'' + codJs + '\')">HTML</button></td></tr>';
         }).join('') : '<tr><td colspan="10">Nenhuma localização. Clique em Atualizar ou use o painel para recalcular o layout.</td></tr>';
     } catch (e) {
         if (tb) {
@@ -5559,7 +5559,39 @@ function _wmsAbrirEtiquetaUrl(url) {
     if (!w) showMessage('Pop-up bloqueado — libere pop-ups para imprimir etiquetas.', 'error');
 }
 
+async function _wmsBaixarZplUrl(url, nomeArquivo) {
+    try {
+        var resp = await fetch(url, { credentials: 'same-origin' });
+        if (!resp.ok) {
+            var err = {};
+            try { err = await resp.json(); } catch (e) { /* ignore */ }
+            throw new Error((err && err.erro) || ('Erro ' + resp.status));
+        }
+        var blob = await resp.blob();
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = nomeArquivo || 'longarinas.zpl';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() {
+            URL.revokeObjectURL(a.href);
+            a.remove();
+        }, 300);
+        showMessage('ZPL baixado — envie para a Zebra (Setup Utilities ou Designer).', 'success');
+    } catch (e) {
+        showMessage((e && e.message) || 'Erro ao baixar ZPL.', 'error');
+    }
+}
+
 window.wmsImprimirEtqEndereco = function(codigo) {
+    if (!codigo) return;
+    _wmsBaixarZplUrl(
+        '/api/wms/etiqueta/endereco/zpl?codigo=' + encodeURIComponent(codigo),
+        'longarina_' + String(codigo).replace(/[^\w.-]+/g, '_') + '.zpl'
+    );
+};
+
+window.wmsPreviaEtqEndereco = function(codigo) {
     if (!codigo) return;
     _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/endereco?codigo=' + encodeURIComponent(codigo));
 };
@@ -5570,9 +5602,9 @@ function wmsImprimirEtqColuna() {
     var pos = (document.getElementById('wms-etq-pos') || {}).value || '';
     if (!cam) { showMessage('Selecione a câmara (Rua).', 'error'); return; }
     if (!rua || !pos) { showMessage('Selecione a rua interna e o prédio (coluna).', 'error'); return; }
-    var url = '/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam) +
+    var url = '/api/wms/etiqueta/enderecos/zpl?camara=' + encodeURIComponent(cam) +
         '&rua=' + encodeURIComponent(rua) + '&posicao=' + encodeURIComponent(pos);
-    _wmsAbrirEtiquetaUrl(url);
+    _wmsBaixarZplUrl(url, 'longarinas_' + cam + '_' + rua + '_' + pos + '.zpl');
 }
 
 window._wmsEtqOpcoes = null;
@@ -5783,8 +5815,8 @@ async function loadWmsEtqLongarinaOpcoes() {
 function wmsImprimirEtqCamara() {
     var cam = (document.getElementById('wms-etq-camara') || {}).value || '';
     if (!cam) { showMessage('Selecione a câmara.', 'error'); return; }
-    if (!confirm('Imprimir todas as longarinas da câmara ' + cam + '?')) return;
-    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam));
+    if (!confirm('Baixar ZPL de todas as longarinas da câmara ' + cam + '?')) return;
+    _wmsBaixarZplUrl('/api/wms/etiqueta/enderecos/zpl?camara=' + encodeURIComponent(cam), 'longarinas_camara_' + cam + '.zpl');
 }
 
 async function loadWmsEtqLongarinaResumo(opcoes) {
@@ -5848,14 +5880,14 @@ function loadWmsEtiquetasLongarinaAba() {
 function wmsImprimirEtqTodasLongarinas() {
     var box = document.getElementById('wms-etq-resumo-box');
     var txt = box ? box.textContent : '';
-    var msg = 'Imprimir TODAS as etiquetas de longarina do armazém';
+    var msg = 'Baixar ZPL de TODAS as etiquetas de longarina do armazém';
     if (txt && txt.indexOf('Total') >= 0) {
         msg += ' (' + txt.replace(/\s+/g, ' ').trim().slice(0, 120) + '…)?';
     } else {
-        msg += '? Pode levar várias páginas.';
+        msg += '? O arquivo pode ser grande.';
     }
     if (!confirm(msg)) return;
-    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?todas=1');
+    _wmsBaixarZplUrl('/api/wms/etiqueta/enderecos/zpl?todas=1', 'longarinas_armazem.zpl');
 }
 
 function wmsImprimirEtqUnico() {
