@@ -171,13 +171,34 @@ def _apto_para_rua(camara, apto):
 
 
 def _barcode_longarina(camara, posicao, nivel, apto=None, rua=None):
-    """Código da etiqueta colada na longarina (ex.: 21.13.1.1)."""
-    apt = int(apto) if apto is not None else _rua_para_apto(camara, rua)
-    return f'{int(camara)}.{int(posicao)}.{int(nivel)}.{apt}'
+    """Código de bipagem da longarina: Câmara · Coluna · Nível (ex.: 12.14.1)."""
+    return f'{int(camara)}.{int(posicao)}.{int(nivel)}'
 
 
-def _resolver_codigo_endereco_bip(codigo):
-    """Aceita bip da etiqueta longarina (12.14.1.1) ou código interno (12-C-14-1)."""
+def _barcode_longarina_base(bc):
+    """Normaliza para os 3 primeiros segmentos (compatível com etiquetas antigas 4 partes)."""
+    parts = (bc or '').strip().replace(' ', '').split('.')
+    if len(parts) >= 3 and all(p.isdigit() for p in parts[:3]):
+        return f'{int(parts[0])}.{int(parts[1])}.{int(parts[2])}'
+    return (bc or '').strip()
+
+
+def _codigo_endereco_por_cam_col_niv(conn, camara, posicao, nivel):
+    """Resolve Câm·Col·Nív para código WMS quando há uma única vaga no banco."""
+    t_loc = _tbl(conn, 'wms_localizacao')
+    rows = conn.execute(
+        f'''SELECT codigo_endereco FROM {t_loc}
+            WHERE camara = ? AND posicao = ? AND nivel = ?''',
+        (int(camara), int(posicao), int(nivel)),
+    ).fetchall()
+    if len(rows) == 1:
+        rd = _row_dict(rows[0]) or {}
+        return (rd.get('codigo_endereco') or '').strip().upper() or None
+    return None
+
+
+def _resolver_codigo_endereco_bip(codigo, conn=None):
+    """Aceita bip da longarina (12.14.1 ou legado 12.14.1.1) ou código interno (12-C-14-1)."""
     raw = (codigo or '').strip()
     if not raw:
         return None
@@ -186,11 +207,18 @@ def _resolver_codigo_endereco_bip(codigo):
     if m_int:
         cam, rua, pos, niv = m_int.groups()
         return _codigo_endereco(int(cam), rua, int(pos), int(niv))
-    m = re.match(r'^(\d+)\.(\d+)\.(\d+)\.(\d+)$', raw.replace(' ', ''))
-    if m:
-        cam, pos, niv, apto = (int(x) for x in m.groups())
+    m4 = re.match(r'^(\d+)\.(\d+)\.(\d+)\.(\d+)$', raw.replace(' ', ''))
+    if m4:
+        cam, pos, niv, apto = (int(x) for x in m4.groups())
         rua = _apto_para_rua(cam, apto)
         return _codigo_endereco(cam, rua, pos, niv)
+    m3 = re.match(r'^(\d+)\.(\d+)\.(\d+)$', raw.replace(' ', ''))
+    if m3:
+        cam, pos, niv = (int(x) for x in m3.groups())
+        if conn:
+            cod = _codigo_endereco_por_cam_col_niv(conn, cam, pos, niv)
+            if cod:
+                return cod
     return None
 
 
@@ -3827,13 +3855,13 @@ def _confirmar_armazenagem_palete(conn, palete_id, codigo_endereco):
     pal = conn.execute(f'SELECT * FROM {t_pal} WHERE id = ?', (palete_id,)).fetchone()
     if not pal:
         return None, 'Palete não encontrado.'
-    cod_resolvido = _resolver_codigo_endereco_bip(codigo_endereco) or (codigo_endereco or '').strip().upper()
+    cod_resolvido = _resolver_codigo_endereco_bip(codigo_endereco, conn=conn) or (codigo_endereco or '').strip().upper()
     loc = conn.execute(
         f'''SELECT * FROM {t_loc} WHERE codigo_endereco = ? OR codigo_endereco = ?''',
         (cod_resolvido, cod_resolvido.upper()),
     ).fetchone()
     if not loc:
-        return None, 'Endereço não encontrado. Bipe a etiqueta da longarina (ex.: 21.13.1.1).'
+        return None, 'Endereço não encontrado. Bipe a etiqueta da longarina (ex.: 21.13.1).'
     ld = _row_dict(loc) or {}
     if ld.get('status') != 'vazia':
         return None, 'Endereço não está vazio.'
@@ -5294,7 +5322,7 @@ def api_wms_recebimentos():
                     'erro': 'Bipe a etiqueta da longarina ou coluna para validar a entrada.',
                     'sugestao': sug_aplicada,
                 }), 400
-            cod_resolvido = _resolver_codigo_endereco_bip(cod_bip) or cod_bip.upper()
+            cod_resolvido = _resolver_codigo_endereco_bip(cod_bip, conn=conn) or cod_bip.upper()
             if usar_sugestao and pid:
                 it_sug = conn.execute(
                     f'SELECT sku, lote, data_producao FROM {t_item} WHERE palete_id = ? ORDER BY id DESC LIMIT 1',
@@ -5315,14 +5343,19 @@ def api_wms_recebimentos():
                         sug_cod = (sug_aplicada.get('codigo_endereco') or '').strip().upper()
                         sug_bc = (sug_aplicada.get('barcode_longarina') or '').strip()
                         bip_norm = cod_bip.strip()
+                        bip_base = _barcode_longarina_base(bip_norm)
+                        sug_base = _barcode_longarina_base(sug_bc)
                         if (cod_resolvido.upper() != sug_cod
                                 and bip_norm != sug_bc
-                                and bip_norm.upper() != (sug_bc or '').upper()):
+                                and bip_norm.upper() != (sug_bc or '').upper()
+                                and bip_base != sug_base):
                             conn.close()
                             return jsonify({
                                 'erro': f'Bipe a longarina indicada ({sug_bc or sug_cod}), não {cod_bip}.',
                                 'sugestao': sug_aplicada,
                             }), 400
+                        elif bip_base == sug_base:
+                            cod_resolvido = sug_cod
             cod = cod_resolvido
             loc, err = _confirmar_armazenagem_palete(conn, pid, cod)
             if err:
@@ -5676,7 +5709,7 @@ def api_wms_zoneamento():
 
 
 def _loc_etiqueta_data(loc, nomes_camara=None):
-    """Dados para etiqueta de longarina (Câmara · Coluna · Nível · Apto + barcode 12.14.1.1)."""
+    """Dados para etiqueta de longarina (Câmara · Coluna · Nível + barcode 12.14.1)."""
     d = _row_dict(loc) or {}
     cam = int(d.get('camara') or 0)
     rua = str(d.get('rua') or '').strip().upper()
@@ -5815,7 +5848,7 @@ def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo
 
     def _buscar_rows():
         if codigo:
-            cod_busca = _resolver_codigo_endereco_bip(codigo) or codigo
+            cod_busca = _resolver_codigo_endereco_bip(codigo, conn=conn) or codigo
             row = conn.execute(
                 f'SELECT * FROM {t_loc} WHERE codigo_endereco = ? OR codigo_endereco = ?',
                 (cod_busca, cod_busca.upper()),
@@ -6010,8 +6043,8 @@ def api_wms_etiqueta_modelo():
             descricao='Pão de forma integral 500g',
             data_producao='2025-06-01',
             data_validade='2025-12-01',
-            destino='12.14.1.1 — Câmara 12 · Rua C · Col 14 · Nív 1 (PICKING)',
-            endereco_barcode='12.14.1.1',
+            destino='12.14.1 — Câmara 12 · Rua C · Col 14 · Nív 1 (PICKING)',
+            endereco_barcode='12.14.1',
             endereco_texto='Câmara 12 · Rua C · Col 14 · Nív 1 (PICKING)',
             codigo_wms='12-C-14-1',
             up='5020',
@@ -6050,7 +6083,7 @@ def api_wms_etiqueta_modelo():
 def api_wms_etiqueta_endereco():
     codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip()
     if not codigo:
-        return jsonify({'erro': 'Informe codigo/endereco (ex.: 12.14.1.1 ou 12-C-14-1).'}), 400
+        return jsonify({'erro': 'Informe codigo/endereco (ex.: 12.14.1 ou 12-C-14-1).'}), 400
     conn = _db()
     ensure_wms_schema(conn)
     try:

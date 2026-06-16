@@ -5652,7 +5652,7 @@ function wmsImprimirEtqTodasLongarinas() {
 
 function wmsImprimirEtqUnico() {
     var cod = ((document.getElementById('wms-etq-codigo-unico') || {}).value || '').trim();
-    if (!cod) { showMessage('Informe o código longarina (12.14.1.1) ou WMS (12-C-14-1).', 'warning'); return; }
+    if (!cod) { showMessage('Informe o código longarina (12.14.1) ou WMS (12-C-14-1).', 'warning'); return; }
     wmsImprimirEtqEndereco(cod);
 }
 
@@ -6649,7 +6649,7 @@ function _wmsAplicarModoDestinoSugestao() {
         if (!dest.value) {
             dest.placeholder = manual
                 ? 'Digite o endereço ou bip a longarina/coluna…'
-                : 'Bipe a etiqueta da longarina/coluna (ex.: 11.5.2.1)…';
+                : 'Bipe a etiqueta da longarina/coluna (ex.: 11.5.2)…';
         }
     }
     if (btnManual) btnManual.style.display = manual ? 'none' : '';
