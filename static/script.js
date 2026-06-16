@@ -4524,31 +4524,194 @@ function _wmsEndRoundRect(ctx, x, y, w, h, r) {
     ctx.closePath();
 }
 
+function _wmsEndFillRoundGrad(ctx, x, y, w, h, r, top, bot, stroke, sw) {
+    _wmsEndRoundRect(ctx, x, y, w, h, r);
+    var g = ctx.createLinearGradient(x, y, x, y + h);
+    g.addColorStop(0, top);
+    g.addColorStop(1, bot);
+    ctx.fillStyle = g;
+    ctx.fill();
+    if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = sw || 1;
+        ctx.stroke();
+    }
+}
+
+function _wmsEndDrawFloorGrid(ctx, W, H) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(100,120,140,0.06)';
+    ctx.lineWidth = 1;
+    for (var gx = 0; gx <= W; gx += 28) {
+        ctx.beginPath();
+        ctx.moveTo(gx, 0);
+        ctx.lineTo(gx, H);
+        ctx.stroke();
+    }
+    for (var gy = 0; gy <= H; gy += 28) {
+        ctx.beginPath();
+        ctx.moveTo(0, gy);
+        ctx.lineTo(W, gy);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function _wmsEndSlotGrad(fill) {
+    var m = {
+        '#90caf9': ['#e3f2fd', '#64b5f6'],
+        '#b3e5fc': ['#e1f5fe', '#4fc3f7'],
+        '#c62828': ['#ef5350', '#b71c1c'],
+        '#42a5f5': ['#90caf9', '#1e88e5'],
+        '#ffca28': ['#fff59d', '#f9a825'],
+        '#8d6e63': ['#bcaaa4', '#5d4037'],
+        '#78909c': ['#b0bec5', '#455a64'],
+        '#ab47bc': ['#e1bee7', '#7b1fa2'],
+        '#7e57c2': ['#d1c4e9', '#512da8'],
+        '#cfd8dc': ['#eceff1', '#b0bec5']
+    };
+    return m[fill] || [fill, fill];
+}
+
+function _wmsEndDrawSlotCell(ctx, sx, sy, sw, sh, st) {
+    if (sw < 2 || sh < 2) return;
+    var r = Math.min(2.5, sw / 3, sh / 3);
+    var grad = _wmsEndSlotGrad(st.fill);
+    _wmsEndFillRoundGrad(ctx, sx, sy, sw, sh, r, grad[0], grad[1], st.stroke, 1.1);
+    ctx.save();
+    ctx.beginPath();
+    _wmsEndRoundRect(ctx, sx + 1, sy + 1, sw - 2, Math.max(1, sh * 0.22), Math.max(0, r - 1));
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fill();
+    ctx.restore();
+    if (st.fill === '#c62828' && sw > 5 && sh > 4) {
+        var pw = sw * 0.68, ph = Math.min(sh * 0.38, 8);
+        var px = sx + (sw - pw) / 2, py = sy + sh * 0.28;
+        ctx.fillStyle = 'rgba(0,0,0,0.18)';
+        _wmsEndRoundRect(ctx, px, py + 1.2, pw, ph, 1);
+        ctx.fill();
+        var pg = ctx.createLinearGradient(px, py, px, py + ph);
+        pg.addColorStop(0, '#8d6e63');
+        pg.addColorStop(1, '#4e342e');
+        _wmsEndFillRoundGrad(ctx, px, py, pw, ph, 1, '#a1887f', '#5d4037', '#3e2723', 0.6);
+    }
+}
+
 function _wmsEndDrawRackColuna(ctx, x, y, w, h, rua, posMap, maxPos) {
     ctx.save();
-    ctx.strokeStyle = '#f57c00';
-    ctx.lineWidth = 3;
+    var beamG = ctx.createLinearGradient(x, y, x + w, y);
+    beamG.addColorStop(0, '#bf360c');
+    beamG.addColorStop(0.5, '#ff6f00');
+    beamG.addColorStop(1, '#e65100');
+    ctx.fillStyle = beamG;
+    ctx.fillRect(x - 1, y - 5, w + 2, 5);
+    ctx.fillRect(x - 1, y + h, w + 2, 4);
+    ctx.strokeStyle = '#e65100';
+    ctx.lineWidth = 2.5;
     ctx.strokeRect(x, y, w, h);
-    ctx.fillStyle = '#e65100';
-    ctx.font = 'bold 11px Segoe UI, sans-serif';
+    ctx.fillStyle = 'rgba(230,81,0,0.12)';
+    ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+    ctx.fillStyle = '#37474f';
+    ctx.font = 'bold 10px Segoe UI, system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText('Rua ' + rua, x + w / 2, y - 3);
+    ctx.fillText('RUA ' + rua, x + w / 2, y - 7);
     var cellH = h / Math.max(maxPos, 1);
     for (var p = 1; p <= maxPos; p++) {
         var cy = y + (p - 1) * cellH;
         var slot = posMap[p] ? _wmsEndPickSlot(posMap[p]) : null;
         var st = _wmsEndCellStyle(slot);
-        var pad = 2;
+        var pad = 2.5;
         var cw = w - pad * 2;
         var ch = Math.max(cellH - pad * 2, 3);
-        ctx.fillStyle = st.fill;
-        ctx.fillRect(x + pad, cy + pad, cw, ch);
-        ctx.strokeStyle = st.stroke;
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(x + pad, cy + pad, cw, ch);
+        _wmsEndDrawSlotCell(ctx, x + pad, cy + pad, cw, ch, st);
+        if (parseInt(slot && slot.nivel, 10) === 1 && ch > 6) {
+            ctx.fillStyle = 'rgba(21,101,192,0.85)';
+            ctx.font = 'bold 6px Segoe UI, sans-serif';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('P', x + w - 4, cy + cellH - 3);
+        }
     }
     ctx.restore();
+}
+
+function _wmsEndDrawAisle(ctx, x, y, w, h, opts) {
+    opts = opts || {};
+    var isRefrig = !!opts.refrigerado;
+    var g = ctx.createLinearGradient(x, y, x + w, y);
+    g.addColorStop(0, isRefrig ? '#cfd8dc' : '#b0bec5');
+    g.addColorStop(0.5, isRefrig ? '#eceff1' : '#cfd8dc');
+    g.addColorStop(1, isRefrig ? '#cfd8dc' : '#b0bec5');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#90a4ae';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+    ctx.save();
+    ctx.setLineDash([6, 5]);
+    ctx.strokeStyle = 'rgba(255,193,7,0.75)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + w / 2, y + 6);
+    ctx.lineTo(x + w / 2, y + h - 6);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    if (!isRefrig) {
+        ctx.save();
+        ctx.globalAlpha = 0.08;
+        for (var fy = y + 8; fy < y + h - 8; fy += 14) {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(x + 3, fy, w - 6, 3);
+        }
+        ctx.restore();
+    }
+}
+
+function _wmsEndDrawOccBar(ctx, x, y, w, h, pct) {
+    _wmsEndRoundRect(ctx, x, y, w, h, h / 2);
+    ctx.fillStyle = '#eceff1';
+    ctx.fill();
+    var fw = Math.max(0, Math.min(w, w * (pct / 100)));
+    if (fw > 0) {
+        var barG = ctx.createLinearGradient(x, y, x + fw, y);
+        var c0 = pct > 85 ? '#e53935' : (pct > 60 ? '#fb8c00' : '#43a047');
+        var c1 = pct > 85 ? '#c62828' : (pct > 60 ? '#ef6c00' : '#2e7d32');
+        barG.addColorStop(0, c0);
+        barG.addColorStop(1, c1);
+        ctx.fillStyle = barG;
+        _wmsEndRoundRect(ctx, x, y, fw, h, h / 2);
+        ctx.fill();
+    }
+    ctx.strokeStyle = '#b0bec5';
+    ctx.lineWidth = 0.8;
+    _wmsEndRoundRect(ctx, x, y, w, h, h / 2);
+    ctx.stroke();
+}
+
+function _wmsEndDrawMetalDoor(ctx, x, y, w, h) {
+    var dg = ctx.createLinearGradient(x, y, x, y + h);
+    dg.addColorStop(0, '#ffd54f');
+    dg.addColorStop(0.5, '#ffb300');
+    dg.addColorStop(1, '#ff8f00');
+    _wmsEndFillRoundGrad(ctx, x, y, w, h, 3, '#ffe082', '#ff8f00', '#f57f17', 1.2);
+    var ribs = 5;
+    var rw = (w - 6) / ribs;
+    ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+    ctx.lineWidth = 1;
+    for (var i = 1; i < ribs; i++) {
+        var rx = x + 3 + i * rw;
+        ctx.beginPath();
+        ctx.moveTo(rx, y + 2);
+        ctx.lineTo(rx, y + h - 2);
+        ctx.stroke();
+    }
+    ctx.fillStyle = '#37474f';
+    ctx.font = 'bold 7px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ENTRADA', x + w / 2, y + h / 2);
 }
 
 function _wmsEndDrawCamaraFria(ctx, cam, x, y, bw, bh, regions) {
@@ -4560,87 +4723,98 @@ function _wmsEndDrawCamaraFria(ctx, cam, x, y, bw, bh, regions) {
     var totalPos = slots.length || 0;
     var pct = cam._pct != null ? cam._pct : 0;
     var ocup = cam._ocup != null ? cam._ocup : 0;
+    var isRefrig = cam.codigo === 21;
+    var isSelected = _wmsEndState.selectedCamara === cam.codigo;
 
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.15)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 3;
-    _wmsEndRoundRect(ctx, x, y, bw, bh, 10);
-    ctx.fillStyle = '#ffffff';
+    if (isSelected) {
+        ctx.shadowColor = 'rgba(21,101,192,0.45)';
+        ctx.shadowBlur = 16;
+        ctx.shadowOffsetY = 0;
+    } else {
+        ctx.shadowColor = 'rgba(15,23,42,0.18)';
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetY = 4;
+    }
+    _wmsEndRoundRect(ctx, x, y, bw, bh, 12);
+    var cardG = ctx.createLinearGradient(x, y, x, y + bh);
+    cardG.addColorStop(0, '#ffffff');
+    cardG.addColorStop(1, '#f1f5f9');
+    ctx.fillStyle = cardG;
     ctx.fill();
     ctx.shadowColor = 'transparent';
-    ctx.strokeStyle = '#b0bec5';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = isSelected ? '#1565c0' : '#94a3b8';
+    ctx.lineWidth = isSelected ? 2.5 : 1.2;
     ctx.stroke();
 
-    var padIn = 6;
-    var doorH = 14;
-    var headH = 32;
+    var padIn = 8;
+    var doorH = 16;
+    var headH = 38;
     var innerX = x + padIn;
     var innerY = y + padIn + headH;
     var innerW = bw - padIn * 2;
-    var innerH = bh - padIn * 2 - headH - doorH - 4;
-    var aisleW = Math.max(innerW * 0.30, 52);
+    var innerH = bh - padIn * 2 - headH - doorH - 6;
+    var aisleW = Math.max(innerW * 0.30, 54);
     var rackW = (innerW - aisleW) / 2;
     var rackX_L = innerX;
     var rackX_R = innerX + rackW + aisleW;
     var aisleX = innerX + rackW;
 
+    var hdrG = ctx.createLinearGradient(x, y, x, y + headH + padIn);
+    hdrG.addColorStop(0, isRefrig ? '#0277bd' : '#0d47a1');
+    hdrG.addColorStop(1, isRefrig ? '#01579b' : '#1565c0');
+    ctx.fillStyle = hdrG;
+    _wmsEndRoundRect(ctx, x + 1, y + 1, bw - 2, headH + padIn - 2, 11);
+    ctx.fill();
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 13px Segoe UI, system-ui, sans-serif';
+    ctx.fillText('Câmara ' + cam.codigo, x + 12, y + padIn + 14);
+    ctx.font = '10px Segoe UI, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    ctx.fillText(totalPos + ' pos. · ' + ocup + ' ocup. (' + pct + '%)', x + 12, y + padIn + 28);
+    var barW = Math.min(110, bw * 0.32);
+    _wmsEndDrawOccBar(ctx, x + bw - barW - 12, y + padIn + 10, barW, 8, pct);
+
     var mapL = _wmsEndSlotsPorRua(slots, ruaL);
     var mapR = _wmsEndSlotsPorRua(slots, ruaR);
     _wmsEndDrawRackColuna(ctx, rackX_L, innerY, rackW, innerH, ruaL, mapL, maxPos);
     _wmsEndDrawRackColuna(ctx, rackX_R, innerY, rackW, innerH, ruaR, mapR, maxPos);
-
-    ctx.fillStyle = '#fafafa';
-    ctx.fillRect(aisleX, innerY, aisleW, innerH);
-    ctx.strokeStyle = '#e0e0e0';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(aisleX, innerY, aisleW, innerH);
+    _wmsEndDrawAisle(ctx, aisleX, innerY, aisleW, innerH, { refrigerado: isRefrig });
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#0d47a1';
-    ctx.font = 'bold 12px Segoe UI, sans-serif';
-    ctx.fillText(totalPos + ' Posições', x + bw / 2, y + padIn + 14);
-    ctx.font = '10px Segoe UI, sans-serif';
-    ctx.fillStyle = '#546e7a';
-    ctx.fillText(ocup + ' ocup. · ' + pct + '%', x + bw / 2, y + padIn + 26);
-
-    ctx.fillStyle = '#c62828';
-    ctx.font = 'bold 42px Segoe UI, sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(cam.codigo), aisleX + aisleW / 2, innerY + innerH * 0.38);
+    ctx.font = 'bold 44px Segoe UI, system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    ctx.fillText(String(cam.codigo), aisleX + aisleW / 2 + 2, innerY + innerH * 0.36 + 2);
+    ctx.fillStyle = isRefrig ? '#0277bd' : '#c62828';
+    ctx.fillText(String(cam.codigo), aisleX + aisleW / 2, innerY + innerH * 0.36);
 
     ctx.save();
-    ctx.translate(aisleX + aisleW / 2, innerY + innerH * 0.72);
+    ctx.translate(aisleX + aisleW / 2, innerY + innerH * 0.68);
     ctx.rotate(-Math.PI / 2);
-    ctx.fillStyle = '#1565c0';
-    ctx.font = 'bold 15px Segoe UI, sans-serif';
-    var tipo = cam.codigo === 21 ? 'Refrigerado' : 'Congelado';
-    ctx.fillText(tipo, 0, 0);
+    ctx.font = 'bold 13px Segoe UI, system-ui, sans-serif';
+    ctx.fillStyle = '#455a64';
+    ctx.fillText(isRefrig ? 'REFRIGERADO' : 'CONGELADO', 0, 0);
     ctx.restore();
 
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#c62828';
-    ctx.font = 'bold 11px Segoe UI, sans-serif';
-    ctx.fillText('-20°C', aisleX + aisleW / 2, innerY + innerH - 8);
+    var tempTxt = isRefrig ? '+2°C' : '−20°C';
+    var badgeW = 42, badgeH = 16;
+    var badgeX = aisleX + (aisleW - badgeW) / 2;
+    var badgeY = innerY + innerH - badgeH - 6;
+    _wmsEndFillRoundGrad(ctx, badgeX, badgeY, badgeW, badgeH, 4, '#e3f2fd', '#90caf9', '#64b5f6', 1);
+    ctx.fillStyle = '#0d47a1';
+    ctx.font = 'bold 9px Segoe UI, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(tempTxt, badgeX + badgeW / 2, badgeY + badgeH / 2);
 
-    var doorW = aisleW * 0.55;
+    var doorW = aisleW * 0.62;
     var doorX = aisleX + (aisleW - doorW) / 2;
     var doorY = y + bh - padIn - doorH;
-    ctx.fillStyle = '#ffc107';
-    ctx.strokeStyle = '#f9a825';
-    ctx.lineWidth = 1;
-    _wmsEndRoundRect(ctx, doorX, doorY, doorW, doorH, 3);
-    ctx.fill();
-    ctx.stroke();
+    _wmsEndDrawMetalDoor(ctx, doorX, doorY, doorW, doorH);
 
-    if (_wmsEndState.selectedCamara === cam.codigo) {
-        ctx.strokeStyle = '#1565c0';
-        ctx.lineWidth = 4;
-        _wmsEndRoundRect(ctx, x, y, bw, bh, 10);
-        ctx.stroke();
-    }
-
+    ctx.textBaseline = 'alphabetic';
     ctx.restore();
     regions.push({
         x: x, y: y, w: bw, h: bh,
@@ -4651,6 +4825,51 @@ function _wmsEndDrawCamaraFria(ctx, cam, x, y, bw, bh, regions) {
 
 function _wmsEndDrawCamaraCompacta(ctx, cam, x, y, bw, bh, regions) {
     _wmsEndDrawCamaraFria(ctx, cam, x, y, bw, bh, regions);
+}
+
+function _wmsEndArea98Style(area) {
+    var a = (area || '').toLowerCase();
+    if (a.indexOf('envio') >= 0) return { top: '#e3f2fd', bot: '#42a5f5', accent: '#1565c0' };
+    if (a.indexOf('retrabalho') >= 0) return { top: '#fff8e1', bot: '#ffca28', accent: '#f57f17' };
+    if (a.indexOf('descarte') >= 0) return { top: '#efebe9', bot: '#8d6e63', accent: '#4e342e' };
+    if (a.indexOf('avaria') >= 0) return { top: '#f3e5f5', bot: '#ab47bc', accent: '#6a1b9a' };
+    if (a.indexOf('reentrega') >= 0) return { top: '#ede7f6', bot: '#7e57c2', accent: '#4527a0' };
+    if (a.indexOf('bloqueado') >= 0) return { top: '#eceff1', bot: '#78909c', accent: '#37474f' };
+    return { top: '#fffde7', bot: '#ffe082', accent: '#f57c00' };
+}
+
+function _wmsEndDrawArea98Zone(ctx, ax, ay, aw, ah, a) {
+    var st = _wmsEndArea98Style(a.area || a.label || '');
+    _wmsEndFillRoundGrad(ctx, ax, ay, aw, ah, 8, st.top, '#ffffff', st.accent, 1.5);
+    ctx.fillStyle = st.accent;
+    ctx.fillRect(ax, ay, aw, 4);
+    _wmsEndRoundRect(ctx, ax, ay + 4, aw, 14, 0);
+    ctx.fillStyle = st.accent;
+    ctx.globalAlpha = 0.12;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = st.accent;
+    ctx.font = 'bold 9px Segoe UI, system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    var lbl = (a.label || a.area || '').slice(0, 20);
+    ctx.fillText(lbl, ax + 8, ay + 10);
+    ctx.font = '8px Segoe UI, sans-serif';
+    ctx.fillStyle = '#546e7a';
+    ctx.fillText('Rua ' + (a.rua || '—'), ax + 8, ay + 22);
+    var slots = a.slots || 10;
+    var slotY = ay + 34;
+    var slotH = Math.max(ah - 52, 12);
+    var sw = Math.min((aw - 16) / Math.max(slots, 1), 18);
+    for (var p = 0; p < slots; p++) {
+        var status = (a.posicoes && a.posicoes[p]) ? (a.posicoes[p].status || '') : '';
+        var fill = status === 'ocupada' ? '#c62828' : '#90caf9';
+        _wmsEndDrawSlotCell(ctx, ax + 8 + p * (sw + 3), slotY, sw, slotH, { fill: fill, stroke: '#f57c00' });
+    }
+    ctx.fillStyle = '#455a64';
+    ctx.font = 'bold 8px Segoe UI, sans-serif';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText((a.ocupadas || 0) + '/' + slots + ' ocup.', ax + 8, ay + ah - 6);
 }
 
 function _wmsEndDraw2D() {
@@ -4672,20 +4891,22 @@ function _wmsEndDraw2D() {
     });
     var pad = 16;
     var gap = 14;
-    var mainH = 340;
+    var mainH = 360;
     var cam21 = camByCod[21];
     var W = Math.max(wrap.clientWidth || 900, 640);
-    var y98base = pad + mainH + gap + (cam21 ? 200 + gap : 0);
-    var H = Math.max(480, y98base + 120);
+    var y98base = pad + mainH + gap + (cam21 ? 210 + gap : 0);
+    var H = Math.max(500, y98base + 130);
     canvas.width = W;
     canvas.height = H;
     var ctx = canvas.getContext('2d');
     if (!ctx) return;
-    var grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#f5f7fa');
-    grad.addColorStop(1, '#e8ecf0');
+    var grad = ctx.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0, '#e8edf2');
+    grad.addColorStop(0.45, '#f4f6f8');
+    grad.addColorStop(1, '#dce3ea');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
+    _wmsEndDrawFloorGrid(ctx, W, H);
     var regions = [];
     var colW = (W - pad * 2 - gap * 2) / 3;
     [11, 12, 13].forEach(function(cod, i) {
@@ -4696,53 +4917,33 @@ function _wmsEndDraw2D() {
     if (cam21) {
         var w21 = Math.min(colW * 1.35, W * 0.38);
         var x21 = (W - w21) / 2;
-        _wmsEndDrawCamaraCompacta(ctx, cam21, x21, pad + mainH + gap, w21, 190, regions);
+        _wmsEndDrawCamaraCompacta(ctx, cam21, x21, pad + mainH + gap, w21, 200, regions);
     }
     var areas98 = (data.areas || []);
     var y98 = y98base;
-    var h98 = Math.max(H - y98 - pad, 72);
+    var h98 = Math.max(H - y98 - pad, 88);
     var bw98 = W - pad * 2;
-    _wmsEndRoundRect(ctx, pad, y98, bw98, h98, 10);
-    ctx.fillStyle = '#fffde7';
-    ctx.fill();
-    ctx.strokeStyle = '#ffb300';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.1)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 3;
+    _wmsEndFillRoundGrad(ctx, pad, y98, bw98, h98, 12, '#fff8e1', '#fffde7', '#ff8f00', 2);
+    ctx.shadowColor = 'transparent';
+    ctx.restore();
     ctx.fillStyle = '#e65100';
-    ctx.font = 'bold 13px Segoe UI, sans-serif';
+    ctx.font = 'bold 13px Segoe UI, system-ui, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('Câmara 98 — Quarentena e fluxos especiais', pad + 12, y98 + 20);
+    ctx.fillText('Câmara 98 — Quarentena e fluxos especiais', pad + 14, y98 + 22);
+    ctx.font = '10px Segoe UI, sans-serif';
+    ctx.fillStyle = '#795548';
+    ctx.fillText('Áreas de destino fixo · sem visualização 3D', pad + 14, y98 + 36);
     var n98 = Math.max(areas98.length, 1);
-    var aw = (bw98 - 24 - (n98 - 1) * 8) / n98;
+    var aw = (bw98 - 28 - (n98 - 1) * 10) / n98;
     areas98.forEach(function(a, i) {
-        var ax = pad + 12 + i * (aw + 8);
-        var ay = y98 + 30;
-        var ah = h98 - 40;
-        ctx.fillStyle = '#fff';
-        ctx.strokeStyle = '#ffcc80';
-        ctx.lineWidth = 2;
-        _wmsEndRoundRect(ctx, ax, ay, aw, ah, 6);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = '#5d4037';
-        ctx.font = 'bold 10px Segoe UI, sans-serif';
-        var lbl = (a.label || a.area || '').slice(0, 22);
-        ctx.fillText(lbl, ax + 6, ay + 14);
-        ctx.font = '9px Segoe UI, sans-serif';
-        ctx.fillStyle = '#795548';
-        ctx.fillText('rua ' + (a.rua || '—'), ax + 6, ay + 26);
-        var slots = a.slots || 10;
-        var sw = Math.min((aw - 12) / Math.max(slots, 1), 16);
-        for (var p = 0; p < slots; p++) {
-            var st = (a.posicoes && a.posicoes[p]) ? (a.posicoes[p].status || '') : '';
-            ctx.fillStyle = st === 'ocupada' ? '#c62828' : '#90caf9';
-            ctx.strokeStyle = '#f57c00';
-            ctx.lineWidth = 1;
-            ctx.fillRect(ax + 6 + p * (sw + 2), ay + 32, sw, ah - 44);
-            ctx.strokeRect(ax + 6 + p * (sw + 2), ay + 32, sw, ah - 44);
-        }
-        ctx.fillStyle = '#455a64';
-        ctx.fillText((a.ocupadas || 0) + '/' + slots + ' ocup.', ax + 6, ay + ah - 6);
+        var ax = pad + 14 + i * (aw + 10);
+        var ay = y98 + 44;
+        var ah = h98 - 52;
+        _wmsEndDrawArea98Zone(ctx, ax, ay, aw, ah, a);
         regions.push({ x: ax, y: ay, w: aw, h: ah, camara: 98, area: a.area, label: a.label, no3d: true });
     });
     _wmsEndState.regions = regions;
