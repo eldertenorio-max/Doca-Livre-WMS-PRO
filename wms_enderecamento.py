@@ -3,6 +3,8 @@ Módulo WMS Endereçamento — localizações, paletes, putaway, recebimento e i
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 import re
@@ -6272,6 +6274,40 @@ def _render_etiquetas_endereco_zpl(conn, camara=None, rua=None, posicao=None, co
     return zpl, None
 
 
+def _render_etiquetas_endereco_csv(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False):
+    """CSV para vincular dados no ZebraDesigner (campos: camara, rua, coluna, nivel, barcode, codigo_wms, zona)."""
+    etiquetas, err = _list_etiquetas_endereco(
+        conn, camara=camara, rua=rua, posicao=posicao, codigo=codigo, todas=todas,
+    )
+    if err:
+        return None, err
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator='\n')
+    writer.writerow(['camara', 'rua', 'coluna', 'nivel', 'barcode', 'codigo_wms', 'zona', 'picking'])
+    for e in etiquetas:
+        picking = '1' if e.get('picking') else '0'
+        zona = (e.get('zona') or '').strip().upper()
+        writer.writerow([
+            e.get('camara') or e.get('rua_num') or '',
+            e.get('rua_letra') or '',
+            e.get('predio') or '',
+            e.get('nivel') or '',
+            e.get('barcode') or '',
+            e.get('codigo_wms') or e.get('codigo') or '',
+            zona,
+            picking,
+        ])
+    return buf.getvalue(), None
+
+
+def _resposta_csv_longarina(csv_text, nome_arquivo='longarinas'):
+    safe = re.sub(r'[^\w\-.]+', '_', str(nome_arquivo or 'longarinas'))[:80]
+    return make_response('\ufeff' + csv_text, 200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': f'attachment; filename="{safe}.csv"',
+    })
+
+
 def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, auto_print=False, todas=False):
     rows = _buscar_rows_etiquetas_endereco(
         conn, camara=camara, rua=rua, posicao=posicao, codigo=codigo, todas=todas,
@@ -6536,6 +6572,63 @@ def api_wms_etiqueta_enderecos_zpl():
         else:
             nome = 'longarinas_lote'
         return _resposta_zpl_longarina(zpl, nome, ext=request.args.get('ext'))
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/etiqueta/endereco/csv', methods=['GET'])
+def api_wms_etiqueta_endereco_csv():
+    """CSV para ZebraDesigner — uma etiqueta."""
+    codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip()
+    if not codigo:
+        return jsonify({'erro': 'Informe codigo/endereco.'}), 400
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        csv_text, err = _render_etiquetas_endereco_csv(conn, codigo=codigo)
+        conn.close()
+        if err:
+            return jsonify({'erro': err}), 404
+        return _resposta_csv_longarina(csv_text, f'longarina_{codigo}')
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/etiqueta/enderecos/csv', methods=['GET'])
+def api_wms_etiqueta_enderecos_csv():
+    """CSV em lote para ZebraDesigner."""
+    conn = _db()
+    ensure_wms_schema(conn)
+    todas = (request.args.get('todas') or '').strip().lower() in ('1', 'true', 'sim', 'all')
+    camara = request.args.get('camara', type=int)
+    rua = (request.args.get('rua') or '').strip() or None
+    posicao = request.args.get('posicao', type=int)
+    if not todas and not camara and not rua and not posicao:
+        return jsonify({'erro': 'Informe todas=1, camara, ou coluna (camara+rua+posicao).'}), 400
+    try:
+        csv_text, err = _render_etiquetas_endereco_csv(
+            conn, camara=camara, rua=rua, posicao=posicao, todas=todas,
+        )
+        conn.close()
+        if err:
+            return jsonify({'erro': err}), 404
+        if todas:
+            nome = 'longarinas_armazem'
+        elif camara and rua and posicao:
+            nome = f'longarinas_{camara}_{rua}_{posicao}'
+        elif camara:
+            nome = f'longarinas_camara_{camara}'
+        else:
+            nome = 'longarinas_lote'
+        return _resposta_csv_longarina(csv_text, nome)
     except Exception as e:
         try:
             conn.close()
