@@ -33,25 +33,51 @@
   .destino {
     margin-bottom: 2mm;
     border: 2pt solid #000;
-    padding: 2mm 2.5mm;
-    background: #f0f7f0;
+    padding: 2.5mm 3mm;
+    background: linear-gradient(180deg, #f1f8e9 0%, #e8f5e9 100%);
     text-align: center;
   }
   .destino strong {
     display: block;
     font-size: 7pt;
-    margin-bottom: 1.2mm;
+    margin-bottom: 1.5mm;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.6px;
+    color: #33691e;
+  }
+  .camara-badge {
+    margin: 0 0 2mm 0;
+    font-size: 9pt;
+    font-weight: bold;
+    color: #1b5e20;
+    letter-spacing: 0.3px;
+  }
+  .camara-badge span {
+    display: inline-block;
+    margin-left: 2px;
+    font-size: 22pt;
+    line-height: 1;
+    color: #c62828;
+    font-weight: 900;
+    vertical-align: middle;
+  }
+  .end-bc-label {
+    display: block;
+    font-size: 6.5pt;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 0.5mm;
   }
   .destino .end-bc {
     display: block;
-    font-size: 20pt;
+    font-size: 19pt;
     font-weight: bold;
     font-family: Consolas, monospace;
     letter-spacing: 1.5px;
     line-height: 1.1;
     margin: 0.5mm 0;
+    color: #0d47a1;
   }
   .destino .bc-wrap-end {
     text-align: center;
@@ -63,18 +89,29 @@
   }
   .destino .end-wms {
     display: block;
-    font-size: 7.5pt;
+    font-size: 8pt;
     font-family: Consolas, monospace;
     font-weight: bold;
-    color: #333;
-    margin-top: 0.5mm;
+    color: #37474f;
+    margin-top: 1mm;
   }
   .destino .end-txt {
     display: block;
-    font-size: 7.5pt;
-    color: #222;
-    line-height: 1.25;
+    font-size: 8pt;
+    color: #212121;
+    line-height: 1.35;
+    margin-top: 1.2mm;
+    font-weight: 600;
+  }
+  .destino .end-zona {
+    display: inline-block;
     margin-top: 1mm;
+    padding: 0.5mm 2mm;
+    font-size: 7pt;
+    font-weight: bold;
+    background: #1565c0;
+    color: #fff;
+    border-radius: 2px;
   }
   .palete-head {
     text-align: center;
@@ -133,14 +170,23 @@
   {% if endereco_barcode or destino %}
   <div class="destino">
     <strong>Guardar em — longarina</strong>
+    {% if camara %}
+    <div class="camara-badge">Câmara <span>{{ camara }}</span></div>
+    {% endif %}
+    <span class="end-bc-label">Bip longarina (Câm · Col · Nív)</span>
     <span class="end-bc">{{ endereco_barcode or destino }}</span>
     {% if endereco_barcode %}
     <div class="bc-wrap-end">
       <svg id="bc-endereco" data-code="{{ endereco_barcode }}"></svg>
     </div>
     {% endif %}
-    {% if codigo_wms %}<span class="end-wms">{{ codigo_wms }}</span>{% endif %}
-    {% if endereco_texto %}<span class="end-txt">{{ endereco_texto }}</span>{% endif %}
+    {% if codigo_wms %}<span class="end-wms">WMS {{ codigo_wms }}</span>{% endif %}
+    {% if endereco_texto %}
+    <span class="end-txt">{{ endereco_texto }}</span>
+    {% elif camara and rua and coluna and nivel %}
+    <span class="end-txt">Câmara {{ camara }} · Rua {{ rua }} · Col {{ coluna }} · Nív {{ nivel }}{% if zona %} ({{ zona }}){% endif %}</span>
+    {% endif %}
+    {% if zona and not endereco_texto %}<span class="end-zona">{{ zona }}</span>{% endif %}
   </div>
   {% endif %}
   <div class="palete-head">
