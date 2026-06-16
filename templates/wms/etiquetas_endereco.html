@@ -226,16 +226,20 @@
   .etq-zone-bar.destino .arrow { display: none; }
 
   @media print {
-    @page { size: 60mm 40mm; margin: 0; }
+  @page {
+    size: 60mm 40mm;
+    margin: 0;
+  }
 
     html, body {
       width: 60mm !important;
-      height: auto !important;
-      min-height: 40mm !important;
+      height: 40mm !important;
+      min-height: 0 !important;
+      max-height: 40mm !important;
       margin: 0 !important;
       padding: 0 !important;
       background: #fff !important;
-      overflow: visible !important;
+      overflow: hidden !important;
     }
 
     .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
@@ -285,8 +289,10 @@
     html.zebra-portrait,
     html.zebra-portrait body {
       width: 40mm !important;
-      height: auto !important;
-      min-height: 60mm !important;
+      height: 60mm !important;
+      min-height: 0 !important;
+      max-height: 60mm !important;
+      overflow: hidden !important;
     }
     html.zebra-portrait .bloco-camara,
     html.zebra-portrait .bloco-faixa,
@@ -313,7 +319,7 @@
   <p><strong>{{ total }}</strong> etiqueta(s) · <strong>60×40 mm</strong> horizontal · Zebra ZD220</p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
-  <p class="zebra-hint">Papel <strong>60×40 mm paisagem</strong> · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>. Rolo retrato: use <strong>?zebra=portrait</strong> na URL.</p>
+  <p class="zebra-hint">Chrome: margens <strong>Nenhuma</strong> (não «Personalizada») · escala <strong>100%</strong> · papel <strong>60×40 mm</strong> no driver Zebra. A prévia pode mostrar faixa branca se o driver estiver em «Personalizado» com tamanho diferente — isso não afeta a impressão se o driver estiver certo. Rolo retrato: <strong>?zebra=portrait</strong>.</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
