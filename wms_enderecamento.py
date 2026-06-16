@@ -6477,11 +6477,13 @@ def api_wms_etiqueta_modelo():
     return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
 
 
-def _resposta_zpl_longarina(zpl, nome_arquivo='longarinas'):
+def _resposta_zpl_longarina(zpl, nome_arquivo='longarinas', ext='prn'):
     safe = re.sub(r'[^\w\-.]+', '_', str(nome_arquivo or 'longarinas'))[:80]
+    ext = 'txt' if str(ext or '').lower() == 'txt' else 'prn'
+    ctype = 'text/plain; charset=utf-8' if ext == 'txt' else 'application/octet-stream'
     return make_response(zpl, 200, {
-        'Content-Type': 'application/octet-stream',
-        'Content-Disposition': f'attachment; filename="{safe}.prn"',
+        'Content-Type': ctype,
+        'Content-Disposition': f'attachment; filename="{safe}.{ext}"',
     })
 
 
@@ -6498,7 +6500,7 @@ def api_wms_etiqueta_endereco_zpl():
         conn.close()
         if err:
             return jsonify({'erro': err}), 404
-        return _resposta_zpl_longarina(zpl, f'longarina_{codigo}')
+        return _resposta_zpl_longarina(zpl, f'longarina_{codigo}', ext=request.args.get('ext'))
     except Exception as e:
         try:
             conn.close()
@@ -6533,7 +6535,7 @@ def api_wms_etiqueta_enderecos_zpl():
             nome = f'longarinas_camara_{camara}'
         else:
             nome = 'longarinas_lote'
-        return _resposta_zpl_longarina(zpl, nome)
+        return _resposta_zpl_longarina(zpl, nome, ext=request.args.get('ext'))
     except Exception as e:
         try:
             conn.close()

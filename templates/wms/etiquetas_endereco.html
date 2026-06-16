@@ -320,7 +320,7 @@
   <button type="button" onclick="window.print()">Imprimir HTML</button>
   <button type="button" class="sec" onclick="(function(){var u=location.pathname.replace(/\/?$/,'')+'/zpl'+location.search;var a=document.createElement('a');a.href=u;a.download='longarinas.prn';document.body.appendChild(a);a.click();a.remove();})()">Baixar .prn</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
-  <p class="zebra-hint">Recomendado: <strong>Baixar .prn</strong> (ZPL) e imprimir via Zebra Setup Utilities ou ZebraDesigner 3. Arquivo <code>.prn</code> evita abrir com programa errado no Windows.</p>
+  <p class="zebra-hint">Imprima via <strong>Zebra Setup Utilities → Send file</strong> (arquivo <code>.prn</code>). Não use ZebraDesigner para abrir o <code>.prn</code>. Conferir no Bloco de notas: texto começa com <code>^XA</code>.</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
