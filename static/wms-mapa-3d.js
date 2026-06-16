@@ -1,9 +1,6 @@
 /**
- * Visualização 3D do layout WMS — Three.js r160 (ESM + import map).
+ * Visualização 3D do layout WMS — Three.js r160 (script global).
  */
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-
 (function (global) {
     'use strict';
 
@@ -49,8 +46,23 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         _onWindowResize: null
     };
 
+    function T() {
+        if (!global.THREE) throw new Error('Three.js não carregou');
+        return global.THREE;
+    }
+
     function ensureThree() {
-        return Promise.resolve();
+        return new Promise(function (resolve, reject) {
+            if (global.THREE && global.THREE.OrbitControls) return resolve();
+            var deadline = Date.now() + 20000;
+            (function tick() {
+                if (global.THREE && global.THREE.OrbitControls) return resolve();
+                if (Date.now() > deadline) {
+                    return reject(new Error('Three.js não disponível. Verifique a conexão com a internet e recarregue a página.'));
+                }
+                setTimeout(tick, 50);
+            })();
+        });
     }
 
     function $(part) {
@@ -117,77 +129,95 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         }
     }
 
-    function buildRack(data) {
-        clearRack();
-        if (!data || !data.camaras || !data.camaras.length || !state.rackGroup) return;
+    function buildOneCamara(THREE, cam, camOffsetX, boxGeo, dummy, col) {
+        var ruas = cam.ruas || [];
+        var ruaIndex = {};
+        ruas.forEach(function (r, i) { ruaIndex[r] = i; });
+        var slots = cam.slots || [];
+        if (!slots.length) return camOffsetX;
 
-        var boxGeo = new THREE.BoxGeometry(SLOT_W, SLOT_H * 0.92, SLOT_D);
-        var dummy = new THREE.Object3D();
-        var col = new THREE.Color();
-        var camOffsetX = 0;
+        var maxPos = 1;
+        slots.forEach(function (s) { if (s.posicao > maxPos) maxPos = s.posicao; });
 
-        data.camaras.forEach(function (cam) {
-            var ruas = cam.ruas || [];
-            var ruaIndex = {};
-            ruas.forEach(function (r, i) { ruaIndex[r] = i; });
+        var camGroup = new THREE.Group();
+        camGroup.name = 'camara-' + cam.codigo;
+        var mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+        var im = new THREE.InstancedMesh(boxGeo, mat, slots.length);
+        im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        im.userData = { isRack: true, camara: cam.codigo };
 
-            var slots = cam.slots || [];
-            if (!slots.length) return;
-
-            var maxPos = 1;
-            slots.forEach(function (s) { if (s.posicao > maxPos) maxPos = s.posicao; });
-
-            var camGroup = new THREE.Group();
-            camGroup.name = 'camara-' + cam.codigo;
-
-            var mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-            var im = new THREE.InstancedMesh(boxGeo, mat, slots.length);
-            im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-            im.userData = { isRack: true, camara: cam.codigo };
-
-            slots.forEach(function (slot, i) {
-                var ri = ruaIndex[slot.rua] != null ? ruaIndex[slot.rua] : 0;
-                var x = (slot.posicao - 1) * (SLOT_W + GAP_POS);
-                var y = (slot.nivel - 1) * SLOT_H;
-                var z = ri * (SLOT_D + GAP_RUA);
-                dummy.position.set(x + SLOT_W / 2, y + SLOT_H * 0.46, z + SLOT_D / 2);
-                dummy.rotation.set(0, 0, 0);
-                dummy.updateMatrix();
-                im.setMatrixAt(i, dummy.matrix);
-                col.setHex(slotColor(slot));
-                im.setColorAt(i, col);
-                state.slotIndex.push({
-                    mesh: im,
-                    instanceId: i,
-                    slot: slot,
-                    camara: cam.codigo
-                });
+        slots.forEach(function (slot, i) {
+            var ri = ruaIndex[slot.rua] != null ? ruaIndex[slot.rua] : 0;
+            var x = (slot.posicao - 1) * (SLOT_W + GAP_POS);
+            var y = (slot.nivel - 1) * SLOT_H;
+            var z = ri * (SLOT_D + GAP_RUA);
+            dummy.position.set(x + SLOT_W / 2, y + SLOT_H * 0.46, z + SLOT_D / 2);
+            dummy.rotation.set(0, 0, 0);
+            dummy.updateMatrix();
+            im.setMatrixAt(i, dummy.matrix);
+            col.setHex(slotColor(slot));
+            im.setColorAt(i, col);
+            state.slotIndex.push({
+                mesh: im,
+                instanceId: i,
+                slot: slot,
+                camara: cam.codigo
             });
-            finalizeInstancedMesh(im);
-            camGroup.add(im);
-            state.pickables.push(im);
-
-            var floorW = maxPos * (SLOT_W + GAP_POS) + 2;
-            var floorD = ruas.length * (SLOT_D + GAP_RUA) + 2;
-            var floorGeo = new THREE.PlaneGeometry(floorW, floorD);
-            var floorMat = new THREE.MeshLambertMaterial({ color: 0xb0bec5, side: THREE.DoubleSide });
-            var floor = new THREE.Mesh(floorGeo, floorMat);
-            floor.rotation.x = -Math.PI / 2;
-            floor.position.set(floorW / 2 - 1, -0.02, floorD / 2 - 1);
-            camGroup.add(floor);
-
-            camGroup.position.x = camOffsetX;
-            state.rackGroup.add(camGroup);
-            camOffsetX += floorW + GAP_CAM;
         });
+        finalizeInstancedMesh(im);
+        camGroup.add(im);
+        state.pickables.push(im);
 
-        onResize();
-        centerCameraOnRack();
-        renderFrame();
+        var floorW = maxPos * (SLOT_W + GAP_POS) + 2;
+        var floorD = ruas.length * (SLOT_D + GAP_RUA) + 2;
+        var floorGeo = new THREE.PlaneGeometry(floorW, floorD);
+        var floorMat = new THREE.MeshLambertMaterial({ color: 0xb0bec5, side: THREE.DoubleSide });
+        var floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.set(floorW / 2 - 1, -0.02, floorD / 2 - 1);
+        camGroup.add(floor);
+        camGroup.position.x = camOffsetX;
+        state.rackGroup.add(camGroup);
+        return camOffsetX + floorW + GAP_CAM;
+    }
+
+    function buildRack(data) {
+        return buildRackAsync(data);
+    }
+
+    function buildRackAsync(data) {
+        return ensureThree().then(function () {
+            var THREE = T();
+            clearRack();
+            if (!data || !data.camaras || !data.camaras.length || !state.rackGroup) return;
+
+            var camaras = data.camaras.slice();
+            var boxGeo = new THREE.BoxGeometry(SLOT_W, SLOT_H * 0.92, SLOT_D);
+            var dummy = new THREE.Object3D();
+            var col = new THREE.Color();
+            var camOffsetX = 0;
+            var idx = 0;
+
+            return new Promise(function (resolve) {
+                function next() {
+                    if (idx >= camaras.length) {
+                        onResize();
+                        centerCameraOnRack();
+                        renderFrame();
+                        return resolve();
+                    }
+                    camOffsetX = buildOneCamara(THREE, camaras[idx], camOffsetX, boxGeo, dummy, col);
+                    idx += 1;
+                    requestAnimationFrame(next);
+                }
+                next();
+            });
+        });
     }
 
     function centerCameraOnRack() {
         if (!state.rackGroup || !state.camera || !state.controls) return;
+        var THREE = T();
         var box = new THREE.Box3().setFromObject(state.rackGroup);
         if (box.isEmpty()) return;
         var center = box.getCenter(new THREE.Vector3());
@@ -205,8 +235,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         var wrap = $('wrap');
         var canvas = $('canvas');
         if (!wrap || !canvas || !state.renderer || !state.camera) return;
-        var w = Math.max(wrap.clientWidth, 320);
-        var h = Math.max(wrap.clientHeight, 280);
+        var rect = wrap.getBoundingClientRect();
+        var w = Math.max(rect.width || wrap.clientWidth, 320);
+        var h = Math.max(rect.height || wrap.clientHeight, 280);
         state.renderer.setSize(w, h, false);
         state.camera.aspect = w / h;
         state.camera.updateProjectionMatrix();
@@ -332,12 +363,15 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
     function waitForLayout(wrap, tries) {
         tries = tries || 0;
-        return new Promise(function (resolve) {
+        return new Promise(function (resolve, reject) {
             requestAnimationFrame(function () {
-                if (!wrap || tries > 8) return resolve();
+                if (!wrap) return reject(new Error('Área do mapa 3D não encontrada'));
                 var r = wrap.getBoundingClientRect();
-                if (r.width > 20 && r.height > 20) return resolve();
-                waitForLayout(wrap, tries + 1).then(resolve);
+                if (r.width > 40 && r.height > 40) return resolve();
+                if (tries >= 40) {
+                    return resolve();
+                }
+                waitForLayout(wrap, tries + 1).then(resolve, reject);
             });
         });
     }
@@ -354,6 +388,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
             return Promise.resolve();
         }
         return ensureThree().then(function () {
+            var THREE = T();
             var canvas = $('canvas');
             var wrap = $('wrap');
             if (!canvas || !wrap) throw new Error('Área do mapa 3D não encontrada (' + state.prefix + ')');
@@ -363,14 +398,16 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
                 state.scene.background = new THREE.Color(0xeceff1);
                 state.scene.fog = new THREE.Fog(0xeceff1, 40, 160);
 
-                var w = Math.max(wrap.clientWidth, 320);
-                var h = Math.max(wrap.clientHeight, 280);
+                var rect = wrap.getBoundingClientRect();
+                var w = Math.max(rect.width || wrap.clientWidth, 320);
+                var h = Math.max(rect.height || wrap.clientHeight, 280);
                 state.camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 400);
                 state.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false });
                 state.renderer.setPixelRatio(Math.min(global.devicePixelRatio || 1, 2));
                 state.renderer.setSize(w, h, false);
 
-                state.controls = new OrbitControls(state.camera, canvas);
+                if (!THREE.OrbitControls) throw new Error('OrbitControls não carregou');
+                state.controls = new THREE.OrbitControls(state.camera, canvas);
                 state.controls.enableDamping = true;
                 state.controls.dampingFactor = 0.08;
                 state.controls.maxPolarAngle = Math.PI / 2.05;
@@ -402,6 +439,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
                 renderLegenda();
                 state.inited = true;
                 animate();
+                renderFrame();
             });
         });
     }
@@ -438,4 +476,5 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         getPrefix: function () { return state.prefix; },
         dispose: disposeInternal
     };
+    global.__wmsMapa3dReady = true;
 })(typeof window !== 'undefined' ? window : globalThis);
