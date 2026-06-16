@@ -1035,6 +1035,7 @@ def _ensure_devolucao_nf_schema(conn):
             )
         except Exception:
             conn.execute(f'ALTER TABLE {tbl_pb} ADD COLUMN IF NOT EXISTS devolucao_nf_id BIGINT')
+        _ensure_devolucao_nf_status_cancelada_pg(conn)
     else:
         conn.execute(
             f'''CREATE TABLE IF NOT EXISTS {tbl_nf} (
@@ -1056,6 +1057,30 @@ def _ensure_devolucao_nf_schema(conn):
             pass
     try:
         conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def _ensure_devolucao_nf_status_cancelada_pg(conn):
+    """Permite status cancelada (parar NF / zerar conferência) no Postgres."""
+    if getattr(conn, 'kind', None) != 'pg':
+        return
+    if 'dev_nf_status_cancelada' in _SCHEMA_ENSURE_DONE:
+        return
+    try:
+        conn.execute(
+            'ALTER TABLE public.devolucao_nota_fiscal DROP CONSTRAINT IF EXISTS devolucao_nota_fiscal_status_check'
+        )
+        conn.execute(
+            """ALTER TABLE public.devolucao_nota_fiscal
+               ADD CONSTRAINT devolucao_nota_fiscal_status_check
+               CHECK (status IN ('em_andamento', 'concluida', 'cancelada'))"""
+        )
+        conn.commit()
+        _SCHEMA_ENSURE_DONE.add('dev_nf_status_cancelada')
     except Exception:
         try:
             conn.rollback()
@@ -1117,11 +1142,13 @@ def _devolucao_conferencia_lista_nf(conn, id_viagem, devolucao_nf_id):
         return []
     ids = _devolucao_ids_consulta(conn, id_viagem) or [id_viagem]
     ph = ','.join(['?'] * len(ids))
+    is_pg = getattr(conn, 'kind', None) == 'pg'
+    col_viagem = 'TRIM(COALESCE(id_viagem::text, \'\'))' if is_pg else 'TRIM(COALESCE(id_viagem, \'\'))'
     rows = conn.execute(
         f'''SELECT codigo_barras, codigo_interno, MAX(produto) AS produto,
                   SUM(quantidade) AS quantidade_bipada, MAX(unidade) AS unidade, MAX(peso) AS peso
            FROM produtos_bipados
-           WHERE TRIM(COALESCE(id_viagem, '')) IN ({ph})
+           WHERE {col_viagem} IN ({ph})
              AND COALESCE(fluxo, 'carregamento') = 'devolucao' AND devolucao_nf_id = ?
            GROUP BY codigo_barras, codigo_interno
            ORDER BY MAX(data_hora) DESC''',
@@ -1130,7 +1157,7 @@ def _devolucao_conferencia_lista_nf(conn, id_viagem, devolucao_nf_id):
     saida_rows = conn.execute(
         f'''SELECT codigo_barras, codigo_interno, SUM(quantidade) AS qtd_saida
            FROM produtos_bipados
-           WHERE TRIM(COALESCE(id_viagem, '')) IN ({ph})
+           WHERE {col_viagem} IN ({ph})
              AND COALESCE(fluxo, 'carregamento') = 'carregamento'
            GROUP BY codigo_barras, codigo_interno''',
         tuple(ids),
@@ -10892,35 +10919,50 @@ def api_devolucoes_notas_listar():
     if not id_viagem:
         return jsonify({'erro': 'Informe id_viagem'}), 400
     conn = get_db()
-    _ensure_devolucao_nf_schema(conn)
-    _ensure_pg_produtos_bipados_fluxo(conn)
-    id_norm = _normalizar_id_viagem(id_viagem) or id_viagem
-    ids = _devolucao_ids_consulta(conn, id_viagem) or [id_viagem, id_norm]
-    ids = list(dict.fromkeys([x for x in ids if x]))
-    ph = ','.join(['?'] * len(ids))
-    rows = conn.execute(
-        f'''SELECT id, id_viagem, numero_nf, motivo, status, doca, criado_em, concluida_em, criado_por, concluida_por
-           FROM devolucao_nota_fiscal
-           WHERE TRIM(COALESCE(id_viagem, '')) IN ({ph})
-           ORDER BY CASE WHEN status = 'em_andamento' THEN 0 ELSE 1 END, id DESC''',
-        tuple(ids),
-    ).fetchall()
-    conn.close()
-    notas = []
-    for row in rows or []:
-        d = dict(row) if hasattr(row, 'keys') else {}
-        if not d and row:
-            d = {
-                'id': row[0], 'id_viagem': row[1], 'numero_nf': row[2], 'motivo': row[3],
-                'status': row[4], 'doca': row[5], 'criado_em': row[6], 'concluida_em': row[7],
-                'criado_por': row[8], 'concluida_por': row[9],
-            }
-        d['motivo_label'] = _motivo_devolucao_label(d.get('motivo'))
-        d['status_label'] = _devolucao_status_label(d.get('status'))
-        d['criado_em'] = _fmt_datahora_br(d.get('criado_em'))
-        d['concluida_em'] = _fmt_datahora_br(d.get('concluida_em'))
-        notas.append(d)
-    return jsonify({'notas': notas, 'id_viagem': id_viagem})
+    try:
+        _ensure_devolucao_nf_schema(conn)
+        _ensure_pg_produtos_bipados_fluxo(conn)
+        id_norm = _normalizar_id_viagem(id_viagem) or id_viagem
+        ids = _devolucao_ids_consulta(conn, id_viagem) or [id_viagem, id_norm]
+        ids = list(dict.fromkeys([x for x in ids if x]))
+        if not ids:
+            ids = [id_viagem]
+        ph = ','.join(['?'] * len(ids))
+        is_pg = getattr(conn, 'kind', None) == 'pg'
+        col_viagem = 'TRIM(COALESCE(id_viagem::text, \'\'))' if is_pg else 'TRIM(COALESCE(id_viagem, \'\'))'
+        rows = conn.execute(
+            f'''SELECT id, id_viagem, numero_nf, motivo, status, doca, criado_em, concluida_em, criado_por, concluida_por
+               FROM devolucao_nota_fiscal
+               WHERE {col_viagem} IN ({ph})
+               ORDER BY CASE WHEN status = 'em_andamento' THEN 0 ELSE 1 END, id DESC''',
+            tuple(ids),
+        ).fetchall()
+        notas = []
+        for row in rows or []:
+            d = dict(row) if hasattr(row, 'keys') else {}
+            if not d and row:
+                d = {
+                    'id': row[0], 'id_viagem': row[1], 'numero_nf': row[2], 'motivo': row[3],
+                    'status': row[4], 'doca': row[5], 'criado_em': row[6], 'concluida_em': row[7],
+                    'criado_por': row[8], 'concluida_por': row[9],
+                }
+            d['motivo_label'] = _motivo_devolucao_label(d.get('motivo'))
+            d['status_label'] = _devolucao_status_label(d.get('status'))
+            d['criado_em'] = _fmt_datahora_br(d.get('criado_em'))
+            d['concluida_em'] = _fmt_datahora_br(d.get('concluida_em'))
+            notas.append(d)
+        return jsonify({'notas': notas, 'id_viagem': id_viagem})
+    except Exception as e:
+        try:
+            app.logger.exception('devolucoes/notas listar: %s', e)
+        except Exception:
+            pass
+        return jsonify({'erro': str(e), 'notas': []}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 @app.route('/api/devolucoes/notas', methods=['POST'])
@@ -11040,17 +11082,21 @@ def api_devolucoes_notas_cancelar(nf_id):
                WHERE devolucao_nf_id = ? AND COALESCE(fluxo, 'carregamento') = 'devolucao'""",
             (nf_id,),
         )
-        if getattr(conn, 'kind', None) == 'pg':
-            conn.execute(
-                """UPDATE devolucao_nota_fiscal SET status = 'cancelada' WHERE id = %s""",
-                (nf_id,),
-            )
-        else:
-            conn.execute(
-                """UPDATE devolucao_nota_fiscal SET status = 'cancelada' WHERE id = ?""",
-                (nf_id,),
-            )
+        conn.execute(
+            """UPDATE devolucao_nota_fiscal SET status = 'cancelada' WHERE id = ?""",
+            (nf_id,),
+        )
         conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            app.logger.exception('devolucoes/notas cancelar: %s', e)
+        except Exception:
+            pass
+        return jsonify({'success': False, 'erro': str(e)}), 500
     finally:
         try:
             conn.close()
@@ -11073,6 +11119,7 @@ def api_devolucoes_zerar_conferencia(id_viagem):
     conn = get_db()
     _ensure_devolucao_nf_schema(conn)
     _ensure_pg_produtos_bipados_fluxo(conn)
+    removidos = 0
     try:
         ids = _devolucao_ids_consulta(conn, id_viagem) or [id_viagem]
         id_norm = _normalizar_id_viagem(id_viagem) or id_viagem
@@ -11090,7 +11137,7 @@ def api_devolucoes_zerar_conferencia(id_viagem):
                  AND COALESCE(fluxo, 'carregamento') = 'devolucao'""",
             tuple(ids),
         )
-        removidos = getattr(cur, 'rowcount', None) if cur else None
+        removidos = getattr(cur, 'rowcount', None) if cur else 0
         conn.execute(
             f"""UPDATE devolucao_nota_fiscal SET status = 'cancelada'
                WHERE {col_viagem} IN ({ph}) AND status = 'em_andamento'""",
@@ -11099,6 +11146,16 @@ def api_devolucoes_zerar_conferencia(id_viagem):
         for vid in ids:
             _limpar_periodo_bipagem(conn, vid, 'devolucao')
         conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            app.logger.exception('devolucoes/conferencia zerar: %s', e)
+        except Exception:
+            pass
+        return jsonify({'success': False, 'erro': str(e)}), 500
     finally:
         try:
             conn.close()

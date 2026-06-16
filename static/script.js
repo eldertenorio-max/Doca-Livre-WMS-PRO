@@ -16460,6 +16460,13 @@ async function addProduto(forcarAdicionar, dadosOverride) {
         focarCampoCodigoBarras();
         return;
     }
+    if (result && result.erro) {
+        atualizarQuantidadeBipadaNaTabela(codigoBarras, -quantidade, codigoProdutoParaTabela);
+        atualizarEstatisticasOtimista(quantidade, true);
+        showMessage(result.erro, 'error');
+        focarCampoCodigoBarras();
+        return;
+    }
 
     if (result && result.success) {
         if (document.getElementById('modal-cadastro-item')) document.getElementById('modal-cadastro-item').style.display = 'none';
