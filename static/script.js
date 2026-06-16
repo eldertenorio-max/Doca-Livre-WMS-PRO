@@ -2990,7 +2990,7 @@ var _SIDEBAR_ICONES = {
     wms: {
         painel: '📊', 'etiquetas-longarina': '🏷️', localizacoes: '📍', 'mapa-3d': '🧊', produtos: '📦', movimentacoes: '↔️',
         recebimento: '📥', 'controle-paletes': '🧱', 'historico-nf': '🕐', relatorios: '📈', separacao: '✂️',
-        'areas-especiais': '⭐', inventario: '🔢', pesquisa: '🔍'
+        'enderecamento': '📍', inventario: '🔢', pesquisa: '🔍'
     }
 };
 
@@ -4314,7 +4314,7 @@ function _wmsMostrarSubtab(tab) {
     else if (tab === 'historico-nf') wmsInitHistoricoNfAba();
     else if (tab === 'relatorios') wmsInitRelatoriosAba();
     else if (tab === 'separacao') loadWmsSeparacao();
-    else if (tab === 'areas-especiais') loadWmsAreasEspeciais();
+    else if (tab === 'enderecamento' || tab === 'areas-especiais') loadWmsEnderecamento();
     else if (tab === 'inventario') loadWmsInventarios();
 }
 
@@ -4393,138 +4393,112 @@ async function loadWmsMapa3d() {
     }
 }
 
-async function loadWmsAreasEspeciais() {
-    var gridEsp = document.getElementById('wms-areas-especiais-grid');
-    var gridNorm = document.getElementById('wms-estoque-normal-grid');
-    var gridDf = document.getElementById('wms-destinos-fixos-grid');
-    if (gridEsp) gridEsp.innerHTML = '<p class="loading">Carregando áreas especiais…</p>';
-    if (gridNorm) gridNorm.innerHTML = '<p class="loading">Carregando estoque normal…</p>';
-    if (gridDf) gridDf.innerHTML = '<p class="loading">Carregando destinos fixos…</p>';
-    var _coresDestino = {
-        envio_mg: '#42a5f5', retrabalho: '#ffca28', descarte_perdas: '#8d6e63',
-        palete_bloqueado: '#78909c', avaria: '#ab47bc', reentregas: '#7e57c2'
-    };
+function _wmsRenderEnderecoRow(grupo) {
+    var slots = grupo.slots || grupo.total_slots || grupo.total || 0;
+    var ocup = grupo.ocupadas || 0;
+    var livres = grupo.livres != null ? grupo.livres : Math.max(0, slots - ocup);
+    var pct = grupo.percentual_ocupacao != null ? grupo.percentual_ocupacao : (slots ? Math.round(1000 * ocup / slots) / 10 : 0);
+    var sub = grupo.subtitulo || '';
+    if (!sub && grupo.camara) {
+        sub = 'câmara ' + grupo.camara;
+        if (grupo.rua) sub += ' · rua ' + grupo.rua;
+        else if (grupo.ruas && grupo.ruas.length) sub += ' · ruas ' + grupo.ruas.join(' / ');
+    } else if (!sub && grupo.rua) {
+        sub = 'rua ' + grupo.rua;
+    }
+    var posHtml = (grupo.posicoes || []).map(function(p) {
+        var st = (p.status || '').toLowerCase();
+        var cls = st === 'ocupada' ? 'wms-end-slot--ocup' : (st === 'nao_criada' ? 'wms-end-slot--nao' : 'wms-end-slot--livre');
+        var lbl = st === 'ocupada' ? 'ocup.' : (st === 'nao_criada' ? '—' : 'livre');
+        var tit = p.codigo_endereco || ('Pos ' + p.posicao);
+        if (st === 'ocupada') {
+            tit += ' · Palete ' + (p.etiqueta || p.palete_id || '?');
+            if (p.qtd_caixas) tit += ' · ' + p.qtd_caixas + ' cx';
+        } else if (p.barcode_longarina) {
+            tit += ' · ' + p.barcode_longarina;
+        } else if (p.coluna != null && p.nivel != null) {
+            tit += ' · col ' + p.coluna + ' nív ' + p.nivel;
+        }
+        if (p.categoria_zona) tit += ' · cat ' + p.categoria_zona;
+        return '<div class="wms-end-slot ' + cls + '" title="' + escHtml(tit) + '"><strong>' + escHtml(String(p.posicao)) + '</strong>' + escHtml(lbl) + '</div>';
+    }).join('');
+    return '<div class="wms-end-row">'
+        + '<div class="wms-end-row-titulo">' + escHtml(grupo.label || grupo.descricao || '—')
+        + (sub ? '<span class="wms-end-row-sub">' + escHtml(sub) + '</span>' : '') + '</div>'
+        + '<div class="wms-end-row-slots">' + (posHtml || '<span class="wms-end-row-sub">Sem posições</span>') + '</div>'
+        + '<div class="wms-end-row-stats">' + escHtml(ocup) + '/' + escHtml(slots) + ' ocupadas · '
+        + escHtml(livres) + ' livres · ' + escHtml(pct) + '%</div></div>';
+}
+
+function _wmsRenderEnderecoSecao(titulo, grupos) {
+    if (!grupos || !grupos.length) return '';
+    return '<div class="wms-end-secao">' + escHtml(titulo) + '</div>'
+        + grupos.map(_wmsRenderEnderecoRow).join('');
+}
+
+async function loadWmsEnderecamento() {
+    var grid = document.getElementById('wms-enderecamento-grid');
+    if (grid) grid.innerHTML = '<p class="loading" style="padding:14px;">Carregando endereçamento…</p>';
     try {
-        var data = await _wmsFetchGet('/wms/areas-especiais', 45000);
+        var data = await _wmsFetchGet('/wms/enderecamento', 45000);
         if (!data || data.erro) {
-            var err = '<p class="loading" style="color:#c62828;">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar.')) + '</p>';
-            if (gridEsp) gridEsp.innerHTML = err;
-            if (gridNorm) gridNorm.innerHTML = err;
-            if (gridDf) gridDf.innerHTML = err;
+            if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;padding:14px;">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar.')) + '</p>';
             return;
         }
-        var en = data.estoque_normal || {};
-        var elEnT = document.getElementById('wms-en-total-slots');
-        var elEnO = document.getElementById('wms-en-total-ocup');
-        var elEnL = document.getElementById('wms-en-total-livre');
-        if (elEnT) elEnT.textContent = String(en.total_slots || 0);
-        if (elEnO) elEnO.textContent = String(en.total_ocupadas || 0);
-        if (elEnL) elEnL.textContent = String(en.total_livres || 0);
-        if (gridNorm) {
-            var cams = en.camaras || [];
-            gridNorm.innerHTML = cams.length ? cams.map(function(c) {
-                var pct = c.percentual_ocupacao || 0;
-                var corBar = pct >= 90 ? '#c62828' : (pct >= 70 ? '#ef6c00' : '#1565c0');
-                var ruasTxt = (c.ruas || []).join(' / ');
-                var catHtml = (c.por_categoria || []).map(function(cat) {
-                    return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:4px 8px;border-radius:6px;background:#e3f2fd;font-size:11px;">'
-                        + '<strong>Cat ' + escHtml(cat.categoria) + '</strong> · '
-                        + escHtml(cat.ocupadas) + ' ocup. / ' + escHtml(cat.total) + ' pos.</span>';
-                }).join('');
-                var occ = c.ocupadas_lista || [];
-                var occHtml = occ.length
-                    ? occ.map(function(p) {
-                        var tit = (p.codigo_endereco || '') + (p.etiqueta ? (' · Palete ' + p.etiqueta) : '') + (p.qtd_caixas ? (' · ' + p.qtd_caixas + ' cx') : '');
-                        return '<div title="' + escHtml(tit) + '" style="min-width:88px;padding:6px 8px;border-radius:6px;font-size:11px;text-align:center;background:#ffcdd2;">'
-                            + escHtml(p.codigo_endereco || (p.rua + '-' + p.posicao + '-' + p.nivel))
-                            + '<br><span style="opacity:.85;font-size:10px;">' + escHtml(p.categoria_zona || '—') + '</span></div>';
-                    }).join('')
-                    : '<p class="info-text" style="margin:0;font-size:12px;">Nenhuma posição ocupada nesta câmara.</p>';
-                return '<div class="conferencia-bloco form-container" style="margin-bottom:16px;padding:14px;background:#fafafa;border-left:4px solid ' + corBar + ';">'
-                    + '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-bottom:8px;">'
-                    + '<div><strong>' + escHtml(c.descricao || ('Câmara ' + c.camara)) + '</strong>'
-                    + (ruasTxt ? ' <span style="color:#666;font-size:12px;">(ruas ' + escHtml(ruasTxt) + ' · ' + escHtml(c.niveis) + ' níveis)</span>' : '') + '</div>'
-                    + '<div style="font-size:13px;">' + escHtml(c.ocupadas) + '/' + escHtml(c.total_slots) + ' ocupadas · '
-                    + escHtml(c.livres) + ' livres · ' + escHtml(pct) + '%</div></div>'
-                    + '<div style="height:8px;background:#e0e0e0;border-radius:4px;margin-bottom:10px;overflow:hidden;">'
-                    + '<div style="height:100%;width:' + Math.min(100, pct) + '%;background:' + corBar + ';"></div></div>'
-                    + (catHtml ? '<div style="margin-bottom:10px;">' + catHtml + '</div>' : '')
-                    + '<div style="font-size:12px;font-weight:600;margin-bottom:6px;color:#555;">Posições ocupadas' + (occ.length ? (' (' + occ.length + (c.ocupadas > occ.length ? '+' : '') + ')') : '') + ':</div>'
-                    + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + occHtml + '</div></div>';
-            }).join('') : '<p>Nenhuma câmara de estoque normal configurada.</p>';
-        }
+        var html = '';
         var df = data.destinos_fixos || {};
-        var elDfT = document.getElementById('wms-df-total');
-        var elDfO = document.getElementById('wms-df-ocup');
-        var elDfL = document.getElementById('wms-df-livre');
-        if (elDfT) elDfT.textContent = String(df.total_enderecos || 0);
-        if (elDfO) elDfO.textContent = String(df.total_ocupadas || 0);
-        if (elDfL) elDfL.textContent = String(df.total_livres || 0);
-        if (gridDf) {
-            var grupos = df.grupos || [];
-            gridDf.innerHTML = grupos.length ? grupos.map(function(g) {
-                var cor = _coresDestino[g.area] || '#1565c0';
-                var ruasTxt = (g.ruas || []).join(' / ');
-                var rows = (g.enderecos || []).map(function(e) {
-                    var stCls = e.status === 'ocupada' ? 'color:#c62828;font-weight:bold;' : 'color:#2e7d32;';
-                    var pal = e.status === 'ocupada'
-                        ? (escHtml(e.etiqueta || ('#' + e.palete_id)) + (e.qtd_caixas ? ' · ' + e.qtd_caixas + ' cx' : ''))
-                        : '—';
-                    return '<tr><td><strong>' + escHtml(e.codigo_endereco) + '</strong></td>'
-                        + '<td><code>' + escHtml(e.barcode_longarina) + '</code></td>'
-                        + '<td>' + escHtml(e.rua) + '</td><td>' + escHtml(e.posicao) + '</td><td>' + escHtml(e.nivel) + '</td>'
-                        + '<td style="' + stCls + '">' + escHtml(e.status) + '</td><td>' + pal + '</td></tr>';
-                }).join('');
-                return '<div class="conferencia-bloco form-container" style="margin-bottom:16px;padding:14px;background:#fafafa;border-left:4px solid ' + cor + ';">'
-                    + '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-bottom:10px;">'
-                    + '<div><strong style="font-size:15px;">' + escHtml(g.label || g.area) + '</strong>'
-                    + ' <span style="color:#666;font-size:12px;">· ' + escHtml(g.camara_nome || ('Câmara ' + g.camara))
-                    + (ruasTxt ? ' · ruas ' + escHtml(ruasTxt) : '') + '</span></div>'
-                    + '<div style="font-size:13px;">' + escHtml(g.ocupadas) + '/' + escHtml(g.total) + ' ocupados · '
-                    + escHtml(g.livres) + ' livres</div></div>'
-                    + '<div class="table-container"><table class="data-table" style="font-size:12px;">'
-                    + '<thead><tr><th>Endereço WMS</th><th>Bip longarina</th><th>Rua</th><th>Col</th><th>Nív</th><th>Status</th><th>Palete</th></tr></thead>'
-                    + '<tbody>' + rows + '</tbody></table></div></div>';
-            }).join('') : '<p class="info-text">Nenhum destino fixo no layout das câmaras 11–21.</p>';
+        var gruposDf = (df.grupos || []).map(function(g) {
+            var ruasTxt = g.rua || (g.ruas || []).join(' / ');
+            return {
+                label: g.label || g.area,
+                subtitulo: 'câmara ' + g.camara + (ruasTxt ? ' · rua ' + ruasTxt : ''),
+                slots: g.slots || g.total,
+                ocupadas: g.ocupadas,
+                livres: g.livres,
+                percentual_ocupacao: g.percentual_ocupacao,
+                posicoes: g.posicoes || []
+            };
+        });
+        html += _wmsRenderEnderecoSecao('Destinos fixos — finalidade × câmara', gruposDf);
+
+        var en = data.estoque_normal || {};
+        var gruposEn = (en.camaras || []).map(function(c) {
+            var ruasTxt = (c.ruas || []).join(' / ');
+            return {
+                label: c.label || ('Estoque normal — ' + (c.descricao || ('câmara ' + c.camara))),
+                camara: c.camara,
+                subtitulo: (ruasTxt ? 'ruas ' + ruasTxt : '') + (c.niveis ? (ruasTxt ? ' · ' : '') + c.niveis + ' níveis' : ''),
+                slots: c.slots || c.total_slots,
+                ocupadas: c.ocupadas,
+                livres: c.livres,
+                percentual_ocupacao: c.percentual_ocupacao,
+                posicoes: c.posicoes || []
+            };
+        });
+        html += _wmsRenderEnderecoSecao('Estoque normal — câmaras 11, 12, 13 e 21', gruposEn);
+
+        var areas98 = (data.areas || []).map(function(a) {
+            return {
+                label: a.label || a.area,
+                subtitulo: 'câmara 98 · rua ' + (a.rua || ''),
+                slots: a.slots,
+                ocupadas: a.ocupadas,
+                livres: a.livres,
+                percentual_ocupacao: a.percentual_ocupacao,
+                posicoes: a.posicoes || []
+            };
+        });
+        html += _wmsRenderEnderecoSecao('Quarentena e fluxos especiais — câmara 98', areas98);
+
+        if (grid) {
+            grid.innerHTML = html || '<p style="padding:14px;">Nenhum endereço configurado.</p>';
         }
-        var elT = document.getElementById('wms-ae-total-slots');
-        var elO = document.getElementById('wms-ae-total-ocup');
-        var elL = document.getElementById('wms-ae-total-livre');
-        if (elT) elT.textContent = String(data.total_slots || 0);
-        if (elO) elO.textContent = String(data.total_ocupadas || 0);
-        if (elL) elL.textContent = String(data.total_livres || 0);
-        if (!gridEsp) return;
-        var areas = data.areas || [];
-        if (!areas.length) {
-            gridEsp.innerHTML = '<p>Nenhuma área especial configurada.</p>';
-            return;
-        }
-        gridEsp.innerHTML = areas.map(function(a) {
-            var pct = a.percentual_ocupacao || 0;
-            var corBar = pct >= 90 ? '#c62828' : (pct >= 70 ? '#ef6c00' : '#2e7d32');
-            var posHtml = (a.posicoes || []).map(function(p) {
-                var cls = p.status === 'ocupada' ? 'background:#ffcdd2;' : (p.status === 'vazia' ? 'background:#e8f5e9;' : 'background:#f5f5f5;');
-                var tit = p.status === 'ocupada'
-                    ? ('Palete ' + (p.etiqueta || p.palete_id || '?') + (p.qtd_caixas ? ' · ' + p.qtd_caixas + ' cx' : ''))
-                    : (p.codigo_endereco || 'Pos ' + p.posicao);
-                return '<div title="' + escHtml(tit) + '" style="min-width:72px;padding:6px 8px;border-radius:6px;font-size:11px;text-align:center;' + cls + '">'
-                    + escHtml(String(p.posicao)) + '<br><span style="opacity:.85;">' + escHtml(p.status === 'ocupada' ? 'ocup.' : 'livre') + '</span></div>';
-            }).join('');
-            return '<div class="conferencia-bloco form-container" style="margin-bottom:16px;padding:14px;background:#fafafa;border-left:4px solid ' + corBar + ';">'
-                + '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-bottom:10px;">'
-                + '<div><strong>' + escHtml(a.label || a.area) + '</strong>'
-                + ' <span style="color:#666;font-size:12px;">(rua ' + escHtml(a.rua || '') + ')</span></div>'
-                + '<div style="font-size:13px;">' + escHtml(a.ocupadas) + '/' + escHtml(a.slots) + ' ocupadas · '
-                + escHtml(a.livres) + ' livres · ' + escHtml(pct) + '%</div></div>'
-                + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + posHtml + '</div></div>';
-        }).join('');
     } catch (e) {
-        var errMsg = '<p class="loading" style="color:#c62828;">' + escHtml((e && e.message) || 'Erro.') + '</p>';
-        if (gridEsp) gridEsp.innerHTML = errMsg;
-        if (gridNorm) gridNorm.innerHTML = errMsg;
-        if (gridDf) gridDf.innerHTML = errMsg;
+        if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;padding:14px;">' + escHtml((e && e.message) || 'Erro.') + '</p>';
     }
 }
+
+var loadWmsAreasEspeciais = loadWmsEnderecamento;
 
 function wmsAtualizarAvisoEstadoEntrada() {
     var sel = document.getElementById('wms-pal-estado');
@@ -4657,8 +4631,8 @@ function initWmsEnderecamento() {
     if (bFin) bFin.addEventListener('click', wmsFinalizarRecebimento);
     var bInv = document.getElementById('btn-wms-novo-inventario');
     if (bInv) bInv.addEventListener('click', wmsCriarInventario);
-    var bAe = document.getElementById('btn-wms-areas-especiais-atualizar');
-    if (bAe) bAe.addEventListener('click', loadWmsAreasEspeciais);
+    var bEnd = document.getElementById('btn-wms-enderecamento-atualizar');
+    if (bEnd) bEnd.addEventListener('click', loadWmsEnderecamento);
     var bRedis = document.getElementById('btn-wms-redistribuir');
     if (bRedis) bRedis.addEventListener('click', wmsRedistribuirLayout);
     var bCtrlBusca = document.getElementById('btn-wms-ctrl-buscar');
@@ -4677,8 +4651,9 @@ function initWmsEnderecamento() {
     if (bRelCsv) bRelCsv.addEventListener('click', wmsExportarRelatorioCsv);
 
     window._wmsIniciarModulo = function(tab) {
-        var abasWms = ['painel', 'localizacoes', 'etiquetas-longarina', 'produtos', 'movimentacoes', 'recebimento', 'controle-paletes', 'historico-nf', 'relatorios', 'separacao', 'areas-especiais', 'inventario', 'pesquisa'];
+        var abasWms = ['painel', 'localizacoes', 'etiquetas-longarina', 'produtos', 'movimentacoes', 'recebimento', 'controle-paletes', 'historico-nf', 'relatorios', 'separacao', 'enderecamento', 'inventario', 'pesquisa'];
         var t = (tab || 'painel').trim();
+        if (t === 'areas-especiais') t = 'enderecamento';
         if (abasWms.indexOf(t) === -1) t = 'painel';
         _wmsMostrarSubtab(t);
     };

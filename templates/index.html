@@ -2665,7 +2665,7 @@
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="historico-nf">HISTÓRICO NF</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="relatorios">RELATÓRIOS</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="separacao">SEPARAÇÃO</button>
-                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="areas-especiais">ÁREAS ESPECIAIS</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="enderecamento">ENDEREÇAMENTO</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="inventario">INVENTÁRIO</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="pesquisa">PESQUISA SKU</button>
                 </nav>
@@ -2687,7 +2687,7 @@
                     </div>
                     <div id="wms-panel-localizacoes" class="wms-inner-panel" hidden>
                         <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: flex-end;">
-                            <div class="form-group"><label>Câmara</label><select id="wms-filtro-camara"><option value="">Todas</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="21">21</option><option value="98">98 (áreas especiais)</option><option value="99">99 (stage)</option></select></div>
+                            <div class="form-group"><label>Câmara</label><select id="wms-filtro-camara"><option value="">Todas</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="21">21</option><option value="98">98 (quarentena)</option><option value="99">99 (stage)</option></select></div>
                             <div class="form-group"><label>Categoria zona</label><select id="wms-filtro-cat-zona"><option value="">Todas</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div>
                             <div class="form-group"><label>Status</label><select id="wms-filtro-status"><option value="">Todos</option><option value="vazia">Vazia</option><option value="ocupada">Ocupada</option></select></div>
                             <button type="button" class="btn btn-primary" id="btn-wms-localizacoes">Atualizar</button>
@@ -3045,42 +3045,10 @@
                         <p id="wms-stage-resumo" class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">—</p>
                         <div class="table-container"><table class="data-table"><thead><tr><th>Mov.</th><th>Status</th><th>Palete</th><th>Origem</th><th>Stage</th><th>Quando</th></tr></thead><tbody id="wms-tbody-stage"><tr><td colspan="6" class="loading">Informe roteiro e viagem.</td></tr></tbody></table></div>
                     </div>
-                    <div id="wms-panel-areas-especiais" class="wms-inner-panel" hidden>
-                        <section style="margin-bottom: 28px;">
-                            <h3 style="margin: 0 0 8px 0;">Estoque normal — câmaras 11, 12, 13 e 21</h3>
-                            <p class="info-text" style="margin: 0 0 12px 0;">Posições de armazenagem por <strong>categoria A/B/C/D</strong> (putaway automático). Não inclui destinos fixos (MG, retrabalho, descarte nas câmaras frias) nem a câmara 98.</p>
-                            <div class="stats-grid" style="margin-bottom: 16px;">
-                                <div class="stat-card"><h3>Total posições</h3><p class="stat-number" id="wms-en-total-slots">0</p></div>
-                                <div class="stat-card"><h3>Ocupadas</h3><p class="stat-number" id="wms-en-total-ocup">0</p></div>
-                                <div class="stat-card"><h3>Livres</h3><p class="stat-number" id="wms-en-total-livre">0</p></div>
-                            </div>
-                            <div id="wms-estoque-normal-grid"></div>
-                        </section>
-                        <hr style="margin: 24px 0; border: none; border-top: 1px solid #ddd;">
-                        <section style="margin-bottom: 28px;">
-                            <h3 style="margin: 0 0 8px 0;">Destinos fixos — finalidade × câmara × endereço</h3>
-                            <p class="info-text" style="margin: 0 0 12px 0;">Cada bloco mostra a <strong>finalidade</strong> (ex.: AVARIA, REENTREGAS), a <strong>câmara</strong> onde fica e todos os <strong>endereços reservados</strong> para aquele fim no layout.</p>
-                            <div class="stats-grid" style="margin-bottom: 16px;">
-                                <div class="stat-card"><h3>Endereços reservados</h3><p class="stat-number" id="wms-df-total">0</p></div>
-                                <div class="stat-card"><h3>Ocupados</h3><p class="stat-number" id="wms-df-ocup">0</p></div>
-                                <div class="stat-card"><h3>Livres</h3><p class="stat-number" id="wms-df-livre">0</p></div>
-                            </div>
-                            <div id="wms-destinos-fixos-grid"></div>
-                        </section>
-                        <hr style="margin: 24px 0; border: none; border-top: 1px solid #ddd;">
-                        <section>
-                            <h3 style="margin: 0 0 8px 0;">Áreas especiais — câmara 98</h3>
-                            <p class="info-text" style="margin: 0 0 12px 0;">Quarentena e fluxos especiais (descarte, avaria, MG, reentregas…). Capacidades em <code>data/wms_areas_especiais.json</code>.</p>
-                            <div class="stats-grid" style="margin-bottom: 16px;">
-                                <div class="stat-card"><h3>Total posições</h3><p class="stat-number" id="wms-ae-total-slots">0</p></div>
-                                <div class="stat-card"><h3>Ocupadas</h3><p class="stat-number" id="wms-ae-total-ocup">0</p></div>
-                                <div class="stat-card"><h3>Livres</h3><p class="stat-number" id="wms-ae-total-livre">0</p></div>
-                            </div>
-                            <div class="form-row" style="margin-bottom: 12px;">
-                                <button type="button" class="btn btn-primary" id="btn-wms-areas-especiais-atualizar">Atualizar ocupação</button>
-                            </div>
-                            <div id="wms-areas-especiais-grid"></div>
-                        </section>
+                    <div id="wms-panel-enderecamento" class="wms-inner-panel" hidden>
+                        <p class="info-text" style="margin: 0 0 12px 0;">Mapa de ocupação por <strong>câmara</strong>, <strong>finalidade</strong> e <strong>endereço</strong>. Estoque normal (câm. 11–21), destinos fixos (MG, avaria, reentregas…) e quarentena (câm. 98).</p>
+                        <button type="button" class="btn btn-primary wms-end-btn-atualizar" id="btn-wms-enderecamento-atualizar">Atualizar ocupação</button>
+                        <div id="wms-enderecamento-grid" class="wms-enderecamento-grid"></div>
                     </div>
                     <div id="wms-panel-inventario" class="wms-inner-panel" hidden>
                         <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: flex-end;">
