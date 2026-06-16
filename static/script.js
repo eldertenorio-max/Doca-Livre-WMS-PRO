@@ -4394,13 +4394,57 @@ async function loadWmsMapa3d() {
 }
 
 async function loadWmsAreasEspeciais() {
-    var grid = document.getElementById('wms-areas-especiais-grid');
-    if (grid) grid.innerHTML = '<p class="loading">Carregando ocupação...</p>';
+    var gridEsp = document.getElementById('wms-areas-especiais-grid');
+    var gridNorm = document.getElementById('wms-estoque-normal-grid');
+    if (gridEsp) gridEsp.innerHTML = '<p class="loading">Carregando áreas especiais…</p>';
+    if (gridNorm) gridNorm.innerHTML = '<p class="loading">Carregando estoque normal…</p>';
     try {
         var data = await _wmsFetchGet('/wms/areas-especiais', 45000);
         if (!data || data.erro) {
-            if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar.')) + '</p>';
+            var err = '<p class="loading" style="color:#c62828;">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar.')) + '</p>';
+            if (gridEsp) gridEsp.innerHTML = err;
+            if (gridNorm) gridNorm.innerHTML = err;
             return;
+        }
+        var en = data.estoque_normal || {};
+        var elEnT = document.getElementById('wms-en-total-slots');
+        var elEnO = document.getElementById('wms-en-total-ocup');
+        var elEnL = document.getElementById('wms-en-total-livre');
+        if (elEnT) elEnT.textContent = String(en.total_slots || 0);
+        if (elEnO) elEnO.textContent = String(en.total_ocupadas || 0);
+        if (elEnL) elEnL.textContent = String(en.total_livres || 0);
+        if (gridNorm) {
+            var cams = en.camaras || [];
+            gridNorm.innerHTML = cams.length ? cams.map(function(c) {
+                var pct = c.percentual_ocupacao || 0;
+                var corBar = pct >= 90 ? '#c62828' : (pct >= 70 ? '#ef6c00' : '#1565c0');
+                var ruasTxt = (c.ruas || []).join(' / ');
+                var catHtml = (c.por_categoria || []).map(function(cat) {
+                    return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:4px 8px;border-radius:6px;background:#e3f2fd;font-size:11px;">'
+                        + '<strong>Cat ' + escHtml(cat.categoria) + '</strong> · '
+                        + escHtml(cat.ocupadas) + ' ocup. / ' + escHtml(cat.total) + ' pos.</span>';
+                }).join('');
+                var occ = c.ocupadas_lista || [];
+                var occHtml = occ.length
+                    ? occ.map(function(p) {
+                        var tit = (p.codigo_endereco || '') + (p.etiqueta ? (' · Palete ' + p.etiqueta) : '') + (p.qtd_caixas ? (' · ' + p.qtd_caixas + ' cx') : '');
+                        return '<div title="' + escHtml(tit) + '" style="min-width:88px;padding:6px 8px;border-radius:6px;font-size:11px;text-align:center;background:#ffcdd2;">'
+                            + escHtml(p.codigo_endereco || (p.rua + '-' + p.posicao + '-' + p.nivel))
+                            + '<br><span style="opacity:.85;font-size:10px;">' + escHtml(p.categoria_zona || '—') + '</span></div>';
+                    }).join('')
+                    : '<p class="info-text" style="margin:0;font-size:12px;">Nenhuma posição ocupada nesta câmara.</p>';
+                return '<div class="conferencia-bloco form-container" style="margin-bottom:16px;padding:14px;background:#fafafa;border-left:4px solid ' + corBar + ';">'
+                    + '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-bottom:8px;">'
+                    + '<div><strong>' + escHtml(c.descricao || ('Câmara ' + c.camara)) + '</strong>'
+                    + (ruasTxt ? ' <span style="color:#666;font-size:12px;">(ruas ' + escHtml(ruasTxt) + ' · ' + escHtml(c.niveis) + ' níveis)</span>' : '') + '</div>'
+                    + '<div style="font-size:13px;">' + escHtml(c.ocupadas) + '/' + escHtml(c.total_slots) + ' ocupadas · '
+                    + escHtml(c.livres) + ' livres · ' + escHtml(pct) + '%</div></div>'
+                    + '<div style="height:8px;background:#e0e0e0;border-radius:4px;margin-bottom:10px;overflow:hidden;">'
+                    + '<div style="height:100%;width:' + Math.min(100, pct) + '%;background:' + corBar + ';"></div></div>'
+                    + (catHtml ? '<div style="margin-bottom:10px;">' + catHtml + '</div>' : '')
+                    + '<div style="font-size:12px;font-weight:600;margin-bottom:6px;color:#555;">Posições ocupadas' + (occ.length ? (' (' + occ.length + (c.ocupadas > occ.length ? '+' : '') + ')') : '') + ':</div>'
+                    + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + occHtml + '</div></div>';
+            }).join('') : '<p>Nenhuma câmara de estoque normal configurada.</p>';
         }
         var elT = document.getElementById('wms-ae-total-slots');
         var elO = document.getElementById('wms-ae-total-ocup');
@@ -4408,13 +4452,13 @@ async function loadWmsAreasEspeciais() {
         if (elT) elT.textContent = String(data.total_slots || 0);
         if (elO) elO.textContent = String(data.total_ocupadas || 0);
         if (elL) elL.textContent = String(data.total_livres || 0);
-        if (!grid) return;
+        if (!gridEsp) return;
         var areas = data.areas || [];
         if (!areas.length) {
-            grid.innerHTML = '<p>Nenhuma área configurada.</p>';
+            gridEsp.innerHTML = '<p>Nenhuma área especial configurada.</p>';
             return;
         }
-        grid.innerHTML = areas.map(function(a) {
+        gridEsp.innerHTML = areas.map(function(a) {
             var pct = a.percentual_ocupacao || 0;
             var corBar = pct >= 90 ? '#c62828' : (pct >= 70 ? '#ef6c00' : '#2e7d32');
             var posHtml = (a.posicoes || []).map(function(p) {
@@ -4434,7 +4478,9 @@ async function loadWmsAreasEspeciais() {
                 + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + posHtml + '</div></div>';
         }).join('');
     } catch (e) {
-        if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;">' + escHtml((e && e.message) || 'Erro.') + '</p>';
+        var errMsg = '<p class="loading" style="color:#c62828;">' + escHtml((e && e.message) || 'Erro.') + '</p>';
+        if (gridEsp) gridEsp.innerHTML = errMsg;
+        if (gridNorm) gridNorm.innerHTML = errMsg;
     }
 }
 

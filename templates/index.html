@@ -3046,16 +3046,30 @@
                         <div class="table-container"><table class="data-table"><thead><tr><th>Mov.</th><th>Status</th><th>Palete</th><th>Origem</th><th>Stage</th><th>Quando</th></tr></thead><tbody id="wms-tbody-stage"><tr><td colspan="6" class="loading">Informe roteiro e viagem.</td></tr></tbody></table></div>
                     </div>
                     <div id="wms-panel-areas-especiais" class="wms-inner-panel" hidden>
-                        <p class="info-text" style="margin: 0 0 12px 0;">Câmara <strong>98</strong> — posições reservadas para quarentena e fluxos especiais. Capacidades configuráveis em <code>data/wms_areas_especiais.json</code>.</p>
-                        <div class="stats-grid" style="margin-bottom: 16px;">
-                            <div class="stat-card"><h3>Total posições</h3><p class="stat-number" id="wms-ae-total-slots">0</p></div>
-                            <div class="stat-card"><h3>Ocupadas</h3><p class="stat-number" id="wms-ae-total-ocup">0</p></div>
-                            <div class="stat-card"><h3>Livres</h3><p class="stat-number" id="wms-ae-total-livre">0</p></div>
-                        </div>
-                        <div class="form-row" style="margin-bottom: 12px;">
-                            <button type="button" class="btn btn-primary" id="btn-wms-areas-especiais-atualizar">Atualizar ocupação</button>
-                        </div>
-                        <div id="wms-areas-especiais-grid"></div>
+                        <section style="margin-bottom: 28px;">
+                            <h3 style="margin: 0 0 8px 0;">Estoque normal — câmaras 11, 12, 13 e 21</h3>
+                            <p class="info-text" style="margin: 0 0 12px 0;">Posições de armazenagem por <strong>categoria A/B/C/D</strong> (putaway automático). Não inclui destinos fixos (MG, retrabalho, descarte nas câmaras frias) nem a câmara 98.</p>
+                            <div class="stats-grid" style="margin-bottom: 16px;">
+                                <div class="stat-card"><h3>Total posições</h3><p class="stat-number" id="wms-en-total-slots">0</p></div>
+                                <div class="stat-card"><h3>Ocupadas</h3><p class="stat-number" id="wms-en-total-ocup">0</p></div>
+                                <div class="stat-card"><h3>Livres</h3><p class="stat-number" id="wms-en-total-livre">0</p></div>
+                            </div>
+                            <div id="wms-estoque-normal-grid"></div>
+                        </section>
+                        <hr style="margin: 24px 0; border: none; border-top: 1px solid #ddd;">
+                        <section>
+                            <h3 style="margin: 0 0 8px 0;">Áreas especiais — câmara 98</h3>
+                            <p class="info-text" style="margin: 0 0 12px 0;">Quarentena e fluxos especiais (descarte, avaria, MG, reentregas…). Capacidades em <code>data/wms_areas_especiais.json</code>.</p>
+                            <div class="stats-grid" style="margin-bottom: 16px;">
+                                <div class="stat-card"><h3>Total posições</h3><p class="stat-number" id="wms-ae-total-slots">0</p></div>
+                                <div class="stat-card"><h3>Ocupadas</h3><p class="stat-number" id="wms-ae-total-ocup">0</p></div>
+                                <div class="stat-card"><h3>Livres</h3><p class="stat-number" id="wms-ae-total-livre">0</p></div>
+                            </div>
+                            <div class="form-row" style="margin-bottom: 12px;">
+                                <button type="button" class="btn btn-primary" id="btn-wms-areas-especiais-atualizar">Atualizar ocupação</button>
+                            </div>
+                            <div id="wms-areas-especiais-grid"></div>
+                        </section>
                     </div>
                     <div id="wms-panel-inventario" class="wms-inner-panel" hidden>
                         <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: flex-end;">
@@ -3590,6 +3604,6 @@
         </div>
     </div>
 
-    <script src="../static/script.js?v=20260602t"></script>
+    <script src="../static/script.js?v=20260602u"></script>
 </body>
 </html>
