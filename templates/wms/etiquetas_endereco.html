@@ -67,19 +67,21 @@
   .etiqueta {
     position: absolute;
     inset: 0;
-    width: var(--lw);
-    height: var(--lh);
-    border: 0.5mm solid var(--ink);
+    width: 100%;
+    height: 100%;
+    border: 2px solid var(--ink);
     background: var(--paper);
     display: grid;
-    grid-template-rows: var(--row-top) var(--row-mid) var(--row-bot);
+    grid-template-rows: 34fr 42fr 24fr;
     overflow: hidden;
+    container-type: size;
+    container-name: etq;
   }
 
   .etq-top {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    border-bottom: 0.4mm solid var(--ink);
+    border-bottom: 2px solid var(--ink);
     min-height: 0;
   }
   .loc-col {
@@ -87,34 +89,34 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    border-right: 0.3mm solid var(--ink);
+    border-right: 1px solid var(--ink);
     min-width: 0;
     height: 100%;
-    padding: 0.3mm;
+    padding: 2%;
   }
   .loc-col:last-child { border-right: none; }
   .loc-lbl {
-    font-size: 5.5pt;
+    font-size: 7cqh;
     font-weight: 700;
     text-transform: uppercase;
     line-height: 1;
-    margin-bottom: 0.5mm;
+    margin-bottom: 4%;
   }
   .loc-val {
-    font-size: 22pt;
+    font-size: 26cqh;
     font-weight: 900;
     line-height: 0.85;
     font-variant-numeric: tabular-nums;
   }
-  .loc-val.letra { font-size: 20pt; }
+  .loc-val.letra { font-size: 24cqh; }
 
   .etq-bc-block {
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto;
-    padding: 0.5mm 1mm;
-    gap: 0.5mm;
+    padding: 2% 3%;
+    gap: 2%;
     min-height: 0;
-    border-bottom: 0.4mm solid var(--ink);
+    border-bottom: 2px solid var(--ink);
   }
   .bc-wrap {
     width: 100%;
@@ -133,10 +135,10 @@
   }
   .endereco {
     text-align: center;
-    font-size: 11pt;
+    font-size: 9cqh;
     font-weight: 700;
     font-family: Consolas, 'Courier New', monospace;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.04em;
     line-height: 1.1;
     white-space: nowrap;
     overflow: hidden;
@@ -153,27 +155,27 @@
     justify-content: space-between;
     width: 100%;
     height: 100%;
-    padding: 0 2mm;
+    padding: 0 5%;
   }
   .arrow {
     width: 0;
     height: 0;
     flex-shrink: 0;
-    border-left: 5mm solid transparent;
-    border-right: 5mm solid transparent;
+    border-left: 7cqh solid transparent;
+    border-right: 7cqh solid transparent;
   }
-  .arrow.up { border-bottom: 7mm solid var(--ink); }
-  .arrow.down { border-top: 7mm solid var(--ink); }
+  .arrow.up { border-bottom: 10cqh solid var(--ink); }
+  .arrow.down { border-top: 10cqh solid var(--ink); }
   .zone-lbl {
-    font-size: 12pt;
+    font-size: 11cqh;
     font-weight: 900;
-    letter-spacing: 1px;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     line-height: 1;
   }
   .etq-zone-bar.destino .zone-inner { justify-content: center; }
   .etq-zone-bar.destino .zone-lbl {
-    font-size: 8pt;
+    font-size: 8cqh;
     text-align: center;
     white-space: normal;
     line-height: 1.1;
@@ -181,16 +183,10 @@
   .etq-zone-bar.destino .arrow { display: none; }
 
   @media print {
-    @page { size: 60mm 40mm landscape; margin: 0; }
+    @page { margin: 0; }
 
-    html {
-      width: 60mm !important;
-      height: auto !important;
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-    body {
-      width: 60mm !important;
+    html, body {
+      width: 100% !important;
       height: auto !important;
       margin: 0 !important;
       padding: 0 !important;
@@ -203,12 +199,15 @@
     .bloco-camara, .bloco-faixa, .faixa {
       margin: 0 !important;
       padding: 0 !important;
-      width: 60mm !important;
+      width: 100% !important;
     }
 
+    /* Cada etiqueta = 1 página inteira do driver (preenche o espaço em branco) */
     .etq-page {
-      width: 60mm !important;
-      height: 40mm !important;
+      width: 100% !important;
+      height: 100vh !important;
+      min-height: 100vh !important;
+      max-height: 100vh !important;
       margin: 0 !important;
       padding: 0 !important;
       overflow: hidden !important;
@@ -227,19 +226,19 @@
       position: absolute !important;
       top: 0 !important;
       left: 0 !important;
-      width: 60mm !important;
-      height: 40mm !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
       margin: 0 !important;
       padding: 0 !important;
-      border: 0.5mm solid #000 !important;
+      border: 2px solid #000 !important;
       display: grid !important;
-      grid-template-rows: 13.6mm 16.8mm 9.6mm !important;
+      grid-template-rows: 34fr 42fr 24fr !important;
       background: #fff !important;
+      container-type: size !important;
     }
 
-    .loc-val { font-size: 20pt !important; }
-    .loc-val.letra { font-size: 18pt !important; }
-    .zone-lbl { font-size: 11pt !important; }
     .arrow.up { border-bottom-color: #000 !important; }
     .arrow.down { border-top-color: #000 !important; }
   }
@@ -342,8 +341,8 @@
 
   function alturaBarcode(wrap) {
     var block = wrap && wrap.closest('.etq-bc-block');
-    if (block && block.clientHeight > 20) {
-      return Math.max(28, Math.round(block.clientHeight * 0.72));
+    if (block && block.clientHeight > 10) {
+      return Math.max(20, Math.round(block.clientHeight * 0.82));
     }
     return Math.round(16.8 * MM_PX * 0.65);
   }
@@ -379,7 +378,11 @@
 
   renderTodos();
   window.addEventListener('resize', renderTodos);
-  window.addEventListener('beforeprint', renderTodos);
+  window.addEventListener('beforeprint', function() {
+    requestAnimationFrame(function() {
+      requestAnimationFrame(renderTodos);
+    });
+  });
 
   {% if auto_print %}
   window.addEventListener('load', function() {
