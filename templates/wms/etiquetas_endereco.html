@@ -7,62 +7,85 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   @page { size: 76mm 50mm; margin: 1.5mm; }
   body {
-    font-family: 'Arial Black', Arial, Helvetica, sans-serif;
-    background: #e8e8e8;
+    font-family: Arial, Helvetica, 'Segoe UI', sans-serif;
+    background: #eceff1;
     padding: 6px;
-    color: #000;
+    color: #111;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
   .toolbar {
     position: sticky; top: 0; z-index: 9;
-    background: #fff; border: 1px solid #ccc; border-radius: 8px;
+    background: #fff; border: 1px solid #cfd8dc; border-radius: 8px;
     padding: 10px 14px; margin-bottom: 12px;
     display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    font-family: Arial, Helvetica, sans-serif;
   }
-  .toolbar p { font-size: 13px; color: #444; flex: 1; min-width: 200px; }
+  .toolbar p { font-size: 13px; color: #455a64; flex: 1; min-width: 200px; }
   .toolbar button {
     padding: 8px 16px; font-size: 14px; cursor: pointer;
-    border: none; border-radius: 6px; background: #1976d2; color: #fff;
+    border: none; border-radius: 6px; background: #1565c0; color: #fff;
   }
-  .toolbar button.sec { background: #555; }
+  .toolbar button.sec { background: #546e7a; }
 
-  .bloco-faixa { margin-bottom: 16px; page-break-inside: avoid; font-family: Arial, Helvetica, sans-serif; }
-  .bloco-camara {
-    margin-bottom: 24px;
-    page-break-after: always;
-  }
+  .bloco-faixa { margin-bottom: 16px; page-break-inside: avoid; }
+  .bloco-camara { margin-bottom: 24px; page-break-after: always; }
   .bloco-camara:last-child { page-break-after: auto; }
   .camara-titulo {
-    font-size: 13px;
-    font-weight: 800;
-    color: #1565c0;
-    padding: 8px 4px 10px;
-    border-bottom: 2px solid #1565c0;
-    margin-bottom: 10px;
+    font-size: 13px; font-weight: 700; color: #1565c0;
+    padding: 8px 4px 10px; border-bottom: 2px solid #1565c0; margin-bottom: 10px;
   }
-  .faixa-titulo { font-size: 11px; color: #555; padding: 0 0 6px 2px; }
+  .faixa-titulo { font-size: 11px; color: #607d8b; padding: 0 0 6px 2px; }
   .faixa {
-    display: flex;
-    flex-direction: column;
-    flex-wrap: wrap;
-    gap: 2mm;
-    width: fit-content;
-    max-width: 100%;
+    display: flex; flex-direction: column; flex-wrap: wrap;
+    gap: 2mm; width: fit-content; max-width: 100%;
   }
 
-  /* Etiqueta horizontal 76×50 mm — colar na longarina */
+  /* ── Etiqueta 76×50 mm — modelo industrial limpo ── */
   .etq-loc {
     width: 76mm;
     height: 50mm;
-    border: 1.2pt solid #000;
+    border: 0.6pt solid #212121;
+    border-radius: 1.2mm;
     background: #fff;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     page-break-inside: avoid;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
   }
+
+  .etq-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 7.5mm;
+    padding: 0 2.5mm;
+    background: #111;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .etq-head-main {
+    font-size: 7pt;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .etq-head-badge {
+    flex-shrink: 0;
+    margin-left: 2mm;
+    padding: 0.6mm 1.8mm;
+    border: 0.5pt solid rgba(255,255,255,.45);
+    border-radius: 1mm;
+    font-size: 8pt;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    line-height: 1;
+  }
+
   .etq-body {
     flex: 1;
     display: flex;
@@ -70,156 +93,149 @@
     align-items: stretch;
     min-height: 0;
   }
-  .etq-left {
-    width: 28mm;
+
+  /* Coluna de coordenadas — números grandes */
+  .etq-coords {
+    width: 22mm;
     display: flex;
     flex-direction: column;
-    border-right: 0.8pt solid #000;
-    flex-shrink: 0;
-  }
-  .camara-etq {
-    padding: 1.2mm 1.5mm;
-    font-size: 5.5pt;
-    font-weight: 900;
-    font-family: Arial, Helvetica, sans-serif;
-    text-align: center;
-    text-transform: uppercase;
-    letter-spacing: 0.2px;
-    line-height: 1.15;
-    background: #e3f2fd;
-    color: #0d47a1;
-    border-bottom: 0.8pt solid #000;
-  }
-  .addr-grid {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
-  }
-  .addr-cell {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
     justify-content: center;
-    border-right: 0.5pt solid #ccc;
-    border-bottom: 0.5pt solid #ccc;
-    padding: 0.5mm;
+    padding: 1.5mm 2mm;
+    border-right: 0.5pt solid #e0e0e0;
+    flex-shrink: 0;
+    background: #fafafa;
   }
-  .addr-cell:nth-child(2n) { border-right: none; }
-  .addr-cell:nth-child(n+3) { border-bottom: none; }
-  .addr-cell .lbl {
-    font-size: 5.5pt;
+  .coord-block { text-align: center; }
+  .coord-block + .coord-block { margin-top: 2mm; padding-top: 2mm; border-top: 0.4pt dashed #bdbdbd; }
+  .coord-lbl {
+    display: block;
+    font-size: 5pt;
     font-weight: 700;
-    font-family: Arial, Helvetica, sans-serif;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #757575;
     line-height: 1;
     margin-bottom: 0.8mm;
-    color: #333;
   }
-  .addr-cell .val {
-    font-size: 14pt;
-    font-weight: 900;
-    line-height: 1;
+  .coord-val {
+    display: block;
+    font-size: 20pt;
+    font-weight: 800;
+    line-height: 0.95;
     font-variant-numeric: tabular-nums;
+    color: #000;
+    letter-spacing: -0.5px;
   }
-  .addr-cell.val-rua .val {
-    font-size: 12pt;
+  .coord-block.rua .coord-val {
+    font-size: 16pt;
+    letter-spacing: 1px;
   }
-  .etq-mid {
+  .coord-block.nivel .coord-val {
+    font-size: 17pt;
+  }
+
+  /* Centro — código de barras */
+  .etq-scan {
     flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 1mm 2mm;
+    padding: 1mm 2.5mm;
     min-width: 0;
+    gap: 1mm;
   }
   .bc-wrap {
     width: 100%;
     text-align: center;
     line-height: 0;
+    padding: 0.5mm 0;
   }
   .bc-wrap svg {
     width: 100%;
-    max-width: 38mm;
-    height: 10mm;
+    max-width: 42mm;
+    height: 11mm;
   }
-  .code-line {
-    margin-top: 1mm;
-    font-size: 8pt;
+  .code-bip {
+    font-size: 9pt;
     font-weight: 700;
-    font-family: 'Courier New', Consolas, monospace;
-    letter-spacing: 0.4px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    letter-spacing: 0.8px;
     text-align: center;
-    line-height: 1.15;
+    line-height: 1.1;
+    color: #111;
     white-space: nowrap;
   }
   .code-wms {
-    margin-top: 0.5mm;
     font-size: 6.5pt;
-    font-weight: 700;
-    font-family: 'Courier New', Consolas, monospace;
+    font-weight: 600;
+    font-family: 'Consolas', 'Courier New', monospace;
+    letter-spacing: 0.4px;
     text-align: center;
-    letter-spacing: 0.2px;
-    color: #333;
+    color: #616161;
+    white-space: nowrap;
   }
+
+  /* Faixa lateral — zona */
   .etq-zone {
-    width: 14mm;
+    width: 11mm;
     flex-shrink: 0;
-    border-left: 0.8pt solid #000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1mm 0.5mm;
-  }
-  .zone-stack {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1mm;
-    width: 100%;
-    height: 100%;
-  }
-  .zone-stack.picking { justify-content: flex-end; padding-bottom: 1mm; }
-  .zone-stack.pulmao { justify-content: flex-start; padding-top: 1mm; }
-  .zone-txt {
-    font-size: 5.5pt;
-    font-weight: 900;
-    letter-spacing: 0.3px;
-    line-height: 1.1;
+    padding: 1.5mm 1mm;
     text-align: center;
-    writing-mode: horizontal-tb;
+    color: #fff;
   }
-  .zone-txt.destino {
-    font-size: 4.8pt;
-    line-height: 1.12;
-  }
-  .arrow {
-    width: 0; height: 0;
-    border-left: 3.5mm solid transparent;
-    border-right: 3.5mm solid transparent;
-  }
-  .arrow.down { border-top: 5mm solid #000; }
-  .arrow.up { border-bottom: 5mm solid #000; }
+  .etq-zone.pulmao { background: #37474f; }
+  .etq-zone.picking { background: #1b5e20; }
+  .etq-zone.destino { background: #4a148c; padding: 1mm; }
 
-  .foot {
-    border-top: 0.8pt solid #000;
-    padding: 0.8mm 2mm;
+  .zone-icon {
+    font-size: 9pt;
+    font-weight: 900;
+    line-height: 1;
+    margin-bottom: 1.2mm;
+  }
+  .zone-txt {
     font-size: 5pt;
-    font-weight: 700;
-    font-family: Arial, Helvetica, sans-serif;
-    text-align: center;
-    letter-spacing: 0.25px;
-    line-height: 1.1;
-    background: #fff;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    line-height: 1.15;
+    text-transform: uppercase;
+    word-break: break-word;
+    hyphens: auto;
+  }
+  .etq-zone.destino .zone-txt {
+    font-size: 4.5pt;
+    letter-spacing: 0.2px;
+  }
+
+  .etq-foot {
     flex-shrink: 0;
+    padding: 0.7mm 2mm;
+    font-size: 4.5pt;
+    font-weight: 600;
+    text-align: center;
+    letter-spacing: 0.3px;
+    color: #9e9e9e;
+    border-top: 0.4pt solid #eeeeee;
+    background: #fff;
+    line-height: 1.1;
   }
 
   @media print {
     body { background: #fff; padding: 0; margin: 0; }
     .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
     .faixa { gap: 0; }
-    .etq-loc { border: 1pt solid #000; margin: 0 0 1mm 0; page-break-inside: avoid; }
+    .etq-loc {
+      border: 0.6pt solid #000;
+      border-radius: 0;
+      box-shadow: none;
+      margin: 0 0 1mm 0;
+      page-break-inside: avoid;
+    }
     .bloco-faixa { margin-bottom: 2mm; }
   }
 </style>
@@ -233,46 +249,39 @@
 
 {% macro etiqueta_longarina(e) %}
 <div class="etq-loc">
+  <div class="etq-head">
+    <span class="etq-head-main">Câmara {{ e.camara or e.rua_num }}{% if e.rua_letra %} · Rua {{ e.rua_letra }}{% endif %}</span>
+    <span class="etq-head-badge">{{ e.camara or e.rua_num }}{% if e.rua_letra %}-{{ e.rua_letra }}{% endif %}</span>
+  </div>
   <div class="etq-body">
-    <div class="etq-left">
-      <div class="camara-etq">Câmara {{ e.camara or e.rua_num }}{% if e.rua_letra %} · Rua {{ e.rua_letra }}{% endif %}</div>
-      <div class="addr-grid">
-        <div class="addr-cell">
-          <span class="lbl">Câm</span>
-          <span class="val">{{ e.camara or e.rua_num }}</span>
-        </div>
-        <div class="addr-cell val-rua">
-          <span class="lbl">Rua</span>
-          <span class="val">{{ e.rua_letra or '—' }}</span>
-        </div>
-        <div class="addr-cell">
-          <span class="lbl">Col</span>
-          <span class="val">{{ e.predio }}</span>
-        </div>
-        <div class="addr-cell">
-          <span class="lbl">Nív</span>
-          <span class="val">{{ e.nivel }}</span>
-        </div>
+    <div class="etq-coords">
+      <div class="coord-block">
+        <span class="coord-lbl">Coluna</span>
+        <span class="coord-val">{{ e.predio }}</span>
+      </div>
+      <div class="coord-block nivel">
+        <span class="coord-lbl">Nível</span>
+        <span class="coord-val">{{ e.nivel }}</span>
       </div>
     </div>
-    <div class="etq-mid">
+    <div class="etq-scan">
       <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
-      <div class="code-line">{{ e.camara }} · {{ e.rua_letra or '—' }} · {{ e.predio }} · {{ e.nivel }}</div>
+      <div class="code-bip">{{ e.barcode }}</div>
       {% if e.codigo_wms %}<div class="code-wms">{{ e.codigo_wms }}</div>{% endif %}
     </div>
-    <div class="etq-zone">
-      <div class="zone-stack {% if e.destino_fixo %}destino{% elif e.picking %}picking{% else %}pulmao{% endif %}">
-        {% if e.destino_fixo %}
-        <div class="zone-txt destino">{{ e.destino_label or e.zona }}</div>
-        {% elif e.picking %}
-        <div class="zone-txt">PICKING</div><div class="arrow down" aria-hidden="true"></div>
-        {% else %}
-        <div class="arrow up" aria-hidden="true"></div><div class="zone-txt">PULMÃO</div>
-        {% endif %}
-      </div>
+    <div class="etq-zone {% if e.destino_fixo %}destino{% elif e.picking %}picking{% else %}pulmao{% endif %}">
+      {% if e.destino_fixo %}
+      <div class="zone-txt">{{ e.destino_label or e.zona }}</div>
+      {% elif e.picking %}
+      <div class="zone-icon">▼</div>
+      <div class="zone-txt">Picking</div>
+      {% else %}
+      <div class="zone-icon">▲</div>
+      <div class="zone-txt">Pulmão</div>
+      {% endif %}
     </div>
   </div>
-  <div class="foot">Ultrapão · Stock System WMS</div>
+  <div class="etq-foot">Ultrapão · Stock System WMS</div>
 </div>
 {% endmacro %}
 
@@ -310,10 +319,10 @@
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
-        width: 1.1,
-        height: 28,
+        width: 1.15,
+        height: 32,
         displayValue: false,
-        margin: 0,
+        margin: 1,
         lineColor: '#000000',
         background: '#ffffff'
       });
