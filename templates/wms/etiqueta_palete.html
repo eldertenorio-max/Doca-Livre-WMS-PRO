@@ -71,29 +71,31 @@
   }
   .destino .end-bc {
     display: block;
+    font-size: 8.5pt;
+    font-weight: 600;
+    font-family: Consolas, monospace;
+    letter-spacing: 0.6px;
+    line-height: 1.1;
+    margin: 0.8mm 0 0;
+    color: #546e7a;
+  }
+  .destino .end-wms {
+    display: block;
     font-size: 19pt;
     font-weight: bold;
     font-family: Consolas, monospace;
-    letter-spacing: 1.5px;
+    letter-spacing: 1.2px;
     line-height: 1.1;
-    margin: 0.5mm 0;
+    margin: 0.5mm 0 1mm;
     color: #0d47a1;
   }
   .destino .bc-wrap-end {
     text-align: center;
-    margin: 1mm 0 0.5mm;
+    margin: 0 0 0.5mm;
   }
   .destino .bc-wrap-end svg {
     width: 90%;
     height: 11mm;
-  }
-  .destino .end-wms {
-    display: block;
-    font-size: 8pt;
-    font-family: Consolas, monospace;
-    font-weight: bold;
-    color: #37474f;
-    margin-top: 1mm;
   }
   .destino .end-txt {
     display: block;
@@ -167,20 +169,23 @@
   <button type="button" onclick="window.print()">Imprimir</button>
 </div>
 <div class="etq">
-  {% if endereco_barcode or destino %}
+  {% if endereco_barcode or destino or codigo_wms %}
   <div class="destino">
     <strong>Guardar em — longarina</strong>
     {% if camara %}
     <div class="camara-badge">Câmara <span>{{ camara }}</span></div>
     {% endif %}
-    <span class="end-bc-label">Bip longarina (Câm · Col · Nív)</span>
-    <span class="end-bc">{{ endereco_barcode or destino }}</span>
-    {% if endereco_barcode %}
+    <span class="end-bc-label">Endereço WMS</span>
+    {% if codigo_wms %}<span class="end-wms">{{ codigo_wms }}</span>{% endif %}
+    {% if codigo_wms or endereco_barcode %}
     <div class="bc-wrap-end">
-      <svg id="bc-endereco" data-code="{{ endereco_barcode }}"></svg>
+      <svg id="bc-endereco" data-code="{{ codigo_wms or endereco_barcode }}"></svg>
     </div>
     {% endif %}
-    {% if codigo_wms %}<span class="end-wms">WMS {{ codigo_wms }}</span>{% endif %}
+    {% if endereco_barcode and (not codigo_wms or endereco_barcode != codigo_wms) %}
+    <span class="end-bc-label" style="margin-top:0.8mm;">Bip longarina (Câm · Col · Nív)</span>
+    <span class="end-bc">{{ endereco_barcode }}</span>
+    {% endif %}
     {% if endereco_texto %}
     <span class="end-txt">{{ endereco_texto }}</span>
     {% elif camara and rua and coluna and nivel %}
