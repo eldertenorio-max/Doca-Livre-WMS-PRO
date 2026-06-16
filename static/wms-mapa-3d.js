@@ -24,6 +24,7 @@
     ];
 
     var state = {
+        prefix: 'wms-mapa3d',
         inited: false,
         scene: null,
         camera: null,
@@ -39,8 +40,15 @@
         defaultTarget: null,
         wireframe: false,
         resizeObs: null,
-        slotIndex: []
+        slotIndex: [],
+        _canvas: null,
+        _onPointerMove: null,
+        _onClick: null
     };
+
+    function $(part) {
+        return document.getElementById(state.prefix + '-' + part);
+    }
 
     function escapeHtml(s) {
         return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -115,7 +123,7 @@
     }
 
     function renderLegenda() {
-        var el = document.getElementById('wms-mapa3d-legenda');
+        var el = $('legenda');
         if (!el) return;
         el.innerHTML = LEGENDA.map(function (it) {
             return '<span class="wms-mapa3d-legenda-item"><span class="wms-mapa3d-legenda-swatch" style="background:' + it.color + ';"></span>'
@@ -259,8 +267,8 @@
     }
 
     function onResize() {
-        var wrap = document.getElementById('wms-mapa3d-wrap');
-        var canvas = document.getElementById('wms-mapa3d-canvas');
+        var wrap = $('wrap');
+        var canvas = $('canvas');
         if (!wrap || !canvas || !state.renderer || !state.camera) return;
         var w = Math.max(wrap.clientWidth, 320);
         var h = Math.max(wrap.clientHeight, 280);
@@ -278,7 +286,7 @@
     }
 
     function pickInstance(ev) {
-        var wrap = document.getElementById('wms-mapa3d-wrap');
+        var wrap = $('wrap');
         if (!wrap || !state.raycaster || !state.camera || !state.pickables.length) return null;
         var rect = wrap.getBoundingClientRect();
         if (rect.width < 1 || rect.height < 1) return null;
@@ -301,8 +309,8 @@
     }
 
     function onPointerMove(ev) {
-        var wrap = document.getElementById('wms-mapa3d-wrap');
-        var tip = document.getElementById('wms-mapa3d-tooltip');
+        var wrap = $('wrap');
+        var tip = $('tooltip');
         var rec = pickInstance(ev);
         if (rec) {
             var slot = rec.slot;
@@ -325,7 +333,7 @@
     }
 
     function onClick(ev) {
-        var det = document.getElementById('wms-mapa3d-detalhe');
+        var det = $('detalhe');
         var rec = pickInstance(ev);
         if (!rec || !det) {
             if (det) det.hidden = true;
@@ -343,22 +351,52 @@
     }
 
     function setLoading(on, msg) {
-        var el = document.getElementById('wms-mapa3d-loading');
+        var el = $('loading');
         if (!el) return;
         el.hidden = !on;
         if (on && msg) el.textContent = msg;
         else if (!on) el.textContent = 'Carregando mapa 3D…';
     }
 
-    function initScene() {
+    function disposeInternal() {
+        if (state.animId) {
+            cancelAnimationFrame(state.animId);
+            state.animId = null;
+        }
+        if (state._canvas && state._onPointerMove) {
+            state._canvas.removeEventListener('pointermove', state._onPointerMove);
+            state._canvas.removeEventListener('click', state._onClick);
+        }
+        if (state.resizeObs) {
+            try { state.resizeObs.disconnect(); } catch (e) { /* ignore */ }
+            state.resizeObs = null;
+        }
+        clearRack();
+        if (state.renderer) {
+            state.renderer.dispose();
+            state.renderer = null;
+        }
+        state.scene = null;
+        state.camera = null;
+        state.controls = null;
+        state._canvas = null;
+        state.inited = false;
+    }
+
+    function initScene(opts) {
+        var prefix = (opts && opts.prefix) || state.prefix || 'wms-mapa3d';
+        if (state.inited && state.prefix !== prefix) {
+            disposeInternal();
+        }
+        state.prefix = prefix;
         if (state.inited) {
             onResize();
             return Promise.resolve();
         }
         return ensureThree().then(function () {
             var THREE = global.THREE;
-            var canvas = document.getElementById('wms-mapa3d-canvas');
-            var wrap = document.getElementById('wms-mapa3d-wrap');
+            var canvas = $('canvas');
+            var wrap = $('wrap');
             if (!canvas || !wrap) throw new Error('Área do mapa 3D não encontrada');
 
             state.scene = new THREE.Scene();
@@ -388,6 +426,9 @@
             state.raycaster = new THREE.Raycaster();
             state.mouse = new THREE.Vector2();
 
+            state._canvas = canvas;
+            state._onPointerMove = onPointerMove;
+            state._onClick = onClick;
             canvas.addEventListener('pointermove', onPointerMove);
             canvas.addEventListener('click', onClick);
 
@@ -429,11 +470,7 @@
         build: buildRack,
         setLoading: setLoading,
         onResize: onResize,
-        dispose: function () {
-            if (state.animId) cancelAnimationFrame(state.animId);
-            clearRack();
-            if (state.renderer) state.renderer.dispose();
-            state.inited = false;
-        }
+        getPrefix: function () { return state.prefix; },
+        dispose: disposeInternal
     };
 })(window);

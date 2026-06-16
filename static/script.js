@@ -4336,7 +4336,7 @@ function _wmsCarregarScriptMapa3d() {
             return;
         }
         var s = document.createElement('script');
-        s.src = '/static/wms-mapa-3d.js?v=20260602c';
+        s.src = '/static/wms-mapa-3d.js?v=20260602d';
         s.dataset.wmsMapa3d = '1';
         s.onload = function() { resolve(); };
         s.onerror = function() { reject(new Error('Falha ao carregar visualização 3D')); };
@@ -4376,7 +4376,7 @@ async function loadWmsMapa3d() {
         setLoad(true, 'Iniciando visualização 3D…');
         await _wmsCarregarScriptMapa3d();
         if (!window.WmsMapa3d) throw new Error('Módulo 3D não inicializou');
-        await WmsMapa3d.init();
+        await WmsMapa3d.init({ prefix: 'wms-mapa3d' });
         await new Promise(function(r) { requestAnimationFrame(r); });
         var wire = document.getElementById('wms-mapa3d-wireframe');
         WmsMapa3d.setWireframe(wire && wire.checked);
@@ -4406,6 +4406,12 @@ function _wmsRenderEnderecoRow(grupo) {
     } else if (!sub && grupo.rua) {
         sub = 'rua ' + grupo.rua;
     }
+    var rowCls = 'wms-end-row';
+    var dataAttr = '';
+    if (grupo.camara && grupo.camara !== 98) {
+        rowCls += ' wms-end-row--clickable';
+        dataAttr = ' data-camara="' + escHtml(String(grupo.camara)) + '" data-label="' + escHtml(grupo.label || '') + '" role="button" tabindex="0" title="Clique para ver em 3D"';
+    }
     var posHtml = (grupo.posicoes || []).map(function(p) {
         var st = (p.status || '').toLowerCase();
         var cls = st === 'ocupada' ? 'wms-end-slot--ocup' : (st === 'nao_criada' ? 'wms-end-slot--nao' : 'wms-end-slot--livre');
@@ -4422,12 +4428,298 @@ function _wmsRenderEnderecoRow(grupo) {
         if (p.categoria_zona) tit += ' · cat ' + p.categoria_zona;
         return '<div class="wms-end-slot ' + cls + '" title="' + escHtml(tit) + '"><strong>' + escHtml(String(p.posicao)) + '</strong>' + escHtml(lbl) + '</div>';
     }).join('');
-    return '<div class="wms-end-row">'
+    return '<div class="' + rowCls + '"' + dataAttr + '>'
         + '<div class="wms-end-row-titulo">' + escHtml(grupo.label || grupo.descricao || '—')
-        + (sub ? '<span class="wms-end-row-sub">' + escHtml(sub) + '</span>' : '') + '</div>'
+        + (sub ? '<span class="wms-end-row-sub">' + escHtml(sub) + '</span>' : '')
+        + (grupo.camara && grupo.camara !== 98 ? '<span class="wms-end-row-sub" style="color:#1565c0;">Clique para 3D</span>' : '') + '</div>'
         + '<div class="wms-end-row-slots">' + (posHtml || '<span class="wms-end-row-sub">Sem posições</span>') + '</div>'
         + '<div class="wms-end-row-stats">' + escHtml(ocup) + '/' + escHtml(slots) + ' ocupadas · '
         + escHtml(livres) + ' livres · ' + escHtml(pct) + '%</div></div>';
+}
+
+var _wmsEndState = { data: null, mapa3d: null, regions: [], selectedCamara: null };
+
+function _wmsEndSlotColor2d(slot) {
+    var dest = (slot && slot.destino_acao || '').toLowerCase();
+    if (dest === 'envio_mg') return '#42a5f5';
+    if (dest === 'retrabalho') return '#ffca28';
+    if (dest === 'descarte_perdas') return '#8d6e63';
+    if (dest === 'palete_bloqueado') return '#78909c';
+    if (dest === 'avaria') return '#ab47bc';
+    if (dest === 'reentregas') return '#7e57c2';
+    if (slot && (slot.status || '') === 'ocupada') return '#ef5350';
+    return '#a5d6a7';
+}
+
+function _wmsEndAggregateSlots(slots) {
+    var map = {};
+    (slots || []).forEach(function(s) {
+        var k = (s.rua || '') + '-' + s.posicao;
+        if (!map[k]) map[k] = [];
+        map[k].push(s);
+    });
+    return Object.keys(map).map(function(k) {
+        var arr = map[k];
+        var pick = arr.find(function(s) { return (s.status || '') === 'ocupada'; })
+            || arr.find(function(s) { return s.destino_acao; })
+            || arr[0];
+        return { rua: pick.rua, posicao: pick.posicao, slot: pick };
+    });
+}
+
+function _wmsEndRoundRect(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+}
+
+function _wmsEndDrawCamBlock(ctx, cam, x, y, bw, bh, regions) {
+    _wmsEndRoundRect(ctx, x, y, bw, bh, 8);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#78909c';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#263238';
+    ctx.font = 'bold 13px Segoe UI, sans-serif';
+    ctx.fillText('Câmara ' + cam.codigo, x + 10, y + 20);
+    ctx.font = '11px Segoe UI, sans-serif';
+    ctx.fillStyle = '#607d8b';
+    var ruasTxt = (cam.ruas || []).join(' / ');
+    var pct = cam._pct != null ? cam._pct : 0;
+    ctx.fillText(ruasTxt + ' · ' + pct + '% ocup.', x + 10, y + 36);
+    var agg = _wmsEndAggregateSlots(cam.slots || []);
+    var ruas = cam.ruas || [];
+    var maxPos = 1;
+    agg.forEach(function(a) { if (a.posicao > maxPos) maxPos = a.posicao; });
+    var gridTop = y + 44;
+    var gridH = bh - 52;
+    var gridW = bw - 16;
+    var cellW = gridW / Math.max(maxPos, 1);
+    var cellH = gridH / Math.max(ruas.length, 1);
+    agg.forEach(function(a) {
+        var ri = ruas.indexOf(a.rua);
+        if (ri < 0) ri = 0;
+        var cx = x + 8 + (a.posicao - 1) * cellW;
+        var cy = gridTop + ri * cellH;
+        ctx.fillStyle = _wmsEndSlotColor2d(a.slot);
+        ctx.fillRect(cx + 1, cy + 1, Math.max(cellW - 2, 2), Math.max(cellH - 2, 2));
+    });
+    regions.push({
+        x: x, y: y, w: bw, h: bh,
+        camara: cam.codigo,
+        label: cam.descricao || ('Câmara ' + cam.codigo)
+    });
+}
+
+function _wmsEndDraw2D() {
+    var canvas = document.getElementById('wms-end-2d-canvas');
+    var wrap = document.getElementById('wms-end-2d-wrap');
+    if (!canvas || !wrap) return;
+    var mapa = _wmsEndState.mapa3d || {};
+    var data = _wmsEndState.data || {};
+    var cams = mapa.camaras || [];
+    var camByCod = {};
+    cams.forEach(function(c) { camByCod[c.codigo] = c; });
+    var en = data.estoque_normal || {};
+    (en.camaras || []).forEach(function(c) {
+        if (camByCod[c.camara]) camByCod[c.camara]._pct = c.percentual_ocupacao || 0;
+    });
+    var W = Math.max(wrap.clientWidth || 800, 480);
+    var H = 380;
+    canvas.width = W;
+    canvas.height = H;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.fillStyle = '#eceff1';
+    ctx.fillRect(0, 0, W, H);
+    var regions = [];
+    var pad = 14;
+    var gap = 12;
+    var topH = 200;
+    var colW = (W - pad * 2 - gap * 2) / 3;
+    [11, 12, 13].forEach(function(cod, i) {
+        var cam = camByCod[cod];
+        if (!cam) return;
+        _wmsEndDrawCamBlock(ctx, cam, pad + i * (colW + gap), pad, colW, topH, regions);
+    });
+    var cam21 = camByCod[21];
+    if (cam21) {
+        var w21 = colW * 1.2;
+        var x21 = (W - w21) / 2;
+        _wmsEndDrawCamBlock(ctx, cam21, x21, pad + topH + gap, w21, 100, regions);
+    }
+    var areas98 = (data.areas || []);
+    var y98 = pad + topH + gap + 100 + gap;
+    var h98 = Math.max(H - y98 - pad, 60);
+    var bw98 = W - pad * 2;
+    _wmsEndRoundRect(ctx, pad, y98, bw98, h98, 8);
+    ctx.fillStyle = '#fff8e1';
+    ctx.fill();
+    ctx.strokeStyle = '#ffb300';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#e65100';
+    ctx.font = 'bold 12px Segoe UI, sans-serif';
+    ctx.fillText('Câmara 98 — Quarentena / fluxos especiais', pad + 10, y98 + 18);
+    var n98 = Math.max(areas98.length, 1);
+    var aw = (bw98 - 20 - (n98 - 1) * 6) / n98;
+    areas98.forEach(function(a, i) {
+        var ax = pad + 10 + i * (aw + 6);
+        var ay = y98 + 28;
+        var ah = h98 - 36;
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#ffcc80';
+        ctx.lineWidth = 1;
+        _wmsEndRoundRect(ctx, ax, ay, aw, ah, 4);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#5d4037';
+        ctx.font = '10px Segoe UI, sans-serif';
+        var lbl = (a.label || a.area || '').slice(0, 18);
+        ctx.fillText(lbl, ax + 4, ay + 12);
+        var slots = a.slots || 10;
+        var ocup = a.ocupadas || 0;
+        var sw = Math.min((aw - 8) / Math.max(slots, 1), 14);
+        for (var p = 0; p < slots; p++) {
+            var st = (a.posicoes && a.posicoes[p]) ? (a.posicoes[p].status || '') : '';
+            ctx.fillStyle = st === 'ocupada' ? '#ef5350' : '#a5d6a7';
+            ctx.fillRect(ax + 4 + p * (sw + 2), ay + 18, sw, ah - 24);
+        }
+        ctx.fillStyle = '#795548';
+        ctx.font = '9px Segoe UI, sans-serif';
+        ctx.fillText(ocup + '/' + slots, ax + 4, ay + ah - 4);
+        regions.push({ x: ax, y: ay, w: aw, h: ah, camara: 98, area: a.area, label: a.label, no3d: true });
+    });
+    _wmsEndState.regions = regions;
+    if (_wmsEndState.selectedCamara) {
+        regions.forEach(function(r) {
+            if (r.camara === _wmsEndState.selectedCamara && !r.no3d) {
+                ctx.strokeStyle = '#1565c0';
+                ctx.lineWidth = 3;
+                _wmsEndRoundRect(ctx, r.x, r.y, r.w, r.h, 8);
+                ctx.stroke();
+            }
+        });
+    }
+}
+
+function _wmsEndHighlightRow(camara) {
+    document.querySelectorAll('.wms-end-row--ativo').forEach(function(el) {
+        el.classList.remove('wms-end-row--ativo');
+    });
+    if (!camara) return;
+    document.querySelectorAll('.wms-end-row--clickable[data-camara="' + camara + '"]').forEach(function(el) {
+        el.classList.add('wms-end-row--ativo');
+    });
+}
+
+function _wmsEndVoltar2d() {
+    var geral = document.getElementById('wms-end-vis-geral');
+    var vis3d = document.getElementById('wms-end-vis-3d');
+    if (geral) geral.hidden = false;
+    if (vis3d) vis3d.hidden = true;
+    _wmsEndState.selectedCamara = null;
+    _wmsEndHighlightRow(null);
+    _wmsEndDraw2D();
+}
+
+async function wmsEndAbrir3d(opts) {
+    var cam = parseInt(opts && opts.camara, 10);
+    if (!cam || cam === 98) {
+        showMessage('Visualização 3D disponível para câmaras 11, 12, 13 e 21.', 'info');
+        return;
+    }
+    var geral = document.getElementById('wms-end-vis-geral');
+    var vis3d = document.getElementById('wms-end-vis-3d');
+    var titulo = document.getElementById('wms-end-3d-titulo');
+    if (geral) geral.hidden = true;
+    if (vis3d) {
+        vis3d.hidden = false;
+        vis3d.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (titulo) titulo.textContent = opts.label || ('Câmara ' + cam);
+    _wmsEndState.selectedCamara = cam;
+    _wmsEndHighlightRow(cam);
+    function setLoad(on, msg) {
+        var el = document.getElementById('wms-end-3d-loading');
+        if (el) {
+            el.hidden = !on;
+            if (on && msg) el.textContent = msg;
+            else if (!on) el.textContent = 'Carregando mapa 3D…';
+        }
+    }
+    try {
+        setLoad(true, 'Carregando mapa 3D…');
+        await _wmsCarregarScriptMapa3d();
+        if (!window.WmsMapa3d) throw new Error('Módulo 3D indisponível');
+        await WmsMapa3d.init({ prefix: 'wms-end-3d' });
+        var data = await _wmsFetchGet('/wms/mapa-3d?camara=' + encodeURIComponent(cam), 90000);
+        if (!data || data.erro) throw new Error(_wmsErroMsg(data, 'Erro ao carregar mapa 3D'));
+        var wire = document.getElementById('wms-end-3d-wireframe');
+        WmsMapa3d.setWireframe(wire && wire.checked);
+        WmsMapa3d.build(data);
+        if (WmsMapa3d.onResize) WmsMapa3d.onResize();
+        setTimeout(function() {
+            if (WmsMapa3d.resetView) WmsMapa3d.resetView();
+        }, 80);
+    } catch (e) {
+        showMessage((e && e.message) || 'Erro ao abrir mapa 3D.', 'error');
+        _wmsEndVoltar2d();
+    } finally {
+        setLoad(false);
+    }
+}
+
+function _wmsEndBind2dEvents() {
+    var canvas = document.getElementById('wms-end-2d-canvas');
+    if (!canvas || canvas._wmsEnd2dBound) return;
+    canvas._wmsEnd2dBound = true;
+    canvas.addEventListener('click', function(ev) {
+        var rect = canvas.getBoundingClientRect();
+        if (rect.width < 1) return;
+        var scaleX = canvas.width / rect.width;
+        var scaleY = canvas.height / rect.height;
+        var px = (ev.clientX - rect.left) * scaleX;
+        var py = (ev.clientY - rect.top) * scaleY;
+        var regions = _wmsEndState.regions || [];
+        for (var i = regions.length - 1; i >= 0; i--) {
+            var r = regions[i];
+            if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
+                if (r.no3d) {
+                    showMessage((r.label || 'Área 98') + ' — detalhe na lista abaixo (sem 3D).', 'info');
+                    return;
+                }
+                wmsEndAbrir3d({ camara: r.camara, label: r.label });
+                return;
+            }
+        }
+    });
+    var grid = document.getElementById('wms-enderecamento-grid');
+    if (grid && !grid._wmsEndRowBound) {
+        grid._wmsEndRowBound = true;
+        grid.addEventListener('click', function(ev) {
+            var row = ev.target.closest('.wms-end-row--clickable');
+            if (!row) return;
+            var cam = parseInt(row.getAttribute('data-camara'), 10);
+            var label = row.getAttribute('data-label') || '';
+            if (cam && cam !== 98) wmsEndAbrir3d({ camara: cam, label: label });
+        });
+        grid.addEventListener('keydown', function(ev) {
+            if (ev.key !== 'Enter' && ev.key !== ' ') return;
+            var row = ev.target.closest('.wms-end-row--clickable');
+            if (!row) return;
+            ev.preventDefault();
+            var cam = parseInt(row.getAttribute('data-camara'), 10);
+            var label = row.getAttribute('data-label') || '';
+            if (cam && cam !== 98) wmsEndAbrir3d({ camara: cam, label: label });
+        });
+    }
 }
 
 function _wmsRenderEnderecoSecao(titulo, grupos) {
@@ -4439,18 +4731,27 @@ function _wmsRenderEnderecoSecao(titulo, grupos) {
 async function loadWmsEnderecamento() {
     var grid = document.getElementById('wms-enderecamento-grid');
     if (grid) grid.innerHTML = '<p class="loading" style="padding:14px;">Carregando endereçamento…</p>';
+    _wmsEndVoltar2d();
     try {
-        var data = await _wmsFetchGet('/wms/enderecamento', 45000);
+        var results = await Promise.all([
+            _wmsFetchGet('/wms/enderecamento', 45000),
+            _wmsFetchGet('/wms/mapa-3d', 90000)
+        ]);
+        var data = results[0];
+        var mapa3d = results[1];
         if (!data || data.erro) {
             if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;padding:14px;">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar.')) + '</p>';
             return;
         }
+        _wmsEndState.data = data;
+        _wmsEndState.mapa3d = mapa3d && !mapa3d.erro ? mapa3d : null;
         var html = '';
         var df = data.destinos_fixos || {};
         var gruposDf = (df.grupos || []).map(function(g) {
             var ruasTxt = g.rua || (g.ruas || []).join(' / ');
             return {
                 label: g.label || g.area,
+                camara: g.camara,
                 subtitulo: 'câmara ' + g.camara + (ruasTxt ? ' · rua ' + ruasTxt : ''),
                 slots: g.slots || g.total,
                 ocupadas: g.ocupadas,
@@ -4480,6 +4781,7 @@ async function loadWmsEnderecamento() {
         var areas98 = (data.areas || []).map(function(a) {
             return {
                 label: a.label || a.area,
+                camara: 98,
                 subtitulo: 'câmara 98 · rua ' + (a.rua || ''),
                 slots: a.slots,
                 ocupadas: a.ocupadas,
@@ -4492,6 +4794,15 @@ async function loadWmsEnderecamento() {
 
         if (grid) {
             grid.innerHTML = html || '<p style="padding:14px;">Nenhum endereço configurado.</p>';
+        }
+        _wmsEndBind2dEvents();
+        _wmsEndDraw2D();
+        if (typeof ResizeObserver !== 'undefined') {
+            var wrap2d = document.getElementById('wms-end-2d-wrap');
+            if (wrap2d && !wrap2d._wmsEndRo) {
+                wrap2d._wmsEndRo = new ResizeObserver(function() { _wmsEndDraw2D(); });
+                wrap2d._wmsEndRo.observe(wrap2d);
+            }
         }
     } catch (e) {
         if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;padding:14px;">' + escHtml((e && e.message) || 'Erro.') + '</p>';
@@ -4633,6 +4944,18 @@ function initWmsEnderecamento() {
     if (bInv) bInv.addEventListener('click', wmsCriarInventario);
     var bEnd = document.getElementById('btn-wms-enderecamento-atualizar');
     if (bEnd) bEnd.addEventListener('click', loadWmsEnderecamento);
+    var bEndVoltar = document.getElementById('btn-wms-end-voltar-2d');
+    if (bEndVoltar) bEndVoltar.addEventListener('click', _wmsEndVoltar2d);
+    var bEnd3dReset = document.getElementById('btn-wms-end-3d-reset');
+    if (bEnd3dReset) bEnd3dReset.addEventListener('click', function() {
+        if (window.WmsMapa3d && WmsMapa3d.resetView) WmsMapa3d.resetView();
+    });
+    var wireEnd3d = document.getElementById('wms-end-3d-wireframe');
+    if (wireEnd3d) wireEnd3d.addEventListener('change', function() {
+        if (window.WmsMapa3d && WmsMapa3d.getPrefix && WmsMapa3d.getPrefix() === 'wms-end-3d') {
+            WmsMapa3d.setWireframe(wireEnd3d.checked);
+        }
+    });
     var bRedis = document.getElementById('btn-wms-redistribuir');
     if (bRedis) bRedis.addEventListener('click', wmsRedistribuirLayout);
     var bCtrlBusca = document.getElementById('btn-wms-ctrl-buscar');

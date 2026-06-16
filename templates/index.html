@@ -3046,8 +3046,31 @@
                         <div class="table-container"><table class="data-table"><thead><tr><th>Mov.</th><th>Status</th><th>Palete</th><th>Origem</th><th>Stage</th><th>Quando</th></tr></thead><tbody id="wms-tbody-stage"><tr><td colspan="6" class="loading">Informe roteiro e viagem.</td></tr></tbody></table></div>
                     </div>
                     <div id="wms-panel-enderecamento" class="wms-inner-panel" hidden>
-                        <p class="info-text" style="margin: 0 0 12px 0;">Mapa de ocupação por <strong>câmara</strong>, <strong>finalidade</strong> e <strong>endereço</strong>. Estoque normal (câm. 11–21), destinos fixos (MG, avaria, reentregas…) e quarentena (câm. 98).</p>
+                        <p class="info-text" style="margin: 0 0 12px 0;">Mapa de ocupação por <strong>câmara</strong>, <strong>finalidade</strong> e <strong>endereço</strong>. Clique na planta 2D ou em uma linha para abrir a visualização 3D.</p>
                         <button type="button" class="btn btn-primary wms-end-btn-atualizar" id="btn-wms-enderecamento-atualizar">Atualizar ocupação</button>
+                        <div id="wms-end-vis-geral">
+                            <h3 class="wms-end-vis-titulo">Planta geral — vista 2D</h3>
+                            <div id="wms-end-2d-wrap" class="wms-end-2d-wrap">
+                                <canvas id="wms-end-2d-canvas"></canvas>
+                                <p id="wms-end-2d-hint" class="wms-end-2d-hint">Clique em uma câmara para abrir o mapa 3D · verde = livre · vermelho = ocupado</p>
+                            </div>
+                        </div>
+                        <div id="wms-end-vis-3d" class="wms-end-vis-3d" hidden>
+                            <div class="wms-end-3d-toolbar">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-end-voltar-2d">← Voltar ao mapa 2D</button>
+                                <strong id="wms-end-3d-titulo" class="wms-end-3d-titulo"></strong>
+                                <button type="button" class="btn btn-primary btn-sm" id="btn-wms-end-3d-reset">Resetar vista</button>
+                                <label class="wms-mapa3d-check"><input type="checkbox" id="wms-end-3d-wireframe"> Wireframe</label>
+                            </div>
+                            <div id="wms-end-3d-wrap" class="wms-mapa3d-wrap wms-end-3d-wrap-embed">
+                                <canvas id="wms-end-3d-canvas"></canvas>
+                                <div id="wms-end-3d-loading" class="wms-mapa3d-loading" hidden>Carregando mapa 3D…</div>
+                                <div id="wms-end-3d-tooltip" class="wms-mapa3d-tooltip" hidden></div>
+                            </div>
+                            <div id="wms-end-3d-legenda" class="wms-mapa3d-legenda"></div>
+                            <div id="wms-end-3d-detalhe" class="wms-mapa3d-detalhe" hidden></div>
+                        </div>
+                        <h3 class="wms-end-vis-titulo" style="margin-top: 20px;">Detalhe por finalidade</h3>
                         <div id="wms-enderecamento-grid" class="wms-enderecamento-grid"></div>
                     </div>
                     <div id="wms-panel-inventario" class="wms-inner-panel" hidden>
