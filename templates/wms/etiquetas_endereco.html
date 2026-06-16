@@ -159,11 +159,6 @@
     white-space: nowrap;
     overflow: hidden;
   }
-  .bc-wms {
-    font-size: 6pt;
-    font-weight: 700;
-    margin-left: 1.5mm;
-  }
 
   /* ── Base: Picking / Pulmão horizontal + seta ── */
   .etq-zone-bar {
@@ -301,9 +296,7 @@
 
   <div class="etq-bc-block">
     <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
-    <div class="bc-line">
-      {{ e.barcode }}{% if e.codigo_wms and e.codigo_wms != e.barcode %}<span class="bc-wms">{{ e.codigo_wms }}</span>{% endif %}
-    </div>
+    <div class="bc-line">{{ e.codigo_wms or e.codigo or e.barcode }}</div>
   </div>
 
   {% if e.destino_fixo %}
