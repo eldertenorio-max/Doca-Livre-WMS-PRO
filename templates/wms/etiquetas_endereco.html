@@ -5,7 +5,7 @@
 <title>Etiquetas longarina WMS{% if titulo %} — {{ titulo }}{% endif %}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  @page { size: auto; margin: 2mm; }
+  @page { size: 76mm 50mm; margin: 1.5mm; }
   body {
     font-family: 'Arial Black', Arial, Helvetica, sans-serif;
     background: #e8e8e8;
@@ -45,15 +45,17 @@
   .faixa-titulo { font-size: 11px; color: #555; padding: 0 0 6px 2px; }
   .faixa {
     display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
+    flex-direction: column;
+    flex-wrap: wrap;
     gap: 2mm;
     width: fit-content;
+    max-width: 100%;
   }
 
+  /* Etiqueta horizontal 76×50 mm — colar na longarina */
   .etq-loc {
-    width: 50mm;
-    height: 76mm;
+    width: 76mm;
+    height: 50mm;
     border: 1.2pt solid #000;
     background: #fff;
     display: flex;
@@ -61,90 +63,75 @@
     overflow: hidden;
     page-break-inside: avoid;
   }
-
-  .addr-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
+  .etq-body {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    min-height: 0;
   }
-  .addr-table td {
-    text-align: center;
-    vertical-align: middle;
-    padding: 0;
+  .etq-left {
+    width: 28mm;
+    display: flex;
+    flex-direction: column;
+    border-right: 0.8pt solid #000;
+    flex-shrink: 0;
   }
-  .addr-table .lbl {
-    font-size: 6.5pt;
-    font-weight: 700;
-    font-family: Arial, Helvetica, sans-serif;
-    letter-spacing: 0.2px;
-    padding: 1.8mm 0 1mm;
-    border-bottom: 0.8pt solid #000;
-    line-height: 1;
-  }
-  .addr-table .val {
-    font-size: 20pt;
+  .camara-etq {
+    padding: 1.2mm 1.5mm;
+    font-size: 5.5pt;
     font-weight: 900;
-    line-height: 1;
-    padding: 2.4mm 0 2.2mm;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.3px;
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+    line-height: 1.15;
+    background: #e3f2fd;
+    color: #0d47a1;
+    border-bottom: 0.8pt solid #000;
   }
-  .addr-table .val-apto {
-    font-size: 16pt;
-    padding: 1.8mm 0 1.2mm;
+  .addr-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
   }
-  .apto-letra {
-    display: block;
-    font-size: 9pt;
-    font-weight: 800;
-    margin-top: 0.8mm;
-    letter-spacing: 0.5px;
-  }
-  .addr-table .zone-col {
-    width: 12mm;
-    border-left: 1.2pt solid #000;
-    vertical-align: middle;
-  }
-  .zone-stack {
+  .addr-cell {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1.5mm;
-    min-height: 22mm;
-    padding: 1mm 0.5mm;
+    border-right: 0.5pt solid #ccc;
+    border-bottom: 0.5pt solid #ccc;
+    padding: 0.5mm;
   }
-  .zone-stack.picking { justify-content: flex-end; padding-bottom: 2mm; }
-  .zone-stack.pulmao { justify-content: flex-start; padding-top: 2mm; }
-  .zone-stack.destino { justify-content: center; padding: 1.5mm 0.5mm; }
-  .zone-txt {
-    font-size: 6.5pt;
-    font-weight: 900;
-    letter-spacing: 0.4px;
-    line-height: 1.1;
-    text-align: center;
-  }
-  .zone-txt.destino {
+  .addr-cell:nth-child(2n) { border-right: none; }
+  .addr-cell:nth-child(n+3) { border-bottom: none; }
+  .addr-cell .lbl {
     font-size: 5.5pt;
-    line-height: 1.15;
-    padding: 0 0.5mm;
+    font-weight: 700;
+    font-family: Arial, Helvetica, sans-serif;
+    line-height: 1;
+    margin-bottom: 0.8mm;
+    color: #333;
   }
-  .arrow {
-    width: 0; height: 0;
-    border-left: 4.5mm solid transparent;
-    border-right: 4.5mm solid transparent;
+  .addr-cell .val {
+    font-size: 14pt;
+    font-weight: 900;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
   }
-  .arrow.down { border-top: 7mm solid #000; }
-  .arrow.up { border-bottom: 7mm solid #000; }
-
+  .addr-cell.val-rua .val {
+    font-size: 12pt;
+  }
   .etq-mid {
     flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 2mm 2mm 1mm;
-    border-top: 0.8pt solid #000;
+    padding: 1mm 2mm;
+    min-width: 0;
   }
   .bc-wrap {
     width: 100%;
@@ -152,100 +139,138 @@
     line-height: 0;
   }
   .bc-wrap svg {
-    width: 44mm;
-    max-width: 100%;
-    height: 13mm;
+    width: 100%;
+    max-width: 38mm;
+    height: 10mm;
   }
   .code-line {
-    margin-top: 2.2mm;
-    font-size: 9.5pt;
+    margin-top: 1mm;
+    font-size: 8pt;
     font-weight: 700;
     font-family: 'Courier New', Consolas, monospace;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.4px;
     text-align: center;
-    line-height: 1.2;
+    line-height: 1.15;
+    white-space: nowrap;
   }
   .code-wms {
-    margin-top: 1mm;
-    font-size: 7pt;
+    margin-top: 0.5mm;
+    font-size: 6.5pt;
     font-weight: 700;
     font-family: 'Courier New', Consolas, monospace;
     text-align: center;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.2px;
     color: #333;
   }
+  .etq-zone {
+    width: 14mm;
+    flex-shrink: 0;
+    border-left: 0.8pt solid #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1mm 0.5mm;
+  }
+  .zone-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1mm;
+    width: 100%;
+    height: 100%;
+  }
+  .zone-stack.picking { justify-content: flex-end; padding-bottom: 1mm; }
+  .zone-stack.pulmao { justify-content: flex-start; padding-top: 1mm; }
+  .zone-txt {
+    font-size: 5.5pt;
+    font-weight: 900;
+    letter-spacing: 0.3px;
+    line-height: 1.1;
+    text-align: center;
+    writing-mode: horizontal-tb;
+  }
+  .zone-txt.destino {
+    font-size: 4.8pt;
+    line-height: 1.12;
+  }
+  .arrow {
+    width: 0; height: 0;
+    border-left: 3.5mm solid transparent;
+    border-right: 3.5mm solid transparent;
+  }
+  .arrow.down { border-top: 5mm solid #000; }
+  .arrow.up { border-bottom: 5mm solid #000; }
 
   .foot {
     border-top: 0.8pt solid #000;
-    padding: 1.8mm 2mm;
-    font-size: 5.5pt;
+    padding: 0.8mm 2mm;
+    font-size: 5pt;
     font-weight: 700;
     font-family: Arial, Helvetica, sans-serif;
     text-align: center;
-    letter-spacing: 0.3px;
-    line-height: 1.2;
+    letter-spacing: 0.25px;
+    line-height: 1.1;
     background: #fff;
-  }
-
-  .camara-etq {
-    border-bottom: 0.8pt solid #000;
-    padding: 1.4mm 2mm;
-    font-size: 6.5pt;
-    font-weight: 900;
-    font-family: Arial, Helvetica, sans-serif;
-    text-align: center;
-    text-transform: uppercase;
-    letter-spacing: 0.35px;
-    line-height: 1.15;
-    background: #e3f2fd;
-    color: #0d47a1;
+    flex-shrink: 0;
   }
 
   @media print {
     body { background: #fff; padding: 0; margin: 0; }
     .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
     .faixa { gap: 0; }
-    .etq-loc { border: 1pt solid #000; margin: 0; }
-    .bloco-faixa { margin-bottom: 0; }
+    .etq-loc { border: 1pt solid #000; margin: 0 0 1mm 0; page-break-inside: avoid; }
+    .bloco-faixa { margin-bottom: 2mm; }
   }
 </style>
 </head>
 <body>
 <div class="toolbar">
-  <p><strong>{{ total }}</strong> etiqueta(s) longarina · <strong>50×76 mm</strong> · Zebra · Bipagem <strong>12.14.1.1</strong> (Câm·Col·Nív·Apto)</p>
+  <p><strong>{{ total }}</strong> etiqueta(s) longarina · <strong>76×50 mm</strong> horizontal · Zebra · Bipagem <strong>12.14.1.1</strong> (Câm·Col·Nív)</p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
 </div>
 
 {% macro etiqueta_longarina(e) %}
 <div class="etq-loc">
-  <div class="camara-etq">{{ e.camara_nome or ('Câmara ' ~ e.camara) }}{% if e.rua_letra %} · Rua {{ e.rua_letra }}{% endif %}</div>
-  <table class="addr-table" aria-label="Endereço {{ e.dotted }}">
-    <colgroup><col><col><col><col><col style="width: 12mm"></colgroup>
-    <tr>
-      <td class="lbl">Câm</td><td class="lbl">Col</td><td class="lbl">Nív</td><td class="lbl">Apto</td>
-      <td class="zone-col" rowspan="2">
-        <div class="zone-stack {% if e.destino_fixo %}destino{% elif e.picking %}picking{% else %}pulmao{% endif %}">
-          {% if e.destino_fixo %}
-          <div class="zone-txt destino">{{ e.destino_label or e.zona }}</div>
-          {% elif e.picking %}
-          <div class="zone-txt">PICKING</div><div class="arrow down" aria-hidden="true"></div>
-          {% else %}
-          <div class="arrow up" aria-hidden="true"></div><div class="zone-txt">PULMÃO</div>
-          {% endif %}
+  <div class="etq-body">
+    <div class="etq-left">
+      <div class="camara-etq">Câmara {{ e.camara or e.rua_num }}{% if e.rua_letra %} · Rua {{ e.rua_letra }}{% endif %}</div>
+      <div class="addr-grid">
+        <div class="addr-cell">
+          <span class="lbl">Câm</span>
+          <span class="val">{{ e.camara or e.rua_num }}</span>
         </div>
-      </td>
-    </tr>
-    <tr>
-      <td class="val">{{ e.rua_num }}</td><td class="val">{{ e.predio }}</td>
-      <td class="val">{{ e.nivel }}</td>
-      <td class="val val-apto">{{ e.apto }}{% if e.rua_letra %}<span class="apto-letra">{{ e.rua_letra }}</span>{% endif %}</td>
-    </tr>
-  </table>
-  <div class="etq-mid">
-    <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
-    <div class="code-line">{{ e.dotted }}</div>
-    {% if e.codigo_wms %}<div class="code-wms">{{ e.codigo_wms }}</div>{% endif %}
+        <div class="addr-cell val-rua">
+          <span class="lbl">Rua</span>
+          <span class="val">{{ e.rua_letra or '—' }}</span>
+        </div>
+        <div class="addr-cell">
+          <span class="lbl">Col</span>
+          <span class="val">{{ e.predio }}</span>
+        </div>
+        <div class="addr-cell">
+          <span class="lbl">Nív</span>
+          <span class="val">{{ e.nivel }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="etq-mid">
+      <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
+      <div class="code-line">{{ e.camara }} · {{ e.rua_letra or '—' }} · {{ e.predio }} · {{ e.nivel }}</div>
+      {% if e.codigo_wms %}<div class="code-wms">{{ e.codigo_wms }}</div>{% endif %}
+    </div>
+    <div class="etq-zone">
+      <div class="zone-stack {% if e.destino_fixo %}destino{% elif e.picking %}picking{% else %}pulmao{% endif %}">
+        {% if e.destino_fixo %}
+        <div class="zone-txt destino">{{ e.destino_label or e.zona }}</div>
+        {% elif e.picking %}
+        <div class="zone-txt">PICKING</div><div class="arrow down" aria-hidden="true"></div>
+        {% else %}
+        <div class="arrow up" aria-hidden="true"></div><div class="zone-txt">PULMÃO</div>
+        {% endif %}
+      </div>
+    </div>
   </div>
   <div class="foot">Ultrapão · Stock System WMS</div>
 </div>
@@ -285,8 +310,8 @@
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
-        width: 1.2,
-        height: 36,
+        width: 1.1,
+        height: 28,
         displayValue: false,
         margin: 0,
         lineColor: '#000000',

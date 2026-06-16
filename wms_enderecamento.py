@@ -5700,7 +5700,7 @@ def _agrupar_etiquetas_faixas(loc_rows, nomes_camara=None):
         etiquetas.sort(key=lambda x: int(x['nivel']))
         letra_txt = f' · Rua {rua_letra}' if rua_letra else ''
         faixas.append({
-            'titulo': f'Câm {rua_num}{letra_txt} · Col {predio} · Apto {apto}',
+            'titulo': f'Câmara {rua_num}{letra_txt} · Col {predio}',
             'camara': rua_num,
             'etiquetas': etiquetas,
         })
