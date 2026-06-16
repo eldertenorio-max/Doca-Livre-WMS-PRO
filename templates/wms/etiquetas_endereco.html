@@ -13,10 +13,7 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  @page {
-    size: 3in 2in landscape;
-    margin: 0;
-  }
+  @page { size: 3in 2in landscape; margin: 0; }
 
   html, body { width: var(--lw); }
   body {
@@ -33,8 +30,7 @@
     background: #fff; border: 1px solid #ccc; border-radius: 8px;
     padding: 10px 14px; margin-bottom: 12px;
     display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    width: calc(var(--lw) + 12px);
-    max-width: 100%;
+    width: calc(var(--lw) + 12px); max-width: 100%;
   }
   .toolbar p { font-size: 13px; color: #444; flex: 1; min-width: 200px; }
   .toolbar button {
@@ -43,11 +39,7 @@
   }
   .toolbar button.sec { background: #555; }
   .toolbar .zebra-hint {
-    flex-basis: 100%;
-    font-size: 11px;
-    color: #555;
-    margin: 4px 0 0;
-    line-height: 1.4;
+    flex-basis: 100%; font-size: 11px; color: #555; margin: 4px 0 0; line-height: 1.4;
   }
 
   .bloco-faixa { margin-bottom: 16px; }
@@ -57,12 +49,9 @@
     padding: 8px 4px 10px; border-bottom: 2px solid #1565c0; margin-bottom: 10px;
   }
   .faixa-titulo { font-size: 11px; color: #555; padding: 0 0 6px 2px; }
-  .faixa {
-    display: flex; flex-direction: column; flex-wrap: wrap;
-    gap: 2mm; width: var(--lw);
-  }
+  .faixa { display: flex; flex-direction: column; gap: 2mm; width: var(--lw); }
 
-  /* ── Etiqueta 3″×2″ — só preto e branco (térmica) ── */
+  /* ── Etiqueta 3″×2″ — grade cheia ── */
   .etq-page {
     width: var(--lw);
     height: var(--lh);
@@ -86,93 +75,83 @@
     print-color-adjust: exact !important;
   }
 
+  /* Cabeçalho — largura total */
   .etq-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 0.30in;
-    min-height: 0.30in;
-    padding: 0 0.10in;
+    height: 0.24in;
+    min-height: 0.24in;
+    padding: 0 0.08in;
     flex-shrink: 0;
   }
   .etq-head-main {
-    font-size: 7pt;
+    font-size: 7.5pt;
     font-weight: 800;
-    font-family: Arial, Helvetica, sans-serif;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.4px;
     text-transform: uppercase;
     line-height: 1;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
   }
   .etq-head-badge {
     flex-shrink: 0;
-    margin-left: 0.08in;
-    padding: 0.03in 0.07in;
+    margin-left: 0.06in;
+    padding: 0.02in 0.06in;
     border: 1.5pt solid var(--paper);
-    font-size: 8pt;
-    font-weight: 800;
-    letter-spacing: 0.5px;
+    font-size: 8.5pt;
+    font-weight: 900;
+    letter-spacing: 0.4px;
     line-height: 1;
-    white-space: nowrap;
   }
 
-  .etq-body {
+  /* Corpo — grade 4 colunas + barcode + rodapé interno */
+  .etq-main {
     flex: 1;
-    display: flex;
-    flex-direction: row;
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    grid-template-rows: 0.46in 1fr 0.17in;
     min-height: 0;
-    overflow: hidden;
     border-top: 1.5pt solid var(--ink);
   }
 
-  .etq-coords {
-    width: 0.78in;
-    flex-shrink: 0;
-    display: grid;
-    grid-template-rows: 1fr 1fr;
-    border-right: 1.5pt solid var(--ink);
-    background: var(--paper);
-  }
-  .coord-block {
+  .coord-cell {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    text-align: center;
-    padding: 0.02in 0.04in;
+    border-right: 1.5pt solid var(--ink);
+    border-bottom: 1.5pt solid var(--ink);
+    padding: 0.02in;
   }
-  .coord-block + .coord-block {
-    border-top: 1.5pt solid var(--ink);
-  }
+  .coord-cell:nth-child(4) { border-right: none; }
   .coord-lbl {
     font-size: 5.5pt;
     font-weight: 800;
-    letter-spacing: 0.8px;
+    letter-spacing: 0.6px;
     text-transform: uppercase;
     line-height: 1;
-    margin-bottom: 0.03in;
+    margin-bottom: 0.02in;
   }
   .coord-val {
-    font-size: 18pt;
+    font-size: 20pt;
     font-weight: 900;
-    font-family: Arial, Helvetica, sans-serif;
-    line-height: 1;
+    line-height: 0.9;
     font-variant-numeric: tabular-nums;
   }
 
-  .etq-scan {
-    flex: 1;
+  .etq-bc {
+    grid-column: 1 / -1;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.04in 0.10in;
-    min-width: 0;
+    padding: 0.03in 0.06in;
+    border-bottom: 1.5pt solid var(--ink);
+    min-height: 0;
     overflow: hidden;
-    background: var(--paper);
   }
   .bc-wrap {
     width: 100%;
@@ -181,70 +160,72 @@
   }
   .bc-wrap svg {
     width: 100%;
-    max-width: 1.95in;
-    height: 0.38in;
+    height: 0.44in;
+    max-height: 100%;
+  }
+
+  .etq-codes {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 0.06in;
+    gap: 0.04in;
+    min-height: 0;
+    overflow: hidden;
   }
   .code-bip {
-    margin-top: 0.04in;
     font-size: 8pt;
-    font-weight: 800;
+    font-weight: 900;
     font-family: Consolas, 'Courier New', monospace;
-    letter-spacing: 0.6px;
-    text-align: center;
+    letter-spacing: 0.4px;
     line-height: 1;
     white-space: nowrap;
   }
   .code-wms {
-    margin-top: 0.03in;
-    font-size: 6.5pt;
-    font-weight: 700;
+    font-size: 7pt;
+    font-weight: 800;
     font-family: Consolas, 'Courier New', monospace;
-    text-align: center;
+    letter-spacing: 0.3px;
+    line-height: 1;
     white-space: nowrap;
+    flex: 1;
+    text-align: center;
   }
-
   .scan-zone {
-    margin-top: 0.04in;
     font-size: 6.5pt;
     font-weight: 900;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
     text-transform: uppercase;
     line-height: 1;
     white-space: nowrap;
-    text-align: center;
+    flex-shrink: 0;
   }
 
   .etq-foot {
     flex-shrink: 0;
-    height: 0.15in;
-    line-height: 0.15in;
-    font-size: 5pt;
+    height: 0.12in;
+    line-height: 0.12in;
+    font-size: 4.5pt;
     font-weight: 700;
     text-align: center;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.35px;
     text-transform: uppercase;
     border-top: 1.5pt solid var(--ink);
-    background: var(--paper);
   }
 
   @media print {
     @page { size: 3in 2in landscape; margin: 0; }
-
     html, body {
       width: var(--lw) !important;
-      height: auto !important;
       margin: 0 !important;
       padding: 0 !important;
       background: #fff !important;
-      overflow: visible !important;
     }
     .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
     .bloco-camara, .bloco-faixa, .faixa {
-      margin: 0 !important;
-      padding: 0 !important;
-      border: none !important;
-      display: block !important;
-      width: var(--lw) !important;
+      margin: 0 !important; padding: 0 !important; border: none !important;
+      display: block !important; width: var(--lw) !important;
     }
     .etq-page {
       width: var(--lw) !important;
@@ -254,39 +235,25 @@
       position: relative;
       page-break-after: always;
       break-after: page;
-      page-break-inside: avoid;
-      break-inside: avoid;
       overflow: hidden;
     }
-    .etq-page:last-child {
-      page-break-after: auto;
-      break-after: auto;
-    }
+    .etq-page:last-child { page-break-after: auto; break-after: auto; }
     .etq-loc {
-      position: absolute;
-      top: 0;
-      left: 0;
+      position: absolute; top: 0; left: 0;
       width: var(--lw) !important;
       height: var(--lh) !important;
-      margin: 0 !important;
       border: 2pt solid #000 !important;
     }
-    .ink-block {
-      background: #000 !important;
-      color: #fff !important;
-    }
+    .ink-block { background: #000 !important; color: #fff !important; }
   }
 </style>
 </head>
 <body>
 <div class="toolbar">
-  <p><strong>{{ total }}</strong> etiqueta(s) · <strong>76×50 mm</strong> (3″×2″) · Zebra ZD220</p>
+  <p><strong>{{ total }}</strong> etiqueta(s) · <strong>76×50 mm</strong> · Zebra ZD220</p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
-  <p class="zebra-hint">
-    <strong>Driver Zebra:</strong> 3″×2″ paisagem · escuridão/darkness <strong>+2 ou +3</strong> ·
-    Chrome: margens <strong>Nenhuma</strong> · escala <strong>100%</strong>.
-  </p>
+  <p class="zebra-hint">3″×2″ paisagem · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>.</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
@@ -295,27 +262,43 @@
     <span class="etq-head-main">Câmara {{ e.camara or e.rua_num }}{% if e.rua_letra %} · Rua {{ e.rua_letra }}{% endif %}</span>
     <span class="etq-head-badge">{{ e.camara or e.rua_num }}{% if e.rua_letra %}-{{ e.rua_letra }}{% endif %}</span>
   </div>
-  <div class="etq-body">
-    <div class="etq-coords">
-      <div class="coord-block">
-        <span class="coord-lbl">Coluna</span>
-        <span class="coord-val">{{ e.predio }}</span>
-      </div>
-      <div class="coord-block">
-        <span class="coord-lbl">Nível</span>
-        <span class="coord-val">{{ e.nivel }}</span>
-      </div>
+  <div class="etq-main">
+    <div class="coord-cell">
+      <span class="coord-lbl">Coluna</span>
+      <span class="coord-val">{{ e.predio }}</span>
     </div>
-    <div class="etq-scan">
-      <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
-      <div class="code-bip">{{ e.barcode }}</div>
-      {% if e.codigo_wms %}<div class="code-wms">{{ e.codigo_wms }}</div>{% endif %}
+    <div class="coord-cell">
+      <span class="coord-lbl">Nível</span>
+      <span class="coord-val">{{ e.nivel }}</span>
+    </div>
+    <div class="coord-cell">
       {% if e.destino_fixo %}
-      <div class="scan-zone">{{ e.destino_label or e.zona }}</div>
+      <span class="coord-lbl">Zona</span>
+      <span class="coord-val" style="font-size:9pt;line-height:1.05;">{{ e.destino_label or e.zona }}</span>
       {% elif e.picking %}
-      <div class="scan-zone">Picking ▼</div>
+      <span class="coord-lbl">Zona</span>
+      <span class="coord-val" style="font-size:11pt;">PICK</span>
       {% else %}
-      <div class="scan-zone">Pulmão ▲</div>
+      <span class="coord-lbl">Zona</span>
+      <span class="coord-val" style="font-size:10pt;">PULM</span>
+      {% endif %}
+    </div>
+    <div class="coord-cell">
+      <span class="coord-lbl">Apto</span>
+      <span class="coord-val">{{ e.apto or '1' }}</span>
+    </div>
+    <div class="etq-bc">
+      <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
+    </div>
+    <div class="etq-codes">
+      <span class="code-bip">{{ e.barcode }}</span>
+      {% if e.codigo_wms %}<span class="code-wms">{{ e.codigo_wms }}</span>{% else %}<span class="code-wms"></span>{% endif %}
+      {% if e.destino_fixo %}
+      <span class="scan-zone">{{ e.destino_label or e.zona }}</span>
+      {% elif e.picking %}
+      <span class="scan-zone">▼ Picking</span>
+      {% else %}
+      <span class="scan-zone">▲ Pulmão</span>
       {% endif %}
     </div>
   </div>
@@ -357,8 +340,8 @@
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
-        width: 1.25,
-        height: 30,
+        width: 1.35,
+        height: 34,
         displayValue: false,
         margin: 0,
         lineColor: '#000000',
