@@ -51,7 +51,6 @@
   .faixa-titulo { font-size: 11px; color: #555; padding: 0 0 6px 2px; }
   .faixa { display: flex; flex-direction: column; gap: 2mm; width: var(--lw); }
 
-  /* ── Etiqueta 3″×2″ — grade cheia ── */
   .etq-page {
     width: var(--lw);
     height: var(--lh);
@@ -75,7 +74,6 @@
     print-color-adjust: exact !important;
   }
 
-  /* Cabeçalho — largura total */
   .etq-head {
     display: flex;
     align-items: center;
@@ -104,81 +102,84 @@
     border: 1.5pt solid var(--paper);
     font-size: 8.5pt;
     font-weight: 900;
-    letter-spacing: 0.4px;
     line-height: 1;
   }
 
-  /* Corpo — grade 4 colunas + barcode + rodapé interno */
-  .etq-main {
+  .etq-body {
     flex: 1;
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr 1fr;
-    grid-template-rows: 0.46in 1fr 0.17in;
+    display: flex;
+    flex-direction: row;
     min-height: 0;
     border-top: 1.5pt solid var(--ink);
+    overflow: hidden;
   }
 
+  /* Coluna + Nível */
+  .etq-coords {
+    width: 0.88in;
+    flex-shrink: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-right: 1.5pt solid var(--ink);
+  }
   .coord-cell {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    padding: 0.03in 0.02in;
     border-right: 1.5pt solid var(--ink);
-    border-bottom: 1.5pt solid var(--ink);
-    padding: 0.02in;
   }
-  .coord-cell:nth-child(4) { border-right: none; }
+  .coord-cell:nth-child(2) { border-right: none; }
   .coord-lbl {
     font-size: 5.5pt;
     font-weight: 800;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.5px;
     text-transform: uppercase;
     line-height: 1;
-    margin-bottom: 0.02in;
+    margin-bottom: 0.03in;
   }
   .coord-val {
-    font-size: 20pt;
+    font-size: 22pt;
     font-weight: 900;
     line-height: 0.9;
     font-variant-numeric: tabular-nums;
   }
 
+  /* Centro — barcode + códigos */
+  .etq-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1.5pt solid var(--ink);
+  }
   .etq-bc {
-    grid-column: 1 / -1;
+    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0.03in 0.06in;
-    border-bottom: 1.5pt solid var(--ink);
+    padding: 0.04in 0.06in;
     min-height: 0;
-    overflow: hidden;
+    border-bottom: 1.5pt solid var(--ink);
   }
-  .bc-wrap {
-    width: 100%;
-    text-align: center;
-    line-height: 0;
-  }
-  .bc-wrap svg {
-    width: 100%;
-    height: 0.44in;
-    max-height: 100%;
-  }
+  .bc-wrap { width: 100%; text-align: center; line-height: 0; }
+  .bc-wrap svg { width: 100%; height: 0.46in; max-height: 100%; }
 
   .etq-codes {
-    grid-column: 1 / -1;
+    flex-shrink: 0;
+    height: 0.18in;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
+    gap: 0.10in;
     padding: 0 0.06in;
-    gap: 0.04in;
-    min-height: 0;
-    overflow: hidden;
   }
   .code-bip {
     font-size: 8pt;
     font-weight: 900;
     font-family: Consolas, 'Courier New', monospace;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.5px;
     line-height: 1;
     white-space: nowrap;
   }
@@ -189,23 +190,48 @@
     letter-spacing: 0.3px;
     line-height: 1;
     white-space: nowrap;
-    flex: 1;
+  }
+
+  /* Faixa direita — seta Picking / Pulmão */
+  .etq-zone {
+    width: 0.62in;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.04in 0.03in;
     text-align: center;
   }
-  .scan-zone {
-    font-size: 6.5pt;
+  .etq-zone.picking { justify-content: flex-end; padding-bottom: 0.08in; }
+  .etq-zone.pulmao { justify-content: flex-start; padding-top: 0.08in; }
+
+  .zone-lbl {
+    font-size: 5.5pt;
     font-weight: 900;
     letter-spacing: 0.3px;
     text-transform: uppercase;
-    line-height: 1;
-    white-space: nowrap;
-    flex-shrink: 0;
+    line-height: 1.1;
+    margin: 0.03in 0;
+  }
+  .arrow {
+    width: 0;
+    height: 0;
+    border-left: 0.13in solid transparent;
+    border-right: 0.13in solid transparent;
+  }
+  .arrow.down { border-top: 0.18in solid var(--ink); }
+  .arrow.up { border-bottom: 0.18in solid var(--ink); }
+  .etq-zone.destino .zone-lbl {
+    font-size: 5pt;
+    line-height: 1.15;
+    word-break: break-word;
   }
 
   .etq-foot {
     flex-shrink: 0;
-    height: 0.12in;
-    line-height: 0.12in;
+    height: 0.11in;
+    line-height: 0.11in;
     font-size: 4.5pt;
     font-weight: 700;
     text-align: center;
@@ -245,6 +271,8 @@
       border: 2pt solid #000 !important;
     }
     .ink-block { background: #000 !important; color: #fff !important; }
+    .arrow.down { border-top-color: #000 !important; }
+    .arrow.up { border-bottom-color: #000 !important; }
   }
 </style>
 </head>
@@ -262,45 +290,41 @@
     <span class="etq-head-main">Câmara {{ e.camara or e.rua_num }}{% if e.rua_letra %} · Rua {{ e.rua_letra }}{% endif %}</span>
     <span class="etq-head-badge">{{ e.camara or e.rua_num }}{% if e.rua_letra %}-{{ e.rua_letra }}{% endif %}</span>
   </div>
-  <div class="etq-main">
-    <div class="coord-cell">
-      <span class="coord-lbl">Coluna</span>
-      <span class="coord-val">{{ e.predio }}</span>
+  <div class="etq-body">
+    <div class="etq-coords">
+      <div class="coord-cell">
+        <span class="coord-lbl">Coluna</span>
+        <span class="coord-val">{{ e.predio }}</span>
+      </div>
+      <div class="coord-cell">
+        <span class="coord-lbl">Nível</span>
+        <span class="coord-val">{{ e.nivel }}</span>
+      </div>
     </div>
-    <div class="coord-cell">
-      <span class="coord-lbl">Nível</span>
-      <span class="coord-val">{{ e.nivel }}</span>
+    <div class="etq-center">
+      <div class="etq-bc">
+        <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
+      </div>
+      <div class="etq-codes">
+        <span class="code-bip">{{ e.barcode }}</span>
+        {% if e.codigo_wms %}<span class="code-wms">{{ e.codigo_wms }}</span>{% endif %}
+      </div>
     </div>
-    <div class="coord-cell">
-      {% if e.destino_fixo %}
-      <span class="coord-lbl">Zona</span>
-      <span class="coord-val" style="font-size:9pt;line-height:1.05;">{{ e.destino_label or e.zona }}</span>
-      {% elif e.picking %}
-      <span class="coord-lbl">Zona</span>
-      <span class="coord-val" style="font-size:11pt;">PICK</span>
-      {% else %}
-      <span class="coord-lbl">Zona</span>
-      <span class="coord-val" style="font-size:10pt;">PULM</span>
-      {% endif %}
+    {% if e.destino_fixo %}
+    <div class="etq-zone destino">
+      <span class="zone-lbl">{{ e.destino_label or e.zona }}</span>
     </div>
-    <div class="coord-cell">
-      <span class="coord-lbl">Apto</span>
-      <span class="coord-val">{{ e.apto or '1' }}</span>
+    {% elif e.picking %}
+    <div class="etq-zone picking">
+      <span class="zone-lbl">Picking</span>
+      <div class="arrow down" aria-hidden="true"></div>
     </div>
-    <div class="etq-bc">
-      <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
+    {% else %}
+    <div class="etq-zone pulmao">
+      <div class="arrow up" aria-hidden="true"></div>
+      <span class="zone-lbl">Pulmão</span>
     </div>
-    <div class="etq-codes">
-      <span class="code-bip">{{ e.barcode }}</span>
-      {% if e.codigo_wms %}<span class="code-wms">{{ e.codigo_wms }}</span>{% else %}<span class="code-wms"></span>{% endif %}
-      {% if e.destino_fixo %}
-      <span class="scan-zone">{{ e.destino_label or e.zona }}</span>
-      {% elif e.picking %}
-      <span class="scan-zone">▼ Picking</span>
-      {% else %}
-      <span class="scan-zone">▲ Pulmão</span>
-      {% endif %}
-    </div>
+    {% endif %}
   </div>
   <div class="etq-foot">Ultrapão · Stock System WMS</div>
 </div></div>
