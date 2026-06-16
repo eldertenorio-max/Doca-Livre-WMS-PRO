@@ -33,12 +33,6 @@
       "label": "Envio MG"
     },
     {
-      "area": "cafe",
-      "rua": "CF",
-      "slots": 4,
-      "label": "Café"
-    },
-    {
       "area": "reentregas",
       "rua": "RE",
       "slots": 15,

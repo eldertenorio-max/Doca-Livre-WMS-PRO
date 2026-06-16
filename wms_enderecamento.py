@@ -1504,7 +1504,7 @@ def _destinos_acao_labels():
     labels.setdefault('retrabalho', 'RETRABALHO')
     labels.setdefault('descarte_perdas', 'DESCARTE')
     labels.setdefault('palete_bloqueado', 'BLOQUEADOS')
-    labels.setdefault('cafe', 'CAFE')
+    labels.setdefault('avaria', 'AVARIA')
     return labels
 
 

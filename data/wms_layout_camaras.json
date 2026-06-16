@@ -6,7 +6,7 @@
     "retrabalho": "RETRABALHO",
     "descarte_perdas": "DESCARTE",
     "palete_bloqueado": "BLOQUEADOS",
-    "cafe": "CAFE"
+    "avaria": "AVARIA"
   },
   "camaras": [
     {
@@ -1790,8 +1790,8 @@
           "rua": "E",
           "posicao": 14,
           "nivel": 4,
-          "destino_acao": "cafe",
-          "destino_label": "CAFE"
+          "destino_acao": "avaria",
+          "destino_label": "AVARIA"
         },
         {
           "rua": "E",
@@ -1818,8 +1818,8 @@
           "rua": "E",
           "posicao": 15,
           "nivel": 4,
-          "destino_acao": "cafe",
-          "destino_label": "CAFE"
+          "destino_acao": "avaria",
+          "destino_label": "AVARIA"
         },
         {
           "rua": "F",

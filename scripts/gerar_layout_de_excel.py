@@ -16,7 +16,8 @@ ACOES_PLANILHA = {
     'RETRABALHO': 'retrabalho',
     'DESCARTE': 'descarte_perdas',
     'BLOQUEADOS': 'palete_bloqueado',
-    'CAFE': 'cafe',
+    'AVARIA': 'avaria',
+    'CAFE': 'avaria',
 }
 
 LABELS = {
@@ -24,7 +25,7 @@ LABELS = {
     'retrabalho': 'RETRABALHO',
     'descarte_perdas': 'DESCARTE',
     'palete_bloqueado': 'BLOQUEADOS',
-    'cafe': 'CAFE',
+    'avaria': 'AVARIA',
 }
 
 
