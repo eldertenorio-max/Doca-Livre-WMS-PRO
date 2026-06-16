@@ -91,7 +91,7 @@
 
   /* ── Topo: Câmara · Rua · Coluna · Nível ── */
   .etq-top {
-    flex: 0 0 36%;
+    flex: 0 0 32%;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     border-bottom: 2pt solid var(--ink);
@@ -102,112 +102,111 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.5mm 0.3mm;
+    padding: 0.8mm 0.3mm;
     border-right: 1pt solid var(--ink);
     min-width: 0;
   }
   .loc-col:last-child { border-right: none; }
   .loc-lbl {
-    font-size: 5.5pt;
+    font-size: 6pt;
     font-weight: 700;
     letter-spacing: 0.3px;
     text-transform: uppercase;
     line-height: 1;
-    margin-bottom: 0.5mm;
+    margin-bottom: 0.8mm;
     white-space: nowrap;
   }
   .loc-val {
-    font-size: 20pt;
+    font-size: 22pt;
     font-weight: 900;
-    line-height: 0.88;
+    line-height: 0.85;
     font-variant-numeric: tabular-nums;
   }
-  .loc-val.letra { font-size: 18pt; }
+  .loc-val.letra { font-size: 20pt; }
 
   /* ── Centro: barcode ── */
   .etq-bc-block {
     flex: 1;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 0.5mm 2mm;
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 1mm 1.5mm 0.5mm;
     min-height: 0;
     border-bottom: 2pt solid var(--ink);
   }
   .bc-wrap {
     flex: 1;
-    width: 96%;
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 0;
     line-height: 0;
   }
-  .bc-wrap svg { width: 100%; height: 100%; max-height: 11mm; }
+  .bc-wrap svg { width: 98%; height: 100%; max-height: 13mm; }
   .bc-line {
-    flex-shrink: 0;
-    margin-top: 0.5mm;
-    font-size: 8pt;
+    flex: 0 0 3.2mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 7pt;
     font-weight: 800;
     font-family: Consolas, 'Courier New', monospace;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.3px;
     line-height: 1;
     text-align: center;
     white-space: nowrap;
+    overflow: hidden;
   }
   .bc-wms {
-    font-size: 6.5pt;
+    font-size: 6pt;
     font-weight: 700;
     margin-left: 1.5mm;
   }
 
-  /* ── Base: seta + Picking / Pulmão ── */
+  /* ── Base: Picking / Pulmão horizontal + seta ── */
   .etq-zone-bar {
-    flex: 0 0 28%;
+    flex: 0 0 26%;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.5mm 2mm;
+    align-items: stretch;
+    justify-content: stretch;
     min-height: 0;
+    border-top: none;
   }
   .zone-inner {
     display: flex;
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    gap: 2mm;
+    gap: 3mm;
     width: 100%;
     height: 100%;
+    padding: 0 2mm;
   }
-  .etq-zone-bar.picking .zone-inner { flex-direction: row-reverse; }
 
   .arrow {
     width: 0;
     height: 0;
     flex-shrink: 0;
-    border-left: 5mm solid transparent;
-    border-right: 5mm solid transparent;
+    border-left: 6mm solid transparent;
+    border-right: 6mm solid transparent;
   }
-  .arrow.up { border-bottom: 7mm solid var(--ink); }
-  .arrow.down { border-top: 7mm solid var(--ink); }
+  .arrow.up { border-bottom: 8mm solid var(--ink); }
+  .arrow.down { border-top: 8mm solid var(--ink); }
 
-  .zone-vtxt {
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-    transform: rotate(180deg);
-    font-size: 11pt;
+  .zone-lbl {
+    font-size: 13pt;
     font-weight: 900;
-    letter-spacing: 1px;
+    letter-spacing: 1.2px;
     text-transform: uppercase;
     line-height: 1;
     white-space: nowrap;
   }
-  .etq-zone-bar.destino .zone-vtxt {
-    writing-mode: horizontal-tb;
-    transform: none;
-    font-size: 7.5pt;
-    letter-spacing: 0.3px;
+  .etq-zone-bar.destino .zone-inner { padding: 0 1.5mm; }
+  .etq-zone-bar.destino .zone-lbl {
+    font-size: 8pt;
+    letter-spacing: 0.4px;
     text-align: center;
     white-space: normal;
     line-height: 1.1;
@@ -310,21 +309,21 @@
   {% if e.destino_fixo %}
   <div class="etq-zone-bar destino">
     <div class="zone-inner">
-      <span class="zone-vtxt">{{ e.destino_label or e.zona }}</span>
+      <span class="zone-lbl">{{ e.destino_label or e.zona }}</span>
     </div>
   </div>
   {% elif e.picking %}
   <div class="etq-zone-bar picking">
     <div class="zone-inner">
+      <span class="zone-lbl">Picking</span>
       <div class="arrow down" aria-hidden="true"></div>
-      <span class="zone-vtxt">Picking</span>
     </div>
   </div>
   {% else %}
   <div class="etq-zone-bar pulmao">
     <div class="zone-inner">
+      <span class="zone-lbl">Pulmão</span>
       <div class="arrow up" aria-hidden="true"></div>
-      <span class="zone-vtxt">Pulmão</span>
     </div>
   </div>
   {% endif %}
@@ -371,8 +370,8 @@
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
-        width: 1.25,
-        height: 32,
+        width: 1.35,
+        height: 36,
         displayValue: false,
         margin: 0,
         lineColor: '#000000',
