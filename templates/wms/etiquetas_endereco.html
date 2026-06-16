@@ -227,40 +227,40 @@
 
   @media print {
     @page { size: 60mm 40mm; margin: 0; }
+
     html, body {
-      width: 100% !important;
-      height: 100% !important;
-      max-width: none !important;
-      max-height: none !important;
+      width: 60mm !important;
+      height: auto !important;
+      min-height: 40mm !important;
       margin: 0 !important;
       padding: 0 !important;
       background: #fff !important;
-      overflow: hidden !important;
+      overflow: visible !important;
     }
+
     .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
+
     .bloco-camara, .bloco-faixa, .faixa {
       margin: 0 !important;
       padding: 0 !important;
       border: none !important;
       display: block !important;
-      width: 100% !important;
-      max-width: none !important;
+      width: 60mm !important;
     }
+
     .etq-page {
-      width: 100% !important;
-      height: 100% !important;
-      min-width: 100% !important;
-      min-height: 100% !important;
-      max-width: none !important;
+      width: 60mm !important;
+      height: 40mm !important;
       margin: 0 !important;
       padding: 0 !important;
       position: relative !important;
       display: block !important;
+      overflow: hidden !important;
       page-break-after: always;
       break-after: page;
-      overflow: hidden;
     }
     .etq-page:last-child { page-break-after: auto; break-after: auto; }
+
     .etq-loc,
     .etiqueta {
       position: absolute !important;
@@ -268,37 +268,41 @@
       left: 0 !important;
       width: 100% !important;
       height: 100% !important;
-      max-width: none !important;
-      max-height: none !important;
       margin: 0 !important;
       padding: 0 !important;
+      display: grid !important;
+      grid-template-rows: 34fr 42fr 24fr !important;
       border: 2pt solid #000 !important;
       box-sizing: border-box !important;
+      background: #fff !important;
     }
+
     .bc-wrap svg.bc {
       width: 98% !important;
       max-height: 100% !important;
     }
+
     html.zebra-portrait,
     html.zebra-portrait body {
-      width: 100% !important;
-      height: 100% !important;
+      width: 40mm !important;
+      height: auto !important;
+      min-height: 60mm !important;
     }
     html.zebra-portrait .bloco-camara,
     html.zebra-portrait .bloco-faixa,
-    html.zebra-portrait .faixa { width: 100% !important; }
+    html.zebra-portrait .faixa { width: 40mm !important; }
     html.zebra-portrait .etq-page {
-      width: 100% !important;
-      height: 100% !important;
-      position: relative !important;
+      width: 40mm !important;
+      height: 60mm !important;
     }
     html.zebra-portrait .etq-loc,
     html.zebra-portrait .etiqueta {
-      width: 100% !important;
-      height: 100% !important;
-      transform: rotate(90deg) translateY(-100%) !important;
+      width: 60mm !important;
+      height: 40mm !important;
+      transform: rotate(90deg) translateY(-40mm) !important;
       transform-origin: top left !important;
     }
+
     .arrow.up { border-bottom-color: #000 !important; }
     .arrow.down { border-top-color: #000 !important; }
   }
