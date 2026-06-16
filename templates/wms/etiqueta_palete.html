@@ -2,15 +2,21 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Etiqueta palete {{ etiqueta }}</title>
 <style>
+  :root {
+    --lw: 3in;
+    --lh: 2in;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  /* Zebra ZD220 — rolo 76×50 mm (203 dpi) */
+
   @page {
-    size: 76mm 50mm;
+    size: 3in 2in landscape;
     margin: 0;
   }
-  html, body { width: 76mm; }
+
+  html, body { width: var(--lw); }
   body {
     font-family: Arial, Helvetica, sans-serif;
     background: #eee;
@@ -24,6 +30,8 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+    width: calc(var(--lw) + 12px);
+    max-width: 100%;
   }
   .toolbar button {
     padding: 8px; font-size: 13px; cursor: pointer;
@@ -32,36 +40,35 @@
   .toolbar .zebra-hint {
     font-size: 11px;
     color: #555;
-    line-height: 1.35;
+    line-height: 1.4;
   }
 
   .etq-page {
-    width: 76mm;
-    height: 50mm;
+    width: var(--lw);
+    height: var(--lh);
     margin: 0 0 2mm;
     overflow: hidden;
   }
   .etq {
-    width: 76mm;
-    height: 50mm;
+    width: var(--lw);
+    height: var(--lh);
     border: 1pt solid #000;
-    padding: 1.5mm 2mm;
+    padding: 0.06in 0.08in;
     background: #fff;
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
 
-  /* —— Etiqueta longarina (guardar em) —— */
   .etq-destino .etq {
     justify-content: center;
     text-align: center;
-    padding: 1.2mm 2mm;
+    padding: 0.05in 0.08in;
   }
   .destino strong {
     display: block;
     font-size: 5.5pt;
-    margin-bottom: 0.8mm;
+    margin-bottom: 0.03in;
     text-transform: uppercase;
     letter-spacing: 0.4px;
     color: #33691e;
@@ -70,10 +77,10 @@
     font-size: 7pt;
     font-weight: bold;
     color: #1b5e20;
-    margin-bottom: 0.6mm;
+    margin-bottom: 0.03in;
   }
   .camara-badge span {
-    font-size: 14pt;
+    font-size: 13pt;
     color: #c62828;
     font-weight: 900;
     vertical-align: middle;
@@ -84,27 +91,26 @@
     color: #555;
     text-transform: uppercase;
     letter-spacing: 0.3px;
-    margin-bottom: 0.3mm;
+    margin-bottom: 0.02in;
   }
   .destino .end-wms {
     display: block;
-    font-size: 13pt;
+    font-size: 12pt;
     font-weight: bold;
     font-family: Consolas, monospace;
-    letter-spacing: 0.8px;
+    letter-spacing: 0.6px;
     line-height: 1;
-    margin: 0.3mm 0 0.6mm;
+    margin: 0.02in 0 0.04in;
     color: #0d47a1;
   }
-  .destino .bc-wrap-end { line-height: 0; margin: 0.3mm 0; }
-  .destino .bc-wrap-end svg { width: 92%; height: 8mm; }
+  .destino .bc-wrap-end { line-height: 0; margin: 0.02in 0; }
+  .destino .bc-wrap-end svg { width: 92%; height: 0.3in; }
   .destino .end-bc {
     display: block;
     font-size: 7pt;
     font-weight: 700;
     font-family: Consolas, monospace;
-    letter-spacing: 0.4px;
-    margin-top: 0.5mm;
+    margin-top: 0.03in;
     color: #333;
   }
   .destino .end-txt {
@@ -112,24 +118,23 @@
     font-size: 5pt;
     color: #333;
     line-height: 1.2;
-    margin-top: 0.5mm;
+    margin-top: 0.03in;
     font-weight: 600;
   }
   .destino .end-zona {
     display: inline-block;
-    margin-top: 0.5mm;
-    padding: 0.3mm 1.5mm;
+    margin-top: 0.03in;
+    padding: 0.02in 0.05in;
     font-size: 5pt;
     font-weight: bold;
     background: #1565c0;
     color: #fff;
   }
 
-  /* —— Etiqueta palete —— */
   .palete-head {
     text-align: center;
     flex-shrink: 0;
-    margin-bottom: 0.8mm;
+    margin-bottom: 0.03in;
   }
   .brand {
     font-size: 4.5pt;
@@ -140,17 +145,17 @@
   .tipo {
     font-size: 4pt;
     color: #444;
-    margin-bottom: 0.5mm;
+    margin-bottom: 0.02in;
   }
-  .bc-wrap { text-align: center; line-height: 0; margin: 0.3mm 0; }
-  .bc-wrap svg { width: 94%; height: 7.5mm; }
+  .bc-wrap { text-align: center; line-height: 0; margin: 0.02in 0; }
+  .bc-wrap svg { width: 94%; height: 0.28in; }
   .codigo {
     text-align: center;
     font-size: 6pt;
     font-family: Consolas, monospace;
     font-weight: bold;
-    letter-spacing: 0.5px;
-    margin-bottom: 0.5mm;
+    letter-spacing: 0.4px;
+    margin-bottom: 0.03in;
   }
   table {
     width: 100%;
@@ -161,7 +166,7 @@
   }
   table td {
     border: 0.5pt solid #000;
-    padding: 0.5mm 1mm;
+    padding: 0.02in 0.04in;
     vertical-align: top;
     line-height: 1.15;
   }
@@ -173,18 +178,21 @@
   }
 
   @media print {
+    @page { size: 3in 2in landscape; margin: 0; }
+
     html, body {
-      width: 76mm;
+      width: var(--lw) !important;
       margin: 0 !important;
       padding: 0 !important;
       background: #fff !important;
     }
     .toolbar { display: none !important; }
     .etq-page {
-      width: 76mm;
-      height: 50mm;
-      margin: 0;
-      padding: 0;
+      width: var(--lw) !important;
+      height: var(--lh) !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      position: relative;
       page-break-after: always;
       break-after: page;
       page-break-inside: avoid;
@@ -196,8 +204,13 @@
       break-after: auto;
     }
     .etq {
-      border: none;
-      box-shadow: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: var(--lw) !important;
+      height: var(--lh) !important;
+      margin: 0 !important;
+      border: none !important;
     }
   }
 </style>
@@ -205,7 +218,7 @@
 <body>
 <div class="toolbar">
   <button type="button" onclick="window.print()">Imprimir</button>
-  <p class="zebra-hint">ZD220: papel <strong>76×50 mm</strong> · margens <strong>Nenhuma</strong> · escala <strong>100%</strong> · desmarque cabeçalho/rodapé.</p>
+  <p class="zebra-hint">ZD220: <strong>3″×2″</strong> paisagem · margens <strong>Nenhuma</strong> · escala <strong>100%</strong> · sem cabeçalho/rodapé.</p>
 </div>
 
 {% if endereco_barcode or destino or codigo_wms %}
