@@ -4530,8 +4530,13 @@ function _wmsEndDraw2D() {
     (en.camaras || []).forEach(function(c) {
         if (camByCod[c.camara]) camByCod[c.camara]._pct = c.percentual_ocupacao || 0;
     });
+    var pad = 14;
+    var gap = 12;
+    var topH = 200;
+    var cam21 = camByCod[21];
     var W = Math.max(wrap.clientWidth || 800, 480);
-    var H = 380;
+    var y98base = pad + topH + gap + (cam21 ? 100 + gap : 0);
+    var H = Math.max(400, y98base + 130);
     canvas.width = W;
     canvas.height = H;
     var ctx = canvas.getContext('2d');
@@ -4539,23 +4544,19 @@ function _wmsEndDraw2D() {
     ctx.fillStyle = '#eceff1';
     ctx.fillRect(0, 0, W, H);
     var regions = [];
-    var pad = 14;
-    var gap = 12;
-    var topH = 200;
     var colW = (W - pad * 2 - gap * 2) / 3;
     [11, 12, 13].forEach(function(cod, i) {
         var cam = camByCod[cod];
         if (!cam) return;
         _wmsEndDrawCamBlock(ctx, cam, pad + i * (colW + gap), pad, colW, topH, regions);
     });
-    var cam21 = camByCod[21];
     if (cam21) {
         var w21 = colW * 1.2;
         var x21 = (W - w21) / 2;
         _wmsEndDrawCamBlock(ctx, cam21, x21, pad + topH + gap, w21, 100, regions);
     }
     var areas98 = (data.areas || []);
-    var y98 = pad + topH + gap + 100 + gap;
+    var y98 = y98base;
     var h98 = Math.max(H - y98 - pad, 60);
     var bw98 = W - pad * 2;
     _wmsEndRoundRect(ctx, pad, y98, bw98, h98, 8);
