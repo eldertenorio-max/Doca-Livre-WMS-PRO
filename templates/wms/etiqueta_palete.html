@@ -5,7 +5,7 @@
 <title>Etiqueta palete {{ etiqueta }}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  @page { size: 100mm 70mm; margin: 3mm; }
+  @page { size: 100mm 80mm; margin: 3mm; }
   body {
     font-family: Arial, Helvetica, sans-serif;
     background: #eee;
@@ -22,7 +22,7 @@
   }
   .etq {
     width: 100mm;
-    min-height: 64mm;
+    min-height: 74mm;
     margin: 0 auto;
     border: 2px solid #000;
     padding: 3mm;
@@ -33,43 +33,64 @@
   .destino {
     margin-bottom: 2mm;
     border: 2pt solid #000;
-    padding: 2.5mm 3mm;
+    padding: 2mm 2.5mm;
     background: #f0f7f0;
     text-align: center;
   }
   .destino strong {
     display: block;
     font-size: 7pt;
-    margin-bottom: 1.5mm;
+    margin-bottom: 1.2mm;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
   .destino .end-bc {
     display: block;
-    font-size: 22pt;
+    font-size: 20pt;
     font-weight: bold;
     font-family: Consolas, monospace;
-    letter-spacing: 2px;
+    letter-spacing: 1.5px;
     line-height: 1.1;
-    margin: 1mm 0;
+    margin: 0.5mm 0;
+  }
+  .destino .bc-wrap-end {
+    text-align: center;
+    margin: 1mm 0 0.5mm;
+  }
+  .destino .bc-wrap-end svg {
+    width: 90%;
+    height: 11mm;
+  }
+  .destino .end-wms {
+    display: block;
+    font-size: 7.5pt;
+    font-family: Consolas, monospace;
+    font-weight: bold;
+    color: #333;
+    margin-top: 0.5mm;
   }
   .destino .end-txt {
     display: block;
-    font-size: 8pt;
+    font-size: 7.5pt;
     color: #222;
     line-height: 1.25;
+    margin-top: 1mm;
   }
-  .bc-wrap { text-align: center; margin: 1mm 0 1.5mm; }
-  .bc-wrap svg { width: 92%; height: 12mm; }
+  .palete-head {
+    text-align: center;
+    border-bottom: 1pt solid #ccc;
+    padding-bottom: 1.5mm;
+    margin-bottom: 1.5mm;
+  }
+  .bc-wrap { text-align: center; margin: 0.5mm 0; }
+  .bc-wrap svg { width: 92%; height: 11mm; }
   .codigo {
     text-align: center;
     font-size: 9pt;
     font-family: Consolas, monospace;
     font-weight: bold;
     letter-spacing: 1px;
-    margin-bottom: 2mm;
-    padding-bottom: 1.5mm;
-    border-bottom: 1pt solid #ccc;
+    margin-bottom: 1mm;
   }
   .brand {
     font-size: 7pt;
@@ -113,15 +134,23 @@
   <div class="destino">
     <strong>Guardar em — longarina</strong>
     <span class="end-bc">{{ endereco_barcode or destino }}</span>
+    {% if endereco_barcode %}
+    <div class="bc-wrap-end">
+      <svg id="bc-endereco" data-code="{{ endereco_barcode }}"></svg>
+    </div>
+    {% endif %}
+    {% if codigo_wms %}<span class="end-wms">{{ codigo_wms }}</span>{% endif %}
     {% if endereco_texto %}<span class="end-txt">{{ endereco_texto }}</span>{% endif %}
   </div>
   {% endif %}
-  <div class="bc-wrap">
-    <svg id="bc-palete" data-code="{{ etiqueta }}"></svg>
+  <div class="palete-head">
+    <div class="brand">Ultrapão · Stock System WMS</div>
+    <div class="tipo">ETIQUETA DE IDENTIFICAÇÃO — palete (22 caracteres)</div>
+    <div class="bc-wrap">
+      <svg id="bc-palete" data-code="{{ etiqueta }}"></svg>
+    </div>
+    <div class="codigo">{{ etiqueta }}</div>
   </div>
-  <div class="codigo">{{ etiqueta }}</div>
-  <div class="brand">Ultrapão · Stock System WMS</div>
-  <div class="tipo">ETIQUETA DE IDENTIFICAÇÃO — palete WMS</div>
   <table>
     <tr><td class="lbl">SKU</td><td>{{ sku or '—' }}</td></tr>
     <tr><td class="lbl">Descrição</td><td>{{ descricao or '—' }}</td></tr>
@@ -135,11 +164,18 @@
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
 (function() {
-  var el = document.getElementById('bc-palete');
-  var code = el && el.getAttribute('data-code');
-  if (code) {
-    JsBarcode(el, code, { format: 'CODE128', width: 1.6, height: 44, displayValue: false, margin: 2 });
+  function renderBc(id, opts) {
+    var el = document.getElementById(id);
+    var code = el && el.getAttribute('data-code');
+    if (!code) return;
+    try {
+      JsBarcode(el, code, Object.assign({
+        format: 'CODE128', displayValue: false, margin: 1, lineColor: '#000', background: '#fff'
+      }, opts || {}));
+    } catch (e) { console.warn(e); }
   }
+  renderBc('bc-palete', { width: 1.5, height: 40 });
+  renderBc('bc-endereco', { width: 1.3, height: 34 });
   {% if auto_print %}
   window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 400); });
   {% endif %}

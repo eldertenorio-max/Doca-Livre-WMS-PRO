@@ -4799,7 +4799,7 @@ function wmsImprimirEtqTodasLongarinas() {
 
 function wmsImprimirEtqUnico() {
     var cod = ((document.getElementById('wms-etq-codigo-unico') || {}).value || '').trim();
-    if (!cod) { showMessage('Informe o código longarina (21.13.1.1) ou WMS.', 'warning'); return; }
+    if (!cod) { showMessage('Informe o código longarina (12.14.1.1) ou WMS (12-C-14-1).', 'warning'); return; }
     wmsImprimirEtqEndereco(cod);
 }
 
@@ -5474,14 +5474,16 @@ function wmsInitBipDestinoAutoConfirm() {
 
 function wmsFormatarDestinoEtiqueta(sug) {
     if (!sug || !sug.codigo_endereco) return null;
-    var bc = sug.barcode_longarina || sug.codigo_endereco;
+    var bc = sug.barcode_longarina || '';
+    var codWms = (sug.codigo_wms || sug.codigo_endereco || '').toUpperCase();
     var txt = sug.texto || '';
     var zona = sug.zona_label || '';
     return {
-        barcode: bc,
+        barcode: bc || codWms,
+        codigo_wms: codWms,
         texto: txt,
         zona: zona,
-        destino: bc + (txt ? ' — ' + txt : (zona ? ' (' + zona + ')' : ''))
+        destino: (bc || codWms) + (txt ? ' — ' + txt : (zona ? ' (' + zona + ')' : ''))
     };
 }
 
@@ -5998,6 +6000,7 @@ async function wmsImprimirEtiqueta(silent) {
             url += '&destino=' + encodeURIComponent(fmt.destino);
             url += '&barcode_longarina=' + encodeURIComponent(fmt.barcode);
             if (fmt.texto) url += '&endereco_texto=' + encodeURIComponent(fmt.texto);
+            if (fmt.codigo_wms) url += '&codigo_wms=' + encodeURIComponent(fmt.codigo_wms);
         }
         var w = window.open(url, '_blank');
         if (!w) {

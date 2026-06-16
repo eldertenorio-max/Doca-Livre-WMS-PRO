@@ -51,7 +51,6 @@
     width: fit-content;
   }
 
-  /* 50 × 76 mm — etiqueta colada na longarina do rack */
   .etq-loc {
     width: 50mm;
     height: 76mm;
@@ -90,6 +89,17 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.3px;
   }
+  .addr-table .val-apto {
+    font-size: 16pt;
+    padding: 1.8mm 0 1.2mm;
+  }
+  .apto-letra {
+    display: block;
+    font-size: 9pt;
+    font-weight: 800;
+    margin-top: 0.8mm;
+    letter-spacing: 0.5px;
+  }
   .addr-table .zone-col {
     width: 12mm;
     border-left: 1.2pt solid #000;
@@ -106,12 +116,18 @@
   }
   .zone-stack.picking { justify-content: flex-end; padding-bottom: 2mm; }
   .zone-stack.pulmao { justify-content: flex-start; padding-top: 2mm; }
+  .zone-stack.destino { justify-content: center; padding: 1.5mm 0.5mm; }
   .zone-txt {
     font-size: 6.5pt;
     font-weight: 900;
     letter-spacing: 0.4px;
     line-height: 1.1;
     text-align: center;
+  }
+  .zone-txt.destino {
+    font-size: 5.5pt;
+    line-height: 1.15;
+    padding: 0 0.5mm;
   }
   .arrow {
     width: 0; height: 0;
@@ -148,6 +164,15 @@
     letter-spacing: 0.6px;
     text-align: center;
     line-height: 1.2;
+  }
+  .code-wms {
+    margin-top: 1mm;
+    font-size: 7pt;
+    font-weight: 700;
+    font-family: 'Courier New', Consolas, monospace;
+    text-align: center;
+    letter-spacing: 0.3px;
+    color: #333;
   }
 
   .foot {
@@ -187,10 +212,44 @@
 </head>
 <body>
 <div class="toolbar">
-  <p><strong>{{ total }}</strong> etiqueta(s) longarina · <strong>50×76 mm</strong> · Zebra · 5 níveis/coluna (1 PICKING + 4 PULMÃO) · Bipagem <strong>21.13.1.1</strong></p>
+  <p><strong>{{ total }}</strong> etiqueta(s) longarina · <strong>50×76 mm</strong> · Zebra · Bipagem <strong>12.14.1.1</strong> (Câm·Col·Nív·Apto)</p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
 </div>
+
+{% macro etiqueta_longarina(e) %}
+<div class="etq-loc">
+  <div class="camara-etq">{{ e.camara_nome or ('Câmara ' ~ e.camara) }}{% if e.rua_letra %} · Rua {{ e.rua_letra }}{% endif %}</div>
+  <table class="addr-table" aria-label="Endereço {{ e.dotted }}">
+    <colgroup><col><col><col><col><col style="width: 12mm"></colgroup>
+    <tr>
+      <td class="lbl">Câm</td><td class="lbl">Col</td><td class="lbl">Nív</td><td class="lbl">Apto</td>
+      <td class="zone-col" rowspan="2">
+        <div class="zone-stack {% if e.destino_fixo %}destino{% elif e.picking %}picking{% else %}pulmao{% endif %}">
+          {% if e.destino_fixo %}
+          <div class="zone-txt destino">{{ e.destino_label or e.zona }}</div>
+          {% elif e.picking %}
+          <div class="zone-txt">PICKING</div><div class="arrow down" aria-hidden="true"></div>
+          {% else %}
+          <div class="arrow up" aria-hidden="true"></div><div class="zone-txt">PULMÃO</div>
+          {% endif %}
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td class="val">{{ e.rua_num }}</td><td class="val">{{ e.predio }}</td>
+      <td class="val">{{ e.nivel }}</td>
+      <td class="val val-apto">{{ e.apto }}{% if e.rua_letra %}<span class="apto-letra">{{ e.rua_letra }}</span>{% endif %}</td>
+    </tr>
+  </table>
+  <div class="etq-mid">
+    <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
+    <div class="code-line">{{ e.dotted }}</div>
+    {% if e.codigo_wms %}<div class="code-wms">{{ e.codigo_wms }}</div>{% endif %}
+  </div>
+  <div class="foot">Ultrapão · Stock System WMS</div>
+</div>
+{% endmacro %}
 
 {% if agrupado_por_camara %}
 {% for bloco in agrupado_por_camara %}
@@ -200,32 +259,7 @@
   <div class="bloco-faixa">
     <div class="faixa-titulo">Coluna {{ faixa.titulo }} — {{ faixa.etiquetas|length }} nível(is)</div>
     <div class="faixa">
-      {% for e in faixa.etiquetas %}
-      <div class="etq-loc">
-        <div class="camara-etq">{{ e.camara_nome or ('Câmara ' ~ e.camara) }}</div>
-        <table class="addr-table" aria-label="Endereço {{ e.dotted }}">
-          <colgroup><col><col><col><col><col style="width: 12mm"></colgroup>
-          <tr>
-            <td class="lbl">Rua</td><td class="lbl">Prédio</td><td class="lbl">Nível</td><td class="lbl">Apto</td>
-            <td class="zone-col" rowspan="2">
-              <div class="zone-stack {{ 'picking' if e.picking else 'pulmao' }}">
-                {% if e.picking %}<div class="zone-txt">PICKING</div><div class="arrow down" aria-hidden="true"></div>
-                {% else %}<div class="arrow up" aria-hidden="true"></div><div class="zone-txt">PULMÃO</div>{% endif %}
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td class="val">{{ e.rua_num }}</td><td class="val">{{ e.predio }}</td>
-            <td class="val">{{ e.nivel }}</td><td class="val">{{ e.apto }}</td>
-          </tr>
-        </table>
-        <div class="etq-mid">
-          <div class="bc-wrap"><svg class="bc" data-code="{{ e.barcode }}"></svg></div>
-          <div class="code-line">{{ e.dotted }}</div>
-        </div>
-        <div class="foot">intercollector.com.br</div>
-      </div>
-      {% endfor %}
+      {% for e in faixa.etiquetas %}{{ etiqueta_longarina(e) }}{% endfor %}
     </div>
   </div>
   {% endfor %}
@@ -236,47 +270,7 @@
 <div class="bloco-faixa">
   <div class="faixa-titulo">Coluna {{ faixa.titulo }} — {{ faixa.etiquetas|length }} nível(is)</div>
   <div class="faixa">
-    {% for e in faixa.etiquetas %}
-    <div class="etq-loc">
-      <div class="camara-etq">{{ e.camara_nome or ('Câmara ' ~ e.camara) }}</div>
-      <table class="addr-table" aria-label="Endereço {{ e.dotted }}">
-        <colgroup>
-          <col><col><col><col>
-          <col style="width: 12mm">
-        </colgroup>
-        <tr>
-          <td class="lbl">Rua</td>
-          <td class="lbl">Prédio</td>
-          <td class="lbl">Nível</td>
-          <td class="lbl">Apto</td>
-          <td class="zone-col" rowspan="2">
-            <div class="zone-stack {{ 'picking' if e.picking else 'pulmao' }}">
-              {% if e.picking %}
-              <div class="zone-txt">PICKING</div>
-              <div class="arrow down" aria-hidden="true"></div>
-              {% else %}
-              <div class="arrow up" aria-hidden="true"></div>
-              <div class="zone-txt">PULMÃO</div>
-              {% endif %}
-            </div>
-          </td>
-        </tr>
-        <tr>
-          <td class="val">{{ e.rua_num }}</td>
-          <td class="val">{{ e.predio }}</td>
-          <td class="val">{{ e.nivel }}</td>
-          <td class="val">{{ e.apto }}</td>
-        </tr>
-      </table>
-      <div class="etq-mid">
-        <div class="bc-wrap">
-          <svg class="bc" data-code="{{ e.barcode }}"></svg>
-        </div>
-        <div class="code-line">{{ e.dotted }}</div>
-      </div>
-      <div class="foot">intercollector.com.br</div>
-    </div>
-    {% endfor %}
+    {% for e in faixa.etiquetas %}{{ etiqueta_longarina(e) }}{% endfor %}
   </div>
 </div>
 {% endfor %}

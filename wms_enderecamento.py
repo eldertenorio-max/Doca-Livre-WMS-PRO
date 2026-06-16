@@ -163,19 +163,31 @@ def _barcode_longarina(camara, posicao, nivel, apto=None, rua=None):
 
 
 def _resolver_codigo_endereco_bip(codigo):
-    """Aceita bip da etiqueta longarina (21.13.1.1) ou código interno (21-R-01-1)."""
+    """Aceita bip da etiqueta longarina (12.14.1.1) ou código interno (12-C-14-1)."""
     raw = (codigo or '').strip()
     if not raw:
         return None
-    up = raw.upper()
-    if re.match(r'^\d{2}-[A-Z]-\d{2}-\d+$', up):
-        return up
-    m = re.match(r'^(\d+)\.(\d+)\.(\d+)\.(\d+)$', raw)
+    up = raw.upper().replace(' ', '')
+    m_int = re.match(r'^(\d{1,2})-([A-Z]{1,3})-(\d{1,2})-(\d{1,2})$', up)
+    if m_int:
+        cam, rua, pos, niv = m_int.groups()
+        return _codigo_endereco(int(cam), rua, int(pos), int(niv))
+    m = re.match(r'^(\d+)\.(\d+)\.(\d+)\.(\d+)$', raw.replace(' ', ''))
     if m:
         cam, pos, niv, apto = (int(x) for x in m.groups())
         rua = _apto_para_rua(cam, apto)
         return _codigo_endereco(cam, rua, pos, niv)
     return None
+
+
+def _texto_endereco_humanizado(cam, rua, pos, niv, zona_label=None, destino_label=None):
+    """Linha legível para etiquetas de palete e UI."""
+    apto = _rua_para_apto(cam, rua)
+    zl = (destino_label or zona_label or '').strip()
+    base = f'Câm {int(cam)} · Rua {str(rua).upper()} · Col {int(pos)} · Nív {int(niv)} · Apto {apto}'
+    if zl:
+        return f'{base} ({zl})'
+    return base
 
 
 _WMS_CAMARA_TOTAIS_PADRAO = {11: 144, 12: 133, 13: 142, 21: 28}
@@ -360,9 +372,10 @@ def _format_locacao(loc):
     zl = _zona_label(zona)
     apto = _rua_para_apto(cam, rua)
     bc_long = _barcode_longarina(cam, pos, niv, apto=apto)
-    texto = f'Rua {cam} · Prédio {pos} · Nív {niv} · Apto {apto} ({zl})'
+    cod_wms = (d.get('codigo_endereco') or _codigo_endereco(cam, rua, pos, niv)).upper()
+    texto = _texto_endereco_humanizado(cam, rua, pos, niv, zona_label=zl, destino_label=destino_label)
     if destino_label:
-        texto = f'{destino_label} · {d.get("codigo_endereco") or texto}'
+        texto = f'{destino_label} · {cod_wms} · {bc_long}'
     return {
         **d,
         'zona_armazenagem': zona,
@@ -370,6 +383,8 @@ def _format_locacao(loc):
         'destino_label': destino_label,
         'texto': texto,
         'barcode_longarina': bc_long,
+        'codigo_wms': cod_wms,
+        'rua_letra': str(rua).upper(),
         'rua_num': str(int(cam)),
         'predio': str(int(pos)),
         'apto': str(apto),
@@ -5351,7 +5366,7 @@ def api_wms_zoneamento():
 
 
 def _loc_etiqueta_data(loc, nomes_camara=None):
-    """Dados para etiqueta de longarina (modelo Rua · Prédio · Nível · Apto + barcode 21.13.1.1)."""
+    """Dados para etiqueta de longarina (Câmara · Coluna · Nível · Apto + barcode 12.14.1.1)."""
     d = _row_dict(loc) or {}
     cam = int(d.get('camara') or 0)
     rua = str(d.get('rua') or '').strip().upper()
@@ -5360,21 +5375,34 @@ def _loc_etiqueta_data(loc, nomes_camara=None):
     apto = _rua_para_apto(cam, rua)
     cod = (d.get('codigo_endereco') or _codigo_endereco(cam, rua, pos, niv)).upper()
     bc_long = _barcode_longarina(cam, pos, niv, apto=apto)
-    picking = niv == 1 or (d.get('zona_armazenagem') or '').lower() == 'picking'
+    tipo = (d.get('tipo') or '').strip().lower()
+    area = (d.get('area') or '').strip().lower()
+    labels = _destinos_acao_labels()
+    destino_label = labels.get(area) if tipo == 'destino_fixo' and area else None
+    picking = (niv == 1 or (d.get('zona_armazenagem') or '').lower() == 'picking') and not destino_label
     cam_nome = _nome_camara_label(None, cam, nomes_camara)
     return {
         'rua_num': str(cam),
+        'rua_letra': rua,
         'predio': str(pos),
         'nivel': str(niv),
         'apto': str(apto),
         'camara': str(cam),
         'camara_nome': cam_nome,
         'codigo': cod,
+        'codigo_wms': cod,
         'barcode': bc_long,
         'dotted': bc_long,
         'picking': picking,
-        'zona': 'PICKING' if picking else 'PULMÃO',
+        'destino_fixo': bool(destino_label),
+        'destino_label': destino_label,
+        'zona': destino_label or ('PICKING' if picking else 'PULMÃO'),
         'cat': (d.get('categoria_zona') or d.get('area') or '').strip().upper(),
+        'texto_humano': _texto_endereco_humanizado(
+            cam, rua, pos, niv,
+            zona_label='PICKING' if picking else ('PULMÃO' if not destino_label else None),
+            destino_label=destino_label,
+        ),
     }
 
 
@@ -5383,15 +5411,16 @@ def _agrupar_etiquetas_faixas(loc_rows, nomes_camara=None):
     grupos = {}
     for loc in loc_rows:
         e = _loc_etiqueta_data(loc, nomes_camara=nomes_camara)
-        chave = (e['rua_num'], e['predio'], e['apto'])
+        chave = (e['rua_num'], e.get('rua_letra') or '', e['predio'], e['apto'])
         grupos.setdefault(chave, []).append(e)
     faixas = []
-    for (rua_num, predio, apto), etiquetas in sorted(
-        grupos.items(), key=lambda x: (int(x[0][0]), int(x[0][1]), int(x[0][2])),
+    for (rua_num, rua_letra, predio, apto), etiquetas in sorted(
+        grupos.items(), key=lambda x: (int(x[0][0]), str(x[0][1]), int(x[0][2]), int(x[0][3])),
     ):
         etiquetas.sort(key=lambda x: int(x['nivel']))
+        letra_txt = f' · Rua {rua_letra}' if rua_letra else ''
         faixas.append({
-            'titulo': f'Rua {rua_num} · Prédio {predio} · Apto {apto}',
+            'titulo': f'Câm {rua_num}{letra_txt} · Col {predio} · Apto {apto}',
             'camara': rua_num,
             'etiquetas': etiquetas,
         })
@@ -5527,19 +5556,31 @@ def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo
 def _texto_destino_etiqueta(sug):
     """Texto do endereço para etiqueta de palete e UI."""
     if not sug or not sug.get('codigo_endereco'):
-        return None, None, None
-    bc = (sug.get('barcode_longarina') or sug.get('codigo_endereco') or '').strip()
+        return None, None, None, None
+    bc = (sug.get('barcode_longarina') or '').strip()
+    cod_wms = (sug.get('codigo_wms') or sug.get('codigo_endereco') or '').strip().upper()
+    if not bc and sug.get('camara') and sug.get('rua_letra'):
+        bc = _barcode_longarina(
+            sug['camara'], sug.get('predio') or sug.get('posicao'),
+            sug.get('nivel'), rua=sug.get('rua_letra'),
+        )
+    elif not bc and cod_wms:
+        res = _resolver_codigo_endereco_bip(cod_wms)
+        if res:
+            parts = res.split('-')
+            if len(parts) == 4:
+                bc = _barcode_longarina(int(parts[0]), int(parts[2]), int(parts[3]), rua=parts[1])
     txt = (sug.get('texto') or '').strip()
     zona = (sug.get('zona_label') or '').strip()
-    linha = bc
+    linha = bc or cod_wms
     if txt:
-        linha = f'{bc} — {txt}'
+        linha = f'{bc or cod_wms} — {txt}'
     elif zona:
-        linha = f'{bc} ({zona})'
-    return linha, bc, txt or None
+        linha = f'{bc or cod_wms} ({zona})'
+    return linha, bc or None, txt or None, cod_wms or None
 
 
-def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=None, data_producao=None, data_validade=None, destino=None, endereco_barcode=None, endereco_texto=None, up=None, auto_print=True):
+def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=None, data_producao=None, data_validade=None, destino=None, endereco_barcode=None, endereco_texto=None, codigo_wms=None, up=None, auto_print=True):
     return render_template(
         'wms/etiqueta_palete.html',
         etiqueta=etiqueta,
@@ -5552,6 +5593,7 @@ def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=Non
         destino=destino,
         endereco_barcode=endereco_barcode,
         endereco_texto=endereco_texto,
+        codigo_wms=codigo_wms,
         up=up,
         auto_print=auto_print,
     )
@@ -5573,6 +5615,7 @@ def api_wms_etiqueta():
         destino = (request.args.get('destino') or '').strip() or None
         endereco_barcode = (request.args.get('barcode_longarina') or '').strip() or None
         endereco_texto = (request.args.get('endereco_texto') or '').strip() or None
+        codigo_wms = (request.args.get('codigo_wms') or '').strip().upper() or None
         if pal:
             pid = pal['id'] if isinstance(pal, dict) else pal[0]
             it = conn.execute(
@@ -5595,7 +5638,9 @@ def api_wms_etiqueta():
                         sug_pick = _sugerir_putaway(conn, sku, lote, data_producao, 'picking')
                         if sug_pick.get('codigo_endereco'):
                             sug = sug_pick
-                    destino, endereco_barcode, endereco_texto = _texto_destino_etiqueta(sug)
+                    destino, endereco_barcode, endereco_texto, cod_wms_sug = _texto_destino_etiqueta(sug)
+                    if not codigo_wms:
+                        codigo_wms = cod_wms_sug
         auto_print = request.args.get('auto_print', '1') != '0'
         conn.close()
         html = _html_etiqueta_palete(
@@ -5603,6 +5648,7 @@ def api_wms_etiqueta():
             destino=destino,
             endereco_barcode=endereco_barcode,
             endereco_texto=endereco_texto,
+            codigo_wms=codigo_wms,
             up=up,
             auto_print=auto_print,
         )
@@ -5621,26 +5667,31 @@ def api_wms_etiqueta_modelo():
     tipo = (request.args.get('tipo') or 'endereco').strip().lower()
     if tipo == 'palete':
         html = _html_etiqueta_palete(
-            'UP12345678901234567890',
+            'UP2506021430ABCD1234',
             sku='1234567',
             lote='L202501',
             qtd=48,
             descricao='Pão de forma integral 500g',
             data_producao='2025-06-01',
             data_validade='2025-12-01',
-            destino='21.13.1.1 — Rua 11 · Prédio 1 · Nív 1 · Apto 1 (PULMÃO)',
-            endereco_barcode='21.13.1.1',
-            endereco_texto='Rua 11 · Prédio 1 · Nív 1 · Apto 1 (PULMÃO)',
+            destino='12.14.1.1 — Câm 12 · Rua C · Col 14 · Nív 1 · Apto 1 (PICKING)',
+            endereco_barcode='12.14.1.1',
+            endereco_texto='Câm 12 · Rua C · Col 14 · Nív 1 · Apto 1 (PICKING)',
+            codigo_wms='12-C-14-1',
             up='5020',
             auto_print=False,
         )
         return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
     faixas = [{
-        'titulo': 'Rua 21 · Prédio 13 · Apto 1 — exemplo (5 níveis: 1 PICKING + 4 PULMÃO)',
+        'titulo': 'Câm 12 · Rua C · Col 14 · Apto 1 — exemplo (5 níveis)',
         'etiquetas': [
-            {'rua_num': '21', 'predio': '13', 'nivel': str(n), 'apto': '1',
-             'barcode': f'21.13.{n}.1', 'dotted': f'21.13.{n}.1',
-             'picking': n == 1, 'zona': 'PICKING' if n == 1 else 'PULMÃO'}
+            {'rua_num': '12', 'rua_letra': 'C', 'predio': '14', 'nivel': str(n), 'apto': '1',
+             'camara': '12', 'camara_nome': 'Câmara 12',
+             'codigo_wms': f'12-C-14-{n}', 'codigo': f'12-C-14-{n}',
+             'barcode': f'12.14.{n}.1', 'dotted': f'12.14.{n}.1',
+             'picking': n == 1, 'destino_fixo': False, 'destino_label': None,
+             'zona': 'PICKING' if n == 1 else 'PULMÃO',
+             'texto_humano': f'Câm 12 · Rua C · Col 14 · Nív {n} · Apto 1 ({("PICKING" if n == 1 else "PULMÃO")})'}
             for n in range(1, 6)
         ],
     }]
@@ -5658,7 +5709,7 @@ def api_wms_etiqueta_modelo():
 def api_wms_etiqueta_endereco():
     codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip()
     if not codigo:
-        return jsonify({'erro': 'Informe codigo/endereco (ex.: 21.13.1.1 ou 21-R-01-1).'}), 400
+        return jsonify({'erro': 'Informe codigo/endereco (ex.: 12.14.1.1 ou 12-C-14-1).'}), 400
     conn = _db()
     ensure_wms_schema(conn)
     try:
