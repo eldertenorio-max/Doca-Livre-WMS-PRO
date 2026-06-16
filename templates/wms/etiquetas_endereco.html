@@ -183,10 +183,10 @@
   .etq-zone-bar.destino .arrow { display: none; }
 
   @media print {
-    @page { margin: 0; }
+    @page { size: 60mm 40mm landscape; margin: 0; }
 
     html, body {
-      width: 100% !important;
+      width: 60mm !important;
       height: auto !important;
       margin: 0 !important;
       padding: 0 !important;
@@ -199,15 +199,12 @@
     .bloco-camara, .bloco-faixa, .faixa {
       margin: 0 !important;
       padding: 0 !important;
-      width: 100% !important;
+      width: 60mm !important;
     }
 
-    /* Cada etiqueta = 1 página inteira do driver (preenche o espaço em branco) */
     .etq-page {
-      width: 100% !important;
-      height: 100vh !important;
-      min-height: 100vh !important;
-      max-height: 100vh !important;
+      width: 60mm !important;
+      height: 40mm !important;
       margin: 0 !important;
       padding: 0 !important;
       overflow: hidden !important;
@@ -249,7 +246,7 @@
   <p><strong>{{ total }}</strong> etiqueta(s) · <strong>60×40 mm</strong> · Zebra ZD220</p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
-  <p class="zebra-hint">Driver: papel <strong>60×40 mm</strong> · Chrome: margens <strong>Nenhuma</strong> · escala <strong>100%</strong>.</p>
+  <p class="zebra-hint">Driver ZD220 → Config. página: <strong>Largura 60 mm</strong> · <strong>Altura 40 mm</strong> · Rotação <strong>0° Retrato</strong> (não 100×68). Chrome: margens <strong>Nenhuma</strong> · escala <strong>100%</strong>.</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
