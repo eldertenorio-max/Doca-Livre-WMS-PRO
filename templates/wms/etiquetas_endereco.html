@@ -98,33 +98,64 @@
 
   .etq-head {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     justify-content: space-between;
-    height: 0.24in;
-    min-height: 0.24in;
-    padding: 0 0.08in;
+    min-height: 0.28in;
     flex-shrink: 0;
+    padding: 0;
   }
-  .etq-head-main {
-    font-size: 7.5pt;
+  .etq-head-locs {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+    min-width: 0;
+  }
+  .head-loc {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.02in 0.04in;
+    border-right: 1pt solid rgba(255,255,255,0.35);
+    min-width: 0;
+  }
+  .head-loc:last-child { border-right: none; }
+  .head-lbl {
+    font-size: 5pt;
     font-weight: 800;
     letter-spacing: 0.4px;
     text-transform: uppercase;
     line-height: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-    min-width: 0;
+  }
+  .head-hint {
+    font-size: 3.8pt;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+    line-height: 1;
+    margin-top: 0.01in;
+    opacity: 0.85;
+  }
+  .head-val {
+    font-size: 9pt;
+    font-weight: 900;
+    line-height: 1;
+    margin-top: 0.015in;
+    font-variant-numeric: tabular-nums;
   }
   .etq-head-badge {
     flex-shrink: 0;
-    margin-left: 0.06in;
-    padding: 0.02in 0.06in;
-    border: 1.5pt solid var(--paper);
+    width: 0.52in;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.02in;
+    border-left: 1.5pt solid var(--paper);
     font-size: 8.5pt;
     font-weight: 900;
     line-height: 1;
+    text-align: center;
   }
 
   .etq-body {
@@ -138,7 +169,7 @@
 
   /* Coluna + Nível */
   .etq-coords {
-    width: 0.88in;
+    width: 0.92in;
     flex-shrink: 0;
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -149,7 +180,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.03in 0.02in;
+    padding: 0.02in 0.02in;
     border-right: 1.5pt solid var(--ink);
   }
   .coord-cell:nth-child(2) { border-right: none; }
@@ -159,10 +190,18 @@
     letter-spacing: 0.5px;
     text-transform: uppercase;
     line-height: 1;
-    margin-bottom: 0.03in;
+  }
+  .coord-hint {
+    font-size: 3.8pt;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+    line-height: 1;
+    margin: 0.01in 0 0.02in;
+    color: #333;
   }
   .coord-val {
-    font-size: 22pt;
+    font-size: 20pt;
     font-weight: 900;
     line-height: 0.9;
     font-variant-numeric: tabular-nums;
@@ -216,34 +255,33 @@
 
   /* Faixa direita — seta Picking / Pulmão */
   .etq-zone {
-    width: 0.62in;
+    width: 0.78in;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.04in 0.03in;
+    padding: 0.03in 0.02in;
     text-align: center;
   }
-  .etq-zone.picking { justify-content: flex-end; padding-bottom: 0.08in; }
-  .etq-zone.pulmao { justify-content: flex-start; padding-top: 0.08in; }
+  .etq-zone.picking { justify-content: flex-end; padding-bottom: 0.06in; gap: 0.04in; }
+  .etq-zone.pulmao { justify-content: flex-start; padding-top: 0.06in; gap: 0.04in; }
 
   .zone-lbl {
-    font-size: 5.5pt;
+    font-size: 9pt;
     font-weight: 900;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.5px;
     text-transform: uppercase;
-    line-height: 1.1;
-    margin: 0.03in 0;
+    line-height: 1;
   }
   .arrow {
     width: 0;
     height: 0;
-    border-left: 0.13in solid transparent;
-    border-right: 0.13in solid transparent;
+    border-left: 0.22in solid transparent;
+    border-right: 0.22in solid transparent;
   }
-  .arrow.down { border-top: 0.18in solid var(--ink); }
-  .arrow.up { border-bottom: 0.18in solid var(--ink); }
+  .arrow.down { border-top: 0.30in solid var(--ink); }
+  .arrow.up { border-bottom: 0.30in solid var(--ink); }
   .etq-zone.destino .zone-lbl {
     font-size: 5pt;
     line-height: 1.15;
@@ -332,17 +370,32 @@
 {% macro etiqueta_longarina(e) %}
 <div class="etq-page"><div class="etq-loc">
   <div class="etq-head ink-block">
-    <span class="etq-head-main">Câmara {{ e.camara or e.rua_num }}{% if e.rua_letra %} · Rua {{ e.rua_letra }}{% endif %}</span>
+    <div class="etq-head-locs">
+      <div class="head-loc">
+        <span class="head-lbl">Câmara</span>
+        <span class="head-hint">setor / ambiente</span>
+        <span class="head-val">{{ e.camara or e.rua_num }}</span>
+      </div>
+      {% if e.rua_letra %}
+      <div class="head-loc">
+        <span class="head-lbl">Rua</span>
+        <span class="head-hint">corredor</span>
+        <span class="head-val">{{ e.rua_letra }}</span>
+      </div>
+      {% endif %}
+    </div>
     <span class="etq-head-badge">{{ e.camara or e.rua_num }}{% if e.rua_letra %}-{{ e.rua_letra }}{% endif %}</span>
   </div>
   <div class="etq-body">
     <div class="etq-coords">
       <div class="coord-cell">
         <span class="coord-lbl">Coluna</span>
+        <span class="coord-hint">posição na rua</span>
         <span class="coord-val">{{ e.predio }}</span>
       </div>
       <div class="coord-cell">
         <span class="coord-lbl">Nível</span>
+        <span class="coord-hint">altura do palete</span>
         <span class="coord-val">{{ e.nivel }}</span>
       </div>
     </div>
