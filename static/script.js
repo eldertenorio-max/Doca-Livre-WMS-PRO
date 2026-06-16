@@ -4450,32 +4450,67 @@ function _wmsRenderEnderecoRow(grupo) {
 
 var _wmsEndState = { data: null, mapa3d: null, regions: [], selectedCamara: null };
 
-function _wmsEndSlotColor2d(slot) {
-    var dest = (slot && slot.destino_acao || '').toLowerCase();
-    if (dest === 'envio_mg') return '#42a5f5';
-    if (dest === 'retrabalho') return '#ffca28';
-    if (dest === 'descarte_perdas') return '#8d6e63';
-    if (dest === 'palete_bloqueado') return '#78909c';
-    if (dest === 'avaria') return '#ab47bc';
-    if (dest === 'reentregas') return '#7e57c2';
-    if (slot && (slot.status || '') === 'ocupada') return '#ef5350';
-    return '#a5d6a7';
+var _WMS_END2D_LEGENDA = [
+    { cls: '', color: '#90caf9', border: '#f57c00', label: 'Posição livre (vazia)' },
+    { cls: '', color: '#1565c0', border: '#f57c00', label: 'Posição ocupada (palete)' },
+    { cls: 'wms-end-2d-legenda-swatch--estrutura', color: '', border: '', label: 'Borda laranja — estrutura do rack' },
+    { cls: '', color: '#42a5f5', border: '#f57c00', label: 'ENVIO P/ MINAS' },
+    { cls: '', color: '#ffca28', border: '#f57c00', label: 'RETRABALHO' },
+    { cls: '', color: '#8d6e63', border: '#f57c00', label: 'DESCARTE' },
+    { cls: '', color: '#ab47bc', border: '#f57c00', label: 'AVARIA' },
+    { cls: '', color: '#7e57c2', border: '#f57c00', label: 'REENTREGAS' },
+    { cls: '', color: '#ffc107', border: '#f9a825', label: 'Entrada da câmara' }
+];
+
+function _wmsEndRenderLegenda2d() {
+    var el = document.getElementById('wms-end-2d-legenda');
+    if (!el) return;
+    el.innerHTML = _WMS_END2D_LEGENDA.map(function(it) {
+        var sw = it.cls === 'wms-end-2d-legenda-swatch--estrutura'
+            ? '<span class="wms-end-2d-legenda-swatch wms-end-2d-legenda-swatch--estrutura"></span>'
+            : '<span class="wms-end-2d-legenda-swatch" style="background:' + it.color + ';border-color:' + (it.border || '#f57c00') + ';"></span>';
+        return '<span class="wms-end-2d-legenda-item">' + sw + escHtml(it.label) + '</span>';
+    }).join('');
 }
 
-function _wmsEndAggregateSlots(slots) {
+function _wmsEndCellStyle(slot) {
+    if (!slot) return { fill: '#cfd8dc', stroke: '#f57c00' };
+    var dest = (slot.destino_acao || '').toLowerCase();
+    if (dest === 'envio_mg') return { fill: '#42a5f5', stroke: '#f57c00' };
+    if (dest === 'retrabalho') return { fill: '#ffca28', stroke: '#f57c00' };
+    if (dest === 'descarte_perdas') return { fill: '#8d6e63', stroke: '#f57c00' };
+    if (dest === 'palete_bloqueado') return { fill: '#78909c', stroke: '#f57c00' };
+    if (dest === 'avaria') return { fill: '#ab47bc', stroke: '#f57c00' };
+    if (dest === 'reentregas') return { fill: '#7e57c2', stroke: '#f57c00' };
+    if ((slot.status || '') === 'ocupada') return { fill: '#1565c0', stroke: '#f57c00' };
+    if (parseInt(slot.nivel, 10) === 1) return { fill: '#b3e5fc', stroke: '#f57c00' };
+    return { fill: '#90caf9', stroke: '#f57c00' };
+}
+
+function _wmsEndSlotsPorRua(slots, rua) {
     var map = {};
     (slots || []).forEach(function(s) {
-        var k = (s.rua || '') + '-' + s.posicao;
-        if (!map[k]) map[k] = [];
-        map[k].push(s);
+        if ((s.rua || '') !== rua) return;
+        var p = parseInt(s.posicao, 10) || 0;
+        if (!map[p]) map[p] = [];
+        map[p].push(s);
     });
-    return Object.keys(map).map(function(k) {
-        var arr = map[k];
-        var pick = arr.find(function(s) { return (s.status || '') === 'ocupada'; })
-            || arr.find(function(s) { return s.destino_acao; })
-            || arr[0];
-        return { rua: pick.rua, posicao: pick.posicao, slot: pick };
+    return map;
+}
+
+function _wmsEndPickSlot(arr) {
+    if (!arr || !arr.length) return null;
+    return arr.find(function(s) { return (s.status || '') === 'ocupada'; })
+        || arr.find(function(s) { return s.destino_acao; })
+        || arr[0];
+}
+
+function _wmsEndMaxPosicao(slots, ruas) {
+    var max = 1;
+    (slots || []).forEach(function(s) {
+        if (ruas.indexOf(s.rua) >= 0 && s.posicao > max) max = s.posicao;
     });
+    return max;
 }
 
 function _wmsEndRoundRect(ctx, x, y, w, h, r) {
@@ -4489,38 +4524,124 @@ function _wmsEndRoundRect(ctx, x, y, w, h, r) {
     ctx.closePath();
 }
 
-function _wmsEndDrawCamBlock(ctx, cam, x, y, bw, bh, regions) {
-    _wmsEndRoundRect(ctx, x, y, bw, bh, 8);
+function _wmsEndDrawRackColuna(ctx, x, y, w, h, rua, posMap, maxPos) {
+    ctx.save();
+    ctx.strokeStyle = '#f57c00';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = '#e65100';
+    ctx.font = 'bold 11px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('Rua ' + rua, x + w / 2, y - 3);
+    var cellH = h / Math.max(maxPos, 1);
+    for (var p = 1; p <= maxPos; p++) {
+        var cy = y + (p - 1) * cellH;
+        var slot = posMap[p] ? _wmsEndPickSlot(posMap[p]) : null;
+        var st = _wmsEndCellStyle(slot);
+        var pad = 2;
+        var cw = w - pad * 2;
+        var ch = Math.max(cellH - pad * 2, 3);
+        ctx.fillStyle = st.fill;
+        ctx.fillRect(x + pad, cy + pad, cw, ch);
+        ctx.strokeStyle = st.stroke;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x + pad, cy + pad, cw, ch);
+    }
+    ctx.restore();
+}
+
+function _wmsEndDrawCamaraFria(ctx, cam, x, y, bw, bh, regions) {
+    var ruas = cam.ruas || [];
+    var ruaL = ruas[0] || 'A';
+    var ruaR = ruas[1] || ruas[0];
+    var slots = cam.slots || [];
+    var maxPos = _wmsEndMaxPosicao(slots, ruas);
+    var totalPos = slots.length || 0;
+    var pct = cam._pct != null ? cam._pct : 0;
+    var ocup = cam._ocup != null ? cam._ocup : 0;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.15)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 3;
+    _wmsEndRoundRect(ctx, x, y, bw, bh, 10);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
-    ctx.strokeStyle = '#78909c';
-    ctx.lineWidth = 2;
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = '#b0bec5';
+    ctx.lineWidth = 1;
     ctx.stroke();
-    ctx.fillStyle = '#263238';
-    ctx.font = 'bold 13px Segoe UI, sans-serif';
-    ctx.fillText('Câmara ' + cam.codigo, x + 10, y + 20);
-    ctx.font = '11px Segoe UI, sans-serif';
-    ctx.fillStyle = '#607d8b';
-    var ruasTxt = (cam.ruas || []).join(' / ');
-    var pct = cam._pct != null ? cam._pct : 0;
-    ctx.fillText(ruasTxt + ' · ' + pct + '% ocup.', x + 10, y + 36);
-    var agg = _wmsEndAggregateSlots(cam.slots || []);
-    var ruas = cam.ruas || [];
-    var maxPos = 1;
-    agg.forEach(function(a) { if (a.posicao > maxPos) maxPos = a.posicao; });
-    var gridTop = y + 44;
-    var gridH = bh - 52;
-    var gridW = bw - 16;
-    var cellW = gridW / Math.max(maxPos, 1);
-    var cellH = gridH / Math.max(ruas.length, 1);
-    agg.forEach(function(a) {
-        var ri = ruas.indexOf(a.rua);
-        if (ri < 0) ri = 0;
-        var cx = x + 8 + (a.posicao - 1) * cellW;
-        var cy = gridTop + ri * cellH;
-        ctx.fillStyle = _wmsEndSlotColor2d(a.slot);
-        ctx.fillRect(cx + 1, cy + 1, Math.max(cellW - 2, 2), Math.max(cellH - 2, 2));
-    });
+
+    var padIn = 6;
+    var doorH = 14;
+    var headH = 32;
+    var innerX = x + padIn;
+    var innerY = y + padIn + headH;
+    var innerW = bw - padIn * 2;
+    var innerH = bh - padIn * 2 - headH - doorH - 4;
+    var aisleW = Math.max(innerW * 0.30, 52);
+    var rackW = (innerW - aisleW) / 2;
+    var rackX_L = innerX;
+    var rackX_R = innerX + rackW + aisleW;
+    var aisleX = innerX + rackW;
+
+    var mapL = _wmsEndSlotsPorRua(slots, ruaL);
+    var mapR = _wmsEndSlotsPorRua(slots, ruaR);
+    _wmsEndDrawRackColuna(ctx, rackX_L, innerY, rackW, innerH, ruaL, mapL, maxPos);
+    _wmsEndDrawRackColuna(ctx, rackX_R, innerY, rackW, innerH, ruaR, mapR, maxPos);
+
+    ctx.fillStyle = '#fafafa';
+    ctx.fillRect(aisleX, innerY, aisleW, innerH);
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(aisleX, innerY, aisleW, innerH);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#0d47a1';
+    ctx.font = 'bold 12px Segoe UI, sans-serif';
+    ctx.fillText(totalPos + ' Posições', x + bw / 2, y + padIn + 14);
+    ctx.font = '10px Segoe UI, sans-serif';
+    ctx.fillStyle = '#546e7a';
+    ctx.fillText(ocup + ' ocup. · ' + pct + '%', x + bw / 2, y + padIn + 26);
+
+    ctx.fillStyle = '#c62828';
+    ctx.font = 'bold 42px Segoe UI, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(cam.codigo), aisleX + aisleW / 2, innerY + innerH * 0.38);
+
+    ctx.save();
+    ctx.translate(aisleX + aisleW / 2, innerY + innerH * 0.72);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#1565c0';
+    ctx.font = 'bold 15px Segoe UI, sans-serif';
+    var tipo = cam.codigo === 21 ? 'Refrigerado' : 'Congelado';
+    ctx.fillText(tipo, 0, 0);
+    ctx.restore();
+
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#c62828';
+    ctx.font = 'bold 11px Segoe UI, sans-serif';
+    ctx.fillText('-20°C', aisleX + aisleW / 2, innerY + innerH - 8);
+
+    var doorW = aisleW * 0.55;
+    var doorX = aisleX + (aisleW - doorW) / 2;
+    var doorY = y + bh - padIn - doorH;
+    ctx.fillStyle = '#ffc107';
+    ctx.strokeStyle = '#f9a825';
+    ctx.lineWidth = 1;
+    _wmsEndRoundRect(ctx, doorX, doorY, doorW, doorH, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    if (_wmsEndState.selectedCamara === cam.codigo) {
+        ctx.strokeStyle = '#1565c0';
+        ctx.lineWidth = 4;
+        _wmsEndRoundRect(ctx, x, y, bw, bh, 10);
+        ctx.stroke();
+    }
+
+    ctx.restore();
     regions.push({
         x: x, y: y, w: bw, h: bh,
         camara: cam.codigo,
@@ -4528,10 +4649,15 @@ function _wmsEndDrawCamBlock(ctx, cam, x, y, bw, bh, regions) {
     });
 }
 
+function _wmsEndDrawCamaraCompacta(ctx, cam, x, y, bw, bh, regions) {
+    _wmsEndDrawCamaraFria(ctx, cam, x, y, bw, bh, regions);
+}
+
 function _wmsEndDraw2D() {
     var canvas = document.getElementById('wms-end-2d-canvas');
     var wrap = document.getElementById('wms-end-2d-wrap');
     if (!canvas || !wrap) return;
+    _wmsEndRenderLegenda2d();
     var mapa = _wmsEndState.mapa3d || {};
     var data = _wmsEndState.data || {};
     var cams = mapa.camaras || [];
@@ -4539,86 +4665,87 @@ function _wmsEndDraw2D() {
     cams.forEach(function(c) { camByCod[c.codigo] = c; });
     var en = data.estoque_normal || {};
     (en.camaras || []).forEach(function(c) {
-        if (camByCod[c.camara]) camByCod[c.camara]._pct = c.percentual_ocupacao || 0;
+        if (camByCod[c.camara]) {
+            camByCod[c.camara]._pct = c.percentual_ocupacao || 0;
+            camByCod[c.camara]._ocup = c.ocupadas || 0;
+        }
     });
-    var pad = 14;
-    var gap = 12;
-    var topH = 200;
+    var pad = 16;
+    var gap = 14;
+    var mainH = 340;
     var cam21 = camByCod[21];
-    var W = Math.max(wrap.clientWidth || 800, 480);
-    var y98base = pad + topH + gap + (cam21 ? 100 + gap : 0);
-    var H = Math.max(400, y98base + 130);
+    var W = Math.max(wrap.clientWidth || 900, 640);
+    var y98base = pad + mainH + gap + (cam21 ? 200 + gap : 0);
+    var H = Math.max(480, y98base + 120);
     canvas.width = W;
     canvas.height = H;
     var ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.fillStyle = '#eceff1';
+    var grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#f5f7fa');
+    grad.addColorStop(1, '#e8ecf0');
+    ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
     var regions = [];
     var colW = (W - pad * 2 - gap * 2) / 3;
     [11, 12, 13].forEach(function(cod, i) {
         var cam = camByCod[cod];
         if (!cam) return;
-        _wmsEndDrawCamBlock(ctx, cam, pad + i * (colW + gap), pad, colW, topH, regions);
+        _wmsEndDrawCamaraFria(ctx, cam, pad + i * (colW + gap), pad, colW, mainH, regions);
     });
     if (cam21) {
-        var w21 = colW * 1.2;
+        var w21 = Math.min(colW * 1.35, W * 0.38);
         var x21 = (W - w21) / 2;
-        _wmsEndDrawCamBlock(ctx, cam21, x21, pad + topH + gap, w21, 100, regions);
+        _wmsEndDrawCamaraCompacta(ctx, cam21, x21, pad + mainH + gap, w21, 190, regions);
     }
     var areas98 = (data.areas || []);
     var y98 = y98base;
-    var h98 = Math.max(H - y98 - pad, 60);
+    var h98 = Math.max(H - y98 - pad, 72);
     var bw98 = W - pad * 2;
-    _wmsEndRoundRect(ctx, pad, y98, bw98, h98, 8);
-    ctx.fillStyle = '#fff8e1';
+    _wmsEndRoundRect(ctx, pad, y98, bw98, h98, 10);
+    ctx.fillStyle = '#fffde7';
     ctx.fill();
     ctx.strokeStyle = '#ffb300';
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.fillStyle = '#e65100';
-    ctx.font = 'bold 12px Segoe UI, sans-serif';
-    ctx.fillText('Câmara 98 — Quarentena / fluxos especiais', pad + 10, y98 + 18);
+    ctx.font = 'bold 13px Segoe UI, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Câmara 98 — Quarentena e fluxos especiais', pad + 12, y98 + 20);
     var n98 = Math.max(areas98.length, 1);
-    var aw = (bw98 - 20 - (n98 - 1) * 6) / n98;
+    var aw = (bw98 - 24 - (n98 - 1) * 8) / n98;
     areas98.forEach(function(a, i) {
-        var ax = pad + 10 + i * (aw + 6);
-        var ay = y98 + 28;
-        var ah = h98 - 36;
+        var ax = pad + 12 + i * (aw + 8);
+        var ay = y98 + 30;
+        var ah = h98 - 40;
         ctx.fillStyle = '#fff';
         ctx.strokeStyle = '#ffcc80';
-        ctx.lineWidth = 1;
-        _wmsEndRoundRect(ctx, ax, ay, aw, ah, 4);
+        ctx.lineWidth = 2;
+        _wmsEndRoundRect(ctx, ax, ay, aw, ah, 6);
         ctx.fill();
         ctx.stroke();
         ctx.fillStyle = '#5d4037';
-        ctx.font = '10px Segoe UI, sans-serif';
-        var lbl = (a.label || a.area || '').slice(0, 18);
-        ctx.fillText(lbl, ax + 4, ay + 12);
+        ctx.font = 'bold 10px Segoe UI, sans-serif';
+        var lbl = (a.label || a.area || '').slice(0, 22);
+        ctx.fillText(lbl, ax + 6, ay + 14);
+        ctx.font = '9px Segoe UI, sans-serif';
+        ctx.fillStyle = '#795548';
+        ctx.fillText('rua ' + (a.rua || '—'), ax + 6, ay + 26);
         var slots = a.slots || 10;
-        var ocup = a.ocupadas || 0;
-        var sw = Math.min((aw - 8) / Math.max(slots, 1), 14);
+        var sw = Math.min((aw - 12) / Math.max(slots, 1), 16);
         for (var p = 0; p < slots; p++) {
             var st = (a.posicoes && a.posicoes[p]) ? (a.posicoes[p].status || '') : '';
-            ctx.fillStyle = st === 'ocupada' ? '#ef5350' : '#a5d6a7';
-            ctx.fillRect(ax + 4 + p * (sw + 2), ay + 18, sw, ah - 24);
+            ctx.fillStyle = st === 'ocupada' ? '#1565c0' : '#90caf9';
+            ctx.strokeStyle = '#f57c00';
+            ctx.lineWidth = 1;
+            ctx.fillRect(ax + 6 + p * (sw + 2), ay + 32, sw, ah - 44);
+            ctx.strokeRect(ax + 6 + p * (sw + 2), ay + 32, sw, ah - 44);
         }
-        ctx.fillStyle = '#795548';
-        ctx.font = '9px Segoe UI, sans-serif';
-        ctx.fillText(ocup + '/' + slots, ax + 4, ay + ah - 4);
+        ctx.fillStyle = '#455a64';
+        ctx.fillText((a.ocupadas || 0) + '/' + slots + ' ocup.', ax + 6, ay + ah - 6);
         regions.push({ x: ax, y: ay, w: aw, h: ah, camara: 98, area: a.area, label: a.label, no3d: true });
     });
     _wmsEndState.regions = regions;
-    if (_wmsEndState.selectedCamara) {
-        regions.forEach(function(r) {
-            if (r.camara === _wmsEndState.selectedCamara && !r.no3d) {
-                ctx.strokeStyle = '#1565c0';
-                ctx.lineWidth = 3;
-                _wmsEndRoundRect(ctx, r.x, r.y, r.w, r.h, 8);
-                ctx.stroke();
-            }
-        });
-    }
 }
 
 function _wmsEndHighlightRow(camara) {
