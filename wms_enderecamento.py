@@ -1592,40 +1592,42 @@ def _layout_niveis_esperados():
 
 
 def _precisa_regenerar_layout_niveis(conn):
-    """Só regera quando falta nível 4/5 no banco (ex.: layout antigo com max=3)."""
+    """Regenera quando falta câmara de estoque ou níveis incompletos no banco."""
     if not _wms_tabelas_existem(conn):
-        return False
+        return True
     t_loc = _tbl(conn, 'wms_localizacao')
     esperados = _layout_niveis_esperados()
     if not esperados:
-        return False
-    total = _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
-    if total <= 0:
         return True
     for cam, n_esp in esperados.items():
         row = conn.execute(
-            f'SELECT MAX(nivel) AS mx FROM {t_loc} WHERE camara = ?', (cam,),
+            f'''SELECT COUNT(*) AS c, MAX(nivel) AS mx
+                FROM {t_loc} WHERE camara = ?''',
+            (cam,),
         ).fetchone()
-        mx = int((_row_dict(row) or {}).get('mx') or 0)
+        rd = _row_dict(row) or {}
+        cnt = int(rd.get('c') or 0)
+        if cnt <= 0:
+            return True
+        mx = int(rd.get('mx') or 0)
         if mx < n_esp:
             return True
     return False
 
 
 def _ensure_layout_enderecos_atualizado(conn):
-    """Gera endereços se vazio; regera com force se níveis do banco ≠ layout JSON (ex.: 3 → 5)."""
-    t_loc = _tbl(conn, 'wms_localizacao')
-    total = _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
-    if total <= 0:
-        gerar_layout_enderecos(conn, force=False)
-    elif _precisa_regenerar_layout_niveis(conn):
+    """Gera endereços de estoque se faltarem; regera com force se níveis incompletos."""
+    if _precisa_regenerar_layout_niveis(conn):
         gerar_layout_enderecos(conn, force=True)
+    else:
+        _ensure_layout_enderecos(conn)
+        return _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {_tbl(conn, "wms_localizacao")}').fetchone(), 'c')
     try:
         conn.commit()
     except Exception:
         conn.rollback()
         raise
-    return _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
+    return _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {_tbl(conn, "wms_localizacao")}').fetchone(), 'c')
 
 
 def gerar_layout_enderecos(conn, force=False):
@@ -1769,11 +1771,19 @@ def _listar_zoneamento(conn):
 
 
 def _ensure_layout_enderecos(conn):
-    """Gera endereços se ainda não existirem (primeira carga do WMS)."""
+    """Gera endereços das câmaras 11–21 se ainda não existirem (ignora 98/99)."""
     t_loc = _tbl(conn, 'wms_localizacao')
-    total = _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
-    if total > 0:
-        return total
+    falta_estoque = False
+    for cam in (11, 12, 13, 21):
+        cnt = _int_col(
+            conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc} WHERE camara = ?', (cam,)).fetchone(),
+            'c',
+        )
+        if cnt <= 0:
+            falta_estoque = True
+            break
+    if not falta_estoque:
+        return _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
     gerar_layout_enderecos(conn, force=False)
     try:
         conn.commit()
@@ -5780,19 +5790,17 @@ def _resumo_etiquetas_longarina(conn, sincronizar=False):
 
 def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, auto_print=False, todas=False):
     _ensure_zona_armazenagem_column(conn)
-    if _precisa_regenerar_layout_niveis(conn):
-        _ensure_layout_enderecos_atualizado(conn)
-    else:
-        _ensure_layout_enderecos(conn)
+    _ensure_layout_enderecos_atualizado(conn)
     t_loc = _tbl(conn, 'wms_localizacao')
-    if codigo:
-        cod_busca = _resolver_codigo_endereco_bip(codigo) or codigo
-        row = conn.execute(
-            f'SELECT * FROM {t_loc} WHERE codigo_endereco = ? OR codigo_endereco = ?',
-            (cod_busca, cod_busca.upper()),
-        ).fetchone()
-        rows = [row] if row else []
-    else:
+
+    def _buscar_rows():
+        if codigo:
+            cod_busca = _resolver_codigo_endereco_bip(codigo) or codigo
+            row = conn.execute(
+                f'SELECT * FROM {t_loc} WHERE codigo_endereco = ? OR codigo_endereco = ?',
+                (cod_busca, cod_busca.upper()),
+            ).fetchone()
+            return [row] if row else []
         sql = f'SELECT * FROM {t_loc} WHERE 1=1'
         params = []
         if not todas:
@@ -5806,9 +5814,19 @@ def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo
                 sql += ' AND posicao = ?'
                 params.append(int(posicao))
         sql += ' ORDER BY camara, rua, posicao, nivel'
-        rows = conn.execute(sql, tuple(params)).fetchall()
+        return conn.execute(sql, tuple(params)).fetchall()
+
+    rows = _buscar_rows()
+    if not rows and not codigo:
+        gerar_layout_enderecos(conn, force=True)
+        try:
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        rows = _buscar_rows()
     if not rows:
-        return None, 'Nenhum endereço encontrado. Use o painel WMS para gerar o layout ou clique em Atualizar resumo.'
+        return None, 'Nenhum endereço encontrado. Use o painel WMS → «Recalcular distribuição» ou clique em Atualizar resumo na aba Etiquetas.'
     nomes_camara = _map_nomes_camaras(conn)
     faixas, total = _agrupar_etiquetas_faixas(rows, nomes_camara=nomes_camara)
     if codigo:
