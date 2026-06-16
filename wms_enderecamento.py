@@ -4298,16 +4298,13 @@ def api_wms_localizacoes():
 
 @bp.route('/mapa-3d', methods=['GET'])
 def api_wms_mapa_3d():
-    """Layout físico + ocupação para visualização 3D das câmaras."""
+    """Layout físico + ocupação para visualização 3D (JSON + merge com banco)."""
     conn = _db()
     ensure_wms_schema(conn)
     _seed_wms_defaults(conn)
     camara_filtro = request.args.get('camara', type=int)
     t = _tbl(conn, 'wms_localizacao')
     try:
-        total_row = conn.execute(f'SELECT COUNT(*) AS c FROM {t}').fetchone()
-        if _int_col(total_row, 'c') == 0 and request.args.get('auto_layout', '1') != '0':
-            _ensure_layout_enderecos(conn)
         sql = (
             f'SELECT camara, rua, posicao, nivel, codigo_endereco, status, area, '
             f'categoria_zona, zona_armazenagem, tipo FROM {t} WHERE camara IN (11, 12, 13, 21)'
