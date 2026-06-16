@@ -4980,14 +4980,23 @@ function _wmsEndHighlightRow(camara) {
     });
 }
 
-function _wmsEndVoltar2d() {
-    var geral = document.getElementById('wms-end-vis-geral');
-    var vis3d = document.getElementById('wms-end-vis-3d');
-    if (geral) geral.hidden = false;
-    if (vis3d) vis3d.hidden = true;
+function _wmsEndFechar3d() {
+    var acc3d = document.getElementById('wms-end-acc-3d');
+    if (acc3d) acc3d.open = false;
     _wmsEndState.selectedCamara = null;
     _wmsEndHighlightRow(null);
-    _wmsEndDraw2D();
+    var acc2d = document.getElementById('wms-end-acc-2d');
+    if (acc2d && acc2d.open) _wmsEndDraw2D();
+}
+
+var _wmsEndVoltar2d = _wmsEndFechar3d;
+
+function _wmsEndAbrirPainel3d() {
+    var acc3d = document.getElementById('wms-end-acc-3d');
+    if (acc3d) {
+        acc3d.open = true;
+        acc3d.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
 }
 
 async function wmsEndAbrir3d(opts) {
@@ -4996,8 +5005,8 @@ async function wmsEndAbrir3d(opts) {
         showMessage('Visualização 3D disponível para câmaras 11, 12, 13 e 21.', 'info');
         return;
     }
-    var geral = document.getElementById('wms-end-vis-geral');
-    var vis3d = document.getElementById('wms-end-vis-3d');
+    var selCam = document.getElementById('wms-end-3d-camara');
+    if (selCam) selCam.value = String(cam);
     var titulo = document.getElementById('wms-end-3d-titulo');
     function setLoad(on, msg) {
         var el = document.getElementById('wms-end-3d-loading');
@@ -5007,11 +5016,7 @@ async function wmsEndAbrir3d(opts) {
             else if (!on) el.textContent = 'Carregando mapa 3D…';
         }
     }
-    if (geral) geral.hidden = true;
-    if (vis3d) {
-        vis3d.hidden = false;
-        vis3d.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    _wmsEndAbrirPainel3d();
     if (titulo) titulo.textContent = opts.label || ('Câmara ' + cam);
     _wmsEndState.selectedCamara = cam;
     _wmsEndHighlightRow(cam);
@@ -5038,9 +5043,36 @@ async function wmsEndAbrir3d(opts) {
         }, 120);
     } catch (e) {
         showMessage((e && e.message) || 'Erro ao abrir mapa 3D.', 'error');
-        _wmsEndVoltar2d();
+        _wmsEndFechar3d();
     } finally {
         setLoad(false);
+    }
+}
+
+function _wmsEndBindAccordion() {
+    var acc2d = document.getElementById('wms-end-acc-2d');
+    if (acc2d && !acc2d._wmsBound) {
+        acc2d._wmsBound = true;
+        acc2d.addEventListener('toggle', function() {
+            if (acc2d.open) {
+                requestAnimationFrame(function() {
+                    requestAnimationFrame(function() { _wmsEndDraw2D(); });
+                });
+            }
+        });
+    }
+    var btn3d = document.getElementById('btn-wms-end-3d-abrir');
+    if (btn3d && !btn3d._wmsBound) {
+        btn3d._wmsBound = true;
+        btn3d.addEventListener('click', function() {
+            var sel = document.getElementById('wms-end-3d-camara');
+            var cam = parseInt(sel && sel.value, 10);
+            if (!cam) {
+                showMessage('Selecione uma câmara para abrir o mapa 3D.', 'info');
+                return;
+            }
+            wmsEndAbrir3d({ camara: cam, label: 'Câmara ' + cam });
+        });
     }
 }
 
@@ -5099,7 +5131,12 @@ function _wmsRenderEnderecoSecao(titulo, grupos) {
 async function loadWmsEnderecamento() {
     var grid = document.getElementById('wms-enderecamento-grid');
     if (grid) grid.innerHTML = '<p class="loading" style="padding:14px;">Carregando endereçamento…</p>';
-    _wmsEndVoltar2d();
+    var acc2d = document.getElementById('wms-end-acc-2d');
+    var acc3d = document.getElementById('wms-end-acc-3d');
+    if (acc2d) acc2d.open = false;
+    if (acc3d) acc3d.open = false;
+    _wmsEndState.selectedCamara = null;
+    _wmsEndHighlightRow(null);
     try {
         var results = await Promise.all([
             _wmsFetchGet('/wms/enderecamento', 45000),
@@ -5163,8 +5200,9 @@ async function loadWmsEnderecamento() {
         if (grid) {
             grid.innerHTML = html || '<p style="padding:14px;">Nenhum endereço configurado.</p>';
         }
+        _wmsEndBindAccordion();
         _wmsEndBind2dEvents();
-        _wmsEndDraw2D();
+        if (acc2d && acc2d.open) _wmsEndDraw2D();
         if (typeof ResizeObserver !== 'undefined') {
             var wrap2d = document.getElementById('wms-end-2d-wrap');
             if (wrap2d && !wrap2d._wmsEndRo) {
@@ -5313,7 +5351,7 @@ function initWmsEnderecamento() {
     var bEnd = document.getElementById('btn-wms-enderecamento-atualizar');
     if (bEnd) bEnd.addEventListener('click', loadWmsEnderecamento);
     var bEndVoltar = document.getElementById('btn-wms-end-voltar-2d');
-    if (bEndVoltar) bEndVoltar.addEventListener('click', _wmsEndVoltar2d);
+    if (bEndVoltar) bEndVoltar.addEventListener('click', _wmsEndFechar3d);
     var bEnd3dReset = document.getElementById('btn-wms-end-3d-reset');
     if (bEnd3dReset) bEnd3dReset.addEventListener('click', function() {
         if (window.WmsMapa3d && WmsMapa3d.resetView) WmsMapa3d.resetView();
