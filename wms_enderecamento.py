@@ -3064,6 +3064,97 @@ def _coletar_ocupacao_estoque_normal(conn):
     }
 
 
+def _coletar_mapa_destinos_fixos(conn):
+    """Mapa câmara → finalidade (área) → endereços reservados no layout."""
+    cfg = _layout_camaras_config()
+    labels = _destinos_acao_labels()
+    nomes = _map_nomes_camaras(conn)
+    por_codigo = {}
+    if _wms_tabelas_existem(conn):
+        t_loc = _tbl(conn, 'wms_localizacao')
+        t_pal = _tbl(conn, 'wms_palete')
+        t_item = _tbl(conn, 'wms_palete_item')
+        rows = conn.execute(
+            f'''SELECT l.camara, l.rua, l.posicao, l.nivel, l.codigo_endereco, l.status, l.area, l.tipo,
+                       p.etiqueta, p.id AS palete_id,
+                       (SELECT COALESCE(SUM(i.quantidade_caixas), 0) FROM {t_item} i WHERE i.palete_id = p.id) AS qtd_caixas
+                FROM {t_loc} l
+                LEFT JOIN {t_pal} p ON p.localizacao_id = l.id
+                    AND p.status IN ('armazenado', 'bloqueado', 'em_stage', 'separado')
+                WHERE l.camara IN (11, 12, 13, 21)
+                  AND (
+                    COALESCE(LOWER(TRIM(l.tipo)), '') = 'destino_fixo'
+                    OR LOWER(COALESCE(l.area, '')) IN (
+                        'envio_mg', 'retrabalho', 'descarte_perdas', 'palete_bloqueado', 'avaria', 'reentregas'
+                    )
+                  )''',
+        ).fetchall()
+        for r in rows or []:
+            rd = _row_dict(r) or {}
+            cod = (rd.get('codigo_endereco') or '').strip().upper()
+            if cod:
+                por_codigo[cod] = rd
+
+    grupos_map = {}
+    ordem_area = list(labels.keys())
+    for bloco in cfg.get('camaras') or []:
+        cod_cam = int(bloco.get('codigo') or 0)
+        if cod_cam not in (11, 12, 13, 21):
+            continue
+        for _c, rua, pos, niv, dest_acao, dest_lbl in _coords_from_bloco_layout(bloco):
+            if not dest_acao:
+                continue
+            key = (dest_acao, cod_cam)
+            grupos_map.setdefault(key, {
+                'area': dest_acao,
+                'label': dest_lbl or labels.get(dest_acao, dest_acao.upper()),
+                'camara': cod_cam,
+                'camara_nome': _nome_camara_label(conn, cod_cam, nomes) or f'Câmara {cod_cam}',
+                'ruas': list(bloco.get('ruas') or []),
+                'enderecos': [],
+            })
+            cod_end = _codigo_endereco(cod_cam, rua, pos, niv).upper()
+            loc = por_codigo.get(cod_end, {})
+            st = (loc.get('status') or 'vazia').strip().lower()
+            apto = _rua_para_apto(cod_cam, rua)
+            grupos_map[key]['enderecos'].append({
+                'codigo_endereco': cod_end,
+                'barcode_longarina': _barcode_longarina(cod_cam, pos, niv, apto=apto),
+                'rua': rua,
+                'posicao': pos,
+                'nivel': niv,
+                'apto': apto,
+                'status': st,
+                'etiqueta': loc.get('etiqueta'),
+                'palete_id': loc.get('palete_id'),
+                'qtd_caixas': int(loc.get('qtd_caixas') or 0),
+            })
+
+    grupos = []
+    for key in sorted(grupos_map.keys(), key=lambda k: (
+        ordem_area.index(k[0]) if k[0] in ordem_area else 99,
+        k[1],
+    )):
+        g = grupos_map[key]
+        ends = sorted(g['enderecos'], key=lambda e: (e['rua'], e['posicao'], e['nivel']))
+        ocup = sum(1 for e in ends if e.get('status') == 'ocupada')
+        g['enderecos'] = ends
+        g['total'] = len(ends)
+        g['ocupadas'] = ocup
+        g['livres'] = max(0, len(ends) - ocup)
+        g['percentual_ocupacao'] = round(100.0 * ocup / len(ends), 1) if ends else 0
+        grupos.append(g)
+
+    return {
+        'descricao': 'Endereços com finalidade fixa nas câmaras frias (definidos no layout)',
+        'grupos': grupos,
+        'total_enderecos': sum(g['total'] for g in grupos),
+        'total_ocupadas': sum(g['ocupadas'] for g in grupos),
+        'total_livres': sum(g['livres'] for g in grupos),
+        'labels': labels,
+    }
+
+
 def _obter_vaga_stage_doca(conn, doca):
     t_loc = _tbl(conn, 'wms_localizacao')
     rua = f'D{int(doca)}'
@@ -6073,6 +6164,7 @@ def api_wms_areas_especiais():
     try:
         data = _coletar_ocupacao_areas_especiais(conn)
         data['estoque_normal'] = _coletar_ocupacao_estoque_normal(conn)
+        data['destinos_fixos'] = _coletar_mapa_destinos_fixos(conn)
         conn.close()
         return jsonify(data)
     except Exception as e:

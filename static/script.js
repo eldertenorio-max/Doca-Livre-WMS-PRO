@@ -4396,14 +4396,21 @@ async function loadWmsMapa3d() {
 async function loadWmsAreasEspeciais() {
     var gridEsp = document.getElementById('wms-areas-especiais-grid');
     var gridNorm = document.getElementById('wms-estoque-normal-grid');
+    var gridDf = document.getElementById('wms-destinos-fixos-grid');
     if (gridEsp) gridEsp.innerHTML = '<p class="loading">Carregando áreas especiais…</p>';
     if (gridNorm) gridNorm.innerHTML = '<p class="loading">Carregando estoque normal…</p>';
+    if (gridDf) gridDf.innerHTML = '<p class="loading">Carregando destinos fixos…</p>';
+    var _coresDestino = {
+        envio_mg: '#42a5f5', retrabalho: '#ffca28', descarte_perdas: '#8d6e63',
+        palete_bloqueado: '#78909c', avaria: '#ab47bc', reentregas: '#7e57c2'
+    };
     try {
         var data = await _wmsFetchGet('/wms/areas-especiais', 45000);
         if (!data || data.erro) {
             var err = '<p class="loading" style="color:#c62828;">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar.')) + '</p>';
             if (gridEsp) gridEsp.innerHTML = err;
             if (gridNorm) gridNorm.innerHTML = err;
+            if (gridDf) gridDf.innerHTML = err;
             return;
         }
         var en = data.estoque_normal || {};
@@ -4446,6 +4453,40 @@ async function loadWmsAreasEspeciais() {
                     + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + occHtml + '</div></div>';
             }).join('') : '<p>Nenhuma câmara de estoque normal configurada.</p>';
         }
+        var df = data.destinos_fixos || {};
+        var elDfT = document.getElementById('wms-df-total');
+        var elDfO = document.getElementById('wms-df-ocup');
+        var elDfL = document.getElementById('wms-df-livre');
+        if (elDfT) elDfT.textContent = String(df.total_enderecos || 0);
+        if (elDfO) elDfO.textContent = String(df.total_ocupadas || 0);
+        if (elDfL) elDfL.textContent = String(df.total_livres || 0);
+        if (gridDf) {
+            var grupos = df.grupos || [];
+            gridDf.innerHTML = grupos.length ? grupos.map(function(g) {
+                var cor = _coresDestino[g.area] || '#1565c0';
+                var ruasTxt = (g.ruas || []).join(' / ');
+                var rows = (g.enderecos || []).map(function(e) {
+                    var stCls = e.status === 'ocupada' ? 'color:#c62828;font-weight:bold;' : 'color:#2e7d32;';
+                    var pal = e.status === 'ocupada'
+                        ? (escHtml(e.etiqueta || ('#' + e.palete_id)) + (e.qtd_caixas ? ' · ' + e.qtd_caixas + ' cx' : ''))
+                        : '—';
+                    return '<tr><td><strong>' + escHtml(e.codigo_endereco) + '</strong></td>'
+                        + '<td><code>' + escHtml(e.barcode_longarina) + '</code></td>'
+                        + '<td>' + escHtml(e.rua) + '</td><td>' + escHtml(e.posicao) + '</td><td>' + escHtml(e.nivel) + '</td>'
+                        + '<td style="' + stCls + '">' + escHtml(e.status) + '</td><td>' + pal + '</td></tr>';
+                }).join('');
+                return '<div class="conferencia-bloco form-container" style="margin-bottom:16px;padding:14px;background:#fafafa;border-left:4px solid ' + cor + ';">'
+                    + '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-bottom:10px;">'
+                    + '<div><strong style="font-size:15px;">' + escHtml(g.label || g.area) + '</strong>'
+                    + ' <span style="color:#666;font-size:12px;">· ' + escHtml(g.camara_nome || ('Câmara ' + g.camara))
+                    + (ruasTxt ? ' · ruas ' + escHtml(ruasTxt) : '') + '</span></div>'
+                    + '<div style="font-size:13px;">' + escHtml(g.ocupadas) + '/' + escHtml(g.total) + ' ocupados · '
+                    + escHtml(g.livres) + ' livres</div></div>'
+                    + '<div class="table-container"><table class="data-table" style="font-size:12px;">'
+                    + '<thead><tr><th>Endereço WMS</th><th>Bip longarina</th><th>Rua</th><th>Col</th><th>Nív</th><th>Status</th><th>Palete</th></tr></thead>'
+                    + '<tbody>' + rows + '</tbody></table></div></div>';
+            }).join('') : '<p class="info-text">Nenhum destino fixo no layout das câmaras 11–21.</p>';
+        }
         var elT = document.getElementById('wms-ae-total-slots');
         var elO = document.getElementById('wms-ae-total-ocup');
         var elL = document.getElementById('wms-ae-total-livre');
@@ -4481,6 +4522,7 @@ async function loadWmsAreasEspeciais() {
         var errMsg = '<p class="loading" style="color:#c62828;">' + escHtml((e && e.message) || 'Erro.') + '</p>';
         if (gridEsp) gridEsp.innerHTML = errMsg;
         if (gridNorm) gridNorm.innerHTML = errMsg;
+        if (gridDf) gridDf.innerHTML = errMsg;
     }
 }
 
