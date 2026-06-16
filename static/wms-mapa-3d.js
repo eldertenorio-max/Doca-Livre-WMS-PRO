@@ -1,11 +1,8 @@
 /**
- * Visualização 3D do layout WMS — Three.js r160 (ESM via import dinâmico).
+ * Visualização 3D do layout WMS — Three.js r160 (ESM + import map).
  */
 (function (global) {
     'use strict';
-
-    var THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-    var ORBIT_URL = 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 
     var SLOT_W = 1.15;
     var SLOT_H = 0.85;
@@ -63,10 +60,10 @@
     function ensureThree() {
         if (state.THREE && state.OrbitControls) return Promise.resolve();
         if (state._threePromise) return state._threePromise;
-        state._threePromise = import(THREE_URL)
+        state._threePromise = import('three')
             .then(function (mod) {
                 state.THREE = mod;
-                return import(ORBIT_URL);
+                return import('three/addons/controls/OrbitControls.js');
             })
             .then(function (mod) {
                 state.OrbitControls = mod.OrbitControls;

@@ -4321,7 +4321,7 @@ function _wmsMostrarSubtab(tab) {
 var _wmsMapa3dScriptPromise = null;
 
 function _wmsCarregarScriptMapa3d() {
-    var ver = '20260603a';
+    var ver = '20260603b';
     if (window.WmsMapa3d && window.WmsMapa3d.renderFrame) return Promise.resolve();
     var existing = document.querySelector('script[data-wms-mapa3d="1"]');
     if (existing && existing.dataset.wmsMapa3dVer !== ver) {
