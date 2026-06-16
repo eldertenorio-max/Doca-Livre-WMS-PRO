@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=50.8mm">
+<meta name="viewport" content="width=40mm">
 <title>Etiqueta palete {{ etiqueta }}</title>
 <script>
 (function() {
@@ -12,18 +12,18 @@
 </script>
 <style>
   :root {
-    --lw: 76.2mm;
-    --lh: 50.8mm;
-    --pw: 50.8mm;
-    --ph: 76.2mm;
+    --lw: 60mm;
+    --lh: 40mm;
+    --pw: 40mm;
+    --ph: 60mm;
     --ink: #000000;
     --paper: #ffffff;
   }
-  html.zebra-landscape { --pw: 76.2mm; --ph: 50.8mm; }
+  html.zebra-landscape { --pw: 60mm; --ph: 40mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   @page {
-    size: 50.8mm 76.2mm;
+    size: 40mm 60mm;
     margin: 0;
   }
 
@@ -97,17 +97,17 @@
     flex-direction: row;
     align-items: stretch;
     border-bottom: 1.5pt solid var(--ink);
-    min-height: 0.52in;
-    max-height: 0.58in;
+    min-height: 0.40in;
+    max-height: 0.44in;
   }
   .dest-titulo {
-    width: 0.62in;
+    width: 0.48in;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0.03in;
-    font-size: 5pt;
+    padding: 0.02in;
+    font-size: 4.5pt;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -127,7 +127,7 @@
   }
   .dest-wms {
     flex-shrink: 0;
-    font-size: 11pt;
+    font-size: 8.5pt;
     font-weight: 900;
     font-family: Consolas, 'Courier New', monospace;
     letter-spacing: 0.5px;
@@ -142,7 +142,7 @@
     white-space: nowrap;
   }
   .dest-camara b {
-    font-size: 9pt;
+    font-size: 7.5pt;
     font-weight: 900;
   }
   .dest-bc {
@@ -154,7 +154,7 @@
   .dest-bc svg {
     width: 100%;
     max-width: 100%;
-    height: 0.22in;
+    height: 0.16in;
   }
   .dest-bip {
     flex-shrink: 0;
@@ -170,14 +170,14 @@
   }
   .dest-bip .val {
     display: block;
-    font-size: 6.5pt;
+    font-size: 5.5pt;
     font-weight: 800;
     font-family: Consolas, monospace;
   }
   .dest-loc {
     flex-shrink: 0;
-    max-width: 0.95in;
-    font-size: 4pt;
+    max-width: 0.75in;
+    font-size: 3.5pt;
     font-weight: 700;
     line-height: 1.1;
     text-align: right;
@@ -193,13 +193,13 @@
   }
 
   .etq-palete-bc {
-    width: 1.15in;
+    width: 0.90in;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.03in 0.04in;
+    padding: 0.02in 0.03in;
     border-right: 1.5pt solid var(--ink);
   }
   .brand {
@@ -212,10 +212,10 @@
     line-height: 1;
   }
   .bc-wrap { width: 100%; text-align: center; line-height: 0; }
-  .bc-wrap svg { width: 100%; height: 0.30in; }
+  .bc-wrap svg { width: 100%; height: 0.22in; }
   .codigo {
-    margin-top: 0.02in;
-    font-size: 4.5pt;
+    margin-top: 0.015in;
+    font-size: 4pt;
     font-family: Consolas, monospace;
     font-weight: 800;
     text-align: center;
@@ -272,21 +272,21 @@
     margin-bottom: 0.01in;
   }
   .dados-desc .val {
-    font-size: 5pt;
+    font-size: 4.5pt;
     font-weight: 700;
     line-height: 1.12;
-    max-height: 0.34in;
+    max-height: 0.26in;
     overflow: hidden;
   }
 
   .etq-sem-destino .etq-palete-bc {
-    width: 1.25in;
+    width: 0.98in;
   }
-  .etq-sem-destino .bc-wrap svg { height: 0.38in; }
-  .etq-sem-destino .dados-desc .val { max-height: 0.55in; }
+  .etq-sem-destino .bc-wrap svg { height: 0.28in; }
+  .etq-sem-destino .dados-desc .val { max-height: 0.42in; }
 
   @media print {
-    @page { size: 50.8mm 76.2mm; margin: 0; }
+    @page { size: 40mm 60mm; margin: 0; }
 
     html, body {
       width: var(--pw) !important;
@@ -313,23 +313,23 @@
       left: 0 !important;
       width: var(--lw) !important;
       height: var(--lh) !important;
-      transform: rotate(90deg) translateY(-50.8mm) !important;
+      transform: rotate(90deg) translateY(calc(-1 * var(--lh))) !important;
       transform-origin: top left !important;
       margin: 0 !important;
       border: 2pt solid #000 !important;
     }
     html.zebra-landscape,
     html.zebra-landscape body {
-      width: 76.2mm !important;
-      height: 50.8mm !important;
+      width: 60mm !important;
+      height: 40mm !important;
     }
     html.zebra-landscape .etq-page {
-      width: 76.2mm !important;
-      height: 50.8mm !important;
+      width: 60mm !important;
+      height: 40mm !important;
     }
     html.zebra-landscape .etq {
-      width: 76.2mm !important;
-      height: 50.8mm !important;
+      width: 60mm !important;
+      height: 40mm !important;
       transform: none !important;
     }
     .ink-block {
@@ -342,7 +342,7 @@
 <body>
 <div class="toolbar">
   <button type="button" onclick="window.print()">Imprimir</button>
-  <p class="zebra-hint">ZD220: papel <strong>2″×3″</strong> (retrato) · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>. Se ainda sair pela metade, use <strong>?zebra=landscape</strong> na URL.</p>
+  <p class="zebra-hint">ZD220: etiqueta <strong>6×4 cm</strong> (40×60 mm no rolo) · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>. Se sair pela metade, use <strong>?zebra=landscape</strong> na URL.</p>
 </div>
 
 <div class="etq-page">
@@ -423,7 +423,7 @@
   if (document.documentElement.classList.contains('zebra-landscape')) {
     var s = document.createElement('style');
     s.media = 'print';
-    s.textContent = '@page { size: 76.2mm 50.8mm; margin: 0; }';
+    s.textContent = '@page { size: 60mm 40mm; margin: 0; }';
     document.head.appendChild(s);
   }
   function renderBc(id, opts) {
@@ -436,8 +436,8 @@
       }, opts || {}));
     } catch (e) { console.warn(e); }
   }
-  renderBc('bc-palete', { width: 1.15, height: 26 });
-  renderBc('bc-endereco', { width: 1.0, height: 18 });
+  renderBc('bc-palete', { width: 1.0, height: 20 });
+  renderBc('bc-endereco', { width: 0.9, height: 14 });
   {% if auto_print %}
   window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 400); });
   {% endif %}

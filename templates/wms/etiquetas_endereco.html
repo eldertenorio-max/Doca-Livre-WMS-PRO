@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=50.8mm">
+<meta name="viewport" content="width=40mm">
 <title>Etiquetas longarina WMS{% if titulo %} — {{ titulo }}{% endif %}</title>
 <script>
 (function() {
@@ -12,17 +12,17 @@
 </script>
 <style>
   :root {
-    --lw: 76.2mm;
-    --lh: 50.8mm;
-    --pw: 50.8mm;
-    --ph: 76.2mm;
+    --lw: 60mm;
+    --lh: 40mm;
+    --pw: 40mm;
+    --ph: 60mm;
     --ink: #000000;
     --paper: #ffffff;
   }
-  html.zebra-landscape { --pw: 76.2mm; --ph: 50.8mm; }
+  html.zebra-landscape { --pw: 60mm; --ph: 40mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  @page { size: 50.8mm 76.2mm; margin: 0; }
+  @page { size: 40mm 60mm; margin: 0; }
 
   html, body { width: var(--pw); }
   body {
@@ -100,7 +100,7 @@
     display: flex;
     align-items: stretch;
     justify-content: space-between;
-    min-height: 0.28in;
+    min-height: 0.22in;
     flex-shrink: 0;
     padding: 0;
   }
@@ -122,37 +122,37 @@
   }
   .head-loc:last-child { border-right: none; }
   .head-lbl {
-    font-size: 5pt;
+    font-size: 4.5pt;
     font-weight: 800;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.3px;
     text-transform: uppercase;
     line-height: 1;
   }
   .head-hint {
-    font-size: 3.8pt;
+    font-size: 3.2pt;
     font-weight: 600;
-    letter-spacing: 0.2px;
+    letter-spacing: 0.15px;
     text-transform: uppercase;
     line-height: 1;
-    margin-top: 0.01in;
+    margin-top: 0.008in;
     opacity: 0.85;
   }
   .head-val {
-    font-size: 9pt;
+    font-size: 7.5pt;
     font-weight: 900;
     line-height: 1;
-    margin-top: 0.015in;
+    margin-top: 0.01in;
     font-variant-numeric: tabular-nums;
   }
   .etq-head-badge {
     flex-shrink: 0;
-    width: 0.52in;
+    width: 0.42in;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0.02in;
+    padding: 0.015in;
     border-left: 1.5pt solid var(--paper);
-    font-size: 8.5pt;
+    font-size: 7pt;
     font-weight: 900;
     line-height: 1;
     text-align: center;
@@ -169,7 +169,7 @@
 
   /* Coluna + Nível */
   .etq-coords {
-    width: 0.92in;
+    width: 0.72in;
     flex-shrink: 0;
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -185,23 +185,23 @@
   }
   .coord-cell:nth-child(2) { border-right: none; }
   .coord-lbl {
-    font-size: 5.5pt;
+    font-size: 4.5pt;
     font-weight: 800;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.4px;
     text-transform: uppercase;
     line-height: 1;
   }
   .coord-hint {
-    font-size: 3.8pt;
+    font-size: 3.2pt;
     font-weight: 600;
-    letter-spacing: 0.2px;
+    letter-spacing: 0.15px;
     text-transform: uppercase;
     line-height: 1;
-    margin: 0.01in 0 0.02in;
+    margin: 0.008in 0 0.012in;
     color: #333;
   }
   .coord-val {
-    font-size: 20pt;
+    font-size: 16pt;
     font-weight: 900;
     line-height: 0.9;
     font-variant-numeric: tabular-nums;
@@ -220,24 +220,24 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0.04in 0.06in;
+    padding: 0.02in 0.04in;
     min-height: 0;
     border-bottom: 1.5pt solid var(--ink);
   }
   .bc-wrap { width: 100%; text-align: center; line-height: 0; }
-  .bc-wrap svg { width: 100%; height: 0.46in; max-height: 100%; }
+  .bc-wrap svg { width: 100%; height: 0.32in; max-height: 100%; }
 
   .etq-codes {
     flex-shrink: 0;
-    height: 0.18in;
+    height: 0.14in;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.10in;
-    padding: 0 0.06in;
+    gap: 0.06in;
+    padding: 0 0.04in;
   }
   .code-bip {
-    font-size: 8pt;
+    font-size: 6.5pt;
     font-weight: 900;
     font-family: Consolas, 'Courier New', monospace;
     letter-spacing: 0.5px;
@@ -245,7 +245,7 @@
     white-space: nowrap;
   }
   .code-wms {
-    font-size: 7pt;
+    font-size: 5.5pt;
     font-weight: 800;
     font-family: Consolas, 'Courier New', monospace;
     letter-spacing: 0.3px;
@@ -255,33 +255,33 @@
 
   /* Faixa direita — seta Picking / Pulmão */
   .etq-zone {
-    width: 0.78in;
+    width: 0.58in;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.03in 0.02in;
+    padding: 0.02in 0.015in;
     text-align: center;
   }
-  .etq-zone.picking { justify-content: flex-end; padding-bottom: 0.06in; gap: 0.04in; }
-  .etq-zone.pulmao { justify-content: flex-start; padding-top: 0.06in; gap: 0.04in; }
+  .etq-zone.picking { justify-content: flex-end; padding-bottom: 0.04in; gap: 0.03in; }
+  .etq-zone.pulmao { justify-content: flex-start; padding-top: 0.04in; gap: 0.03in; }
 
   .zone-lbl {
-    font-size: 9pt;
+    font-size: 7.5pt;
     font-weight: 900;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.4px;
     text-transform: uppercase;
     line-height: 1;
   }
   .arrow {
     width: 0;
     height: 0;
-    border-left: 0.22in solid transparent;
-    border-right: 0.22in solid transparent;
+    border-left: 0.17in solid transparent;
+    border-right: 0.17in solid transparent;
   }
-  .arrow.down { border-top: 0.30in solid var(--ink); }
-  .arrow.up { border-bottom: 0.30in solid var(--ink); }
+  .arrow.down { border-top: 0.22in solid var(--ink); }
+  .arrow.up { border-bottom: 0.22in solid var(--ink); }
   .etq-zone.destino .zone-lbl {
     font-size: 5pt;
     line-height: 1.15;
@@ -290,9 +290,9 @@
 
   .etq-foot {
     flex-shrink: 0;
-    height: 0.11in;
-    line-height: 0.11in;
-    font-size: 4.5pt;
+    height: 0.09in;
+    line-height: 0.09in;
+    font-size: 3.8pt;
     font-weight: 700;
     text-align: center;
     letter-spacing: 0.35px;
@@ -301,7 +301,7 @@
   }
 
   @media print {
-    @page { size: 50.8mm 76.2mm; margin: 0; }
+    @page { size: 40mm 60mm; margin: 0; }
     html, body {
       width: var(--pw) !important;
       height: var(--ph) !important;
@@ -332,25 +332,25 @@
       left: 0 !important;
       width: var(--lw) !important;
       height: var(--lh) !important;
-      transform: rotate(90deg) translateY(-50.8mm) !important;
+      transform: rotate(90deg) translateY(calc(-1 * var(--lh))) !important;
       transform-origin: top left !important;
       border: 2pt solid #000 !important;
     }
     html.zebra-landscape,
     html.zebra-landscape body {
-      width: 76.2mm !important;
-      height: 50.8mm !important;
+      width: 60mm !important;
+      height: 40mm !important;
     }
     html.zebra-landscape .bloco-camara,
     html.zebra-landscape .bloco-faixa,
-    html.zebra-landscape .faixa { width: 76.2mm !important; }
+    html.zebra-landscape .faixa { width: 60mm !important; }
     html.zebra-landscape .etq-page {
-      width: 76.2mm !important;
-      height: 50.8mm !important;
+      width: 60mm !important;
+      height: 40mm !important;
     }
     html.zebra-landscape .etq-loc {
-      width: 76.2mm !important;
-      height: 50.8mm !important;
+      width: 60mm !important;
+      height: 40mm !important;
       transform: none !important;
     }
     .ink-block { background: #000 !important; color: #fff !important; }
@@ -361,10 +361,10 @@
 </head>
 <body>
 <div class="toolbar">
-  <p><strong>{{ total }}</strong> etiqueta(s) · <strong>76×50 mm</strong> · Zebra ZD220</p>
+  <p><strong>{{ total }}</strong> etiqueta(s) · <strong>60×40 mm</strong> · Zebra ZD220</p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
-  <p class="zebra-hint">ZD220: papel <strong>2″×3″</strong> (retrato) · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>. Se ainda sair pela metade, abra com <strong>?zebra=landscape</strong> na URL.</p>
+  <p class="zebra-hint">ZD220: etiqueta <strong>6×4 cm</strong> (40×60 mm no rolo) · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>. Se sair pela metade, use <strong>?zebra=landscape</strong> na URL.</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
@@ -459,7 +459,7 @@
   if (document.documentElement.classList.contains('zebra-landscape')) {
     var s = document.createElement('style');
     s.media = 'print';
-    s.textContent = '@page { size: 76.2mm 50.8mm; margin: 0; }';
+    s.textContent = '@page { size: 60mm 40mm; margin: 0; }';
     document.head.appendChild(s);
   }
   document.querySelectorAll('svg.bc').forEach(function(el) {
@@ -468,8 +468,8 @@
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
-        width: 1.35,
-        height: 34,
+        width: 1.1,
+        height: 26,
         displayValue: false,
         margin: 0,
         lineColor: '#000000',
