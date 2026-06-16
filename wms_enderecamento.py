@@ -5788,6 +5788,69 @@ def _agrupar_faixas_por_camara(faixas, nomes_camara=None):
     return [blocos[k] for k in sorted(blocos.keys(), key=lambda x: int(x) if str(x).isdigit() else x)]
 
 
+def _opcoes_impressao_longarina(conn):
+    """Câmaras, ruas e colunas do layout para filtros de impressão de etiquetas."""
+    _ensure_layout_enderecos(conn)
+    nomes = _map_nomes_camaras(conn)
+    t_loc = _tbl(conn, 'wms_localizacao')
+    db_cols = {}
+    try:
+        rows_db = conn.execute(
+            f'''SELECT camara, UPPER(TRIM(rua)) AS rua, posicao, COUNT(DISTINCT nivel) AS niveis
+                FROM {t_loc}
+                WHERE camara IN (11, 12, 13, 21)
+                GROUP BY camara, UPPER(TRIM(rua)), posicao''',
+        ).fetchall()
+        for r in rows_db or []:
+            rd = _row_dict(r) or {}
+            key = (int(rd.get('camara') or 0), str(rd.get('rua') or '').upper(), int(rd.get('posicao') or 0))
+            db_cols[key] = int(rd.get('niveis') or 0)
+    except Exception:
+        db_cols = {}
+
+    camaras_out = []
+    for bloco in (_layout_camaras_config().get('camaras') or []):
+        cod = int(bloco['codigo'])
+        if cod not in (11, 12, 13, 21):
+            continue
+        niveis = max(1, int(bloco.get('niveis') or 5))
+        ruas_map = {}
+        for _cam, rua, pos, _niv, dest_acao, _dest_lbl in _coords_from_bloco_layout(bloco):
+            if dest_acao:
+                continue
+            rua = str(rua or '').strip().upper()
+            if not rua:
+                continue
+            ruas_map.setdefault(rua, set()).add(int(pos))
+        ruas_out = []
+        for rua in sorted(ruas_map.keys()):
+            colunas = []
+            for pos in sorted(ruas_map[rua]):
+                n_banco = db_cols.get((cod, rua, pos), 0)
+                colunas.append({
+                    'posicao': pos,
+                    'niveis': niveis,
+                    'niveis_banco': n_banco,
+                })
+            ruas_out.append({
+                'letra': rua,
+                'colunas': colunas,
+                'total_colunas': len(colunas),
+            })
+        camaras_out.append({
+            'codigo': cod,
+            'nome': _nome_camara_label(conn, cod, nomes),
+            'niveis': niveis,
+            'ruas': ruas_out,
+            'total_colunas': sum(r['total_colunas'] for r in ruas_out),
+        })
+    camaras_out.sort(key=lambda x: x['codigo'])
+    return {
+        'camaras': camaras_out,
+        'niveis_padrao': max((c['niveis'] for c in camaras_out), default=5),
+    }
+
+
 def _resumo_etiquetas_longarina(conn, sincronizar=False):
     """Contagem de endereços/longarinas para impressão em lote."""
     if sincronizar:
@@ -6093,6 +6156,23 @@ def api_wms_etiqueta_endereco():
         if err:
             return jsonify({'erro': err}), 404
         return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/etiqueta/enderecos/opcoes', methods=['GET'])
+def api_wms_etiqueta_enderecos_opcoes():
+    """Câmaras, ruas e colunas disponíveis para impressão de etiquetas longarina."""
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        data = _opcoes_impressao_longarina(conn)
+        conn.close()
+        return jsonify(data)
     except Exception as e:
         try:
             conn.close()

@@ -5310,7 +5310,9 @@ function initWmsEnderecamento() {
     var bEtqTodas = document.getElementById('btn-wms-etq-todas');
     if (bEtqTodas) bEtqTodas.addEventListener('click', wmsImprimirEtqTodasLongarinas);
     var bEtqRes = document.getElementById('btn-wms-etq-resumo-atualizar');
-    if (bEtqRes) bEtqRes.addEventListener('click', function() { loadWmsEtqLongarinaResumo({ forcarSync: true }); });
+    if (bEtqRes) bEtqRes.addEventListener('click', function() {
+        loadWmsEtqLongarinaResumo({ forcarSync: true, recarregarOpcoes: true });
+    });
     var bEtqDemo = document.getElementById('btn-wms-etq-demo');
     if (bEtqDemo) bEtqDemo.addEventListener('click', wmsImprimirEtqDemo);
     var bEtqUnico = document.getElementById('btn-wms-etq-unico');
@@ -5567,10 +5569,215 @@ function wmsImprimirEtqColuna() {
     var rua = ((document.getElementById('wms-etq-rua') || {}).value || '').trim().toUpperCase();
     var pos = (document.getElementById('wms-etq-pos') || {}).value || '';
     if (!cam) { showMessage('Selecione a câmara (Rua).', 'error'); return; }
-    if (!rua || !pos) { showMessage('Informe a rua interna (letra) e o prédio (posição).', 'error'); return; }
+    if (!rua || !pos) { showMessage('Selecione a rua interna e o prédio (coluna).', 'error'); return; }
     var url = '/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam) +
         '&rua=' + encodeURIComponent(rua) + '&posicao=' + encodeURIComponent(pos);
     _wmsAbrirEtiquetaUrl(url);
+}
+
+window._wmsEtqOpcoes = null;
+window._wmsEtqFiltroLock = false;
+
+function _wmsEtqFillSelect(el, items, placeholder, selected) {
+    if (!el) return;
+    var sel = selected != null && selected !== '' ? String(selected) : '';
+    var html = '<option value="">' + escHtml(placeholder || 'Selecione') + '</option>';
+    (items || []).forEach(function(it) {
+        var v = String(it.value);
+        html += '<option value="' + escHtml(v) + '"' + (v === sel ? ' selected' : '') + '>' + escHtml(it.label || v) + '</option>';
+    });
+    el.innerHTML = html;
+    if (sel && el.querySelector('option[value="' + sel.replace(/"/g, '') + '"]')) {
+        el.value = sel;
+    }
+}
+
+function _wmsEtqCamaraObj(codigo) {
+    var op = window._wmsEtqOpcoes;
+    if (!op || !codigo) return null;
+    var cam = String(codigo);
+    for (var i = 0; i < (op.camaras || []).length; i++) {
+        if (String(op.camaras[i].codigo) === cam) return op.camaras[i];
+    }
+    return null;
+}
+
+function _wmsEtqRuaObj(camObj, rua) {
+    if (!camObj || !rua) return null;
+    var r = String(rua).toUpperCase();
+    var ruas = camObj.ruas || [];
+    for (var i = 0; i < ruas.length; i++) {
+        if (String(ruas[i].letra).toUpperCase() === r) return ruas[i];
+    }
+    return null;
+}
+
+function _wmsEtqCamarasFiltradas(rua, pos) {
+    var op = window._wmsEtqOpcoes;
+    if (!op) return [];
+    var list = op.camaras || [];
+    var ruaU = rua ? String(rua).toUpperCase() : '';
+    var posN = pos ? parseInt(pos, 10) : 0;
+    if (ruaU || posN) {
+        list = list.filter(function(c) {
+            return (c.ruas || []).some(function(r) {
+                if (ruaU && String(r.letra).toUpperCase() !== ruaU) return false;
+                if (posN) {
+                    return (r.colunas || []).some(function(col) {
+                        return parseInt(col.posicao, 10) === posN;
+                    });
+                }
+                return true;
+            });
+        });
+    }
+    return list.map(function(c) {
+        var lbl = String(c.codigo);
+        if (c.nome && c.nome !== ('Câmara ' + c.codigo)) lbl += ' — ' + c.nome;
+        return { value: c.codigo, label: lbl };
+    });
+}
+
+function wmsEtqSincronizarFiltros(origem) {
+    if (window._wmsEtqFiltroLock) return;
+    var op = window._wmsEtqOpcoes;
+    if (!op || !op.camaras) return;
+    window._wmsEtqFiltroLock = true;
+    try {
+        var selCam = document.getElementById('wms-etq-camara');
+        var selRua = document.getElementById('wms-etq-rua');
+        var selPos = document.getElementById('wms-etq-pos');
+        var info = document.getElementById('wms-etq-coluna-info');
+        var cam = selCam ? selCam.value : '';
+        var rua = selRua ? String(selRua.value || '').toUpperCase() : '';
+        var pos = selPos ? selPos.value : '';
+
+        if (origem === 'rua' && rua && !cam) {
+            var camsRua = _wmsEtqCamarasFiltradas(rua, pos);
+            if (camsRua.length === 1) {
+                cam = String(camsRua[0].value);
+                if (selCam) selCam.value = cam;
+            }
+        }
+        if (origem === 'coluna' && pos && !rua && cam) {
+            var camObjTmp = _wmsEtqCamaraObj(cam);
+            var ruasPos = (camObjTmp && camObjTmp.ruas) ? camObjTmp.ruas.filter(function(r) {
+                return (r.colunas || []).some(function(col) { return parseInt(col.posicao, 10) === parseInt(pos, 10); });
+            }) : [];
+            if (ruasPos.length === 1) {
+                rua = String(ruasPos[0].letra).toUpperCase();
+                if (selRua) selRua.value = rua;
+            }
+        }
+        if (origem === 'coluna' && pos && !cam) {
+            var camsPos = _wmsEtqCamarasFiltradas(rua, pos);
+            if (camsPos.length === 1) {
+                cam = String(camsPos[0].value);
+                if (selCam) selCam.value = cam;
+            }
+        }
+
+        if (origem === 'init' || origem === 'rua' || origem === 'coluna') {
+            _wmsEtqFillSelect(selCam, _wmsEtqCamarasFiltradas(rua, pos), 'Selecione a câmara', cam);
+            cam = selCam ? selCam.value : cam;
+        }
+
+        var camObj = _wmsEtqCamaraObj(cam);
+        var ruasOpts = [];
+        if (camObj) {
+            (camObj.ruas || []).forEach(function(r) {
+                var cols = r.colunas || [];
+                if (pos && !cols.some(function(col) { return parseInt(col.posicao, 10) === parseInt(pos, 10); })) return;
+                ruasOpts.push({ value: r.letra, label: 'Rua ' + r.letra + ' (' + (r.total_colunas || cols.length) + ' col.)' });
+            });
+        } else if (rua) {
+            ruasOpts.push({ value: rua, label: 'Rua ' + rua });
+        }
+
+        if (origem !== 'rua') {
+            _wmsEtqFillSelect(selRua, ruasOpts, cam ? 'Selecione a rua' : 'Selecione a câmara primeiro', rua);
+            rua = selRua ? String(selRua.value || '').toUpperCase() : rua;
+        }
+
+        var ruaObj = _wmsEtqRuaObj(camObj, rua);
+        var colOpts = [];
+        if (ruaObj) {
+            (ruaObj.colunas || []).forEach(function(col) {
+                var p = parseInt(col.posicao, 10);
+                var n = col.niveis || op.niveis_padrao || 5;
+                var nb = col.niveis_banco || 0;
+                var lbl = 'Col ' + p + ' · ' + n + ' nív.';
+                if (nb > 0 && nb < n) lbl += ' (' + nb + ' no banco)';
+                colOpts.push({ value: p, label: lbl });
+            });
+        } else if (camObj) {
+            var seen = {};
+            (camObj.ruas || []).forEach(function(r) {
+                (r.colunas || []).forEach(function(col) {
+                    var p = parseInt(col.posicao, 10);
+                    if (seen[p]) return;
+                    seen[p] = true;
+                    colOpts.push({ value: p, label: 'Col ' + p });
+                });
+            });
+            colOpts.sort(function(a, b) { return parseInt(a.value, 10) - parseInt(b.value, 10); });
+        }
+
+        if (origem !== 'coluna') {
+            _wmsEtqFillSelect(selPos, colOpts, rua ? 'Selecione a coluna' : (cam ? 'Selecione a rua' : 'Selecione a câmara'), pos);
+            pos = selPos ? selPos.value : pos;
+        }
+
+        ruaObj = _wmsEtqRuaObj(_wmsEtqCamaraObj(selCam ? selCam.value : cam), selRua ? selRua.value : rua);
+        if (info) {
+            if (ruaObj && pos) {
+                var colDet = (ruaObj.colunas || []).find(function(c) { return parseInt(c.posicao, 10) === parseInt(pos, 10); });
+                var niv = (colDet && colDet.niveis) || ruaObj.niveis || op.niveis_padrao || 5;
+                info.style.display = 'block';
+                info.textContent = 'Serão impressas ' + niv + ' etiqueta(s) — níveis 1 a ' + niv
+                    + (niv === 1 ? ' (PICKING)' : ' (1 PICKING + ' + (niv - 1) + ' PULMÃO)');
+            } else if (camObj && rua && !pos) {
+                var r = _wmsEtqRuaObj(camObj, rua);
+                info.style.display = 'block';
+                info.textContent = r ? ('Rua ' + rua + ': ' + (r.total_colunas || (r.colunas || []).length) + ' coluna(s) disponíveis') : '';
+            } else if (camObj && !rua) {
+                info.style.display = 'block';
+                info.textContent = 'Câmara ' + camObj.codigo + ': ' + (camObj.total_colunas || 0) + ' coluna(s) em '
+                    + (camObj.ruas || []).length + ' rua(s)';
+            } else {
+                info.style.display = 'none';
+                info.textContent = '';
+            }
+        }
+    } finally {
+        window._wmsEtqFiltroLock = false;
+    }
+}
+
+function wmsInitEtqLongarinaFiltros() {
+    var selCam = document.getElementById('wms-etq-camara');
+    var selRua = document.getElementById('wms-etq-rua');
+    var selPos = document.getElementById('wms-etq-pos');
+    if (!selCam || selCam.dataset.wmsEtqBind) return;
+    selCam.dataset.wmsEtqBind = '1';
+    selCam.addEventListener('change', function() { wmsEtqSincronizarFiltros('camara'); });
+    if (selRua) selRua.addEventListener('change', function() { wmsEtqSincronizarFiltros('rua'); });
+    if (selPos) selPos.addEventListener('change', function() { wmsEtqSincronizarFiltros('coluna'); });
+}
+
+async function loadWmsEtqLongarinaOpcoes() {
+    try {
+        var data = await _wmsFetchGet('/wms/etiqueta/enderecos/opcoes', 45000);
+        if (!data || data.erro) {
+            showMessage(_wmsErroMsg(data, 'Não foi possível carregar ruas/colunas do layout.'), 'warning');
+            return;
+        }
+        window._wmsEtqOpcoes = data;
+        wmsInitEtqLongarinaFiltros();
+        wmsEtqSincronizarFiltros('init');
+    } catch (e) {
+        showMessage('Erro ao carregar opções de impressão: ' + ((e && e.message) || 'falha'), 'warning');
+    }
 }
 
 function wmsImprimirEtqCamara() {
@@ -5628,13 +5835,14 @@ async function loadWmsEtqLongarinaResumo(opcoes) {
             html += '<p class="info-text" style="margin:8px 0 0 0;">Nenhum endereço no banco. No <strong>Painel WMS</strong>, use «Recalcular distribuição» ou aguarde a geração automática do layout.</p>';
         }
         box.innerHTML = html;
+        if (opcoes.recarregarOpcoes !== false) loadWmsEtqLongarinaOpcoes();
     } catch (e) {
         box.innerHTML = '<p style="margin:0;color:#c62828;">' + escHtml((e && e.message) || 'Erro.') + '</p>';
     }
 }
 
 function loadWmsEtiquetasLongarinaAba() {
-    loadWmsEtqLongarinaResumo();
+    loadWmsEtqLongarinaResumo({ recarregarOpcoes: true });
 }
 
 function wmsImprimirEtqTodasLongarinas() {
