@@ -128,6 +128,20 @@ def _nome_camara_label(conn, camara, nomes=None):
     return 'Câmara %s' % cam if cam else ''
 
 
+def _validar_data_producao_fifo(dp):
+    """Data de produção não pode ser futura (conferência / FIFO)."""
+    if not dp:
+        return 'Informe a data de produção na bipagem (FIFO).'
+    raw = str(dp).strip()[:10]
+    try:
+        d = date.fromisoformat(raw)
+    except ValueError:
+        return 'Data de produção inválida.'
+    if d > date.today():
+        return 'Data de produção não pode ser maior que o dia atual.'
+    return None
+
+
 def _codigo_endereco(camara, rua, posicao, nivel):
     return f'{int(camara):02d}-{str(rua).strip().upper()}-{int(posicao):02d}-{int(nivel)}'
 
@@ -5150,9 +5164,10 @@ def api_wms_recebimentos():
                 return jsonify({'erro': 'Informe SKU do produto.'}), 400
             dp = (item.get('data_producao') or '').strip() or None
             dv = (item.get('data_validade') or '').strip() or None
-            if not dp:
+            err_dp = _validar_data_producao_fifo(dp)
+            if err_dp:
                 conn.close()
-                return jsonify({'erro': 'Informe a data de produção na bipagem (FIFO).'}), 400
+                return jsonify({'erro': err_dp}), 400
             if not dv:
                 conn.close()
                 return jsonify({'erro': 'Informe a data de validade na bipagem.'}), 400
@@ -5361,6 +5376,11 @@ def api_wms_recebimentos():
                 (rid, pid, estado, _bind_bool(conn, True)),
             )
             sku = (item.get('sku') or '').strip()
+            dp_conf = (item.get('data_producao') or '').strip() or None
+            err_dp_conf = _validar_data_producao_fifo(dp_conf) if dp_conf else None
+            if err_dp_conf:
+                conn.close()
+                return jsonify({'erro': err_dp_conf}), 400
             conn.execute(
                 f'''INSERT INTO {t_item}
                     (palete_id, sku, descricao, lote, data_producao, data_validade, sif,
@@ -5368,7 +5388,7 @@ def api_wms_recebimentos():
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (
                     pid, sku, item.get('descricao'), item.get('lote'),
-                    item.get('data_producao'), item.get('data_validade'), item.get('sif'),
+                    dp_conf, item.get('data_validade'), item.get('sif'),
                     int(item.get('quantidade_caixas') or 0), item.get('peso_liquido'),
                     item.get('rg_caixa'), now,
                 ),

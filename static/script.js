@@ -6582,6 +6582,16 @@ function wmsBipInitStepper() {
             if (ev.key === 'Enter') { ev.preventDefault(); wmsBipProduto(); }
         });
     }
+    var prodEl = document.getElementById('wms-pal-producao');
+    if (prodEl && !prodEl.dataset.wmsBipProdMax) {
+        prodEl.dataset.wmsBipProdMax = '1';
+        wmsAplicarLimiteDataProducao();
+        prodEl.addEventListener('change', wmsAplicarLimiteDataProducao);
+        prodEl.addEventListener('input', wmsAplicarLimiteDataProducao);
+        prodEl.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); wmsBipProduto(); }
+        });
+    }
 }
 
 window.wmsAbrirRecebimento = function(id) {
@@ -6719,6 +6729,31 @@ function _wmsMostrarSugestao(sug) {
     wmsBipAtualizarEnderecoEtapa2();
 }
 
+function wmsDataHojeIsoLocal() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function wmsAplicarLimiteDataProducao() {
+    var el = document.getElementById('wms-pal-producao');
+    if (!el) return;
+    var hoje = wmsDataHojeIsoLocal();
+    el.setAttribute('max', hoje);
+    if (el.value && el.value > hoje) {
+        el.value = '';
+        wmsMostrarErroBipProduto('Data de produção não pode ser maior que hoje (' + formatarDataPtBR(hoje) + ').');
+    }
+}
+
+function wmsValidarDataProducao(dp) {
+    if (!dp) return 'Informe a data de produção.';
+    var hoje = wmsDataHojeIsoLocal();
+    if (dp > hoje) {
+        return 'Data de produção não pode ser maior que hoje (' + formatarDataPtBR(hoje) + ').';
+    }
+    return '';
+}
+
 async function wmsBipPalete() {
     var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value;
     if (!rid) { showMessage('Selecione um recebimento.', 'error'); return; }
@@ -6758,7 +6793,8 @@ async function wmsBipProduto() {
     }
     var dp = (document.getElementById('wms-pal-producao') || {}).value || '';
     var dv = (document.getElementById('wms-pal-validade') || {}).value || '';
-    if (!dp) { wmsMostrarErroBipProduto('Informe a data de produção.'); return; }
+    var errDp = wmsValidarDataProducao(dp);
+    if (errDp) { wmsMostrarErroBipProduto(errDp); return; }
     if (!dv) { wmsMostrarErroBipProduto('Informe a data de validade.'); return; }
     var qtd = parseInt((document.getElementById('wms-pal-qtd') || {}).value || '1', 10);
     if (isNaN(qtd) || qtd < 1) {
