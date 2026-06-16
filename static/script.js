@@ -4452,7 +4452,7 @@ var _wmsEndState = { data: null, mapa3d: null, regions: [], selectedCamara: null
 
 var _WMS_END2D_LEGENDA = [
     { cls: '', color: '#90caf9', border: '#f57c00', label: 'Posição livre (vazia)' },
-    { cls: '', color: '#1565c0', border: '#f57c00', label: 'Posição ocupada (palete)' },
+    { cls: '', color: '#c62828', border: '#f57c00', label: 'Posição ocupada (palete)' },
     { cls: 'wms-end-2d-legenda-swatch--estrutura', color: '', border: '', label: 'Borda laranja — estrutura do rack' },
     { cls: '', color: '#42a5f5', border: '#f57c00', label: 'ENVIO P/ MINAS' },
     { cls: '', color: '#ffca28', border: '#f57c00', label: 'RETRABALHO' },
@@ -4482,7 +4482,7 @@ function _wmsEndCellStyle(slot) {
     if (dest === 'palete_bloqueado') return { fill: '#78909c', stroke: '#f57c00' };
     if (dest === 'avaria') return { fill: '#ab47bc', stroke: '#f57c00' };
     if (dest === 'reentregas') return { fill: '#7e57c2', stroke: '#f57c00' };
-    if ((slot.status || '') === 'ocupada') return { fill: '#1565c0', stroke: '#f57c00' };
+    if ((slot.status || '') === 'ocupada') return { fill: '#c62828', stroke: '#f57c00' };
     if (parseInt(slot.nivel, 10) === 1) return { fill: '#b3e5fc', stroke: '#f57c00' };
     return { fill: '#90caf9', stroke: '#f57c00' };
 }
@@ -4735,7 +4735,7 @@ function _wmsEndDraw2D() {
         var sw = Math.min((aw - 12) / Math.max(slots, 1), 16);
         for (var p = 0; p < slots; p++) {
             var st = (a.posicoes && a.posicoes[p]) ? (a.posicoes[p].status || '') : '';
-            ctx.fillStyle = st === 'ocupada' ? '#1565c0' : '#90caf9';
+            ctx.fillStyle = st === 'ocupada' ? '#c62828' : '#90caf9';
             ctx.strokeStyle = '#f57c00';
             ctx.lineWidth = 1;
             ctx.fillRect(ax + 6 + p * (sw + 2), ay + 32, sw, ah - 44);
