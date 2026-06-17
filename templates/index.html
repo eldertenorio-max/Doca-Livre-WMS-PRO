@@ -2694,7 +2694,7 @@
                         </div>
                         <div style="padding: 10px 12px; margin-bottom: 12px; border: 1px solid #90caf9; border-radius: 8px; background: #e3f2fd;">
                             <strong style="font-size: 13px;">Etiquetas de longarina</strong>
-                            <p class="info-text" style="margin: 6px 0 0 0; font-size: 12px;">Para imprimir e colar na longarina, use a aba <strong>ETQ. LONGARINA</strong> — etiqueta <strong>60×40 mm</strong> · bipagem <strong>12.14.1</strong> · código WMS <strong>12-C-14-1</strong>. Impressão via <strong>Zebra Browser Print</strong>.</p>
+                            <p class="info-text" style="margin: 6px 0 0 0; font-size: 12px;">Para imprimir e colar na longarina, use a aba <strong>ETQ. LONGARINA</strong> — etiqueta <strong>60×40 mm</strong> horizontal · bipagem <strong>12.14.1</strong> e código WMS <strong>12-C-14-1</strong>.</p>
                         </div>
                         <div class="table-container"><table class="data-table"><thead><tr><th>Endereço WMS</th><th>Bip longarina</th><th>Câmara</th><th>Rua</th><th>Pos</th><th>Nível</th><th>Zona</th><th>Cat.</th><th>Status</th><th></th></tr></thead><tbody id="wms-tbody-localizacoes"><tr><td colspan="10" class="loading">Carregando...</td></tr></tbody></table></div>
                     </div>
@@ -2727,12 +2727,12 @@
                             <h3 class="wms-rec-fase-titulo"><span class="wms-rec-fase-num">1</span><span>Instalação no rack — pregue todas as longarinas (passo zero)</span></h3>
                             <div class="wms-rec-fase-corpo">
                                 <p class="wms-rec-fase-desc" style="margin-bottom: 10px;">Faça isso <strong>antes</strong> do recebimento. Cada nível da coluna ganha <strong>uma etiqueta fixa</strong> colada na longarina (formato horizontal 60×40 mm). O código de bipagem <strong>12.14.1</strong> não muda — paletes entram e saem, a placa fica.</p>
-                                <p class="info-text" style="margin-bottom: 12px; padding: 8px 10px; background: #e3f2fd; border: 1px solid #64b5f6; border-radius: 6px; font-size: 12px;"><strong>Impressão 60×40 mm:</strong> instale <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html" target="_blank" rel="noopener">Zebra Browser Print</a> no PC, configure a ZD220 em Default Devices e use os botões abaixo (<strong>Imprimir na Zebra</strong>).</p>
+                                <p class="info-text" style="margin-bottom: 12px; padding: 8px 10px; background: #fff8e1; border: 1px solid #ffcc80; border-radius: 6px; font-size: 12px;">Driver ZD220 (Preferências → Config. página): <strong>Largura 60 mm</strong> · <strong>Altura 40 mm</strong> · <strong>0° Retrato</strong>. Chrome: margens <strong>Nenhuma</strong> · escala <strong>100%</strong>.</p>
                                 <div id="wms-etq-resumo-box" class="extrato-resumo-box" style="margin-bottom: 12px;">
                                     <p class="loading" style="margin:0;">Carregando resumo do armazém…</p>
                                 </div>
                                 <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px;">
-                                    <button type="button" class="btn btn-success btn-lg" id="btn-wms-etq-todas">Imprimir TODAS na Zebra</button>
+                                    <button type="button" class="btn btn-success btn-lg" id="btn-wms-etq-todas">Imprimir TODAS as longarinas</button>
                                     <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-resumo-atualizar">Atualizar resumo</button>
                                     <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-demo">Ver modelo (demo)</button>
                                 </div>
@@ -3627,6 +3627,6 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
     <script src="{{ url_for('static', filename='wms-mapa-3d.js') }}?v=20260604a"></script>
-    <script src="../static/script.js?v=20260602bp"></script>
+    <script src="../static/script.js?v=20260602html"></script>
 </body>
 </html>

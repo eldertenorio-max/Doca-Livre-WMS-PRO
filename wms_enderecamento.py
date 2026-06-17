@@ -6813,8 +6813,6 @@ def api_wms_etiqueta_endereco():
     codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip()
     if not codigo:
         return jsonify({'erro': 'Informe codigo/endereco (ex.: 12.14.1 ou 12-C-14-1).'}), 400
-    if not _quer_formato_html_longarina():
-        return _redirect_etiqueta_zebra(codigo=codigo)
     conn = _db()
     ensure_wms_schema(conn)
     try:
@@ -6878,17 +6876,6 @@ def api_wms_etiqueta_enderecos():
     posicao = request.args.get('posicao', type=int)
     if not todas and not camara and not rua and not posicao:
         return jsonify({'erro': 'Informe todas=1, camara, ou coluna (camara+rua+posicao).'}), 400
-    if not _quer_formato_html_longarina():
-        params = {}
-        if todas:
-            params['todas'] = '1'
-        if camara is not None:
-            params['camara'] = camara
-        if rua:
-            params['rua'] = rua
-        if posicao is not None:
-            params['posicao'] = posicao
-        return _redirect_etiqueta_zebra(**params)
     try:
         auto_print = request.args.get('auto_print', '0') == '1'
         html, err = _render_etiquetas_endereco(
