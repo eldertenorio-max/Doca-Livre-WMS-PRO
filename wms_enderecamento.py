@@ -12,9 +12,9 @@ import secrets
 import string
 from collections import Counter
 from datetime import date, datetime, timezone
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
-from flask import Blueprint, jsonify, make_response, render_template, request, session
+from flask import Blueprint, jsonify, make_response, redirect, render_template, request, session
 
 bp = Blueprint('wms_enderecamento', __name__)
 
@@ -6514,6 +6514,18 @@ def api_wms_etiqueta_modelo():
     return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
 
 
+def _quer_formato_html_longarina():
+    return (request.args.get('formato') or '').strip().lower() == 'html'
+
+
+def _redirect_etiqueta_zebra(**params):
+    """Redireciona rotas antigas (HTML) para o assistente ZPL."""
+    clean = {k: v for k, v in params.items() if v is not None and v != ''}
+    if request.args.get('auto') == '0':
+        clean['auto'] = '0'
+    return redirect('/api/wms/etiqueta/zebra?' + urlencode(clean, doseq=True))
+
+
 def _resposta_zpl_longarina(zpl, nome_arquivo='longarinas', ext='prn'):
     safe = re.sub(r'[^\w\-.]+', '_', str(nome_arquivo or 'longarinas'))[:80]
     ext = str(ext or 'prn').lower()
@@ -6540,24 +6552,24 @@ def _pagina_zebra_longarina(conn, camara=None, rua=None, posicao=None, codigo=No
         titulo = codigo
         nome_arquivo = f'longarina_{codigo}.txt'
         zpl_api_url = f'/api/wms/etiqueta/endereco/zpl?codigo={quote(codigo)}&ext=txt'
-        html_url = f'/api/wms/etiqueta/endereco?codigo={quote(codigo)}'
+        html_url = f'/api/wms/etiqueta/endereco?codigo={quote(codigo)}&formato=html'
     elif todas:
         titulo = 'Armazém completo'
         nome_arquivo = 'longarinas_armazem.txt'
         zpl_api_url = '/api/wms/etiqueta/enderecos/zpl?todas=1&ext=txt'
-        html_url = '/api/wms/etiqueta/enderecos?todas=1'
+        html_url = '/api/wms/etiqueta/enderecos?todas=1&formato=html'
     elif camara and rua and posicao:
         titulo = f'Câm {camara} · {rua} · col {posicao}'
         nome_arquivo = f'longarinas_{camara}_{rua}_{posicao}.txt'
         zpl_api_url = (
             f'/api/wms/etiqueta/enderecos/zpl?camara={camara}&rua={quote(rua)}&posicao={posicao}&ext=txt'
         )
-        html_url = f'/api/wms/etiqueta/enderecos?camara={camara}&rua={quote(rua)}&posicao={posicao}'
+        html_url = f'/api/wms/etiqueta/enderecos?camara={camara}&rua={quote(rua)}&posicao={posicao}&formato=html'
     elif camara:
         titulo = f'Câmara {camara}'
         nome_arquivo = f'longarinas_camara_{camara}.txt'
         zpl_api_url = f'/api/wms/etiqueta/enderecos/zpl?camara={camara}&ext=txt'
-        html_url = f'/api/wms/etiqueta/enderecos?camara={camara}'
+        html_url = f'/api/wms/etiqueta/enderecos?camara={camara}&formato=html'
     else:
         titulo = 'Lote'
         nome_arquivo = 'longarinas_lote.txt'
@@ -6727,6 +6739,8 @@ def api_wms_etiqueta_endereco():
     codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip()
     if not codigo:
         return jsonify({'erro': 'Informe codigo/endereco (ex.: 12.14.1 ou 12-C-14-1).'}), 400
+    if not _quer_formato_html_longarina():
+        return _redirect_etiqueta_zebra(codigo=codigo)
     conn = _db()
     ensure_wms_schema(conn)
     try:
@@ -6790,6 +6804,17 @@ def api_wms_etiqueta_enderecos():
     posicao = request.args.get('posicao', type=int)
     if not todas and not camara and not rua and not posicao:
         return jsonify({'erro': 'Informe todas=1, camara, ou coluna (camara+rua+posicao).'}), 400
+    if not _quer_formato_html_longarina():
+        params = {}
+        if todas:
+            params['todas'] = '1'
+        if camara is not None:
+            params['camara'] = camara
+        if rua:
+            params['rua'] = rua
+        if posicao is not None:
+            params['posicao'] = posicao
+        return _redirect_etiqueta_zebra(**params)
     try:
         auto_print = request.args.get('auto_print', '0') == '1'
         html, err = _render_etiquetas_endereco(
