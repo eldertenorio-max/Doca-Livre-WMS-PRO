@@ -68,7 +68,9 @@
     inset: 0;
     width: 100%;
     height: 100%;
-    border: 0.6mm solid var(--ink);
+    border: none;
+    border-top: 0.55mm solid var(--ink);
+    border-bottom: 0.55mm solid var(--ink);
     background: var(--paper);
     display: grid;
     grid-template-rows: {{ etq_zebra.grid_top_pct }}fr {{ etq_zebra.grid_mid_pct }}fr {{ etq_zebra.grid_bot_pct }}fr;
@@ -88,32 +90,30 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    border-right: 0.35mm solid var(--ink);
     min-width: 0;
     height: 100%;
-    padding: 1% 2%;
+    padding: 3% 1.5% 2%;
   }
-  .loc-col:last-child { border-right: none; }
   .loc-lbl {
-    font-size: 8cqh;
+    font-size: 7.5cqh;
     font-weight: 700;
     text-transform: uppercase;
-    line-height: 1;
-    margin-bottom: 3%;
+    line-height: 1.05;
+    margin-bottom: 5%;
   }
   .loc-val {
-    font-size: 30cqh;
+    font-size: 28cqh;
     font-weight: 900;
-    line-height: 0.85;
+    line-height: 0.9;
     font-variant-numeric: tabular-nums;
   }
-  .loc-val.letra { font-size: 28cqh; }
+  .loc-val.letra { font-size: 26cqh; }
 
   .etq-bc-block {
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto;
-    padding: 1.5% 2%;
-    gap: 1%;
+    padding: 2% 1.5% 1.5%;
+    gap: 1.5%;
     min-height: 0;
     border-bottom: 0.5mm solid var(--ink);
   }
@@ -157,7 +157,7 @@
     justify-content: space-between;
     width: 100%;
     height: 100%;
-    padding: 0 4%;
+    padding: 0 2%;
   }
   .arrow {
     width: 0;
@@ -234,7 +234,9 @@
       height: 100% !important;
       margin: 0 !important;
       padding: 0 !important;
-      border: 0.6mm solid #000 !important;
+      border: none !important;
+      border-top: 0.55mm solid #000 !important;
+      border-bottom: 0.55mm solid #000 !important;
       display: grid !important;
       grid-template-rows: {{ etq_zebra.grid_top_pct }}fr {{ etq_zebra.grid_mid_pct }}fr {{ etq_zebra.grid_bot_pct }}fr !important;
       background: #fff !important;
@@ -333,7 +335,7 @@
 {% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603html2"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603html3"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
