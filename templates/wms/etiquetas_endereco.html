@@ -132,7 +132,7 @@
   }
   .bc-wrap svg.bc {
     display: block;
-    width: 96%;
+    width: 100%;
     height: auto;
     max-height: 100%;
   }
@@ -326,7 +326,7 @@
 {% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603html"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603bc"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
@@ -352,9 +352,9 @@
     var code = el.getAttribute('data-code') || '';
     if (!code) return;
     var wrap = el.parentElement;
-    var alvo = larguraUtilBarcode(wrap) * 0.96;
+    var alvo = larguraUtilBarcode(wrap) * 1.0;
     var modulos = Math.max(11, code.length * 11 + 35);
-    var barW = Math.max(1.4, Math.min(3.2, alvo / modulos));
+    var barW = Math.max(1.5, Math.min(3.6, alvo / modulos));
     var barH = alturaBarcode(wrap);
     try {
       JsBarcode(el, code, {
@@ -366,7 +366,7 @@
         lineColor: '#000000',
         background: '#ffffff'
       });
-      el.style.width = '96%';
+      el.style.width = '100%';
       el.style.height = 'auto';
       el.style.display = 'block';
       el.removeAttribute('height');
