@@ -78,9 +78,16 @@ def zpl_longarina_grid_mm():
     return y2, y3, round(w / 4, 1)
 
 
+def zpl_dimensoes_dots():
+    """Largura e altura da etiqueta em dots (203 dpi)."""
+    z = ETIQUETA_ZEBRA_ZD220
+    dpm = z['dpi'] / _MM_IN
+    return int(round(z['largura_mm'] * dpm)), int(round(z['altura_mm'] * dpm))
+
+
 def zpl_dots(mm):
-    """Converte mm → dots ZPL (203 dpi ≈ 8 dots/mm). ^A ignora ^MUm — sempre dots."""
-    return max(8, int(round(mm * ETIQUETA_ZEBRA_ZD220['dpi'] / 25.4)))
+    """Converte mm → dots ZPL (203 dpi)."""
+    return max(1, int(round(mm * ETIQUETA_ZEBRA_ZD220['dpi'] / _MM_IN)))
 
 
 def zpl_font_mm(altura_mm, largura_mm=None):
@@ -90,3 +97,12 @@ def zpl_font_mm(altura_mm, largura_mm=None):
         largura_mm = altura_mm * 0.9
     w = zpl_dots(largura_mm)
     return h, w
+
+
+def zpl_longarina_grid_dots():
+    """Grid longarina em dots (34% / 42% / 24%)."""
+    z = ETIQUETA_ZEBRA_ZD220
+    w, h = zpl_dimensoes_dots()
+    y2 = int(round(h * z['grid_top_pct'] / 100))
+    y3 = int(round(h * (z['grid_top_pct'] + z['grid_mid_pct']) / 100))
+    return y2, y3, w // 4
