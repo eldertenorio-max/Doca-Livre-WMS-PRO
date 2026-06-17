@@ -22,6 +22,7 @@ from wms_etiqueta_zebra import (
     zpl_dimensoes_dots,
     zpl_longarina_grid_dots,
 )
+from wms_etiqueta_excel import gerar_workbook_longarina
 
 bp = Blueprint('wms_enderecamento', __name__)
 
@@ -6456,6 +6457,62 @@ def _resposta_csv_longarina(csv_text, nome_arquivo='longarinas'):
     })
 
 
+def _formato_longarina_request():
+    fmt = (request.args.get('formato') or 'xlsx').strip().lower()
+    return fmt if fmt in ('xlsx', 'html') else 'xlsx'
+
+
+def _etiquetas_endereco_ordenadas(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False):
+    rows = _buscar_rows_etiquetas_endereco(
+        conn, camara=camara, rua=rua, posicao=posicao, codigo=codigo, todas=todas,
+    )
+    if not rows:
+        return None, 'Nenhum endereço encontrado. Use o painel WMS → «Recalcular distribuição» ou clique em Atualizar resumo na aba Etiquetas.'
+    nomes_camara = _map_nomes_camaras(conn)
+    etiquetas = [_loc_etiqueta_data(r, nomes_camara=nomes_camara) for r in rows]
+    etiquetas.sort(key=lambda e: (
+        int(e.get('camara') or e.get('rua_num') or 0),
+        str(e.get('rua_letra') or ''),
+        int(e.get('predio') or 0),
+        int(e.get('nivel') or 0),
+    ))
+    return etiquetas, None
+
+
+def _render_etiquetas_endereco_xlsx(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False):
+    etiquetas, err = _etiquetas_endereco_ordenadas(
+        conn, camara=camara, rua=rua, posicao=posicao, codigo=codigo, todas=todas,
+    )
+    if err:
+        return None, err
+    try:
+        return gerar_workbook_longarina(etiquetas), None
+    except FileNotFoundError as e:
+        return None, str(e)
+    except Exception as e:
+        return None, f'Erro ao gerar Excel: {e}'
+
+
+def _nome_arquivo_xlsx_longarina(codigo=None, todas=False, camara=None, rua=None, posicao=None):
+    if codigo:
+        return re.sub(r'[^\w\-.]+', '_', str(codigo))[:80]
+    if todas:
+        return 'longarinas_armazem'
+    if camara and rua and posicao:
+        return f'longarinas_{camara}_{rua}_{posicao}'
+    if camara:
+        return f'longarinas_camara_{camara}'
+    return 'longarinas_lote'
+
+
+def _resposta_xlsx_longarina(xlsx_bytes, nome_arquivo='longarinas'):
+    safe = re.sub(r'[^\w\-.]+', '_', str(nome_arquivo or 'longarinas'))[:80]
+    return make_response(xlsx_bytes, 200, {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': f'attachment; filename="{safe}.xlsx"',
+    })
+
+
 def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, auto_print=False, todas=False):
     rows = _buscar_rows_etiquetas_endereco(
         conn, camara=camara, rua=rua, posicao=posicao, codigo=codigo, todas=todas,
@@ -6684,13 +6741,19 @@ def api_wms_etiqueta_modelo():
             {'rua_num': '12', 'rua_letra': 'C', 'predio': '14', 'nivel': str(n), 'apto': '1',
              'camara': '12', 'camara_nome': 'Câmara 12',
              'codigo_wms': f'12-C-14-{n}', 'codigo': f'12-C-14-{n}',
-             'barcode': f'12.14.{n}.1', 'dotted': f'12.14.{n}.1',
+             'barcode': f'12.14.{n}', 'dotted': f'12.14.{n}',
              'picking': n == 1, 'destino_fixo': False, 'destino_label': None,
              'zona': 'PICKING' if n == 1 else 'PULMÃO',
              'texto_humano': f'Câmara 12 · Rua C · Col 14 · Nív {n} ({("PICKING" if n == 1 else "PULMÃO")})'}
             for n in range(1, 6)
         ],
     }]
+    if _formato_longarina_request() == 'xlsx':
+        try:
+            xlsx_bytes = gerar_workbook_longarina(faixas[0]['etiquetas'])
+            return _resposta_xlsx_longarina(xlsx_bytes, 'modelo_longarina')
+        except Exception as e:
+            return jsonify({'erro': str(e)}), 500
     html = render_template(
         'wms/etiquetas_endereco.html',
         faixas=faixas,
@@ -6949,6 +7012,13 @@ def api_wms_etiqueta_endereco():
     conn = _db()
     ensure_wms_schema(conn)
     try:
+        fmt = _formato_longarina_request()
+        if fmt == 'xlsx':
+            xlsx_bytes, err = _render_etiquetas_endereco_xlsx(conn, codigo=codigo)
+            conn.close()
+            if err:
+                return jsonify({'erro': err}), 404
+            return _resposta_xlsx_longarina(xlsx_bytes, _nome_arquivo_xlsx_longarina(codigo=codigo))
         auto_print = request.args.get('auto_print', '0') == '1'
         html, err = _render_etiquetas_endereco(conn, codigo=codigo, auto_print=auto_print)
         conn.close()
@@ -7010,6 +7080,18 @@ def api_wms_etiqueta_enderecos():
     if not todas and not camara and not rua and not posicao:
         return jsonify({'erro': 'Informe todas=1, camara, ou coluna (camara+rua+posicao).'}), 400
     try:
+        fmt = _formato_longarina_request()
+        if fmt == 'xlsx':
+            xlsx_bytes, err = _render_etiquetas_endereco_xlsx(
+                conn, camara=camara, rua=rua, posicao=posicao, todas=todas,
+            )
+            conn.close()
+            if err:
+                return jsonify({'erro': err}), 404
+            nome = _nome_arquivo_xlsx_longarina(
+                todas=todas, camara=camara, rua=rua, posicao=posicao,
+            )
+            return _resposta_xlsx_longarina(xlsx_bytes, nome)
         auto_print = request.args.get('auto_print', '0') == '1'
         html, err = _render_etiquetas_endereco(
             conn,
