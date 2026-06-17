@@ -4,16 +4,18 @@ ETIQUETA LONGARINA 60x40 mm — ZEBRA ZD220
 PROBLEMA: Chrome deixa a etiqueta pequena no canto.
 SOLUCAO DEFINITIVA: ZPL direto na impressora (nao passa pelo driver/Chrome).
 
-OPCAO 1 — BROWSER PRINT (recomendado, 1 clique)
+OPCAO 1 — BROWSER PRINT (1 clique, apos instalar)
 ------------------------------------------------
-1. Instale no PC Windows:
-   https://www.zebra.com/us/en/support-downloads/software/developer-tools/browser-print.html
-2. Conecte a ZD220 por USB e ligue a impressora.
-3. No WMS: ETQ. LONGARINA -> Gerar etiqueta -> "Imprimir na Zebra".
-4. Teste primeiro "Teste 60x40" — a borda deve encostar nos 4 lados da etiqueta.
+1. Baixe no site oficial (link correto — o antigo da Zebra da 404):
+   https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html
+   Preencha o formulario rapido da Zebra e clique em download.
+   Guia: https://support.zebra.com/article/000019120
+2. Instale, conecte a ZD220 por USB e ligue a impressora.
+3. No WMS: ETQ. LONGARINA -> Imprimir -> "Imprimir na Zebra".
+4. Teste primeiro "Teste 60x40" — a borda deve encostar nos 4 lados.
 
-OPCAO 2 — ARQUIVO .TXT + .BAT (sem Browser Print)
--------------------------------------------------
+OPCAO 2 — ARQUIVO .TXT + .BAT (NAO precisa instalar nada da Zebra)
+-------------------------------------------------------------------
 1. Baixe enviar_prn_zebra.bat (esta pasta).
 2. No WMS, baixe o arquivo .txt.
 3. Arraste o .txt em cima do .bat.

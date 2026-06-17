@@ -69,12 +69,21 @@
   <h1>Etiqueta longarina 60×40 mm (ZPL)</h1>
   <p class="sub"><strong>{{ total }}</strong> etiqueta(s) · {{ titulo or 'Longarina' }}</p>
 
-  <div class="steps">
-    <strong>Forma definitiva — imprime a etiqueta inteira (sem Chrome):</strong>
+  <div class="steps alt" style="margin-bottom: 16px;">
+    <strong>Mais fácil — sem instalar nada da Zebra:</strong>
     <ol>
-      <li>Instale <a href="https://www.zebra.com/us/en/support-downloads/software/developer-tools/browser-print.html" target="_blank" rel="noopener">Zebra Browser Print</a> no PC (uma vez)</li>
-      <li>Conecte a ZD220 por USB e ligue a impressora</li>
-      <li>Clique em <strong>Imprimir na Zebra</strong> abaixo</li>
+      <li>Baixe <a href="/static/zebra/enviar_prn_zebra.bat" download>enviar_prn_zebra.bat</a> (uma vez)</li>
+      <li>Clique em <strong>Baixar .txt</strong> abaixo</li>
+      <li><strong>Arraste</strong> o arquivo <code>.txt</code> em cima do <code>.bat</code></li>
+    </ol>
+  </div>
+
+  <div class="steps">
+    <strong>Ou com Zebra Browser Print (1 clique após instalar):</strong>
+    <ol>
+      <li>Baixe em <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html" target="_blank" rel="noopener">zebra.com → Browser Print</a> (formulário rápido)</li>
+      <li>Instale, conecte a ZD220 por USB</li>
+      <li>Clique em <strong>Imprimir na Zebra</strong></li>
     </ol>
   </div>
 
@@ -91,11 +100,8 @@
   <p class="status" id="status"></p>
 
   <div class="steps alt">
-    <strong>Sem Browser Print?</strong>
-    <ol>
-      <li>Baixe <a href="/static/zebra/enviar_prn_zebra.bat" download>enviar_prn_zebra.bat</a></li>
-      <li>Clique em <strong>Baixar .txt</strong> e arraste o arquivo em cima do <code>.bat</code></li>
-    </ol>
+    <strong>Guia de instalação Browser Print:</strong>
+    <a href="https://support.zebra.com/article/000019120" target="_blank" rel="noopener">support.zebra.com</a>
   </div>
 
   <div class="warn">
