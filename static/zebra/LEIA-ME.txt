@@ -16,10 +16,12 @@ OPCAO 1 — BROWSER PRINT (1 clique, apos instalar)
 
 OPCAO 2 — ARQUIVO .TXT + .BAT (NAO precisa instalar nada da Zebra)
 -------------------------------------------------------------------
-1. Baixe enviar_prn_zebra.bat (esta pasta).
-2. No WMS, baixe o arquivo .txt.
-3. Arraste o .txt em cima do .bat.
-   O script envia ZPL em modo RAW (tamanho correto 60x40 mm).
+1. Baixe e EXTRAIA o ZIP (os dois arquivos juntos):
+   https://sistema-wms.onrender.com/static/zebra/impressora-zebra-wms.zip
+   Dentro da pasta: enviar_prn_zebra.bat + enviar_prn_zebra.ps1
+2. No WMS, baixe o arquivo .txt da etiqueta.
+3. Arraste o .txt EM CIMA do enviar_prn_zebra.bat (na pasta extraida).
+   A janela preta deve ficar aberta e mostrar "OK" ou o erro.
 
 OPCAO 3 — ZEBRA SETUP UTILITIES
 --------------------------------

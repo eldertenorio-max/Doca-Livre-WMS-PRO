@@ -1,4 +1,4 @@
-# Envia ZPL (.txt / .prn) para impressora Zebra — metodo RAW (ignora driver Chrome).
+# Envia ZPL (.txt / .prn) para impressora Zebra — RAW (60x40 mm, sem Chrome).
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$Arquivo
@@ -6,20 +6,87 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if (-not (Test-Path -LiteralPath $Arquivo)) {
-    Write-Host "ERRO: arquivo nao encontrado: $Arquivo" -ForegroundColor Red
-    exit 1
+function Write-Err($msg) {
+    Write-Host $msg -ForegroundColor Red
 }
 
-$caminho = (Resolve-Path -LiteralPath $Arquivo).Path
-$bytes = [System.IO.File]::ReadAllBytes($caminho)
+function Write-Ok($msg) {
+    Write-Host $msg -ForegroundColor Green
+}
 
-Add-Type @"
+try {
+    if (-not (Test-Path -LiteralPath $Arquivo)) {
+        Write-Err "ERRO: arquivo nao encontrado:"
+        Write-Host "  $Arquivo"
+        exit 1
+    }
+
+    $caminho = (Resolve-Path -LiteralPath $Arquivo).Path
+    $bytes = [System.IO.File]::ReadAllBytes($caminho)
+    if ($bytes.Length -eq 0) {
+        Write-Err 'ERRO: arquivo vazio.'
+        exit 1
+    }
+
+    Write-Host "Arquivo: $caminho ($($bytes.Length) bytes)"
+
+    $printers = @()
+    try {
+        $printers = @(Get-Printer -ErrorAction Stop | Where-Object {
+            $_.Name -match 'ZDesigner|ZD220|ZD230|Zebra'
+        })
+    } catch {
+        $printers = @(Get-CimInstance Win32_Printer -ErrorAction SilentlyContinue | Where-Object {
+            $_.Name -match 'ZDesigner|ZD220|ZD230|Zebra'
+        } | ForEach-Object {
+            [PSCustomObject]@{ Name = $_.Name; PortName = $_.PortName }
+        })
+    }
+
+    if ($printers.Count -eq 0) {
+        Write-Err 'Nenhuma impressora Zebra encontrada no Windows.'
+        Write-Host ''
+        Write-Host 'Impressoras instaladas:'
+        try {
+            Get-Printer | Format-Table Name, PortName, DriverName -AutoSize
+        } catch {
+            Get-CimInstance Win32_Printer | Select-Object Name, PortName, DriverName | Format-Table -AutoSize
+        }
+        Write-Host 'Instale o driver ZDesigner ZD220 e conecte a impressora por USB.'
+        exit 1
+    }
+
+    $printer = $null
+    if ($printers.Count -eq 1) {
+        $printer = $printers[0]
+    } else {
+        Write-Host ''
+        Write-Host 'Impressoras Zebra encontradas:'
+        for ($i = 0; $i -lt $printers.Count; $i++) {
+            Write-Host "  [$i] $($printers[$i].Name)  (porta: $($printers[$i].PortName))"
+        }
+        Write-Host ''
+        $sel = Read-Host 'Digite o numero da impressora'
+        $idx = 0
+        if (-not [int]::TryParse($sel, [ref]$idx) -or $idx -lt 0 -or $idx -ge $printers.Count) {
+            Write-Err 'Numero invalido.'
+            exit 1
+        }
+        $printer = $printers[$idx]
+    }
+
+    $porta = [string]$printer.PortName
+    $nome = [string]$printer.Name
+    Write-Host ''
+    Write-Host "Impressora: $nome"
+    Write-Host "Porta: $porta"
+
+  if (-not ([System.Management.Automation.PSTypeName]'WmsZebraRawPrint').Type) {
+    Add-Type @"
 using System;
-using System.IO;
 using System.Runtime.InteropServices;
-public class ZebraRawPrint {
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+public class WmsZebraRawPrint {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
     public struct DOCINFOA {
         [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
         [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
@@ -45,6 +112,7 @@ public class ZebraRawPrint {
         try {
             var di = new DOCINFOA();
             di.pDocName = "WMS ZPL";
+            di.pOutputFile = null;
             di.pDataType = "RAW";
             if (!StartDocPrinter(h, 1, ref di)) return false;
             try {
@@ -62,34 +130,37 @@ public class ZebraRawPrint {
     }
 }
 "@
-
-$printers = @(Get-Printer -ErrorAction SilentlyContinue | Where-Object {
-    $_.Name -match 'ZDesigner|ZD220|ZD230|Zebra'
-})
-
-if ($printers.Count -eq 0) {
-    Write-Host "Nenhuma impressora Zebra encontrada. Instale o driver ZDesigner ZD220." -ForegroundColor Yellow
-    Get-Printer -ErrorAction SilentlyContinue | Format-Table Name, PortName -AutoSize
-    exit 1
-}
-
-$printer = if ($printers.Count -eq 1) { $printers[0] } else {
-    Write-Host "Impressoras Zebra:"
-    for ($i = 0; $i -lt $printers.Count; $i++) {
-        Write-Host "  [$i] $($printers[$i].Name)"
     }
-    $idx = [int](Read-Host "Numero")
-    $printers[$idx]
-}
 
-Write-Host "Enviando $caminho para $($printer.Name) (RAW)..."
-$ok = [ZebraRawPrint]::Send($printer.Name, $bytes)
-if (-not $ok) {
-    Write-Host "Falha RAW. Tentando copy /b na porta $($printer.PortName)..."
-    $null = cmd /c "copy /b `"$caminho`" $($printer.PortName)"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "ERRO ao imprimir." -ForegroundColor Red
+    Write-Host 'Enviando ZPL (modo RAW)...'
+    $ok = [WmsZebraRawPrint]::Send($nome, $bytes)
+
+    if (-not $ok -and $porta) {
+        $destPorta = $porta
+        if ($destPorta -notmatch '^\\\\') {
+            if ($destPorta -match '^USB\d+$') { $destPorta = "\\.\$destPorta" }
+            elseif ($destPorta -notmatch '^\\\\\.\\') { $destPorta = "\\.\$destPorta" }
+        }
+        Write-Host "Falha RAW. Tentando copy /b na porta $destPorta ..."
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = 'cmd.exe'
+        $psi.Arguments = "/c copy /b `"$caminho`" `"$destPorta`""
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $p = [System.Diagnostics.Process]::Start($psi)
+        $p.WaitForExit()
+        if ($p.ExitCode -eq 0) { $ok = $true }
+    }
+
+    if (-not $ok) {
+        Write-Err 'ERRO: nao foi possivel enviar para a impressora.'
+        Write-Host 'Verifique: USB conectado, impressora ligada, driver ZDesigner ZD220 instalado.'
         exit 1
     }
+
+    Write-Ok 'OK — etiqueta enviada. Confira na impressora.'
+    exit 0
+} catch {
+    Write-Err "ERRO: $($_.Exception.Message)"
+    exit 1
 }
-Write-Host "OK — etiqueta(s) enviada(s)." -ForegroundColor Green

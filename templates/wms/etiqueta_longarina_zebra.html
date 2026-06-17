@@ -72,9 +72,8 @@
   <div class="steps alt" style="margin-bottom: 16px;">
     <strong>Mais fácil — sem instalar nada da Zebra:</strong>
     <ol>
-      <li>Baixe <a href="/static/zebra/enviar_prn_zebra.bat" download>enviar_prn_zebra.bat</a> (uma vez)</li>
-      <li>Clique em <strong>Baixar .txt</strong> abaixo</li>
-      <li><strong>Arraste</strong> o arquivo <code>.txt</code> em cima do <code>.bat</code></li>
+      <li>Baixe e extraia <a href="/static/zebra/impressora-zebra-wms.zip" download>impressora-zebra-wms.zip</a> (contém .bat + .ps1)</li>
+      <li>Arraste o <code>.txt</code> em cima do <code>enviar_prn_zebra.bat</code> <strong>dentro da pasta extraída</strong></li>
     </ol>
   </div>
 
@@ -163,7 +162,7 @@
         URL.revokeObjectURL(a.href);
         a.remove();
       }, 300);
-      setStatus('Arquivo baixado. Arraste sobre enviar_prn_zebra.bat', true);
+      setStatus('Arquivo baixado. Arraste na pasta do impressora-zebra-wms.zip', true);
     } catch (e) {
       setStatus((e && e.message) || 'Erro ao baixar', false);
     }
