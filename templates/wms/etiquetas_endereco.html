@@ -12,19 +12,14 @@
     --lh-mm: {{ etq_altura_mm }}mm;
     --ink: #000;
     --paper: #fff;
-    --row-top: {{ (etq_zebra.grid_top_pct * etq_altura_mm / 100)|round(1) }}mm;
-    --row-mid: {{ (etq_zebra.grid_mid_pct * etq_altura_mm / 100)|round(1) }}mm;
-    --row-bot: {{ (etq_zebra.grid_bot_pct * etq_altura_mm / 100)|round(1) }}mm;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   @page { size: {{ etq_page_size_in }}; size: {{ etq_page_size_mm }}; margin: 0; }
 
-  html, body { width: var(--lw); }
+  html { background: #e0e0e0; }
   body {
     font-family: Arial, Helvetica, sans-serif;
-    background: #e0e0e0;
-    padding: 6px;
     color: var(--ink);
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
@@ -33,11 +28,10 @@
   .toolbar {
     position: sticky; top: 0; z-index: 9;
     background: #fff; border: 1px solid #ccc; border-radius: 8px;
-    padding: 10px 14px; margin-bottom: 12px;
+    padding: 10px 14px; margin: 8px;
     display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    width: calc(var(--lw) + 12px);
+    max-width: calc(var(--lw) + 16px);
   }
-  .toolbar p { font-size: 13px; color: #444; flex: 1; min-width: 200px; }
   .toolbar button {
     padding: 8px 16px; font-size: 14px; cursor: pointer;
     border: none; border-radius: 6px; background: #1976d2; color: #fff;
@@ -48,19 +42,21 @@
   }
   @media print { .print-setup-hint { display: none !important; } }
 
-  .bloco-faixa { margin-bottom: 16px; }
-  .bloco-camara { margin-bottom: 24px; }
+  .bloco-faixa { margin: 0 0 12px 8px; }
+  .bloco-camara { margin: 0 0 16px 8px; }
   .camara-titulo {
     font-size: 13px; font-weight: 800; color: #1565c0;
     padding: 8px 4px 10px; border-bottom: 2px solid #1565c0; margin-bottom: 10px;
+    max-width: var(--lw);
   }
-  .faixa-titulo { font-size: 11px; color: #555; padding: 0 0 6px 2px; }
+  .faixa-titulo { font-size: 11px; color: #555; padding: 0 0 6px 2px; max-width: var(--lw); }
   .faixa { width: var(--lw); }
 
   .etq-page {
     width: var(--lw);
     height: var(--lh);
-    margin: 0 0 2mm;
+    margin: 0;
+    padding: 0;
     overflow: hidden;
     background: var(--paper);
     position: relative;
@@ -72,7 +68,7 @@
     inset: 0;
     width: 100%;
     height: 100%;
-    border: 2px solid var(--ink);
+    border: 0.6mm solid var(--ink);
     background: var(--paper);
     display: grid;
     grid-template-rows: {{ etq_zebra.grid_top_pct }}fr {{ etq_zebra.grid_mid_pct }}fr {{ etq_zebra.grid_bot_pct }}fr;
@@ -84,7 +80,7 @@
   .etq-top {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    border-bottom: 2px solid var(--ink);
+    border-bottom: 0.5mm solid var(--ink);
     min-height: 0;
   }
   .loc-col {
@@ -92,37 +88,38 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    border-right: 1px solid var(--ink);
+    border-right: 0.35mm solid var(--ink);
     min-width: 0;
     height: 100%;
-    padding: 2%;
+    padding: 1% 2%;
   }
   .loc-col:last-child { border-right: none; }
   .loc-lbl {
-    font-size: 7cqh;
+    font-size: 8cqh;
     font-weight: 700;
     text-transform: uppercase;
     line-height: 1;
-    margin-bottom: 4%;
+    margin-bottom: 3%;
   }
   .loc-val {
-    font-size: 26cqh;
+    font-size: 30cqh;
     font-weight: 900;
     line-height: 0.85;
     font-variant-numeric: tabular-nums;
   }
-  .loc-val.letra { font-size: 24cqh; }
+  .loc-val.letra { font-size: 28cqh; }
 
   .etq-bc-block {
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto;
-    padding: 2% 3%;
-    gap: 2%;
+    padding: 1.5% 2%;
+    gap: 1%;
     min-height: 0;
-    border-bottom: 2px solid var(--ink);
+    border-bottom: 0.5mm solid var(--ink);
   }
   .bc-wrap {
     width: 100%;
+    height: 100%;
     min-height: 0;
     display: flex;
     align-items: center;
@@ -132,19 +129,21 @@
   }
   .bc-wrap svg.bc {
     display: block;
-    width: 97%;
-    height: auto;
-    max-height: 92%;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
   }
   .endereco {
     text-align: center;
-    font-size: 9cqh;
+    font-size: 10cqh;
     font-weight: 700;
     font-family: Consolas, 'Courier New', monospace;
     letter-spacing: 0.04em;
-    line-height: 1.1;
+    line-height: 1;
     white-space: nowrap;
     overflow: hidden;
+    flex-shrink: 0;
   }
 
   .etq-zone-bar {
@@ -158,19 +157,19 @@
     justify-content: space-between;
     width: 100%;
     height: 100%;
-    padding: 0 5%;
+    padding: 0 4%;
   }
   .arrow {
     width: 0;
     height: 0;
     flex-shrink: 0;
-    border-left: 7cqh solid transparent;
-    border-right: 7cqh solid transparent;
+    border-left: 8cqh solid transparent;
+    border-right: 8cqh solid transparent;
   }
-  .arrow.up { border-bottom: 10cqh solid var(--ink); }
-  .arrow.down { border-top: 10cqh solid var(--ink); }
+  .arrow.up { border-bottom: 11cqh solid var(--ink); }
+  .arrow.down { border-top: 11cqh solid var(--ink); }
   .zone-lbl {
-    font-size: 11cqh;
+    font-size: 13cqh;
     font-weight: 900;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -178,7 +177,7 @@
   }
   .etq-zone-bar.destino .zone-inner { justify-content: center; }
   .etq-zone-bar.destino .zone-lbl {
-    font-size: 8cqh;
+    font-size: 9cqh;
     text-align: center;
     white-space: normal;
     line-height: 1.1;
@@ -202,11 +201,14 @@
       margin: 0 !important;
       padding: 0 !important;
       width: {{ etq_largura_in }}in !important;
+      max-width: {{ etq_largura_in }}in !important;
     }
 
     .etq-page {
       width: {{ etq_largura_in }}in !important;
       height: {{ etq_altura_in }}in !important;
+      max-width: {{ etq_largura_in }}in !important;
+      max-height: {{ etq_altura_in }}in !important;
       margin: 0 !important;
       padding: 0 !important;
       overflow: hidden !important;
@@ -214,6 +216,7 @@
       page-break-after: always;
       break-after: page;
       break-inside: avoid;
+      box-decoration-break: clone;
     }
     .etq-page:last-child {
       page-break-after: auto;
@@ -231,7 +234,7 @@
       height: 100% !important;
       margin: 0 !important;
       padding: 0 !important;
-      border: 2px solid #000 !important;
+      border: 0.6mm solid #000 !important;
       display: grid !important;
       grid-template-rows: {{ etq_zebra.grid_top_pct }}fr {{ etq_zebra.grid_mid_pct }}fr {{ etq_zebra.grid_bot_pct }}fr !important;
       background: #fff !important;
@@ -243,7 +246,11 @@
   }
 </style>
 </head>
-<body data-etq-page="{{ etq_page_size_in }}">
+<body
+  data-etq-page="{{ etq_page_size_in }}"
+  data-etq-w="{{ etq_largura_in }}in"
+  data-etq-h="{{ etq_altura_in }}in"
+>
 <div class="toolbar">
   <button type="button" id="btn-wms-etq-imprimir">Imprimir</button>
   <button type="button" class="sec" id="btn-wms-etq-fechar">Fechar</button>
@@ -326,36 +333,33 @@
 {% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603bc3"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603html2"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
   var ALTURA_MID_MM = {{ (etq_zebra.grid_mid_pct * etq_altura_mm / 100)|round(1) }};
-  var MM_PX = 3.7795275591;
+  var MM_PX = 96 / 25.4;
 
-  function larguraUtilBarcode(wrap) {
-    if (!wrap) return Math.round(LARGURA_MM * MM_PX);
-    var page = wrap.closest('.etiqueta, .etq-loc, .etq-page');
-    if (page && page.clientWidth > 20) return page.clientWidth;
-    return Math.round(LARGURA_MM * MM_PX);
-  }
-
-  function alturaBarcode(wrap) {
+  function dimsBarcode(wrap) {
     var block = wrap && wrap.closest('.etq-bc-block');
-    if (block && block.clientHeight > 10) {
-      return Math.max(20, Math.round(block.clientHeight * 0.74));
-    }
-    return Math.round(ALTURA_MID_MM * MM_PX * 0.58);
+    var page = wrap && wrap.closest('.etq-page');
+    var w = wrap ? wrap.clientWidth : 0;
+    var h = wrap ? wrap.clientHeight : 0;
+    if (w < 20 && page) w = page.clientWidth;
+    if (h < 10 && block) h = Math.round(block.clientHeight * 0.88);
+    if (w < 20) w = Math.round(LARGURA_MM * MM_PX);
+    if (h < 10) h = Math.round(ALTURA_MID_MM * MM_PX * 0.72);
+    return { w: w, h: h };
   }
 
   function renderBarcode(el) {
     var code = el.getAttribute('data-code') || '';
     if (!code) return;
     var wrap = el.parentElement;
-    var alvo = larguraUtilBarcode(wrap) * 0.97;
+    var dims = dimsBarcode(wrap);
     var modulos = Math.max(11, code.length * 11 + 35);
-    var barW = Math.max(1.45, Math.min(3.3, alvo / modulos));
-    var barH = alturaBarcode(wrap);
+    var barW = Math.max(1.35, Math.min(4.2, dims.w / modulos));
+    var barH = Math.max(24, Math.round(dims.h * 0.92));
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
@@ -366,9 +370,12 @@
         lineColor: '#000000',
         background: '#ffffff'
       });
-      el.style.width = '97%';
-      el.style.height = 'auto';
+      el.style.width = '100%';
+      el.style.height = '100%';
+      el.style.maxWidth = '100%';
+      el.style.maxHeight = '100%';
       el.style.display = 'block';
+      el.removeAttribute('width');
       el.removeAttribute('height');
     } catch (e) { console.warn(e); }
   }
@@ -391,6 +398,10 @@
   document.getElementById('btn-wms-etq-fechar').addEventListener('click', function() {
     window.close();
   });
+
+  {% if auto_print %}
+  wmsEtiquetaImprimir(renderTodos);
+  {% endif %}
 })();
 </script>
 </body>

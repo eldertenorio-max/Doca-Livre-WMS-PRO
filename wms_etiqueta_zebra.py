@@ -1,5 +1,5 @@
 """
-Configuração ÚNICA — etiqueta Zebra ZD220 longarina (Excel ETIQUETA LONGARINA).
+Configuração ÚNICA — etiqueta Zebra ZD220 longarina 102×73 mm.
 
 Driver Windows (stock ETIQUETA LONGARINA):
   Largura 102 mm · Altura 73 mm · Rotação 0° (Retrato)

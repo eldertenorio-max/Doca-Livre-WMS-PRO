@@ -7,15 +7,24 @@
     else global.addEventListener('load', fn, { once: true });
   }
 
-  function pageSizeFromBody() {
+  function pageDimsFromBody() {
     var b = document.body;
     if (!b) return null;
-    return b.getAttribute('data-etq-page') || null;
+    var page = b.getAttribute('data-etq-page');
+    var w = b.getAttribute('data-etq-w');
+    var h = b.getAttribute('data-etq-h');
+    if (!page && !(w && h)) return null;
+    if (!w || !h) {
+      var parts = (page || '').trim().split(/\s+/);
+      w = parts[0] || null;
+      h = parts[1] || null;
+    }
+    return { page: page || (w + ' ' + h), w: w, h: h };
   }
 
   function injectPrintPageSize() {
-    var sz = pageSizeFromBody();
-    if (!sz) return;
+    var dims = pageDimsFromBody();
+    if (!dims) return;
     var el = document.getElementById('wms-dynamic-page');
     if (!el) {
       el = document.createElement('style');
@@ -23,8 +32,10 @@
       document.head.appendChild(el);
     }
     el.textContent =
-      '@media print { @page { size: ' + sz + '; margin: 0; } ' +
-      'html, body { width: ' + sz.split(' ')[0] + ' !important; margin: 0 !important; padding: 0 !important; } }';
+      '@media print { @page { size: ' + dims.page + '; margin: 0; } ' +
+      'html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; } ' +
+      '.etq-page { width: ' + dims.w + ' !important; height: ' + dims.h + ' !important; ' +
+      'max-width: ' + dims.w + ' !important; max-height: ' + dims.h + ' !important; } }';
   }
 
   function imprimir(preparar) {

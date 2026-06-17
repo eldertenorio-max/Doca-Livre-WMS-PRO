@@ -6458,8 +6458,8 @@ def _resposta_csv_longarina(csv_text, nome_arquivo='longarinas'):
 
 
 def _formato_longarina_request():
-    fmt = (request.args.get('formato') or 'xlsx').strip().lower()
-    return fmt if fmt in ('xlsx', 'html') else 'xlsx'
+    fmt = (request.args.get('formato') or 'html').strip().lower()
+    return fmt if fmt in ('xlsx', 'html') else 'html'
 
 
 def _etiquetas_endereco_ordenadas(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False):

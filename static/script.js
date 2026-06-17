@@ -5556,52 +5556,7 @@ async function loadWmsLocalizacoes() {
     }
 }
 
-function _wmsEtiquetaLongarinaUrl(url) {
-    var sep = url.indexOf('?') >= 0 ? '&' : '?';
-    if (url.indexOf('formato=') < 0) url += sep + 'formato=xlsx';
-    return url;
-}
-
-async function _wmsBaixarEtiquetaLongarinaExcel(url) {
-    var full = _wmsEtiquetaLongarinaUrl(url);
-    try {
-        var r = await fetch(full, { credentials: 'same-origin' });
-        var ct = (r.headers.get('Content-Type') || '').toLowerCase();
-        if (!r.ok) {
-            var errJson = null;
-            if (ct.indexOf('json') >= 0) errJson = await r.json();
-            showMessage((errJson && errJson.erro) || 'Erro ao gerar Excel das etiquetas.', 'error');
-            return;
-        }
-        var blob = await r.blob();
-        var cd = r.headers.get('Content-Disposition') || '';
-        var m = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(cd);
-        var fn = m ? decodeURIComponent(m[1].replace(/"/g, '')) : 'etiquetas_longarina.xlsx';
-        var obj = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = obj;
-        a.download = fn;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(function() { URL.revokeObjectURL(obj); }, 60000);
-        showMessage(
-            'Excel gerado (' + fn + '). Abra no Excel e imprima (Ctrl+P) — stock ETIQUETA LONGARINA 102×73 mm, escala 100%.',
-            'success'
-        );
-    } catch (e) {
-        showMessage((e && e.message) || 'Erro ao baixar Excel das etiquetas.', 'error');
-    }
-}
-
 function _wmsAbrirEtiquetaUrl(url) {
-    var isLongarina = url.indexOf('/api/wms/etiqueta/endereco') >= 0
-        || url.indexOf('/api/wms/etiqueta/enderecos') >= 0
-        || (url.indexOf('/api/wms/etiqueta/modelo') >= 0 && url.indexOf('tipo=palete') < 0);
-    if (isLongarina) {
-        _wmsBaixarEtiquetaLongarinaExcel(url);
-        return;
-    }
     var w = window.open(url, '_blank');
     if (!w) showMessage('Pop-up bloqueado — libere pop-ups para imprimir etiquetas.', 'error');
 }
