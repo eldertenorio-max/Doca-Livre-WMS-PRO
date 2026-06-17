@@ -5554,7 +5554,11 @@ async function loadWmsLocalizacoes() {
     }
 }
 
-function _wmsAbrirEtiquetaUrl(url) {
+function _wmsAbrirEtiquetaUrl(url, opts) {
+    opts = opts || {};
+    if (opts.autoPrint !== false && url.indexOf('auto_print=') < 0) {
+        url += (url.indexOf('?') >= 0 ? '&' : '?') + 'auto_print=1';
+    }
     var w = window.open(url, '_blank');
     if (!w) showMessage('Pop-up bloqueado — libere pop-ups para imprimir etiquetas.', 'error');
 }
@@ -5865,11 +5869,11 @@ function wmsImprimirEtqUnico() {
 }
 
 function wmsImprimirEtqDemo() {
-    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/modelo?tipo=endereco');
+    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/modelo?tipo=endereco', { autoPrint: false });
 }
 
 window.wmsImprimirEtqPaleteModelo = function() {
-    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/modelo?tipo=palete');
+    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/modelo?tipo=palete', { autoPrint: false });
 };
 
 async function loadWmsProdutos() {

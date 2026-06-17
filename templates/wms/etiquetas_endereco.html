@@ -243,10 +243,8 @@
 </head>
 <body>
 <div class="toolbar">
-  <p><strong>{{ total }}</strong> etiqueta(s) · <strong>{{ etq_largura_mm }}×{{ etq_altura_mm }} mm</strong> · Zebra {{ etq_zebra.modelo }}</p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
-  <p class="zebra-hint">{{ etq_driver_hint | safe }}</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}

@@ -6578,6 +6578,7 @@ def api_wms_etiqueta_modelo():
         total=5,
         titulo='Modelo',
         auto_print=False,
+        **ctx_etiqueta_zebra(),
     )
     return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
 
@@ -6586,12 +6587,38 @@ def _quer_formato_html_longarina():
     return (request.args.get('formato') or '').strip().lower() == 'html'
 
 
+def _url_html_longarina(codigo=None, todas=False, camara=None, rua=None, posicao=None, auto_print=True):
+    """URL da prévia HTML (impressão Chrome)."""
+    ap = '1' if auto_print else '0'
+    if codigo:
+        return f'/api/wms/etiqueta/endereco?codigo={quote(codigo)}&auto_print={ap}'
+    if todas:
+        return f'/api/wms/etiqueta/enderecos?todas=1&auto_print={ap}'
+    if camara and rua and posicao:
+        return (
+            f'/api/wms/etiqueta/enderecos?camara={camara}&rua={quote(rua)}'
+            f'&posicao={posicao}&auto_print={ap}'
+        )
+    if camara:
+        return f'/api/wms/etiqueta/enderecos?camara={camara}&auto_print={ap}'
+    return f'/api/wms/etiqueta/enderecos?auto_print={ap}'
+
+
 def _redirect_etiqueta_zebra(**params):
-    """Redireciona rotas antigas (HTML) para o assistente ZPL."""
-    clean = {k: v for k, v in params.items() if v is not None and v != ''}
-    if request.args.get('auto') == '0':
-        clean['auto'] = '0'
-    return redirect('/api/wms/etiqueta/zebra?' + urlencode(clean, doseq=True))
+    """Legado — redireciona Browser Print para HTML."""
+    codigo = params.get('codigo') or params.get('endereco')
+    todas = params.get('todas')
+    camara = params.get('camara')
+    rua = params.get('rua')
+    posicao = params.get('posicao')
+    return redirect(_url_html_longarina(
+        codigo=codigo,
+        todas=str(todas).lower() in ('1', 'true', 'sim', 'all') if todas else False,
+        camara=camara,
+        rua=rua,
+        posicao=posicao,
+        auto_print=True,
+    ))
 
 
 def _resposta_zpl_longarina(zpl, nome_arquivo='longarinas', ext='prn'):
@@ -6670,37 +6697,17 @@ def api_wms_etiqueta_zebra_teste_zpl():
 
 @bp.route('/etiqueta/zebra', methods=['GET'])
 def api_wms_etiqueta_zebra_page():
-    """Assistente ZPL — impressão direta Zebra (sem Chrome)."""
-    conn = _db()
-    ensure_wms_schema(conn)
+    """Legado — abre prévia HTML (não usa mais Browser Print)."""
     codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip() or None
     todas = (request.args.get('todas') or '').strip().lower() in ('1', 'true', 'sim', 'all')
     camara = request.args.get('camara', type=int)
     rua = (request.args.get('rua') or '').strip() or None
     posicao = request.args.get('posicao', type=int)
-    auto_download = (request.args.get('auto') or '1') != '0'
     if not codigo and not todas and not camara and not rua and not posicao:
         return jsonify({'erro': 'Informe codigo, todas=1, camara, ou coluna (camara+rua+posicao).'}), 400
-    try:
-        html, err = _pagina_zebra_longarina(
-            conn,
-            camara=camara,
-            rua=rua,
-            posicao=posicao,
-            codigo=codigo,
-            todas=todas,
-            auto_download=auto_download,
-        )
-        conn.close()
-        if err:
-            return jsonify({'erro': err}), 404
-        return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
-    except Exception as e:
-        try:
-            conn.close()
-        except Exception:
-            pass
-        return jsonify({'erro': str(e)}), 500
+    return redirect(_url_html_longarina(
+        codigo=codigo, todas=todas, camara=camara, rua=rua, posicao=posicao, auto_print=True,
+    ))
 @bp.route('/etiqueta/endereco/zpl', methods=['GET'])
 def api_wms_etiqueta_endereco_zpl():
     """Download ZPL nativo (Zebra ZD220) — uma etiqueta."""
@@ -6823,7 +6830,7 @@ def api_wms_etiqueta_endereco():
     conn = _db()
     ensure_wms_schema(conn)
     try:
-        auto_print = request.args.get('auto_print', '0') == '1'
+        auto_print = request.args.get('auto_print', '1') == '1'
         html, err = _render_etiquetas_endereco(conn, codigo=codigo, auto_print=auto_print)
         conn.close()
         if err:
@@ -6884,7 +6891,7 @@ def api_wms_etiqueta_enderecos():
     if not todas and not camara and not rua and not posicao:
         return jsonify({'erro': 'Informe todas=1, camara, ou coluna (camara+rua+posicao).'}), 400
     try:
-        auto_print = request.args.get('auto_print', '0') == '1'
+        auto_print = request.args.get('auto_print', '1') == '1'
         html, err = _render_etiquetas_endereco(
             conn,
             camara=camara,
