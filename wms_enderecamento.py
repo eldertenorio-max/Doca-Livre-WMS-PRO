@@ -16,7 +16,7 @@ from urllib.parse import quote, urlencode
 
 from flask import Blueprint, jsonify, make_response, redirect, render_template, request, session
 
-from wms_etiqueta_zebra import ctx_etiqueta_zebra, zpl_dimensoes_mm, zpl_longarina_grid_mm
+from wms_etiqueta_zebra import ctx_etiqueta_zebra, zpl_dimensoes_mm, zpl_longarina_grid_mm, zpl_font_mm, zpl_dots
 
 bp = Blueprint('wms_enderecamento', __name__)
 
@@ -6245,9 +6245,11 @@ def _zpl_calibrar_media():
 
 
 def _zpl_etiqueta_longarina(e, dpi=203):
-    """ZPL 60×40 mm — dimensões de wms_etiqueta_zebra.py."""
+    """ZPL 60×40 mm — layout alinhado à prévia HTML."""
     w, h = zpl_dimensoes_mm()
     y2, y3, col_w = zpl_longarina_grid_mm()
+    mid_h = y3 - y2
+    bot_h = h - y3
 
     cam = _zpl_escape(e.get('camara') or e.get('rua_num') or '')
     rua = _zpl_escape(e.get('rua_letra') or '-')
@@ -6256,11 +6258,12 @@ def _zpl_etiqueta_longarina(e, dpi=203):
     bc = _zpl_escape(e.get('barcode') or '')
     cod = _zpl_escape(e.get('codigo_wms') or e.get('codigo') or bc)
 
+    lh, lw = zpl_font_mm(2.2, 2.0)
     partes = _zpl_cabecalho_mm(w, h)
     partes += [
-        f'^FO0,0^GB{w},{h},0.7^FS',
-        f'^FO0,{y2}^GB{w},0.35,0.35^FS',
-        f'^FO0,{y3}^GB{w},0.35,0.35^FS',
+        f'^FO0,0^GB{w},{h},0.6^FS',
+        f'^FO0,{y2}^GB{w},0.4,0.4^FS',
+        f'^FO0,{y3}^GB{w},0.4,0.4^FS',
     ]
     cols = [
         ('CAMARA', cam),
@@ -6271,32 +6274,44 @@ def _zpl_etiqueta_longarina(e, dpi=203):
     for i, (lbl, val) in enumerate(cols):
         x = i * col_w
         val_len = len(str(val or ''))
-        fs_val = 6.5 if val_len > 2 else 8.5
-        if lbl == 'RUA' and val_len == 1:
-            fs_val = 7.5
-        partes.append(f'^FO{x},1.2^FB{col_w},1,0,C^A0N,2.2,2.2^FD{lbl}^FS')
-        partes.append(f'^FO{x},4.5^FB{col_w},1,0,C^A0N,{fs_val},{fs_val}^FD{val}^FS')
+        if lbl == 'RUA' and val_len <= 1:
+            vh, vw = zpl_font_mm(8.5, 8.0)
+        elif val_len > 2:
+            vh, vw = zpl_font_mm(7.0, 6.5)
+        else:
+            vh, vw = zpl_font_mm(9.5, 8.5)
+        partes.append(f'^FO{x},1.0^FB{col_w},1,0,C^A0N,{lh},{lw}^FD{lbl}^FS')
+        partes.append(f'^FO{x},4.8^FB{col_w},1,0,C^A0N,{vh},{vw}^FD{val}^FS')
         if i < 3:
-            partes.append(f'^FO{x + col_w},0^GB0.35,{y2},0.35^FS')
+            partes.append(f'^FO{x + col_w},0^GB0.3,{y2},0.3^FS')
 
-    bc_h = 11.0
-    bc_y = y2 + 1.0
-    bc_x = 8.0
-    partes.append(f'^FO{bc_x},{bc_y}^BY1.5,2,{bc_h}^BCN,{bc_h},N,N,N^FD{bc}^FS')
-    cod_y = y2 + bc_h + 1.8
-    if cod_y < y3 - 1.5:
-        partes.append(f'^FO0,{cod_y}^FB{w},1,0,C^A0N,3.2,3.2^FD{cod}^FS')
+    bc_h_mm = min(mid_h * 0.62, 12.0)
+    bc_h = zpl_dots(bc_h_mm)
+    bc_y = y2 + (mid_h - bc_h_mm) / 2 - 1.2
+    if bc_y < y2 + 0.5:
+        bc_y = y2 + 0.8
+    partes.append(f'^FO5,{bc_y}^BY2,2.5,{bc_h}^BCN,{bc_h},N,N,N^FD{bc}^FS')
 
-    foot_y = y3 + 2.8
+    ch, cw = zpl_font_mm(3.2, 3.0)
+    cod_y = min(y3 - 3.8, bc_y + bc_h_mm + 0.8)
+    partes.append(f'^FO0,{cod_y}^FB{w},1,0,C^A0N,{ch},{cw}^FD{cod}^FS')
+
+    fh, fw = zpl_font_mm(4.8, 4.5)
+    foot_y = y3 + max(1.5, (bot_h - 4.8) / 2)
     if e.get('destino_fixo'):
         zona = _zpl_escape(e.get('destino_label') or e.get('zona') or '')
-        partes.append(f'^FO0,{foot_y}^FB{w},1,0,C^A0N,3.8,3.8^FD{zona}^FS')
+        partes.append(f'^FO0,{foot_y}^FB{w},1,0,C^A0N,{fh},{fw}^FD{zona}^FS')
     elif e.get('picking'):
-        partes.append(f'^FO2,{foot_y}^A0N,4.5,4.5^FDPICKING^FS')
-        partes.append(f'^FO{w - 6},{foot_y - 0.5}^A0N,5,5^FDv^FS')
+        partes.append(f'^FO3,{foot_y}^A0N,{fh},{fw}^FDPICKING^FS')
+        ah = zpl_dots(3.5)
+        ax = w - 8
+        partes.append(f'^FO{ax},{foot_y + 0.5}^GB2.5,0.3,0.3^FS')
+        partes.append(f'^FO{ax - 0.8},{foot_y + 3.2}^GB4,0.3,0.3^FS')
     else:
-        partes.append(f'^FO2,{foot_y}^A0N,4.5,4.5^FDPULMAO^FS')
-        partes.append(f'^FO{w - 6},{foot_y - 0.5}^A0N,5,5^FD\\^FS')
+        partes.append(f'^FO3,{foot_y}^A0N,{fh},{fw}^FDPULMAO^FS')
+        ax = w - 8
+        partes.append(f'^FO{ax},{foot_y + 3.5}^GB4,0.3,0.3^FS')
+        partes.append(f'^FO{ax + 1.5},{foot_y}^GB0.3,3.5,0.3^FS')
 
     partes.append('^XZ')
     return '\n'.join(partes)
@@ -6307,7 +6322,7 @@ def _zpl_etiqueta_palete(
     data_producao=None, data_validade=None, codigo_wms=None,
     endereco_barcode=None, camara=None, up=None,
 ):
-    """ZPL 60×40 mm — etiqueta de palete (campos principais)."""
+    """ZPL 60×40 mm — etiqueta palete (layout próximo ao HTML)."""
     w, h = zpl_dimensoes_mm()
     etq = _zpl_escape(etiqueta or '')
     top = 0.0
@@ -6316,31 +6331,60 @@ def _zpl_etiqueta_palete(
 
     dest = (codigo_wms or endereco_barcode or '').strip()
     if dest:
-        partes.append(f'^FO0,0^GB{w},7,0.5^FS')
-        partes.append(f'^FO0.8,0.6^GB8,5.8,5^FS')
-        partes.append(f'^FO0.9,2.2^A0N,1.8,1.8^FR^FDGUARDAR^FS')
-        partes.append(f'^FO10,1.2^A0N,4,4^FD{_zpl_escape(dest)}^FS')
+        partes.append(f'^FO0,0^GB{w},7.5,7.5^FS')
+        gh, gw = zpl_font_mm(2.2, 2.0)
+        partes.append(f'^FO1.2,2.0^A0N,{gh},{gw}^FR^FDGUARDAR EM^FS')
+        dh, dw = zpl_font_mm(4.5, 4.2)
+        partes.append(f'^FO10,1.5^A0N,{dh},{dw}^FR^FD{_zpl_escape(dest)}^FS')
         if camara:
-            partes.append(f'^FO{w - 11},1.2^A0N,2.5,2.5^FDCam {_zpl_escape(camara)}^FS')
+            ch, cw = zpl_font_mm(2.8, 2.6)
+            partes.append(f'^FO{w - 12},2.0^A0N,{ch},{cw}^FR^FDCam {_zpl_escape(camara)}^FS')
         top = 7.5
 
-    y = top + 0.8
-    partes.append(f'^FO2,{y}^A0N,2,2^FDULTRAPAO - WMS^FS')
-    partes.append(f'^FO3,{y + 3.5}^BY1,2,9^BCN,9,N,N,N^FD{etq}^FS')
-    partes.append(f'^FO3,{y + 13.5}^A0N,1.8,1.8^FD{etq}^FS')
+    body_top = top + 0.5
+    left_w = 23.0
+    partes.append(f'^FO0,{body_top}^GB{left_w},{h - body_top},0.4^FS')
+    partes.append(f'^FO{left_w},{body_top}^GB0.4,{h - body_top},0.4^FS')
 
-    x = 24.0
-    y2 = top + 1.0
-    partes.append(f'^FO{x},{y2}^A0N,2.2,2.2^FDSKU {_zpl_escape(sku or "-")}^FS')
-    partes.append(f'^FO{x},{y2 + 3.5}^A0N,2.2,2.2^FDLOTE {_zpl_escape(lote or "-")}^FS')
+    bh, bw = zpl_font_mm(2.0, 1.8)
+    partes.append(f'^FO2,{body_top + 0.8}^FB{left_w - 2},1,0,C^A0N,{bh},{bw}^FDULTRAPAO - WMS^FS')
+    bc_h_mm = 9.5
+    bc_h = zpl_dots(bc_h_mm)
+    bc_y = body_top + 4.0
+    partes.append(f'^FO3,{bc_y}^BY1.8,2.5,{bc_h}^BCN,{bc_h},N,N,N^FD{etq}^FS')
+    eh, ew = zpl_font_mm(1.8, 1.6)
+    partes.append(f'^FO2,{bc_y + bc_h_mm + 0.5}^FB{left_w - 2},2,0,C^A0N,{eh},{ew}^FD{etq}^FS')
+
+    x0 = left_w + 1.0
+    y0 = body_top + 0.6
+    rh = (h - body_top - 1.2) / 2
+    lh, lw = zpl_font_mm(1.8, 1.6)
+    vh, vw = zpl_font_mm(2.2, 2.0)
+
+    def _cel(x, y, lbl, val, cw):
+        partes.append(f'^FO{x},{y}^A0N,{lh},{lw}^FD{lbl}^FS')
+        partes.append(f'^FO{x},{y + 2.2}^A0N,{vh},{vw}^FD{_zpl_escape(str(val or "-"))}^FS')
+        partes.append(f'^FO{x + cw},{y}^GB0.25,{rh},0.25^FS')
+
+    cw1 = (w - left_w - 1) * 0.28
+    cw2 = (w - left_w - 1) * 0.22
+    cw3 = (w - left_w - 1) * 0.25
+    _cel(x0, y0, 'SKU', sku, cw1)
+    _cel(x0 + cw1, y0, 'LOTE', lote, cw2)
+    _cel(x0 + cw1 + cw2, y0, 'PRODUCAO', (data_producao or '-')[:10], cw3)
     qtd_txt = str(qtd) if qtd is not None else '-'
     if up:
         qtd_txt += f' UP {up}'
-    partes.append(f'^FO{x},{y2 + 7}^A0N,2.2,2.2^FDCX {_zpl_escape(qtd_txt)}^FS')
-    partes.append(f'^FO{x},{y2 + 10.5}^A0N,2,2^FDPROD {_zpl_escape((data_producao or "-")[:10])}^FS')
-    partes.append(f'^FO{x},{y2 + 13.5}^A0N,2,2^FDVAL {_zpl_escape((data_validade or "-")[:10])}^FS')
-    desc = _zpl_escape((descricao or '-')[:48])
-    partes.append(f'^FO2,{top + 18}^A0N,2,2^FD{desc}^FS')
+    _cel(x0 + cw1 + cw2 + cw3, y0, 'CAIXAS', qtd_txt, w - left_w - cw1 - cw2 - cw3 - 1)
+
+    y1 = y0 + rh
+    partes.append(f'^FO{left_w},{y1}^GB{w - left_w},0.3,0.3^FS')
+    _cel(x0, y1 + 0.4, 'VALIDADE', (data_validade or '-')[:10], cw1 + cw2)
+    dh, dw = zpl_font_mm(2.0, 1.8)
+    desc = _zpl_escape((descricao or '-')[:42])
+    partes.append(f'^FO{x0 + cw1 + cw2 + 0.5},{y1 + 0.5}^A0N,{lh},{lw}^FDDESCRICAO^FS')
+    partes.append(f'^FO{x0 + cw1 + cw2 + 0.5},{y1 + 2.6}^A0N,{dh},{dw}^FD{desc}^FS')
+
     partes.append('^XZ')
     return '\n'.join(partes)
 
