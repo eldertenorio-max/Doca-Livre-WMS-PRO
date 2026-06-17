@@ -527,6 +527,31 @@ def _ensure_produto_planejamento_columns(conn):
             pass
 
 
+def _ensure_pg_rls_basico(conn, nome_tabela):
+    """Habilita RLS + policies padrão no Postgres (remove SEM RESTRIÇÕES no Supabase)."""
+    if not _is_pg(conn):
+        return
+    t = _tbl(conn, nome_tabela)
+    role_check = "(SELECT auth.role() IN ('anon'::text, 'authenticated'::text, 'service_role'::text))"
+    try:
+        conn.execute(f'ALTER TABLE {t} ENABLE ROW LEVEL SECURITY')
+        for acao, sql_tail in (
+            ('SELECT', 'FOR SELECT USING (true)'),
+            ('INSERT', f'FOR INSERT WITH CHECK ({role_check})'),
+            ('UPDATE', f'FOR UPDATE USING ({role_check})'),
+            ('DELETE', f'FOR DELETE USING ({role_check})'),
+        ):
+            pol = f'Permitir {acao} em {nome_tabela}'
+            conn.execute(f'DROP POLICY IF EXISTS "{pol}" ON {t}')
+            conn.execute(f'CREATE POLICY "{pol}" ON {t} {sql_tail}')
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
 def _ensure_wms_palete_controle_table(conn):
     t = _tbl(conn, 'wms_palete_controle')
     t_pal = _tbl(conn, 'wms_palete')
@@ -551,6 +576,7 @@ def _ensure_wms_palete_controle_table(conn):
             )
             conn.execute(f'CREATE INDEX IF NOT EXISTS idx_wms_pal_ctrl_palete ON {t} (palete_id, criado_em DESC)')
             conn.commit()
+            _ensure_pg_rls_basico(conn, 'wms_palete_controle')
         except Exception:
             try:
                 conn.rollback()
