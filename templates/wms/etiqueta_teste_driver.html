@@ -6,13 +6,17 @@
 <style>
   @page { size: {{ etq_page_size_in }}; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --lw: {{ etq_largura_in }}in;
+    --lh: {{ etq_altura_in }}in;
+  }
   body {
     font-family: Arial, sans-serif;
     background: #eee;
     padding: 8px;
-    width: {{ etq_largura_in }}in;
+    width: var(--lw);
   }
-  .toolbar { margin-bottom: 8px; }
+  {% include 'wms/etiqueta_tela_preview.css.html' %}
   .toolbar button {
     padding: 8px 14px; font-size: 14px; cursor: pointer;
     border: none; border-radius: 6px; background: #1976d2; color: #fff;
@@ -20,8 +24,8 @@
   .toolbar p { font-size: 11px; color: #555; margin-top: 6px; line-height: 1.4; }
   .print-status { font-size: 12px; margin-top: 6px; min-height: 1.2em; }
   .etq-teste {
-    width: {{ etq_largura_in }}in;
-    height: {{ etq_altura_in }}in;
+    width: var(--lw);
+    height: var(--lh);
     border: 3px solid #000;
     background: #fff;
     display: flex;
@@ -34,20 +38,28 @@
   }
   @media print {
     .toolbar { display: none !important; }
-    body { padding: 0 !important; background: #fff !important; }
+    body { padding: 0 !important; background: #fff !important; width: var(--lw) !important; }
+    .etq-teste {
+      width: var(--lw) !important;
+      height: var(--lh) !important;
+      box-shadow: none !important;
+    }
   }
 </style>
 </head>
 <body data-etq-page="{{ etq_page_size_in }}" data-zpl-url="{{ zpl_api_url }}">
+<div class="etq-preview-shell">
 <div class="toolbar">
   <button type="button" id="btn-wms-etq-imprimir">Imprimir teste (ZPL)</button>
   <p>{{ etq_driver_hint | safe }}</p>
-  <p>Prévia abaixo — a impressão física sai via ZPL (borda nos 4 lados).</p>
   <p id="wms-print-status" class="print-status"></p>
 </div>
-<div class="etq-teste">
+<div class="etq-preview-stage">
+<div class="etq-page etq-teste">
   <div>TESTE</div>
   <div>{{ etq_largura_mm }}×{{ etq_altura_mm }} mm</div>
+</div>
+</div>
 </div>
 <script src="/static/zebra/imprimir-zpl.js?v=20260602zpl"></script>
 <script src="/static/wms/imprimir-etiqueta.js?v=20260602zpl"></script>

@@ -42,12 +42,16 @@ def ctx_etiqueta_zebra():
     """Contexto Jinja para todos os templates de etiqueta WMS."""
     z = ETIQUETA_ZEBRA_ZD220
     w, h = z['largura_mm'], z['altura_mm']
+    scale = 3
     return {
         'etq_zebra': z,
         'etq_largura_mm': w,
         'etq_altura_mm': h,
         'etq_largura_in': z['largura_in'],
         'etq_altura_in': z['altura_in'],
+        'etq_preview_scale': scale,
+        'etq_largura_screen_mm': w * scale,
+        'etq_altura_screen_mm': h * scale,
         'etq_page_size': z['page_css'],
         'etq_page_size_in': z['page_css_in'],
         'etq_page_size_mm': z['page_css_mm'],

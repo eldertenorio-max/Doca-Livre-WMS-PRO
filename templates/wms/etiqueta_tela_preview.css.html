@@ -1,0 +1,72 @@
+/* Prévia na tela — maior e centralizada (impressão não usa isto). */
+@media screen {
+  html { width: 100%; height: auto; }
+  body {
+    width: 100% !important;
+    max-width: none;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 28px 20px 40px;
+  }
+  .etq-preview-shell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+  .toolbar {
+    position: relative;
+    top: auto;
+    width: min(560px, 94vw);
+    margin-bottom: 28px;
+  }
+  .etq-preview-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+  .etq-page {
+    width: {{ etq_largura_screen_mm }}mm !important;
+    height: {{ etq_altura_screen_mm }}mm !important;
+    margin: 0 0 24px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  }
+  .faixa { width: {{ etq_largura_screen_mm }}mm !important; }
+  .bloco-faixa,
+  .bloco-camara {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+  .faixa-titulo,
+  .camara-titulo {
+    width: {{ etq_largura_screen_mm }}mm;
+    max-width: 94vw;
+    text-align: center;
+    font-size: 14px;
+  }
+  .camara-titulo { font-size: 15px; }
+}
+
+@media print {
+  body {
+    display: block !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+  }
+  .etq-preview-shell,
+  .etq-preview-stage {
+    display: block !important;
+    width: auto !important;
+  }
+  .etq-page {
+    box-shadow: none !important;
+  }
+}
