@@ -19,7 +19,6 @@ from flask import Blueprint, jsonify, make_response, redirect, render_template, 
 from wms_etiqueta_zebra import (
     ctx_etiqueta_zebra,
     zpl_dimensoes_dots,
-    zpl_dimensoes_mm,
     zpl_font_mm,
     zpl_longarina_grid_dots,
     zpl_dots,
