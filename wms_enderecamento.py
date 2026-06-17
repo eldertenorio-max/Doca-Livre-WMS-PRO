@@ -6482,9 +6482,6 @@ def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo
         total=total,
         titulo=titulo,
         auto_print=auto_print,
-        zpl_api_url=_zpl_api_url_longarina(
-            codigo=codigo, todas=todas, camara=camara, rua=rua, posicao=posicao,
-        ),
         **ctx_etiqueta_zebra(),
     )
     return html, None
@@ -6518,13 +6515,6 @@ def _texto_destino_etiqueta(sug):
 
 
 def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=None, data_producao=None, data_validade=None, destino=None, endereco_barcode=None, endereco_texto=None, codigo_wms=None, up=None, auto_print=False, camara=None, rua=None, coluna=None, nivel=None, zona=None, zpl_api_url=None):
-    if not zpl_api_url:
-        zpl_api_url = _zpl_api_url_palete(
-            etiqueta, sku=sku, lote=lote, qtd=qtd, descricao=descricao,
-            data_producao=data_producao, data_validade=data_validade,
-            codigo_wms=codigo_wms, endereco_barcode=endereco_barcode,
-            camara=camara, up=up,
-        )
     return render_template(
         'wms/etiqueta_palete.html',
         etiqueta=etiqueta,
@@ -6545,7 +6535,6 @@ def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=Non
         coluna=coluna,
         nivel=nivel,
         zona=zona,
-        zpl_api_url=zpl_api_url,
         **ctx_etiqueta_zebra(),
     )
 
@@ -6655,10 +6644,9 @@ def api_wms_etiqueta_palete_zpl():
 
 @bp.route('/etiqueta/teste-driver', methods=['GET'])
 def api_wms_etiqueta_teste_driver():
-    """Página mínima — prévia + ZPL teste 60×40."""
+    """Página mínima — teste de impressão HTML 60×40."""
     html = render_template(
         'wms/etiqueta_teste_driver.html',
-        zpl_api_url='/api/wms/etiqueta/zebra/teste/zpl',
         **ctx_etiqueta_zebra(),
     )
     return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
@@ -6709,7 +6697,6 @@ def api_wms_etiqueta_modelo():
         total=5,
         titulo='Modelo',
         auto_print=False,
-        zpl_api_url='/api/wms/etiqueta/endereco/zpl?codigo=12.14.1',
         **ctx_etiqueta_zebra(),
     )
     return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})

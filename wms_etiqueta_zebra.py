@@ -35,9 +35,6 @@ ETIQUETA_ZEBRA_ZD220 = {
     'grid_top_pct': 34,
     'grid_mid_pct': 42,
     'grid_bot_pct': 24,
-    # Área imprimível ZD220 60×40 (LEIA-ME / Zebra Setup) — não usar 480×320 teórico
-    'zpl_pw': 472,
-    'zpl_ll': 315,
 }
 
 
@@ -45,23 +42,20 @@ def ctx_etiqueta_zebra():
     """Contexto Jinja para todos os templates de etiqueta WMS."""
     z = ETIQUETA_ZEBRA_ZD220
     w, h = z['largura_mm'], z['altura_mm']
-    scale = 3
     return {
         'etq_zebra': z,
         'etq_largura_mm': w,
         'etq_altura_mm': h,
         'etq_largura_in': z['largura_in'],
         'etq_altura_in': z['altura_in'],
-        'etq_preview_scale': scale,
-        'etq_largura_screen_mm': w * scale,
-        'etq_altura_screen_mm': h * scale,
         'etq_page_size': z['page_css'],
         'etq_page_size_in': z['page_css_in'],
         'etq_page_size_mm': z['page_css_mm'],
         'etq_driver_hint': (
-            f"A prévia acima é o layout da etiqueta <strong>{w}×{h} mm</strong>. "
-            f"Clique em <strong>Imprimir</strong> para enviar à <strong>{z['modelo']}</strong>. "
-            f"Confira o resultado na primeira etiqueta antes de imprimir o lote inteiro."
+            f"Chrome → papel <strong>{w}×{h} mm</strong> · margens <strong>{z['chrome_margens']}</strong> · "
+            f"escala <strong>{z['chrome_escala']}</strong> · "
+            f"<strong>Gráficos de fundo</strong> {z['chrome_graficos_fundo'].lower()}. "
+            f"Driver {z['modelo']}: <strong>{z['driver_largura_mm']}×{z['driver_altura_mm']} mm</strong> retrato."
         ),
     }
 
@@ -81,38 +75,15 @@ def zpl_longarina_grid_mm():
 
 
 def zpl_dimensoes_dots():
-    """Largura e altura da etiqueta em dots (ZD220 60×40)."""
+    """Dots para APIs ZPL opcionais (download .txt / .bat)."""
     z = ETIQUETA_ZEBRA_ZD220
-    pw = z.get('zpl_pw')
-    ll = z.get('zpl_ll')
-    if pw and ll:
-        return int(pw), int(ll)
     dpm = z['dpi'] / _MM_IN
     return int(round(z['largura_mm'] * dpm)), int(round(z['altura_mm'] * dpm))
 
 
-def zpl_dots(mm):
-    """Converte mm → dots ZPL (203 dpi)."""
-    return max(1, int(round(mm * ETIQUETA_ZEBRA_ZD220['dpi'] / _MM_IN)))
-
-
-def zpl_font_mm(altura_mm, largura_mm=None):
-    """Par altura/largura de fonte ^A0N em dots."""
-    h = zpl_dots(altura_mm)
-    if largura_mm is None:
-        largura_mm = altura_mm * 0.9
-    w = zpl_dots(largura_mm)
-    return max(8, h), max(8, w)
-
-
-def zpl_barcode_dots(altura_mm):
-    """Altura de código de barras ^BC em dots."""
-    return max(40, zpl_dots(altura_mm))
-
-
 def zpl_longarina_grid_dots():
-    """Grid longarina em dots (34% / 42% / 24%)."""
     w, h = zpl_dimensoes_dots()
-    y2 = int(round(h * 0.34))
-    y3 = y2 + int(round(h * 0.42))
+    z = ETIQUETA_ZEBRA_ZD220
+    y2 = int(round(h * z['grid_top_pct'] / 100))
+    y3 = int(round(h * (z['grid_top_pct'] + z['grid_mid_pct']) / 100))
     return y2, y3, w // 4
