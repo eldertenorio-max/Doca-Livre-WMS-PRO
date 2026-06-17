@@ -78,11 +78,20 @@
   </div>
 
   <div class="steps">
-    <strong>Ou com Zebra Browser Print (1 clique após instalar):</strong>
+    <strong>Browser Print — Accepted Hosts (não digita manualmente):</strong>
     <ol>
-      <li>Baixe em <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html" target="_blank" rel="noopener">zebra.com → Browser Print</a> (formulário rápido)</li>
-      <li>Instale, conecte a ZD220 por USB</li>
-      <li>Clique em <strong>Imprimir na Zebra</strong></li>
+      <li>Impressora já em <strong>Default Devices</strong> — OK</li>
+      <li>Abra <a href="https://localhost:9101/ssl_support" target="_blank" rel="noopener">localhost:9101/ssl_support</a> → Avançado → Prosseguir (aceitar certificado)</li>
+      <li>Clique <strong>Imprimir na Zebra</strong> abaixo — vai aparecer um pop-up do Browser Print pedindo permissão → clique <strong>Sim</strong></li>
+      <li>Só então <code>sistema-wms.onrender.com</code> entra sozinho em Accepted Hosts</li>
+    </ol>
+  </div>
+
+  <div class="steps" style="background:#fff8e1;border-color:#ffb74d;">
+    <strong>Ou com Zebra Browser Print (após o passo acima):</strong>
+    <ol>
+      <li>Ícone Zebra na bandeja do Windows deve estar ativo</li>
+      <li>Clique <strong>Imprimir na Zebra</strong> — pop-up pede permissão → <strong>Sim</strong></li>
     </ol>
   </div>
 
@@ -144,7 +153,10 @@
       setStatus('Enviado para a Zebra — confira a etiqueta (deve preencher 60×40 mm).', true);
     } catch (e) {
       var msg = (e && e.message) || String(e || 'Erro');
-      setStatus(msg + ' — use Baixar .txt + enviar_prn_zebra.bat', false);
+      if (msg.indexOf('Browser Print') >= 0 || msg.indexOf('9100') >= 0 || msg.indexOf('localhost') >= 0) {
+        msg += ' — Aceite o certificado em localhost:9101/ssl_support e clique Sim no pop-up do Browser Print.';
+      }
+      setStatus(msg + ' — ou use Baixar .txt + impressora-zebra-wms.zip', false);
     }
   }
 
