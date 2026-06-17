@@ -117,7 +117,7 @@
     O ZPL manda 60×40 mm direto para a impressora e preenche toda a área.
   </div>
 </div>
-<script src="/static/zebra/imprimir-zpl.js?v=20260602full"></script>
+<script src="/static/zebra/imprimir-zpl.js?v=20260602api"></script>
 <script>
 (function() {
   var zplUrl = {{ zpl_api_url|tojson }};
@@ -153,10 +153,12 @@
       setStatus('Enviado para a Zebra — confira a etiqueta (deve preencher 60×40 mm).', true);
     } catch (e) {
       var msg = (e && e.message) || String(e || 'Erro');
-      if (msg.indexOf('Browser Print') >= 0 || msg.indexOf('9100') >= 0 || msg.indexOf('localhost') >= 0) {
-        msg += ' — Aceite o certificado em localhost:9101/ssl_support e clique Sim no pop-up do Browser Print.';
+      if (msg.indexOf('Browser Print') >= 0 || msg.indexOf('9100') >= 0 || msg.indexOf('9101') >= 0 || msg.indexOf('localhost') >= 0 || msg.indexOf('Failed to fetch') >= 0) {
+        msg += ' — Clique Sim se aparecer pop-up do Browser Print. Ou use Baixar .txt + impressora-zebra-wms.zip';
+      } else {
+        msg += ' — ou use Baixar .txt + impressora-zebra-wms.zip';
       }
-      setStatus(msg + ' — ou use Baixar .txt + impressora-zebra-wms.zip', false);
+      setStatus(msg, false);
     }
   }
 

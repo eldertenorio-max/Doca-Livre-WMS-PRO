@@ -1,52 +1,19 @@
 /**
- * Envia ZPL para Zebra via Browser Print (impressão direta, 60×40 mm sem Chrome).
- * Requer Zebra Browser Print instalado no Windows.
+ * Envia ZPL para Zebra via Browser Print (API local 9100/9101).
+ * Nao depende do arquivo BrowserPrint.min.js externo.
  */
 (function (global) {
-  var BP_URLS = [
-    '/static/zebra/BrowserPrint-3.1.250.min.js',
-    'https://www.zebra.com/content/dam/zebra/software/en/utility/browser-print/browser-print-3.1.250.min.js'
-  ];
-  var loadPromise = null;
-
-  function loadBrowserPrint() {
-    if (typeof BrowserPrint !== 'undefined') {
-      return Promise.resolve();
+  function bpBases() {
+    if (window.location.protocol === 'https:') {
+      return ['https://127.0.0.1:9101', 'https://localhost:9101'];
     }
-    if (loadPromise) {
-      return loadPromise;
-    }
-    loadPromise = new Promise(function (resolve, reject) {
-      var idx = 0;
-      function next() {
-        if (typeof BrowserPrint !== 'undefined') {
-          resolve();
-          return;
-        }
-        if (idx >= BP_URLS.length) {
-          reject(new Error('Zebra Browser Print não encontrado. Instale o utilitário Zebra no PC.'));
-          return;
-        }
-        var src = BP_URLS[idx++];
-        var s = document.createElement('script');
-        s.src = src;
-        s.async = true;
-        s.onload = function () {
-          if (typeof BrowserPrint !== 'undefined') resolve();
-          else next();
-        };
-        s.onerror = next;
-        document.head.appendChild(s);
-      }
-      next();
-    });
-    return loadPromise;
+    return ['http://127.0.0.1:9100', 'http://localhost:9100'];
   }
 
-  function pickZebraDevice(list) {
+  function pickZebra(list) {
     list = list || [];
     for (var i = 0; i < list.length; i++) {
-      var n = String(list[i].name || '').toUpperCase();
+      var n = String((list[i] && list[i].name) || '').toUpperCase();
       if (n.indexOf('ZD220') >= 0 || n.indexOf('ZD230') >= 0 || n.indexOf('ZDESIGNER') >= 0 || n.indexOf('ZEBRA') >= 0) {
         return list[i];
       }
@@ -54,45 +21,84 @@
     return list[0] || null;
   }
 
-  function sendToDevice(device, zpl) {
-    return new Promise(function (resolve, reject) {
-      if (!device || !device.send) {
-        reject(new Error('Impressora Zebra não disponível.'));
-        return;
+  function bpRequest(path, options) {
+    options = options || {};
+    var bases = bpBases();
+    var lastErr = null;
+
+    function tryBase(idx) {
+      if (idx >= bases.length) {
+        return Promise.reject(lastErr || new Error(
+          'Browser Print nao respondeu. Verifique o icone Zebra na bandeja e aceite o certificado em https://localhost:9101/ssl_support'
+        ));
       }
-      device.send(zpl, resolve, function (err) {
-        reject(err || new Error('Falha ao enviar ZPL.'));
+      var url = bases[idx] + path;
+      return fetch(url, options).then(function (resp) {
+        if (!resp.ok) {
+          lastErr = new Error('Browser Print HTTP ' + resp.status + ' (' + url + ')');
+          return tryBase(idx + 1);
+        }
+        return { resp: resp, base: bases[idx] };
+      }).catch(function (err) {
+        lastErr = err;
+        return tryBase(idx + 1);
       });
+    }
+
+    return tryBase(0);
+  }
+
+  function getDefaultDevice() {
+    return bpRequest('/default?type=printer').then(function (r) {
+      return r.resp.json();
     });
   }
 
-  function getZebraDevice() {
-    return loadBrowserPrint().then(function () {
-      return new Promise(function (resolve, reject) {
-        BrowserPrint.getDefaultDevice('printer', function (device) {
-          if (device) {
-            resolve(device);
-            return;
-          }
-          BrowserPrint.getLocalDevices(function (list) {
-            var dev = pickZebraDevice(list);
-            if (dev) resolve(dev);
-            else reject(new Error('Nenhuma impressora Zebra encontrada. Verifique USB e driver ZD220.'));
-          }, reject, 'printer');
-        }, reject);
+  function getAvailablePrinters() {
+    return bpRequest('/available').then(function (r) {
+      return r.resp.json();
+    });
+  }
+
+  function resolveDevice() {
+    return getDefaultDevice().then(function (dev) {
+      if (dev && dev.name) return dev;
+      return getAvailablePrinters().then(function (data) {
+        var list = (data && data.printer) || [];
+        var dev2 = pickZebra(list);
+        if (!dev2) {
+          throw new Error('Nenhuma Zebra em Default Devices. Abra Browser Print Settings e defina a ZD220.');
+        }
+        return dev2;
       });
     });
   }
 
   function sendZpl(zpl) {
-    return getZebraDevice().then(function (device) {
-      return sendToDevice(device, zpl);
+    if (!zpl) return Promise.reject(new Error('ZPL vazio.'));
+    return resolveDevice().then(function (device) {
+      return bpRequest('/write', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ device: device, data: zpl })
+      }).then(function (r) {
+        return r.resp.text().then(function (txt) {
+          try { return txt ? JSON.parse(txt) : {}; } catch (e) { return { ok: true, raw: txt }; }
+        });
+      });
     });
+  }
+
+  function loadBrowserPrint() {
+    return resolveDevice().then(function () { return true; });
   }
 
   global.WmsZebraPrint = {
     loadBrowserPrint: loadBrowserPrint,
-    getZebraDevice: getZebraDevice,
-    sendZpl: sendZpl
+    sendZpl: sendZpl,
+    getZebraDevice: resolveDevice
   };
 })(window);
