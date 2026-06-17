@@ -70,7 +70,6 @@
     height: 100%;
     border: none;
     border-top: 0.55mm solid var(--ink);
-    border-bottom: 0.55mm solid var(--ink);
     background: var(--paper);
     display: grid;
     grid-template-rows: {{ etq_zebra.grid_top_pct }}fr {{ etq_zebra.grid_mid_pct }}fr {{ etq_zebra.grid_bot_pct }}fr;
@@ -236,7 +235,6 @@
       padding: 0 !important;
       border: none !important;
       border-top: 0.55mm solid #000 !important;
-      border-bottom: 0.55mm solid #000 !important;
       display: grid !important;
       grid-template-rows: {{ etq_zebra.grid_top_pct }}fr {{ etq_zebra.grid_mid_pct }}fr {{ etq_zebra.grid_bot_pct }}fr !important;
       background: #fff !important;
@@ -335,7 +333,7 @@
 {% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603html3"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603html4"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
