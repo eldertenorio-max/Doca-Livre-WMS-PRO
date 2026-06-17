@@ -16,6 +16,8 @@ from urllib.parse import quote, urlencode
 
 from flask import Blueprint, jsonify, make_response, redirect, render_template, request, session
 
+from wms_etiqueta_zebra import ctx_etiqueta_zebra, zpl_dimensoes_mm, zpl_longarina_grid_mm
+
 bp = Blueprint('wms_enderecamento', __name__)
 
 _get_db = None
@@ -6219,8 +6221,10 @@ def _zpl_escape(texto):
             .replace('~', '\\~'))
 
 
-def _zpl_cabecalho_mm(largura_mm=60, altura_mm=40):
+def _zpl_cabecalho_mm(largura_mm=None, altura_mm=None):
     """Cabeçalho ZPL em milímetros (ZD220 203 dpi = 8 dots/mm)."""
+    if largura_mm is None or altura_mm is None:
+        largura_mm, altura_mm = zpl_dimensoes_mm()
     return [
         '^XA',
         '^MMT',
@@ -6241,11 +6245,9 @@ def _zpl_calibrar_media():
 
 
 def _zpl_etiqueta_longarina(e, dpi=203):
-    """ZPL 60×40 mm em milímetros — preenche a etiqueta inteira na ZD220."""
-    w, h = 60, 40
-    y2 = 13.6   # 34 %
-    y3 = 30.4   # 34 + 42 %
-    col_w = 15.0
+    """ZPL 60×40 mm — dimensões de wms_etiqueta_zebra.py."""
+    w, h = zpl_dimensoes_mm()
+    y2, y3, col_w = zpl_longarina_grid_mm()
 
     cam = _zpl_escape(e.get('camara') or e.get('rua_num') or '')
     rua = _zpl_escape(e.get('rua_letra') or '-')
@@ -6301,8 +6303,10 @@ def _zpl_etiqueta_longarina(e, dpi=203):
 
 
 def _zpl_etiqueta_teste_calibracao(swap=False):
-    """Etiqueta teste — borda deve encostar nos 4 lados (60×40 mm ou 40×60 se swap)."""
-    w, h = (40, 60) if swap else (60, 40)
+    """Etiqueta teste — borda deve encostar nos 4 lados."""
+    w, h = zpl_dimensoes_mm()
+    if swap:
+        w, h = h, w
     rot = ' (40x60)' if swap else ''
     partes = _zpl_cabecalho_mm(w, h)
     partes += [
@@ -6397,6 +6401,7 @@ def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo
         total=total,
         titulo=titulo,
         auto_print=auto_print,
+        **ctx_etiqueta_zebra(),
     )
     return html, None
 
@@ -6449,6 +6454,7 @@ def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=Non
         coluna=coluna,
         nivel=nivel,
         zona=zona,
+        **ctx_etiqueta_zebra(),
     )
 
 
@@ -6645,6 +6651,7 @@ def _pagina_zebra_longarina(conn, camara=None, rua=None, posicao=None, codigo=No
         nome_arquivo=nome_arquivo,
         html_url=html_url,
         auto_download=auto_download,
+        **ctx_etiqueta_zebra(),
     )
     return html, None
 

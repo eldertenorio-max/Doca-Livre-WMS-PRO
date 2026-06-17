@@ -881,8 +881,13 @@ class CompatConn:
 
 try:
     from wms_enderecamento import bp as wms_enderecamento_bp, init_wms_enderecamento
+    from wms_etiqueta_zebra import ctx_etiqueta_zebra
     init_wms_enderecamento(get_db)
     app.register_blueprint(wms_enderecamento_bp, url_prefix='/api/wms')
+
+    @app.context_processor
+    def _inject_etiqueta_zebra_config():
+        return ctx_etiqueta_zebra()
 except Exception as _wms_import_err:
     print('Aviso: módulo WMS endereçamento não carregado:', _wms_import_err)
 

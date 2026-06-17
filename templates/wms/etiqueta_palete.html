@@ -2,25 +2,19 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=60mm">
+<meta name="viewport" content="width={{ etq_largura_mm }}mm">
 <title>Etiqueta palete {{ etiqueta }}</title>
-<script>
-(function() {
-  if (/\bzebra=portrait\b/i.test(location.search))
-    document.documentElement.classList.add('zebra-portrait');
-})();
-</script>
 <style>
   :root {
-    --lw: 60mm;
-    --lh: 40mm;
+    --lw: {{ etq_largura_mm }}mm;
+    --lh: {{ etq_altura_mm }}mm;
     --ink: #000000;
     --paper: #ffffff;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   @page {
-    size: 60mm 40mm;
+    size: {{ etq_page_size }};
     margin: 0;
   }
 
@@ -67,20 +61,6 @@
     flex-direction: column;
     overflow: hidden;
   }
-  html.zebra-portrait .etq-page {
-    width: 40mm;
-    height: 60mm;
-    position: relative;
-  }
-  html.zebra-portrait .etq {
-    position: absolute;
-    top: 0; left: 0;
-    width: 60mm;
-    height: 40mm;
-    transform: rotate(90deg) translateY(-40mm);
-    transform-origin: top left;
-  }
-
   .ink-block {
     background: var(--ink) !important;
     color: var(--paper) !important;
@@ -284,7 +264,7 @@
   .etq-sem-destino .dados-desc .val { max-height: 0.42in; }
 
   @media print {
-    @page { size: 60mm 40mm; margin: 0; }
+    @page { size: {{ etq_page_size }}; margin: 0; }
 
     html, body {
       width: var(--lw) !important;
@@ -310,25 +290,6 @@
       margin: 0 !important;
       border: 2pt solid #000 !important;
     }
-    html.zebra-portrait,
-    html.zebra-portrait body {
-      width: 40mm !important;
-      height: 60mm !important;
-    }
-    html.zebra-portrait .etq-page {
-      width: 40mm !important;
-      height: 60mm !important;
-      position: relative !important;
-    }
-    html.zebra-portrait .etq {
-      position: absolute !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 60mm !important;
-      height: 40mm !important;
-      transform: rotate(90deg) translateY(-40mm) !important;
-      transform-origin: top left !important;
-    }
     .ink-block {
       background: #000 !important;
       color: #fff !important;
@@ -339,7 +300,7 @@
 <body>
 <div class="toolbar">
   <button type="button" onclick="window.print()">Imprimir</button>
-  <p class="zebra-hint">Papel <strong>60×40 mm paisagem</strong> · margens <strong>Nenhuma</strong> · escala <strong>100%</strong>. Rolo retrato: <strong>?zebra=portrait</strong>.</p>
+  <p class="zebra-hint">{{ etq_driver_hint | safe }}</p>
 </div>
 
 <div class="etq-page">
@@ -417,12 +378,6 @@
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
 (function() {
-  if (document.documentElement.classList.contains('zebra-portrait')) {
-    var s = document.createElement('style');
-    s.media = 'print';
-    s.textContent = '@page { size: 40mm 60mm; margin: 0; }';
-    document.head.appendChild(s);
-  }
   function renderBc(id, opts) {
     var el = document.getElementById(id);
     var code = el && el.getAttribute('data-code');

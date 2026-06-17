@@ -2,21 +2,21 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=60mm">
+<meta name="viewport" content="width={{ etq_largura_mm }}mm">
 <title>Etiquetas longarina WMS{% if titulo %} — {{ titulo }}{% endif %}</title>
 <style>
   :root {
-    --lw: 60mm;
-    --lh: 40mm;
+    --lw: {{ etq_largura_mm }}mm;
+    --lh: {{ etq_altura_mm }}mm;
     --ink: #000;
     --paper: #fff;
-    --row-top: 13.6mm;
-    --row-mid: 16.8mm;
-    --row-bot: 9.6mm;
+    --row-top: {{ (etq_zebra.grid_top_pct * etq_altura_mm / 100)|round(1) }}mm;
+    --row-mid: {{ (etq_zebra.grid_mid_pct * etq_altura_mm / 100)|round(1) }}mm;
+    --row-bot: {{ (etq_zebra.grid_bot_pct * etq_altura_mm / 100)|round(1) }}mm;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  @page { size: 60mm 40mm landscape; margin: 0; }
+  @page { size: {{ etq_page_size }}; margin: 0; }
 
   html, body { width: var(--lw); }
   body {
@@ -72,7 +72,7 @@
     border: 2px solid var(--ink);
     background: var(--paper);
     display: grid;
-    grid-template-rows: 34fr 42fr 24fr;
+    grid-template-rows: {{ etq_zebra.grid_top_pct }}fr {{ etq_zebra.grid_mid_pct }}fr {{ etq_zebra.grid_bot_pct }}fr;
     overflow: hidden;
     container-type: size;
     container-name: etq;
@@ -183,10 +183,10 @@
   .etq-zone-bar.destino .arrow { display: none; }
 
   @media print {
-    @page { size: 60mm 40mm landscape; margin: 0; }
+    @page { size: {{ etq_page_size }}; margin: 0; }
 
     html, body {
-      width: 60mm !important;
+      width: {{ etq_largura_mm }}mm !important;
       height: auto !important;
       margin: 0 !important;
       padding: 0 !important;
@@ -199,12 +199,12 @@
     .bloco-camara, .bloco-faixa, .faixa {
       margin: 0 !important;
       padding: 0 !important;
-      width: 60mm !important;
+      width: {{ etq_largura_mm }}mm !important;
     }
 
     .etq-page {
-      width: 60mm !important;
-      height: 40mm !important;
+      width: {{ etq_largura_mm }}mm !important;
+      height: {{ etq_altura_mm }}mm !important;
       margin: 0 !important;
       padding: 0 !important;
       overflow: hidden !important;
@@ -231,7 +231,7 @@
       padding: 0 !important;
       border: 2px solid #000 !important;
       display: grid !important;
-      grid-template-rows: 34fr 42fr 24fr !important;
+      grid-template-rows: {{ etq_zebra.grid_top_pct }}fr {{ etq_zebra.grid_mid_pct }}fr {{ etq_zebra.grid_bot_pct }}fr !important;
       background: #fff !important;
       container-type: size !important;
     }
@@ -243,10 +243,10 @@
 </head>
 <body>
 <div class="toolbar">
-  <p><strong>{{ total }}</strong> etiqueta(s) · <strong>60×40 mm</strong> · Zebra ZD220</p>
+  <p><strong>{{ total }}</strong> etiqueta(s) · <strong>{{ etq_largura_mm }}×{{ etq_altura_mm }} mm</strong> · Zebra {{ etq_zebra.modelo }}</p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <button type="button" class="sec" onclick="window.close()">Fechar</button>
-  <p class="zebra-hint">Driver ZD220 → Config. página: <strong>Largura 60 mm</strong> · <strong>Altura 40 mm</strong> · Rotação <strong>0° Retrato</strong> (não 100×68). Chrome: margens <strong>Nenhuma</strong> · escala <strong>100%</strong>.</p>
+  <p class="zebra-hint">{{ etq_driver_hint | safe }}</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
@@ -327,13 +327,15 @@
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
 (function() {
+  var LARGURA_MM = {{ etq_largura_mm }};
+  var ALTURA_MID_MM = {{ (etq_zebra.grid_mid_pct * etq_altura_mm / 100)|round(1) }};
   var MM_PX = 3.7795275591;
 
   function larguraUtilBarcode(wrap) {
-    if (!wrap) return Math.round(60 * MM_PX);
+    if (!wrap) return Math.round(LARGURA_MM * MM_PX);
     var page = wrap.closest('.etiqueta, .etq-loc, .etq-page');
     if (page && page.clientWidth > 20) return page.clientWidth;
-    return Math.round(60 * MM_PX);
+    return Math.round(LARGURA_MM * MM_PX);
   }
 
   function alturaBarcode(wrap) {
@@ -341,7 +343,7 @@
     if (block && block.clientHeight > 10) {
       return Math.max(20, Math.round(block.clientHeight * 0.82));
     }
-    return Math.round(16.8 * MM_PX * 0.65);
+    return Math.round(ALTURA_MID_MM * MM_PX * 0.65);
   }
 
   function renderBarcode(el) {
