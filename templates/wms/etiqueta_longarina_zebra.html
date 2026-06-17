@@ -14,7 +14,7 @@
     line-height: 1.5;
   }
   .card {
-    max-width: 580px;
+    max-width: 520px;
     margin: 0 auto;
     background: #fff;
     border: 1px solid #ccc;
@@ -34,11 +34,6 @@
   }
   .steps ol { margin: 8px 0 0 18px; }
   .steps li { margin-bottom: 6px; }
-  .steps.alt {
-    background: #e8f5e9;
-    border-color: #81c784;
-    margin-top: 14px;
-  }
   .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
   button, .btn {
     padding: 12px 18px;
@@ -50,7 +45,7 @@
     display: inline-block;
   }
   .btn-main { background: #1565c0; color: #fff; font-weight: 700; }
-  .btn-sec { background: #2e7d32; color: #fff; }
+  .btn-sec { background: #546e7a; color: #fff; }
   .btn-link { background: #eee; color: #333; border: 1px solid #ccc; }
   .warn {
     background: #fff3e0;
@@ -66,62 +61,36 @@
 </head>
 <body>
 <div class="card">
-  <h1>Etiqueta longarina 60×40 mm (ZPL)</h1>
-  <p class="sub"><strong>{{ total }}</strong> etiqueta(s) · {{ titulo or 'Longarina' }}</p>
-
-  <div class="steps alt" style="margin-bottom: 16px;">
-    <strong>Mais fácil — sem instalar nada da Zebra:</strong>
-    <ol>
-      <li>Baixe e extraia <a href="/static/zebra/impressora-zebra-wms.zip" download>impressora-zebra-wms.zip</a> (contém .bat + .ps1)</li>
-      <li>Arraste o <code>.txt</code> em cima do <code>enviar_prn_zebra.bat</code> <strong>dentro da pasta extraída</strong></li>
-    </ol>
-  </div>
+  <h1>Impressão Zebra Browser Print</h1>
+  <p class="sub"><strong>{{ total }}</strong> etiqueta(s) · 60×40 mm · {{ titulo or 'Longarina' }}</p>
 
   <div class="steps">
-    <strong>Browser Print — Accepted Hosts (não digita manualmente):</strong>
+    <strong>Antes da primeira impressão (uma vez no PC):</strong>
     <ol>
-      <li>Impressora já em <strong>Default Devices</strong> — OK</li>
-      <li>Abra <a href="https://localhost:9101/ssl_support" target="_blank" rel="noopener">localhost:9101/ssl_support</a> → Avançado → Prosseguir (aceitar certificado)</li>
-      <li>Clique <strong>Imprimir na Zebra</strong> abaixo — vai aparecer um pop-up do Browser Print pedindo permissão → clique <strong>Sim</strong></li>
-      <li>Só então <code>sistema-wms.onrender.com</code> entra sozinho em Accepted Hosts</li>
-    </ol>
-  </div>
-
-  <div class="steps" style="background:#fff8e1;border-color:#ffb74d;">
-    <strong>Ou com Zebra Browser Print (após o passo acima):</strong>
-    <ol>
-      <li>Ícone Zebra na bandeja do Windows deve estar ativo</li>
-      <li>Clique <strong>Imprimir na Zebra</strong> — pop-up pede permissão → <strong>Sim</strong></li>
+      <li>Instale <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html" target="_blank" rel="noopener">Zebra Browser Print</a></li>
+      <li>Defina a <strong>ZD220</strong> em Default Devices (ícone Zebra → Settings)</li>
+      <li>Aceite o certificado: <a href="https://localhost:9101/ssl_support" target="_blank" rel="noopener">localhost:9101/ssl_support</a></li>
+      <li>Ao imprimir, clique <strong>Sim</strong> no pop-up do Browser Print</li>
     </ol>
   </div>
 
   <div class="btns">
     <button type="button" class="btn-main" id="btn-imprimir">Imprimir na Zebra</button>
-    <button type="button" class="btn-sec" id="btn-baixar">Baixar .txt (alternativa)</button>
-    <a class="btn btn-link" href="/api/wms/etiqueta/zebra/teste/zpl" download>Teste 60×40</a>
-    {% if html_url %}
-    <a class="btn btn-link" href="{{ html_url }}" target="_blank" rel="noopener">Só prévia</a>
-    {% endif %}
+    <button type="button" class="btn-sec" id="btn-teste">Teste 60×40</button>
     <button type="button" class="btn-link" onclick="window.close()">Fechar</button>
   </div>
 
   <p class="status" id="status"></p>
 
-  <div class="steps alt">
-    <strong>Guia de instalação Browser Print:</strong>
-    <a href="https://support.zebra.com/article/000019120" target="_blank" rel="noopener">support.zebra.com</a>
-  </div>
-
   <div class="warn">
-    <strong>Não use o botão Imprimir do Chrome</strong> — ele reduz a etiqueta e deixa margem em branco.
-    O ZPL manda 60×40 mm direto para a impressora e preenche toda a área.
+    Impressão via <strong>ZPL + Browser Print</strong> — etiqueta inteira 60×40 mm. Não use o botão Imprimir do Chrome.
   </div>
 </div>
-<script src="/static/zebra/imprimir-zpl.js?v=20260602api"></script>
+<script src="/static/zebra/imprimir-zpl.js?v=20260602bp"></script>
 <script>
 (function() {
   var zplUrl = {{ zpl_api_url|tojson }};
-  var nomeArquivo = {{ nome_arquivo|tojson }};
+  var testeUrl = '/api/wms/etiqueta/zebra/teste/zpl';
   var statusEl = document.getElementById('status');
   var zplCache = null;
 
@@ -130,69 +99,42 @@
     statusEl.style.color = ok ? '#2e7d32' : (ok === false ? '#c62828' : '#1565c0');
   }
 
-  async function carregarZpl() {
-    if (zplCache) return zplCache;
-    var resp = await fetch(zplUrl, { credentials: 'same-origin' });
+  async function carregarZpl(url) {
+    var resp = await fetch(url || zplUrl, { credentials: 'same-origin' });
     if (!resp.ok) {
       var err = {};
       try { err = await resp.json(); } catch (e) {}
       throw new Error((err && err.erro) || ('Erro ' + resp.status));
     }
-    zplCache = await resp.text();
-    return zplCache;
+    return resp.text();
   }
 
-  async function imprimir() {
+  async function enviarZpl(zpl) {
+    if (!window.WmsZebraPrint) throw new Error('Script de impressão não carregou.');
+    await WmsZebraPrint.sendZpl(zpl);
+  }
+
+  async function imprimir(url) {
     try {
-      setStatus('Preparando impressão…');
-      var zpl = await carregarZpl();
-      if (!window.WmsZebraPrint) {
-        throw new Error('Script de impressão não carregou.');
-      }
-      await WmsZebraPrint.sendZpl(zpl);
-      setStatus('Enviado para a Zebra — confira a etiqueta (deve preencher 60×40 mm).', true);
+      setStatus('Enviando para a Zebra…');
+      var zpl = url ? await carregarZpl(url) : (zplCache || await carregarZpl());
+      if (!url) zplCache = zpl;
+      await enviarZpl(zpl);
+      setStatus('Enviado — confira a etiqueta na impressora.', true);
     } catch (e) {
       var msg = (e && e.message) || String(e || 'Erro');
-      if (msg.indexOf('Browser Print') >= 0 || msg.indexOf('9100') >= 0 || msg.indexOf('9101') >= 0 || msg.indexOf('localhost') >= 0 || msg.indexOf('Failed to fetch') >= 0) {
-        msg += ' — Clique Sim se aparecer pop-up do Browser Print. Ou use Baixar .txt + impressora-zebra-wms.zip';
-      } else {
-        msg += ' — ou use Baixar .txt + impressora-zebra-wms.zip';
+      if (msg.indexOf('fetch') >= 0 || msg.indexOf('9101') >= 0 || msg.indexOf('Browser Print') >= 0) {
+        msg += ' — Verifique Browser Print na bandeja e clique Sim no pop-up.';
       }
       setStatus(msg, false);
     }
   }
 
-  async function baixar() {
-    try {
-      setStatus('Gerando arquivo…');
-      var zpl = await carregarZpl();
-      var blob = new Blob([zpl], { type: 'text/plain;charset=utf-8' });
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = nomeArquivo || 'longarinas.txt';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(function() {
-        URL.revokeObjectURL(a.href);
-        a.remove();
-      }, 300);
-      setStatus('Arquivo baixado. Arraste na pasta do impressora-zebra-wms.zip', true);
-    } catch (e) {
-      setStatus((e && e.message) || 'Erro ao baixar', false);
-    }
-  }
-
-  document.getElementById('btn-imprimir').addEventListener('click', imprimir);
-  document.getElementById('btn-baixar').addEventListener('click', baixar);
+  document.getElementById('btn-imprimir').addEventListener('click', function() { imprimir(); });
+  document.getElementById('btn-teste').addEventListener('click', function() { imprimir(testeUrl); });
 
   {% if auto_download %}
-  window.addEventListener('load', function() {
-    if (window.WmsZebraPrint) {
-      WmsZebraPrint.loadBrowserPrint().then(imprimir).catch(function() { baixar(); });
-    } else {
-      setTimeout(baixar, 400);
-    }
-  });
+  window.addEventListener('load', function() { setTimeout(function() { imprimir(); }, 500); });
   {% endif %}
 })();
 </script>
