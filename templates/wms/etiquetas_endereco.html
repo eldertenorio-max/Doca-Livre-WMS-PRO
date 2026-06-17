@@ -12,6 +12,7 @@
     --lh-mm: {{ etq_altura_mm }}mm;
     --ink: #000;
     --paper: #fff;
+    --etq-side: 5mm;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -69,8 +70,8 @@
     width: 100%;
     height: 100%;
     border: none;
-    border-top: 0.55mm solid var(--ink);
     background: var(--paper);
+    padding: 0 var(--etq-side);
     display: grid;
     grid-template-rows: {{ etq_zebra.grid_top_pct }}fr {{ etq_zebra.grid_mid_pct }}fr {{ etq_zebra.grid_bot_pct }}fr;
     overflow: hidden;
@@ -81,6 +82,7 @@
   .etq-top {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
+    border-top: 0.55mm solid var(--ink);
     border-bottom: 0.5mm solid var(--ink);
     min-height: 0;
   }
@@ -159,7 +161,7 @@
     justify-content: space-between;
     width: 100%;
     height: 100%;
-    padding: 0 2%;
+    padding: 0 1%;
   }
   .arrow {
     width: 0;
@@ -235,13 +237,17 @@
       width: 100% !important;
       height: 100% !important;
       margin: 0 !important;
-      padding: 0 !important;
+      padding: 0 var(--etq-side) !important;
       border: none !important;
-      border-top: 0.55mm solid #000 !important;
       display: grid !important;
       grid-template-rows: {{ etq_zebra.grid_top_pct }}fr {{ etq_zebra.grid_mid_pct }}fr {{ etq_zebra.grid_bot_pct }}fr !important;
       background: #fff !important;
       container-type: size !important;
+    }
+
+    .etq-top {
+      border-top: 0.55mm solid #000 !important;
+      border-bottom: 0.5mm solid #000 !important;
     }
 
     .arrow.up { border-bottom-color: #000 !important; }
@@ -337,7 +343,7 @@
 {% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603html5"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603html6"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
