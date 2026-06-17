@@ -2727,12 +2727,12 @@
                             <h3 class="wms-rec-fase-titulo"><span class="wms-rec-fase-num">1</span><span>Instalação no rack — pregue todas as longarinas (passo zero)</span></h3>
                             <div class="wms-rec-fase-corpo">
                                 <p class="wms-rec-fase-desc" style="margin-bottom: 10px;">Faça isso <strong>antes</strong> do recebimento. Cada nível da coluna ganha <strong>uma etiqueta fixa</strong> colada na longarina (formato horizontal 60×40 mm). O código de bipagem <strong>12.14.1</strong> não muda — paletes entram e saem, a placa fica.</p>
-                                <p class="info-text" style="margin-bottom: 12px; padding: 8px 10px; background: #e8f5e9; border: 1px solid #81c784; border-radius: 6px; font-size: 12px;"><strong>Impressão Zebra (recomendado):</strong> os botões abaixo baixam um arquivo <code>.txt</code> com comandos ZPL (60×40 mm fixo). Baixe também <a href="/static/zebra/enviar_prn_zebra.bat" download>enviar_prn_zebra.bat</a> (uma vez) e <strong>arraste o .txt em cima do .bat</strong>. Evita o Chrome, que distorce tamanho e margem.</p>
+                                <p class="info-text" style="margin-bottom: 12px; padding: 8px 10px; background: #e3f2fd; border: 1px solid #64b5f6; border-radius: 6px; font-size: 12px;"><strong>Impressão definitiva (60×40 mm inteira):</strong> instale <a href="https://www.zebra.com/us/en/support-downloads/software/developer-tools/browser-print.html" target="_blank" rel="noopener">Zebra Browser Print</a> no PC e use <strong>Imprimir na Zebra</strong>. Não use Chrome — ele deixa a etiqueta pequena. Alternativa: baixar <code>.txt</code> + <a href="/static/zebra/enviar_prn_zebra.bat" download>enviar_prn_zebra.bat</a>.</p>
                                 <div id="wms-etq-resumo-box" class="extrato-resumo-box" style="margin-bottom: 12px;">
                                     <p class="loading" style="margin:0;">Carregando resumo do armazém…</p>
                                 </div>
                                 <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px;">
-                                    <button type="button" class="btn btn-success btn-lg" id="btn-wms-etq-todas">Gerar TODAS (Zebra .txt)</button>
+                                    <button type="button" class="btn btn-success btn-lg" id="btn-wms-etq-todas">Imprimir TODAS na Zebra</button>
                                     <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-resumo-atualizar">Atualizar resumo</button>
                                     <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-demo">Ver modelo (demo)</button>
                                 </div>
@@ -2751,8 +2751,8 @@
                                 <div class="form-group"><label>Câmara</label><select id="wms-etq-camara" style="min-width: 140px;"><option value="">Selecione</option></select></div>
                                 <div class="form-group"><label>Rua interna</label><select id="wms-etq-rua" style="min-width: 100px;"><option value="">Selecione</option></select></div>
                                 <div class="form-group"><label>Prédio (coluna)</label><select id="wms-etq-pos" style="min-width: 110px;"><option value="">Selecione</option></select></div>
-                                <button type="button" class="btn btn-primary" id="btn-wms-etq-coluna">Gerar coluna (Zebra)</button>
-                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-camara">Gerar câmara (Zebra)</button>
+                                <button type="button" class="btn btn-primary" id="btn-wms-etq-coluna">Imprimir coluna</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-etq-camara">Imprimir câmara</button>
                             </div>
                             <p id="wms-etq-coluna-info" class="info-text" style="display:none; margin: 8px 0 0 0; font-size: 12px;"></p>
                         </section>
@@ -2760,7 +2760,7 @@
                             <h3 class="wms-rec-fase-titulo" style="margin-bottom: 12px;"><span class="wms-rec-fase-num">3</span><span>Uma posição avulsa</span></h3>
                             <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end;">
                                 <div class="form-group" style="flex: 1; min-width: 200px;"><label>Código</label><input type="text" id="wms-etq-codigo-unico" placeholder="12.14.1 ou 12-C-14-1"></div>
-                                <button type="button" class="btn btn-secondary" id="btn-wms-etq-unico">Gerar 1 etiqueta (Zebra)</button>
+                                <button type="button" class="btn btn-secondary" id="btn-wms-etq-unico">Imprimir 1 etiqueta</button>
                             </div>
                         </section>
                     </div>
@@ -3627,6 +3627,6 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
     <script src="{{ url_for('static', filename='wms-mapa-3d.js') }}?v=20260604a"></script>
-    <script src="../static/script.js?v=20260602zpl"></script>
+    <script src="../static/script.js?v=20260602full"></script>
 </body>
 </html>

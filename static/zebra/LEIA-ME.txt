@@ -1,22 +1,37 @@
-IMPRESSAO ZEBRA ZD220 — WMS
-===========================
+ETIQUETA LONGARINA 60x40 mm — ZEBRA ZD220
+=========================================
 
-1) BROWSER PRINT (imprimir direto do site)
-   - Baixe: https://www.zebra.com/us/en/support-downloads/software/developer-tools/browser-print.html
-   - Instale e abra no navegador: https://localhost:9101/ssl_support (aceitar certificado)
-   - Copie para esta pasta (opcional, se o site nao achar sozinho):
-     BrowserPrint-3.1.250.min.js
-     (pasta tipica: C:\Program Files\Zebra Technologies\Zebra Browser Print\Documentation\BrowserPrint.js\)
+PROBLEMA: Chrome deixa a etiqueta pequena no canto.
+SOLUCAO DEFINITIVA: ZPL direto na impressora (nao passa pelo driver/Chrome).
 
-2) ARQUIVO .prn (manual)
-   - Baixe .prn no WMS
-   - Arraste sobre enviar_prn_zebra.bat
+OPCAO 1 — BROWSER PRINT (recomendado, 1 clique)
+------------------------------------------------
+1. Instale no PC Windows:
+   https://www.zebra.com/us/en/support-downloads/software/developer-tools/browser-print.html
+2. Conecte a ZD220 por USB e ligue a impressora.
+3. No WMS: ETQ. LONGARINA -> Gerar etiqueta -> "Imprimir na Zebra".
+4. Teste primeiro "Teste 60x40" — a borda deve encostar nos 4 lados da etiqueta.
 
-3) ZEBRADESIGNER + Etiqueta.nlbl
-   - Abra Etiqueta.nlbl no Designer (Essentials)
-   - No WMS: CSV para Designer
-   - Vincule campos: camara, rua, coluna, nivel, barcode, codigo_wms, zona
-   - Imprima pelo Designer com o CSV
+OPCAO 2 — ARQUIVO .TXT + .BAT (sem Browser Print)
+-------------------------------------------------
+1. Baixe enviar_prn_zebra.bat (esta pasta).
+2. No WMS, baixe o arquivo .txt.
+3. Arraste o .txt em cima do .bat.
+   O script envia ZPL em modo RAW (tamanho correto 60x40 mm).
 
-O arquivo .nlbl NAO abre no navegador — e projeto do ZebraDesigner.
-O WMS gera .prn/.csv com os dados; o Designer usa o SEU layout.
+OPCAO 3 — ZEBRA SETUP UTILITIES
+--------------------------------
+1. Abra Zebra Setup Utilities -> Send File.
+2. No WMS, copie o ZPL ou use o .txt baixado.
+3. Envie para a ZD220.
+
+NAO USE
+-------
+- Botao Imprimir do Chrome (HTML) — nunca preenche a etiqueta inteira.
+- Driver em 100x68 mm com escala diferente de 100%.
+
+MEDIA NA IMPRESSORA
+-------------------
+Etiqueta fisica: 60 mm (largura) x 40 mm (altura).
+O ZPL ja define ^PW472 ^LL315 (203 dpi). Nao precisa ajustar tamanho no driver
+quando imprime por ZPL/Browser Print/.bat.

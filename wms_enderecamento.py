@@ -6220,13 +6220,12 @@ def _zpl_escape(texto):
 
 
 def _zpl_etiqueta_longarina(e, dpi=203):
-    """ZPL nativo 60×40 mm para Zebra ZD220 (sem passar pelo Chrome)."""
+    """ZPL 60×40 mm — layout ocupa 100% da etiqueta (ZD220, 203 dpi, sem Chrome)."""
     dpmm = dpi / 25.4
-    w = int(round(60 * dpmm))
-    h = int(round(40 * dpmm))
-    top_h = int(round(h * 0.34))
-    mid_h = int(round(h * 0.42))
-    bot_y = top_h + mid_h
+    w = int(round(60 * dpmm))   # 472
+    h = int(round(40 * dpmm))   # 315
+    y2 = int(round(h * 0.34))   # faixa superior
+    y3 = y2 + int(round(h * 0.42))  # início rodapé
     col_w = w // 4
 
     cam = _zpl_escape(e.get('camara') or e.get('rua_num') or '')
@@ -6242,42 +6241,65 @@ def _zpl_etiqueta_longarina(e, dpi=203):
         f'^PW{w}',
         f'^LL{h}',
         '^LH0,0',
+        '^LS0',
+        '^LT0',
         '^CI28',
-        f'^FO0,0^GB{w},{h},4^FS',
-        f'^FO0,{top_h}^GB{w},2,2^FS',
-        f'^FO0,{bot_y}^GB{w},2,2^FS',
+        f'^FO0,0^GB{w},{h},5^FS',
+        f'^FO0,{y2}^GB{w},3,3^FS',
+        f'^FO0,{y3}^GB{w},3,3^FS',
     ]
     cols = [
-        ('CAMARA', cam, 44),
-        ('RUA', rua, 40 if len(rua) > 1 else 44),
-        ('COLUNA', col, 44),
-        ('NIVEL', niv, 44),
+        ('CAMARA', cam),
+        ('RUA', rua),
+        ('COLUNA', col),
+        ('NIVEL', niv),
     ]
-    for i, (lbl, val, fs) in enumerate(cols):
+    for i, (lbl, val) in enumerate(cols):
         x = i * col_w
-        partes.append(f'^FO{x},6^FB{col_w},1,0,C^A0N,13,13^FD{lbl}^FS')
-        partes.append(f'^FO{x},26^FB{col_w},1,0,C^A0N,{fs},{fs}^FD{val}^FS')
+        val_len = len(str(val or ''))
+        fs_val = 44 if val_len > 2 else 58
+        if lbl == 'RUA' and val_len == 1:
+            fs_val = 54
+        partes.append(f'^FO{x},6^FB{col_w},1,0,C^A0N,15,15^FD{lbl}^FS')
+        partes.append(f'^FO{x},28^FB{col_w},1,0,C^A0N,{fs_val},{fs_val}^FD{val}^FS')
         if i < 3:
-            partes.append(f'^FO{x + col_w},0^GB2,{top_h},2^FS')
+            partes.append(f'^FO{x + col_w},0^GB3,{y2},3^FS')
 
-    bc_h = max(50, mid_h - 36)
-    bc_y = top_h + 6
-    partes.append(f'^FO24,{bc_y}^BY2,2,{bc_h}^BCN,{bc_h},N,N,N^FD{bc}^FS')
-    partes.append(f'^FO0,{bot_y - 26}^FB{w},1,0,C^A0N,20,20^FD{cod}^FS')
+    bc_h = max(72, min(108, y3 - y2 - 44))
+    bc_y = y2 + 4
+    bc_x = max(28, (w - int(len(bc or '') * 14 + 80)) // 2)
+    partes.append(f'^FO{bc_x},{bc_y}^BY2,3,{bc_h}^BCN,{bc_h},N,N,N^FD{bc}^FS')
+    cod_y = y2 + bc_h + 10
+    if cod_y < y3 - 6:
+        partes.append(f'^FO0,{cod_y}^FB{w},1,0,C^A0N,22,22^FD{cod}^FS')
 
-    zona_y = bot_y + max(8, int((h - bot_y) * 0.28))
+    foot_y = y3 + max(10, (h - y3 - 28) // 2)
     if e.get('destino_fixo'):
         zona = _zpl_escape(e.get('destino_label') or e.get('zona') or '')
-        partes.append(f'^FO0,{zona_y}^FB{w},2,0,C^A0N,18,18^FD{zona}^FS')
+        partes.append(f'^FO0,{foot_y}^FB{w},1,0,C^A0N,26,26^FD{zona}^FS')
     elif e.get('picking'):
-        partes.append(f'^FO16,{zona_y}^A0N,24,24^FDPICKING^FS')
-        partes.append(f'^FO{w - 48},{zona_y - 4}^A0N,30,30^FD▼^FS')
+        partes.append(f'^FO18,{foot_y}^A0N,34,34^FDPICKING^FS')
+        partes.append(f'^FO{w - 44},{foot_y - 2}^A0N,38,38^FDv^FS')
     else:
-        partes.append(f'^FO16,{zona_y}^A0N,24,24^FDPULMAO^FS')
-        partes.append(f'^FO{w - 48},{zona_y - 4}^A0N,30,30^FD▲^FS')
+        partes.append(f'^FO18,{foot_y}^A0N,34,34^FDPULMAO^FS')
+        partes.append(f'^FO{w - 44},{foot_y - 2}^A0N,38,38^FD\\^FS')
 
     partes.append('^XZ')
     return '\n'.join(partes)
+
+
+def _zpl_etiqueta_teste_calibracao(dpi=203):
+    """Etiqueta teste: borda preenche 60×40 mm — use para validar ZPL na ZD220."""
+    dpmm = dpi / 25.4
+    w = int(round(60 * dpmm))
+    h = int(round(40 * dpmm))
+    return '\n'.join([
+        '^XA', '^MMT', f'^PW{w}', f'^LL{h}', '^LH0,0', '^LS0', '^LT0', '^CI28',
+        f'^FO0,0^GB{w},{h},6^FS',
+        f'^FO0,{int(h * 0.32)}^FB{w},1,0,C^A0N,36,36^FDTESTE 60x40 mm^FS',
+        f'^FO0,{int(h * 0.52)}^FB{w},1,0,C^A0N,22,22^FDA borda deve encostar na etiqueta^FS',
+        '^XZ',
+    ])
 
 
 def _list_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False):
@@ -6611,6 +6633,12 @@ def _pagina_zebra_longarina(conn, camara=None, rua=None, posicao=None, codigo=No
         auto_download=auto_download,
     )
     return html, None
+
+
+@bp.route('/etiqueta/zebra/teste/zpl', methods=['GET'])
+def api_wms_etiqueta_zebra_teste_zpl():
+    """Uma etiqueta teste 60×40 — borda deve encostar nos 4 lados."""
+    return _resposta_zpl_longarina(_zpl_etiqueta_teste_calibracao(), 'teste_60x40', ext=request.args.get('ext') or 'txt')
 
 
 @bp.route('/etiqueta/zebra', methods=['GET'])

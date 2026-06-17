@@ -14,7 +14,7 @@
     line-height: 1.5;
   }
   .card {
-    max-width: 560px;
+    max-width: 580px;
     margin: 0 auto;
     background: #fff;
     border: 1px solid #ccc;
@@ -25,8 +25,8 @@
   h1 { font-size: 20px; margin-bottom: 6px; color: #1565c0; }
   .sub { color: #555; font-size: 13px; margin-bottom: 18px; }
   .steps {
-    background: #e8f5e9;
-    border: 1px solid #81c784;
+    background: #e3f2fd;
+    border: 1px solid #64b5f6;
     border-radius: 8px;
     padding: 14px 16px;
     margin-bottom: 16px;
@@ -34,6 +34,11 @@
   }
   .steps ol { margin: 8px 0 0 18px; }
   .steps li { margin-bottom: 6px; }
+  .steps.alt {
+    background: #e8f5e9;
+    border-color: #81c784;
+    margin-top: 14px;
+  }
   .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
   button, .btn {
     padding: 12px 18px;
@@ -44,8 +49,8 @@
     text-decoration: none;
     display: inline-block;
   }
-  .btn-main { background: #2e7d32; color: #fff; font-weight: 700; }
-  .btn-sec { background: #546e7a; color: #fff; }
+  .btn-main { background: #1565c0; color: #fff; font-weight: 700; }
+  .btn-sec { background: #2e7d32; color: #fff; }
   .btn-link { background: #eee; color: #333; border: 1px solid #ccc; }
   .warn {
     background: #fff3e0;
@@ -61,54 +66,81 @@
 </head>
 <body>
 <div class="card">
-  <h1>Impressão Zebra ZD220 (ZPL)</h1>
-  <p class="sub"><strong>{{ total }}</strong> etiqueta(s) · 60×40 mm · {{ titulo or 'Longarina' }}</p>
+  <h1>Etiqueta longarina 60×40 mm (ZPL)</h1>
+  <p class="sub"><strong>{{ total }}</strong> etiqueta(s) · {{ titulo or 'Longarina' }}</p>
 
   <div class="steps">
-    <strong>Recomendado — não usa Chrome (evita etiqueta pequena/errada):</strong>
+    <strong>Forma definitiva — imprime a etiqueta inteira (sem Chrome):</strong>
     <ol>
-      <li>Clique em <strong>Baixar arquivo Zebra</strong> abaixo</li>
-      <li>Baixe também <a href="/static/zebra/enviar_prn_zebra.bat" download>enviar_prn_zebra.bat</a> (uma vez)</li>
-      <li><strong>Arraste</strong> o arquivo <code>.txt</code> em cima do <code>.bat</code></li>
+      <li>Instale <a href="https://www.zebra.com/us/en/support-downloads/software/developer-tools/browser-print.html" target="_blank" rel="noopener">Zebra Browser Print</a> no PC (uma vez)</li>
+      <li>Conecte a ZD220 por USB e ligue a impressora</li>
+      <li>Clique em <strong>Imprimir na Zebra</strong> abaixo</li>
     </ol>
   </div>
 
   <div class="btns">
-    <button type="button" class="btn-main" id="btn-baixar">Baixar arquivo Zebra (.txt)</button>
-    <button type="button" class="btn-sec" id="btn-copiar">Copiar ZPL</button>
+    <button type="button" class="btn-main" id="btn-imprimir">Imprimir na Zebra</button>
+    <button type="button" class="btn-sec" id="btn-baixar">Baixar .txt (alternativa)</button>
+    <a class="btn btn-link" href="/api/wms/etiqueta/zebra/teste/zpl" download>Teste 60×40</a>
     {% if html_url %}
-    <a class="btn btn-link" href="{{ html_url }}" target="_blank" rel="noopener">Prévia HTML</a>
+    <a class="btn btn-link" href="{{ html_url }}" target="_blank" rel="noopener">Só prévia</a>
     {% endif %}
     <button type="button" class="btn-link" onclick="window.close()">Fechar</button>
   </div>
 
   <p class="status" id="status"></p>
 
+  <div class="steps alt">
+    <strong>Sem Browser Print?</strong>
+    <ol>
+      <li>Baixe <a href="/static/zebra/enviar_prn_zebra.bat" download>enviar_prn_zebra.bat</a></li>
+      <li>Clique em <strong>Baixar .txt</strong> e arraste o arquivo em cima do <code>.bat</code></li>
+    </ol>
+  </div>
+
   <div class="warn">
-    <strong>Por que não HTML?</strong> O Chrome + driver Zebra quase sempre distorce tamanho e margem.
-    O arquivo <code>.txt</code> manda comandos <strong>direto</strong> para a impressora (60×40 mm fixo).
-    No driver: pode deixar o tamanho que estiver — o ZPL define a etiqueta.
+    <strong>Não use o botão Imprimir do Chrome</strong> — ele reduz a etiqueta e deixa margem em branco.
+    O ZPL manda 60×40 mm direto para a impressora e preenche toda a área.
   </div>
 </div>
+<script src="/static/zebra/imprimir-zpl.js?v=20260602full"></script>
 <script>
 (function() {
   var zplUrl = {{ zpl_api_url|tojson }};
   var nomeArquivo = {{ nome_arquivo|tojson }};
   var statusEl = document.getElementById('status');
+  var zplCache = null;
 
   function setStatus(msg, ok) {
     statusEl.textContent = msg || '';
-    statusEl.style.color = ok ? '#2e7d32' : '#1565c0';
+    statusEl.style.color = ok ? '#2e7d32' : (ok === false ? '#c62828' : '#1565c0');
   }
 
   async function carregarZpl() {
+    if (zplCache) return zplCache;
     var resp = await fetch(zplUrl, { credentials: 'same-origin' });
     if (!resp.ok) {
       var err = {};
       try { err = await resp.json(); } catch (e) {}
       throw new Error((err && err.erro) || ('Erro ' + resp.status));
     }
-    return resp.text();
+    zplCache = await resp.text();
+    return zplCache;
+  }
+
+  async function imprimir() {
+    try {
+      setStatus('Preparando impressão…');
+      var zpl = await carregarZpl();
+      if (!window.WmsZebraPrint) {
+        throw new Error('Script de impressão não carregou.');
+      }
+      await WmsZebraPrint.sendZpl(zpl);
+      setStatus('Enviado para a Zebra — confira a etiqueta (deve preencher 60×40 mm).', true);
+    } catch (e) {
+      var msg = (e && e.message) || String(e || 'Erro');
+      setStatus(msg + ' — use Baixar .txt + enviar_prn_zebra.bat', false);
+    }
   }
 
   async function baixar() {
@@ -131,22 +163,17 @@
     }
   }
 
-  async function copiar() {
-    try {
-      setStatus('Carregando…');
-      var zpl = await carregarZpl();
-      await navigator.clipboard.writeText(zpl);
-      setStatus('ZPL copiado — cole no utilitário Zebra se preferir.', true);
-    } catch (e) {
-      setStatus((e && e.message) || 'Erro ao copiar', false);
-    }
-  }
-
+  document.getElementById('btn-imprimir').addEventListener('click', imprimir);
   document.getElementById('btn-baixar').addEventListener('click', baixar);
-  document.getElementById('btn-copiar').addEventListener('click', copiar);
 
   {% if auto_download %}
-  window.addEventListener('load', function() { setTimeout(baixar, 400); });
+  window.addEventListener('load', function() {
+    if (window.WmsZebraPrint) {
+      WmsZebraPrint.loadBrowserPrint().then(imprimir).catch(function() { baixar(); });
+    } else {
+      setTimeout(baixar, 400);
+    }
+  });
   {% endif %}
 })();
 </script>
