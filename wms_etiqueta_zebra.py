@@ -52,10 +52,10 @@ def ctx_etiqueta_zebra():
         'etq_page_size_in': z['page_css_in'],
         'etq_page_size_mm': z['page_css_mm'],
         'etq_driver_hint': (
-            f"Chrome → papel <strong>{w}×{h} mm</strong> · margens <strong>{z['chrome_margens']}</strong> · "
-            f"escala <strong>{z['chrome_escala']}</strong> · "
-            f"<strong>Gráficos de fundo</strong> {z['chrome_graficos_fundo'].lower()}. "
-            f"Driver {z['modelo']}: <strong>{z['driver_largura_mm']}×{z['driver_altura_mm']} mm</strong> retrato."
+            f"Botão <strong>Imprimir</strong> envia <strong>ZPL</strong> via Browser Print ({z['modelo']}). "
+            f"Instale <a href=\"https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html\" "
+            f"target=\"_blank\" rel=\"noopener\">Browser Print</a>, defina a ZD220 em Default Devices e aceite "
+            f"<a href=\"https://localhost:9101/ssl_support\" target=\"_blank\" rel=\"noopener\">certificado SSL</a>."
         ),
     }
 

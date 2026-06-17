@@ -6302,6 +6302,83 @@ def _zpl_etiqueta_longarina(e, dpi=203):
     return '\n'.join(partes)
 
 
+def _zpl_etiqueta_palete(
+    etiqueta, sku=None, lote=None, qtd=None, descricao=None,
+    data_producao=None, data_validade=None, codigo_wms=None,
+    endereco_barcode=None, camara=None, up=None,
+):
+    """ZPL 60×40 mm — etiqueta de palete (campos principais)."""
+    w, h = zpl_dimensoes_mm()
+    etq = _zpl_escape(etiqueta or '')
+    top = 0.0
+    partes = _zpl_cabecalho_mm(w, h)
+    partes.append(f'^FO0,0^GB{w},{h},0.5^FS')
+
+    dest = (codigo_wms or endereco_barcode or '').strip()
+    if dest:
+        partes.append(f'^FO0,0^GB{w},7,0.5^FS')
+        partes.append(f'^FO0.8,0.6^GB8,5.8,5^FS')
+        partes.append(f'^FO0.9,2.2^A0N,1.8,1.8^FR^FDGUARDAR^FS')
+        partes.append(f'^FO10,1.2^A0N,4,4^FD{_zpl_escape(dest)}^FS')
+        if camara:
+            partes.append(f'^FO{w - 11},1.2^A0N,2.5,2.5^FDCam {_zpl_escape(camara)}^FS')
+        top = 7.5
+
+    y = top + 0.8
+    partes.append(f'^FO2,{y}^A0N,2,2^FDULTRAPAO - WMS^FS')
+    partes.append(f'^FO3,{y + 3.5}^BY1,2,9^BCN,9,N,N,N^FD{etq}^FS')
+    partes.append(f'^FO3,{y + 13.5}^A0N,1.8,1.8^FD{etq}^FS')
+
+    x = 24.0
+    y2 = top + 1.0
+    partes.append(f'^FO{x},{y2}^A0N,2.2,2.2^FDSKU {_zpl_escape(sku or "-")}^FS')
+    partes.append(f'^FO{x},{y2 + 3.5}^A0N,2.2,2.2^FDLOTE {_zpl_escape(lote or "-")}^FS')
+    qtd_txt = str(qtd) if qtd is not None else '-'
+    if up:
+        qtd_txt += f' UP {up}'
+    partes.append(f'^FO{x},{y2 + 7}^A0N,2.2,2.2^FDCX {_zpl_escape(qtd_txt)}^FS')
+    partes.append(f'^FO{x},{y2 + 10.5}^A0N,2,2^FDPROD {_zpl_escape((data_producao or "-")[:10])}^FS')
+    partes.append(f'^FO{x},{y2 + 13.5}^A0N,2,2^FDVAL {_zpl_escape((data_validade or "-")[:10])}^FS')
+    desc = _zpl_escape((descricao or '-')[:48])
+    partes.append(f'^FO2,{top + 18}^A0N,2,2^FD{desc}^FS')
+    partes.append('^XZ')
+    return '\n'.join(partes)
+
+
+def _zpl_api_url_longarina(codigo=None, todas=False, camara=None, rua=None, posicao=None):
+    if codigo:
+        return f'/api/wms/etiqueta/endereco/zpl?codigo={quote(codigo)}'
+    if todas:
+        return '/api/wms/etiqueta/enderecos/zpl?todas=1'
+    if camara and rua and posicao:
+        return (
+            f'/api/wms/etiqueta/enderecos/zpl?camara={camara}&rua={quote(rua)}&posicao={posicao}'
+        )
+    if camara:
+        return f'/api/wms/etiqueta/enderecos/zpl?camara={camara}'
+    return '/api/wms/etiqueta/enderecos/zpl'
+
+
+def _zpl_api_url_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=None,
+                        data_producao=None, data_validade=None, codigo_wms=None,
+                        endereco_barcode=None, camara=None, up=None):
+    params = {
+        'etiqueta': etiqueta,
+        'sku': sku,
+        'lote': lote,
+        'qtd': qtd,
+        'descricao': descricao,
+        'data_producao': data_producao,
+        'data_validade': data_validade,
+        'codigo_wms': codigo_wms,
+        'barcode_longarina': endereco_barcode,
+        'camara': camara,
+        'up': up,
+    }
+    clean = {k: v for k, v in params.items() if v is not None and v != ''}
+    return '/api/wms/etiqueta/zpl?' + urlencode(clean)
+
+
 def _zpl_etiqueta_teste_calibracao(swap=False):
     """Etiqueta teste — borda deve encostar nos 4 lados."""
     w, h = zpl_dimensoes_mm()
@@ -6337,7 +6414,7 @@ def _render_etiquetas_endereco_zpl(conn, camara=None, rua=None, posicao=None, co
     if err:
         return None, err
     labels = [_zpl_etiqueta_longarina(e) for e in etiquetas]
-    zpl = _zpl_calibrar_media() + '\n' + '\n'.join(labels)
+    zpl = '\n'.join(labels)
     return zpl, None
 
 
@@ -6401,6 +6478,9 @@ def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo
         total=total,
         titulo=titulo,
         auto_print=auto_print,
+        zpl_api_url=_zpl_api_url_longarina(
+            codigo=codigo, todas=todas, camara=camara, rua=rua, posicao=posicao,
+        ),
         **ctx_etiqueta_zebra(),
     )
     return html, None
@@ -6433,7 +6513,14 @@ def _texto_destino_etiqueta(sug):
     return linha, bc or None, txt or None, cod_wms or None
 
 
-def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=None, data_producao=None, data_validade=None, destino=None, endereco_barcode=None, endereco_texto=None, codigo_wms=None, up=None, auto_print=False, camara=None, rua=None, coluna=None, nivel=None, zona=None):
+def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=None, data_producao=None, data_validade=None, destino=None, endereco_barcode=None, endereco_texto=None, codigo_wms=None, up=None, auto_print=False, camara=None, rua=None, coluna=None, nivel=None, zona=None, zpl_api_url=None):
+    if not zpl_api_url:
+        zpl_api_url = _zpl_api_url_palete(
+            etiqueta, sku=sku, lote=lote, qtd=qtd, descricao=descricao,
+            data_producao=data_producao, data_validade=data_validade,
+            codigo_wms=codigo_wms, endereco_barcode=endereco_barcode,
+            camara=camara, up=up,
+        )
     return render_template(
         'wms/etiqueta_palete.html',
         etiqueta=etiqueta,
@@ -6454,6 +6541,7 @@ def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=Non
         coluna=coluna,
         nivel=nivel,
         zona=zona,
+        zpl_api_url=zpl_api_url,
         **ctx_etiqueta_zebra(),
     )
 
@@ -6533,10 +6621,42 @@ def api_wms_etiqueta():
         return jsonify({'erro': str(e)}), 500
 
 
+@bp.route('/etiqueta/zpl', methods=['GET'])
+def api_wms_etiqueta_palete_zpl():
+    """ZPL nativo — etiqueta de palete 60×40 mm."""
+    etiqueta = (request.args.get('etiqueta') or '').strip()
+    if not etiqueta:
+        return jsonify({'erro': 'Informe etiqueta.'}), 400
+    qtd = request.args.get('qtd', type=int)
+    if qtd is None and request.args.get('qtd'):
+        try:
+            qtd = int(request.args.get('qtd'))
+        except (TypeError, ValueError):
+            qtd = None
+    zpl = _zpl_etiqueta_palete(
+        etiqueta,
+        sku=(request.args.get('sku') or '').strip() or None,
+        lote=(request.args.get('lote') or '').strip() or None,
+        qtd=qtd,
+        descricao=(request.args.get('descricao') or '').strip() or None,
+        data_producao=(request.args.get('data_producao') or '').strip() or None,
+        data_validade=(request.args.get('data_validade') or '').strip() or None,
+        codigo_wms=(request.args.get('codigo_wms') or '').strip().upper() or None,
+        endereco_barcode=(request.args.get('barcode_longarina') or '').strip() or None,
+        camara=(request.args.get('camara') or '').strip() or None,
+        up=(request.args.get('up') or '').strip() or None,
+    )
+    return make_response(zpl, 200, {'Content-Type': 'text/plain; charset=utf-8'})
+
+
 @bp.route('/etiqueta/teste-driver', methods=['GET'])
 def api_wms_etiqueta_teste_driver():
-    """Página mínima para calibrar driver ZD220 + Chrome (borda nos 4 lados)."""
-    html = render_template('wms/etiqueta_teste_driver.html', **ctx_etiqueta_zebra())
+    """Página mínima — prévia + ZPL teste 60×40."""
+    html = render_template(
+        'wms/etiqueta_teste_driver.html',
+        zpl_api_url='/api/wms/etiqueta/zebra/teste/zpl',
+        **ctx_etiqueta_zebra(),
+    )
     return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
 
 
@@ -6585,6 +6705,7 @@ def api_wms_etiqueta_modelo():
         total=5,
         titulo='Modelo',
         auto_print=False,
+        zpl_api_url='/api/wms/etiqueta/endereco/zpl?codigo=12.14.1',
         **ctx_etiqueta_zebra(),
     )
     return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
@@ -6695,7 +6816,7 @@ def api_wms_etiqueta_zebra_teste_zpl():
     """Etiqueta teste — borda deve encostar nos 4 lados. ?swap=1 testa 40×60 (rótulo na impressora)."""
     swap = (request.args.get('swap') or '').strip().lower() in ('1', 'true', 'sim')
     nome = 'teste_40x60' if swap else 'teste_60x40'
-    zpl = _zpl_calibrar_media() + '\n' + _zpl_etiqueta_teste_calibracao(swap=swap)
+    zpl = _zpl_etiqueta_teste_calibracao(swap=swap)
     ext = request.args.get('ext')
     if ext:
         return _resposta_zpl_longarina(zpl, nome, ext=ext)

@@ -46,7 +46,8 @@
   .toolbar .print-setup-hint {
     flex-basis: 100%; font-size: 11px; color: #555; margin: 4px 0 0; line-height: 1.4;
   }
-  @media print { .print-setup-hint { display: none !important; } }
+  .print-status { flex-basis: 100%; font-size: 12px; margin: 4px 0 0; min-height: 1.2em; }
+  @media print { .print-setup-hint, .print-status { display: none !important; } }
 
   .bloco-faixa { margin-bottom: 16px; }
   .bloco-camara { margin-bottom: 24px; }
@@ -196,7 +197,7 @@
       overflow: visible !important;
     }
 
-    .toolbar, .faixa-titulo, .camara-titulo, .print-setup-hint { display: none !important; }
+    .toolbar, .faixa-titulo, .camara-titulo, .print-setup-hint, .print-status { display: none !important; }
 
     .bloco-camara, .bloco-faixa, .faixa {
       margin: 0 !important;
@@ -243,11 +244,12 @@
   }
 </style>
 </head>
-<body data-etq-page="{{ etq_page_size_in }}">
+<body data-etq-page="{{ etq_page_size_in }}" data-zpl-url="{{ zpl_api_url }}">
 <div class="toolbar">
   <button type="button" id="btn-wms-etq-imprimir">Imprimir</button>
   <button type="button" class="sec" id="btn-wms-etq-fechar">Fechar</button>
   <p class="print-setup-hint">{{ etq_driver_hint | safe }}</p>
+  <p id="wms-print-status" class="print-status"></p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
@@ -326,7 +328,8 @@
 {% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260602c"></script>
+<script src="/static/zebra/imprimir-zpl.js?v=20260602zpl"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260602zpl"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
