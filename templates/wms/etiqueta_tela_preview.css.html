@@ -20,8 +20,40 @@
   .toolbar {
     position: relative;
     top: auto;
-    width: min(560px, 94vw);
-    margin-bottom: 28px;
+    width: min({{ etq_largura_screen_mm }}mm, 94vw);
+    max-width: 720px;
+    margin-bottom: 32px;
+    padding: 20px 24px !important;
+    border-radius: 12px !important;
+    gap: 14px !important;
+    justify-content: center;
+  }
+  .toolbar button {
+    padding: 16px 36px !important;
+    font-size: 20px !important;
+    font-weight: 700 !important;
+    border-radius: 10px !important;
+    min-width: 140px;
+  }
+  .toolbar button.sec {
+    min-width: 120px;
+  }
+  .toolbar .print-setup-hint {
+    font-size: 15px !important;
+    line-height: 1.5 !important;
+    text-align: center;
+    margin-top: 8px !important;
+  }
+  .toolbar #btn-wms-etq-imprimir {
+    flex: 1 1 auto;
+  }
+  .toolbar.flex-col-screen {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .toolbar.flex-col-screen #btn-wms-etq-imprimir {
+    width: 100%;
+    max-width: none;
   }
   .etq-preview-stage {
     display: flex;
