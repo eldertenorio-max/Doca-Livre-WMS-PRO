@@ -76,6 +76,7 @@
 
   function sendZpl(zpl) {
     if (!zpl) return Promise.reject(new Error('ZPL vazio.'));
+    var payload = (zpl || '').replace(/\r?\n/g, '\r\n');
     return resolveDevice().then(function (device) {
       return bpRequest('/write', {
         method: 'POST',
@@ -83,7 +84,7 @@
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify({ device: device, data: zpl })
+        body: JSON.stringify({ device: device, data: payload })
       }).then(function (r) {
         return r.resp.text().then(function (txt) {
           try { return txt ? JSON.parse(txt) : {}; } catch (e) { return { ok: true, raw: txt }; }

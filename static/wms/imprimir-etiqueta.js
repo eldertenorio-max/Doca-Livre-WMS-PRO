@@ -54,6 +54,17 @@
     });
   }
 
+  function normalizarZpl(txt) {
+    var s = (txt || '').replace(/^\uFEFF/, '').trim();
+    if (!s || s.charAt(0) !== '^' || s.indexOf('^XA') !== 0) {
+      if (s.indexOf('<!DOCTYPE') >= 0 || s.indexOf('<html') >= 0) {
+        throw new Error('Sessao expirou ou URL invalida — faca login e tente de novo.');
+      }
+      throw new Error('Resposta nao e ZPL valido. Confira login e tente de novo.');
+    }
+    return s.replace(/\r?\n/g, '\r\n');
+  }
+
   function carregarZpl(url) {
     return fetch(url, { credentials: 'same-origin' }).then(function (resp) {
       if (!resp.ok) {
@@ -61,7 +72,7 @@
           throw new Error((err && err.erro) || ('Erro ZPL ' + resp.status));
         });
       }
-      return resp.text();
+      return resp.text().then(normalizarZpl);
     });
   }
 

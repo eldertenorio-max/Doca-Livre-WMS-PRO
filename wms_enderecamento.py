@@ -19,11 +19,8 @@ from flask import Blueprint, jsonify, make_response, redirect, render_template, 
 from wms_etiqueta_zebra import (
     ETIQUETA_ZEBRA_ZD220,
     ctx_etiqueta_zebra,
-    zpl_barcode_dots,
     zpl_dimensoes_dots,
-    zpl_font_mm,
     zpl_longarina_grid_dots,
-    zpl_dots,
 )
 
 bp = Blueprint('wms_enderecamento', __name__)
@@ -6230,12 +6227,11 @@ def _zpl_escape(texto):
 
 
 def _zpl_cabecalho():
-    """Cabeçalho ZPL em dots (203 dpi). Não usar ^MUm — quebra código de barras na ZD220."""
+    """Cabeçalho ZPL ZD220 — dots, sem ^MUm (quebra barcode)."""
     pw, ll = zpl_dimensoes_dots()
     return [
         '^XA',
         '^MMT',
-        '^MNY',
         f'^PW{pw}',
         f'^LL{ll}',
         '^LH0,0',
@@ -6245,19 +6241,13 @@ def _zpl_cabecalho():
     ]
 
 
-def _zpl_bc_field(x, y, dados, altura_dots=None):
-    """CODE128 — módulo 1 dot, altura em dots (nunca mm)."""
-    h = altura_dots or zpl_barcode_dots(6.5)
-    return f'^FO{x},{y}^BY1,2,{h}^BCN,{h},N,N,N^FD{dados}^FS'
-
-
 def _zpl_calibrar_media():
     """Calibra gap/sensor antes do lote (uma etiqueta em branco pode sair)."""
     return '^XA^JMA^XZ'
 
 
 def _zpl_etiqueta_longarina(e, dpi=203):
-    """ZPL longarina 60×40 — tudo em dots (480×320 @ 203 dpi)."""
+    """ZPL longarina 60×40 — template validado ZD220 (472×315 dots)."""
     w, h = zpl_dimensoes_dots()
     y2, y3, col_w = zpl_longarina_grid_dots()
 
@@ -6268,12 +6258,11 @@ def _zpl_etiqueta_longarina(e, dpi=203):
     bc = _zpl_escape(e.get('barcode') or '')
     cod = _zpl_escape(e.get('codigo_wms') or e.get('codigo') or bc)
 
-    lh, lw = zpl_font_mm(2.0, 1.8)
     partes = _zpl_cabecalho()
     partes += [
-        f'^FO0,0^GB{w},{h},2^FS',
-        f'^FO0,{y2}^GB{w},2,2^FS',
-        f'^FO0,{y3}^GB{w},2,2^FS',
+        f'^FO0,0^GB{w},{h},5^FS',
+        f'^FO0,{y2}^GB{w},3,3^FS',
+        f'^FO0,{y3}^GB{w},3,3^FS',
     ]
     cols = [
         ('CAMARA', cam),
@@ -6284,35 +6273,32 @@ def _zpl_etiqueta_longarina(e, dpi=203):
     for i, (lbl, val) in enumerate(cols):
         x = i * col_w
         val_len = len(str(val or ''))
-        if lbl == 'RUA' and val_len <= 1:
-            vh, vw = zpl_font_mm(6.5, 6.0)
-        elif val_len > 2:
-            vh, vw = zpl_font_mm(5.0, 4.5)
-        else:
-            vh, vw = zpl_font_mm(6.0, 5.5)
-        partes.append(f'^FO{x},4^FB{col_w},1,0,C^A0N,{lh},{lw}^FD{lbl}^FS')
-        partes.append(f'^FO{x},30^FB{col_w},1,0,C^A0N,{vh},{vw}^FD{val}^FS')
+        fs_val = 44 if val_len > 2 else 58
+        if lbl == 'RUA' and val_len == 1:
+            fs_val = 54
+        partes.append(f'^FO{x},6^FB{col_w},1,0,C^A0N,15,15^FD{lbl}^FS')
+        partes.append(f'^FO{x},28^FB{col_w},1,0,C^A0N,{fs_val},{fs_val}^FD{val}^FS')
         if i < 3:
-            partes.append(f'^FO{x + col_w},0^GB2,{y2},2^FS')
+            partes.append(f'^FO{x + col_w},0^GB3,{y2},3^FS')
 
-    bc_h = zpl_barcode_dots(6.5)
-    bc_y = y2 + max(4, (y3 - y2 - bc_h) // 2)
-    partes.append(_zpl_bc_field(36, bc_y, bc, bc_h))
+    bc_h = max(72, min(108, y3 - y2 - 44))
+    bc_y = y2 + 4
+    bc_x = max(28, (w - int(len(bc or '') * 14 + 80)) // 2)
+    partes.append(f'^FO{bc_x},{bc_y}^BY2,3,{bc_h}^BCN,{bc_h},N,N,N^FD{bc}^FS')
+    cod_y = y2 + bc_h + 10
+    if cod_y < y3 - 6:
+        partes.append(f'^FO0,{cod_y}^FB{w},1,0,C^A0N,22,22^FD{cod}^FS')
 
-    ch, cw = zpl_font_mm(2.8, 2.5)
-    partes.append(f'^FO0,{y3 - zpl_dots(3.5)}^FB{w},1,0,C^A0N,{ch},{cw}^FD{cod}^FS')
-
-    fh, fw = zpl_font_mm(3.8, 3.4)
-    foot_y = y3 + max(8, (h - y3 - fh) // 2)
+    foot_y = y3 + max(10, (h - y3 - 28) // 2)
     if e.get('destino_fixo'):
         zona = _zpl_escape(e.get('destino_label') or e.get('zona') or '')
-        partes.append(f'^FO0,{foot_y}^FB{w},1,0,C^A0N,{fh},{fw}^FD{zona}^FS')
+        partes.append(f'^FO0,{foot_y}^FB{w},1,0,C^A0N,26,26^FD{zona}^FS')
     elif e.get('picking'):
-        partes.append(f'^FO10,{foot_y}^A0N,{fh},{fw}^FDPICKING^FS')
-        partes.append(f'^FO{w - 40},{foot_y}^A0N,{fh},{fw}^FDv^FS')
+        partes.append(f'^FO18,{foot_y}^A0N,34,34^FDPICKING^FS')
+        partes.append(f'^FO{w - 44},{foot_y - 2}^A0N,38,38^FDv^FS')
     else:
-        partes.append(f'^FO10,{foot_y}^A0N,{fh},{fw}^FDPULMAO^FS')
-        partes.append(f'^FO{w - 40},{foot_y}^A0N,{fh},{fw}^FD\\^FS')
+        partes.append(f'^FO18,{foot_y}^A0N,34,34^FDPULMAO^FS')
+        partes.append(f'^FO{w - 44},{foot_y - 2}^A0N,38,38^FD\\^FS')
 
     partes.append('^XZ')
     return '\n'.join(partes)
@@ -6323,70 +6309,43 @@ def _zpl_etiqueta_palete(
     data_producao=None, data_validade=None, codigo_wms=None,
     endereco_barcode=None, camara=None, up=None,
 ):
-    """ZPL palete 60×40 — tudo em dots."""
+    """ZPL palete 60×40 — layout simples em dots (472×315)."""
     w, h = zpl_dimensoes_dots()
     etq = _zpl_escape(etiqueta or '')
     top = 0
     partes = _zpl_cabecalho()
-    partes.append(f'^FO0,0^GB{w},{h},2^FS')
+    partes.append(f'^FO0,0^GB{w},{h},4^FS')
 
     dest = (codigo_wms or endereco_barcode or '').strip()
-    head_h = zpl_dots(7.5) if dest else 0
     if dest:
+        head_h = 55
         partes.append(f'^FO0,0^GB{w},{head_h},{head_h}^FS')
-        gh, gw = zpl_font_mm(2.0, 1.8)
-        partes.append(f'^FO8,12^A0N,{gh},{gw}^FR^FDGUARDAR EM^FS')
-        dh, dw = zpl_font_mm(3.5, 3.2)
-        partes.append(f'^FO72,10^A0N,{dh},{dw}^FR^FD{_zpl_escape(dest)}^FS')
+        partes.append(f'^FO8,10^A0N,14,14^FR^FDGUARDAR EM^FS')
+        partes.append(f'^FO72,8^A0N,28,28^FR^FD{_zpl_escape(dest)}^FS')
         if camara:
-            ch, cw = zpl_font_mm(2.4, 2.2)
-            partes.append(f'^FO{w - zpl_dots(14)},{12}^A0N,{ch},{cw}^FR^FDCam {_zpl_escape(camara)}^FS')
+            partes.append(f'^FO{w - 100},10^A0N,18,18^FR^FDCam {_zpl_escape(camara)}^FS')
         top = head_h
 
-    left_w = zpl_dots(23)
-    body_h = h - top
-    partes.append(f'^FO0,{top}^GB{left_w},{body_h},2^FS')
-    partes.append(f'^FO{left_w},{top}^GB2,{body_h},2^FS')
+    y = top + 8
+    partes.append(f'^FO8,{y}^A0N,16,16^FDULTRAPAO - WMS^FS')
+    bc_h = 72
+    bc_y = y + 22
+    partes.append(f'^FO8,{bc_y}^BY2,3,{bc_h}^BCN,{bc_h},N,N,N^FD{etq}^FS')
+    partes.append(f'^FO8,{bc_y + bc_h + 6}^A0N,16,16^FD{etq}^FS')
 
-    bh, bw = zpl_font_mm(1.8, 1.6)
-    partes.append(f'^FO4,{top + 4}^FB{left_w - 8},1,0,C^A0N,{bh},{bw}^FDULTRAPAO - WMS^FS')
-    bc_h = zpl_barcode_dots(6)
-    bc_y = top + zpl_dots(4)
-    partes.append(_zpl_bc_field(8, bc_y, etq, bc_h))
-    eh, ew = zpl_font_mm(1.5, 1.3)
-    partes.append(f'^FO4,{bc_y + bc_h + 4}^FB{left_w - 8},2,0,C^A0N,{eh},{ew}^FD{etq}^FS')
-
-    x0 = left_w + zpl_dots(1.5)
-    y0 = top + zpl_dots(1.5)
-    row_h = (body_h - zpl_dots(2)) // 2
-    lh, lw = zpl_font_mm(1.5, 1.3)
-    vh, vw = zpl_font_mm(1.9, 1.7)
-    right_w = w - left_w - zpl_dots(1)
-
-    def cel(x, y, lbl, val, cw):
-        partes.append(f'^FO{x},{y}^A0N,{lh},{lw}^FD{lbl}^FS')
-        partes.append(f'^FO{x},{y + lh + 2}^A0N,{vh},{vw}^FD{_zpl_escape(str(val or "-"))}^FS')
-        partes.append(f'^FO{x + cw},{y}^GB2,{row_h},2^FS')
-
-    cw1 = int(right_w * 0.28)
-    cw2 = int(right_w * 0.22)
-    cw3 = int(right_w * 0.25)
-    cw4 = right_w - cw1 - cw2 - cw3
-    cel(x0, y0, 'SKU', sku, cw1)
-    cel(x0 + cw1, y0, 'LOTE', lote, cw2)
-    cel(x0 + cw1 + cw2, y0, 'PROD', (data_producao or '-')[:10], cw3)
+    x = 190
+    y2 = top + 10
+    lh = 18
+    partes.append(f'^FO{x},{y2}^A0N,{lh},{lh}^FDSKU {_zpl_escape(sku or "-")}^FS')
+    partes.append(f'^FO{x},{y2 + 28}^A0N,{lh},{lh}^FDLOTE {_zpl_escape(lote or "-")}^FS')
     qtd_txt = str(qtd) if qtd is not None else '-'
     if up:
         qtd_txt += f' UP {up}'
-    cel(x0 + cw1 + cw2 + cw3, y0, 'CX', qtd_txt, cw4)
-
-    y1 = y0 + row_h
-    partes.append(f'^FO{left_w},{y1}^GB{right_w},2,2^FS')
-    cel(x0, y1 + 4, 'VAL', (data_validade or '-')[:10], cw1 + cw2)
-    dh, dw = zpl_font_mm(1.7, 1.5)
-    desc = _zpl_escape((descricao or '-')[:38])
-    partes.append(f'^FO{x0 + cw1 + cw2 + 4},{y1 + 4}^A0N,{lh},{lw}^FDDESC^FS')
-    partes.append(f'^FO{x0 + cw1 + cw2 + 4},{y1 + lh + 6}^A0N,{dh},{dw}^FD{desc}^FS')
+    partes.append(f'^FO{x},{y2 + 56}^A0N,{lh},{lh}^FDCX {_zpl_escape(qtd_txt)}^FS')
+    partes.append(f'^FO{x},{y2 + 84}^A0N,{lh},{lh}^FDPROD {_zpl_escape((data_producao or "-")[:10])}^FS')
+    partes.append(f'^FO{x},{y2 + 112}^A0N,{lh},{lh}^FDVAL {_zpl_escape((data_validade or "-")[:10])}^FS')
+    desc = _zpl_escape((descricao or '-')[:48])
+    partes.append(f'^FO8,{top + 200}^A0N,{lh},{lh}^FD{desc}^FS')
 
     partes.append('^XZ')
     return '\n'.join(partes)
@@ -6432,17 +6391,13 @@ def _zpl_etiqueta_teste_calibracao(swap=False):
     if swap:
         w, h = h, w
     rot = ' (40x60)' if swap else ''
-    th, tw = zpl_font_mm(4.5, 4.0)
-    sh, sw = zpl_font_mm(2.8, 2.5)
-    partes = [
-        '^XA', '^MMT', '^MNY', f'^PW{w}', f'^LL{h}', '^LH0,0', '^CI28',
-        f'^FO0,0^GB{w},{h},3^FS',
-        f'^FO4,4^GB{w - 8},{h - 8},2^FS',
-        f'^FO0,{int(h * 0.38)}^FB{w},1,0,C^A0N,{th},{tw}^FDTESTE{rot}^FS',
-        f'^FO0,{int(h * 0.52)}^FB{w},1,0,C^A0N,{sh},{sw}^FDBorda = etiqueta^FS',
+    return '\n'.join([
+        '^XA', '^MMT', f'^PW{w}', f'^LL{h}', '^LH0,0', '^LS0', '^LT0', '^CI28',
+        f'^FO0,0^GB{w},{h},6^FS',
+        f'^FO0,{int(h * 0.32)}^FB{w},1,0,C^A0N,36,36^FDTESTE{rot}^FS',
+        f'^FO0,{int(h * 0.52)}^FB{w},1,0,C^A0N,22,22^FDBorda = etiqueta^FS',
         '^XZ',
-    ]
-    return '\n'.join(partes)
+    ])
 
 
 def _list_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False):

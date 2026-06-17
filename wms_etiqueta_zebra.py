@@ -35,8 +35,9 @@ ETIQUETA_ZEBRA_ZD220 = {
     'grid_top_pct': 34,
     'grid_mid_pct': 42,
     'grid_bot_pct': 24,
-    # ZPL: SEMPRE em dots na ZD220 (^MUm distorce ^BY/^BC → barras pretas gigantes)
-    'zpl_font_scale': 0.78,
+    # Área imprimível ZD220 60×40 (LEIA-ME / Zebra Setup) — não usar 480×320 teórico
+    'zpl_pw': 472,
+    'zpl_ll': 315,
 }
 
 
@@ -80,8 +81,12 @@ def zpl_longarina_grid_mm():
 
 
 def zpl_dimensoes_dots():
-    """Largura e altura da etiqueta em dots (203 dpi)."""
+    """Largura e altura da etiqueta em dots (ZD220 60×40)."""
     z = ETIQUETA_ZEBRA_ZD220
+    pw = z.get('zpl_pw')
+    ll = z.get('zpl_ll')
+    if pw and ll:
+        return int(pw), int(ll)
     dpm = z['dpi'] / _MM_IN
     return int(round(z['largura_mm'] * dpm)), int(round(z['altura_mm'] * dpm))
 
@@ -92,25 +97,22 @@ def zpl_dots(mm):
 
 
 def zpl_font_mm(altura_mm, largura_mm=None):
-    """Par altura/largura de fonte ^A0N em dots (^A ignora ^MUm)."""
-    z = ETIQUETA_ZEBRA_ZD220
-    scale = z.get('zpl_font_scale', 1.0)
-    h = zpl_dots(altura_mm * scale)
+    """Par altura/largura de fonte ^A0N em dots."""
+    h = zpl_dots(altura_mm)
     if largura_mm is None:
         largura_mm = altura_mm * 0.9
-    w = zpl_dots(largura_mm * scale)
+    w = zpl_dots(largura_mm)
     return max(8, h), max(8, w)
 
 
 def zpl_barcode_dots(altura_mm):
     """Altura de código de barras ^BC em dots."""
-    return max(16, zpl_dots(altura_mm * ETIQUETA_ZEBRA_ZD220.get('zpl_font_scale', 1.0)))
+    return max(40, zpl_dots(altura_mm))
 
 
 def zpl_longarina_grid_dots():
     """Grid longarina em dots (34% / 42% / 24%)."""
-    z = ETIQUETA_ZEBRA_ZD220
     w, h = zpl_dimensoes_dots()
-    y2 = int(round(h * z['grid_top_pct'] / 100))
-    y3 = int(round(h * (z['grid_top_pct'] + z['grid_mid_pct']) / 100))
+    y2 = int(round(h * 0.34))
+    y3 = y2 + int(round(h * 0.42))
     return y2, y3, w // 4
