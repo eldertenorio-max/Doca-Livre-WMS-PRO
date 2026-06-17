@@ -35,10 +35,8 @@ ETIQUETA_ZEBRA_ZD220 = {
     'grid_top_pct': 34,
     'grid_mid_pct': 42,
     'grid_bot_pct': 24,
-    # ZPL: 203 dpi ≈ 8 dots/mm; ^A/^BC sempre em dots; ^FO/^GB em mm com ^MUm
-    'zpl_dots_per_mm': 8,
-    # ^A0N na Zebra costuma sair ~15% maior que o mm nominal — ajuste fino aqui
-    'zpl_font_scale': 0.82,
+    # ZPL: SEMPRE em dots na ZD220 (^MUm distorce ^BY/^BC → barras pretas gigantes)
+    'zpl_font_scale': 0.78,
 }
 
 
