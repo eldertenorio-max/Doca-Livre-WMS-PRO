@@ -6,15 +6,16 @@
 <title>Etiqueta palete {{ etiqueta }}</title>
 <style>
   :root {
-    --lw: {{ etq_largura_mm }}mm;
-    --lh: {{ etq_altura_mm }}mm;
+    --lw: {{ etq_largura_in }}in;
+    --lh: {{ etq_altura_in }}in;
     --ink: #000000;
     --paper: #ffffff;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   @page {
-    size: {{ etq_page_size }};
+    size: {{ etq_page_size_in }};
+    size: {{ etq_page_size_mm }};
     margin: 0;
   }
 
@@ -39,11 +40,12 @@
     padding: 8px; font-size: 13px; cursor: pointer;
     border: none; border-radius: 6px; background: #1976d2; color: #fff;
   }
-  .toolbar .zebra-hint {
+  .toolbar .print-setup-hint {
     font-size: 11px;
     color: #555;
     line-height: 1.4;
   }
+  @media print { .print-setup-hint { display: none !important; } }
 
   .etq-page {
     width: var(--lw);
@@ -264,7 +266,7 @@
   .etq-sem-destino .dados-desc .val { max-height: 0.42in; }
 
   @media print {
-    @page { size: {{ etq_page_size }}; margin: 0; }
+    @page { size: {{ etq_page_size_in }}; size: {{ etq_page_size_mm }}; margin: 0; }
 
     html, body {
       width: var(--lw) !important;
@@ -297,9 +299,10 @@
   }
 </style>
 </head>
-<body>
+<body data-etq-page="{{ etq_page_size_in }}">
 <div class="toolbar">
   <button type="button" id="btn-wms-etq-imprimir">Imprimir</button>
+  <p class="print-setup-hint">{{ etq_driver_hint | safe }}</p>
 </div>
 
 <div class="etq-page">
@@ -375,7 +378,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260602b"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260602c"></script>
 <script>
 (function() {
   function renderBc(id, opts) {

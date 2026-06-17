@@ -6,8 +6,10 @@
 <title>Etiquetas longarina WMS{% if titulo %} — {{ titulo }}{% endif %}</title>
 <style>
   :root {
-    --lw: {{ etq_largura_mm }}mm;
-    --lh: {{ etq_altura_mm }}mm;
+    --lw: {{ etq_largura_in }}in;
+    --lh: {{ etq_altura_in }}in;
+    --lw-mm: {{ etq_largura_mm }}mm;
+    --lh-mm: {{ etq_altura_mm }}mm;
     --ink: #000;
     --paper: #fff;
     --row-top: {{ (etq_zebra.grid_top_pct * etq_altura_mm / 100)|round(1) }}mm;
@@ -16,7 +18,7 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  @page { size: {{ etq_page_size }}; margin: 0; }
+  @page { size: {{ etq_page_size_in }}; size: {{ etq_page_size_mm }}; margin: 0; }
 
   html, body { width: var(--lw); }
   body {
@@ -41,9 +43,10 @@
     border: none; border-radius: 6px; background: #1976d2; color: #fff;
   }
   .toolbar button.sec { background: #555; }
-  .toolbar .zebra-hint {
+  .toolbar .print-setup-hint {
     flex-basis: 100%; font-size: 11px; color: #555; margin: 4px 0 0; line-height: 1.4;
   }
+  @media print { .print-setup-hint { display: none !important; } }
 
   .bloco-faixa { margin-bottom: 16px; }
   .bloco-camara { margin-bottom: 24px; }
@@ -183,28 +186,27 @@
   .etq-zone-bar.destino .arrow { display: none; }
 
   @media print {
-    @page { size: {{ etq_page_size }}; margin: 0; }
+    @page { size: {{ etq_page_size_in }}; size: {{ etq_page_size_mm }}; margin: 0; }
 
     html, body {
-      width: {{ etq_largura_mm }}mm !important;
-      height: auto !important;
+      width: {{ etq_largura_in }}in !important;
       margin: 0 !important;
       padding: 0 !important;
       background: #fff !important;
       overflow: visible !important;
     }
 
-    .toolbar, .faixa-titulo, .camara-titulo { display: none !important; }
+    .toolbar, .faixa-titulo, .camara-titulo, .print-setup-hint { display: none !important; }
 
     .bloco-camara, .bloco-faixa, .faixa {
       margin: 0 !important;
       padding: 0 !important;
-      width: {{ etq_largura_mm }}mm !important;
+      width: {{ etq_largura_in }}in !important;
     }
 
     .etq-page {
-      width: {{ etq_largura_mm }}mm !important;
-      height: {{ etq_altura_mm }}mm !important;
+      width: {{ etq_largura_in }}in !important;
+      height: {{ etq_altura_in }}in !important;
       margin: 0 !important;
       padding: 0 !important;
       overflow: hidden !important;
@@ -241,10 +243,11 @@
   }
 </style>
 </head>
-<body>
+<body data-etq-page="{{ etq_page_size_in }}">
 <div class="toolbar">
   <button type="button" id="btn-wms-etq-imprimir">Imprimir</button>
   <button type="button" class="sec" id="btn-wms-etq-fechar">Fechar</button>
+  <p class="print-setup-hint">{{ etq_driver_hint | safe }}</p>
 </div>
 
 {% macro etiqueta_longarina(e) %}
@@ -323,7 +326,7 @@
 {% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260602b"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260602c"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};

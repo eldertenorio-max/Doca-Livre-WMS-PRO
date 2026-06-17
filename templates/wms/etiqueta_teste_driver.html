@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Teste driver ZD220 60×40</title>
+<style>
+  @page { size: {{ etq_page_size_in }}; size: {{ etq_page_size_mm }}; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, sans-serif;
+    background: #eee;
+    padding: 8px;
+    width: {{ etq_largura_in }}in;
+  }
+  .toolbar { margin-bottom: 8px; }
+  .toolbar button {
+    padding: 8px 14px; font-size: 14px; cursor: pointer;
+    border: none; border-radius: 6px; background: #1976d2; color: #fff;
+  }
+  .toolbar p { font-size: 11px; color: #555; margin-top: 6px; line-height: 1.4; }
+  .etq-teste {
+    width: {{ etq_largura_in }}in;
+    height: {{ etq_altura_in }}in;
+    border: 3px solid #000;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 4px;
+    font-weight: 900;
+    text-align: center;
+  }
+  @media print {
+    .toolbar { display: none !important; }
+    body { padding: 0 !important; background: #fff !important; width: {{ etq_largura_in }}in !important; }
+    .etq-teste {
+      width: {{ etq_largura_in }}in !important;
+      height: {{ etq_altura_in }}in !important;
+      page-break-after: avoid;
+    }
+  }
+</style>
+</head>
+<body data-etq-page="{{ etq_page_size_in }}">
+<div class="toolbar">
+  <button type="button" id="btn-wms-etq-imprimir">Imprimir teste</button>
+  <p>{{ etq_driver_hint | safe }}</p>
+  <p>Se a borda preta encostar nos 4 lados, driver e Chrome estão corretos.</p>
+</div>
+<div class="etq-teste">
+  <div>TESTE</div>
+  <div>{{ etq_largura_mm }}×{{ etq_altura_mm }} mm</div>
+</div>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260602c"></script>
+<script>
+document.getElementById('btn-wms-etq-imprimir').addEventListener('click', function() {
+  wmsEtiquetaImprimir();
+});
+</script>
+</body>
+</html>

@@ -5315,6 +5315,8 @@ function initWmsEnderecamento() {
     });
     var bEtqDemo = document.getElementById('btn-wms-etq-demo');
     if (bEtqDemo) bEtqDemo.addEventListener('click', wmsImprimirEtqDemo);
+    var bEtqTesteDrv = document.getElementById('btn-wms-etq-teste-driver');
+    if (bEtqTesteDrv) bEtqTesteDrv.addEventListener('click', wmsAbrirEtqTesteDriver);
     var bEtqUnico = document.getElementById('btn-wms-etq-unico');
     if (bEtqUnico) bEtqUnico.addEventListener('click', wmsImprimirEtqUnico);
     var etqCodUnico = document.getElementById('wms-etq-codigo-unico');
@@ -5866,6 +5868,10 @@ function wmsImprimirEtqUnico() {
 
 function wmsImprimirEtqDemo() {
     _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/modelo?tipo=endereco');
+}
+
+function wmsAbrirEtqTesteDriver() {
+    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/teste-driver');
 }
 
 window.wmsImprimirEtqPaleteModelo = function() {

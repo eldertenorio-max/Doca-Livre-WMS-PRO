@@ -6533,6 +6533,13 @@ def api_wms_etiqueta():
         return jsonify({'erro': str(e)}), 500
 
 
+@bp.route('/etiqueta/teste-driver', methods=['GET'])
+def api_wms_etiqueta_teste_driver():
+    """Página mínima para calibrar driver ZD220 + Chrome (borda nos 4 lados)."""
+    html = render_template('wms/etiqueta_teste_driver.html', **ctx_etiqueta_zebra())
+    return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+
+
 @bp.route('/etiqueta/modelo', methods=['GET'])
 def api_wms_etiqueta_modelo():
     """Preview dos modelos de etiqueta (sem depender do banco)."""
