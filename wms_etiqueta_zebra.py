@@ -1,19 +1,16 @@
 """
-Configuração ÚNICA — etiqueta Zebra ZD220 60×40 mm (longarina, palete, ZPL, HTML).
+Configuração ÚNICA — etiqueta Zebra ZD220 longarina (Excel ETIQUETA LONGARINA).
 
-Altere somente aqui. Driver Windows deve espelhar estes valores:
-  Largura 60 mm · Altura 40 mm · Rotação 0° (Retrato)
+Driver Windows (stock ETIQUETA LONGARINA):
+  Largura 102 mm · Altura 73 mm · Rotação 0° (Retrato)
   Chrome: margens Nenhuma · escala 100% · Gráficos de fundo LIGADO
-
-No Windows o Chrome ignora @page em mm — use polegadas (page_css_in).
-Luz amarela piscando = tamanho errado no driver ou no diálogo do Chrome.
 """
 
 _MM_IN = 25.4
-_W_MM = 60
-_H_MM = 40
-_W_IN = round(_W_MM / _MM_IN, 2)   # 2.36
-_H_IN = round(_H_MM / _MM_IN, 2)   # 1.57
+_W_MM = 102
+_H_MM = 73
+_W_IN = round(_W_MM / _MM_IN, 2)   # 4.02
+_H_IN = round(_H_MM / _MM_IN, 2)   # 2.87
 
 ETIQUETA_ZEBRA_ZD220 = {
     'modelo': 'ZD220',
@@ -22,6 +19,7 @@ ETIQUETA_ZEBRA_ZD220 = {
     'altura_mm': _H_MM,
     'largura_in': _W_IN,
     'altura_in': _H_IN,
+    'driver_stock': 'ETIQUETA LONGARINA',
     'driver_largura_mm': _W_MM,
     'driver_altura_mm': _H_MM,
     'driver_rotacao': '0° Retrato',
@@ -52,10 +50,10 @@ def ctx_etiqueta_zebra():
         'etq_page_size_in': z['page_css_in'],
         'etq_page_size_mm': z['page_css_mm'],
         'etq_driver_hint': (
-            f"Chrome → papel <strong>{w}×{h} mm</strong> · margens <strong>{z['chrome_margens']}</strong> · "
+            f"Driver <strong>{z.get('driver_stock', 'ETIQUETA LONGARINA')}</strong> "
+            f"<strong>{w}×{h} mm</strong> · margens <strong>{z['chrome_margens']}</strong> · "
             f"escala <strong>{z['chrome_escala']}</strong> · "
-            f"<strong>Gráficos de fundo</strong> {z['chrome_graficos_fundo'].lower()}. "
-            f"Driver {z['modelo']}: <strong>{z['driver_largura_mm']}×{z['driver_altura_mm']} mm</strong> retrato."
+            f"<strong>Gráficos de fundo</strong> {z['chrome_graficos_fundo'].lower()}."
         ),
     }
 
