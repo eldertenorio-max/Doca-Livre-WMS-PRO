@@ -299,7 +299,7 @@
 </head>
 <body>
 <div class="toolbar">
-  <button type="button" onclick="window.print()">Imprimir</button>
+  <button type="button" id="btn-wms-etq-imprimir">Imprimir</button>
 </div>
 
 <div class="etq-page">
@@ -375,6 +375,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260602b"></script>
 <script>
 (function() {
   function renderBc(id, opts) {
@@ -387,11 +388,15 @@
       }, opts || {}));
     } catch (e) { console.warn(e); }
   }
-  renderBc('bc-palete', { width: 1.0, height: 20 });
-  renderBc('bc-endereco', { width: 0.9, height: 14 });
-  {% if auto_print %}
-  window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 400); });
-  {% endif %}
+  function renderTodos() {
+    renderBc('bc-palete', { width: 1.0, height: 20 });
+    renderBc('bc-endereco', { width: 0.9, height: 14 });
+  }
+  renderTodos();
+  window.addEventListener('beforeprint', renderTodos);
+  document.getElementById('btn-wms-etq-imprimir').addEventListener('click', function() {
+    wmsEtiquetaImprimir(renderTodos);
+  });
 })();
 </script>
 </body>

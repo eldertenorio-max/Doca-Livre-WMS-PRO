@@ -1282,7 +1282,7 @@ def _itens_para_etiquetas_nf(doc, sku_filtro=None, n_item_filtro=None):
     return itens_out
 
 
-def _html_etiquetas_produto_nf(doc, auto_print=True, sku_filtro=None, n_item_filtro=None):
+def _html_etiquetas_produto_nf(doc, auto_print=False, sku_filtro=None, n_item_filtro=None):
     itens = _itens_para_etiquetas_nf(doc, sku_filtro=sku_filtro, n_item_filtro=n_item_filtro)
     return render_template(
         'wms/etiquetas_produto_nf.html',
@@ -6433,7 +6433,7 @@ def _texto_destino_etiqueta(sug):
     return linha, bc or None, txt or None, cod_wms or None
 
 
-def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=None, data_producao=None, data_validade=None, destino=None, endereco_barcode=None, endereco_texto=None, codigo_wms=None, up=None, auto_print=True, camara=None, rua=None, coluna=None, nivel=None, zona=None):
+def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=None, data_producao=None, data_validade=None, destino=None, endereco_barcode=None, endereco_texto=None, codigo_wms=None, up=None, auto_print=False, camara=None, rua=None, coluna=None, nivel=None, zona=None):
     return render_template(
         'wms/etiqueta_palete.html',
         etiqueta=etiqueta,
@@ -6501,7 +6501,7 @@ def api_wms_etiqueta():
                     destino, endereco_barcode, endereco_texto, cod_wms_sug = _texto_destino_etiqueta(sug_putaway)
                     if not codigo_wms:
                         codigo_wms = cod_wms_sug
-        auto_print = request.args.get('auto_print', '1') != '0'
+        auto_print = request.args.get('auto_print', '0') == '1'
         conn.close()
         campos_end = _campos_etiqueta_palete_endereco(
             sug=sug_putaway,
@@ -6587,7 +6587,7 @@ def _quer_formato_html_longarina():
     return (request.args.get('formato') or '').strip().lower() == 'html'
 
 
-def _url_html_longarina(codigo=None, todas=False, camara=None, rua=None, posicao=None, auto_print=True):
+def _url_html_longarina(codigo=None, todas=False, camara=None, rua=None, posicao=None, auto_print=False):
     """URL da prévia HTML (impressão Chrome)."""
     ap = '1' if auto_print else '0'
     if codigo:
@@ -6617,7 +6617,7 @@ def _redirect_etiqueta_zebra(**params):
         camara=camara,
         rua=rua,
         posicao=posicao,
-        auto_print=True,
+        auto_print=False,
     ))
 
 
@@ -6706,7 +6706,7 @@ def api_wms_etiqueta_zebra_page():
     if not codigo and not todas and not camara and not rua and not posicao:
         return jsonify({'erro': 'Informe codigo, todas=1, camara, ou coluna (camara+rua+posicao).'}), 400
     return redirect(_url_html_longarina(
-        codigo=codigo, todas=todas, camara=camara, rua=rua, posicao=posicao, auto_print=True,
+        codigo=codigo, todas=todas, camara=camara, rua=rua, posicao=posicao, auto_print=False,
     ))
 @bp.route('/etiqueta/endereco/zpl', methods=['GET'])
 def api_wms_etiqueta_endereco_zpl():
@@ -6830,7 +6830,7 @@ def api_wms_etiqueta_endereco():
     conn = _db()
     ensure_wms_schema(conn)
     try:
-        auto_print = request.args.get('auto_print', '1') == '1'
+        auto_print = request.args.get('auto_print', '0') == '1'
         html, err = _render_etiquetas_endereco(conn, codigo=codigo, auto_print=auto_print)
         conn.close()
         if err:
@@ -6891,7 +6891,7 @@ def api_wms_etiqueta_enderecos():
     if not todas and not camara and not rua and not posicao:
         return jsonify({'erro': 'Informe todas=1, camara, ou coluna (camara+rua+posicao).'}), 400
     try:
-        auto_print = request.args.get('auto_print', '1') == '1'
+        auto_print = request.args.get('auto_print', '0') == '1'
         html, err = _render_etiquetas_endereco(
             conn,
             camara=camara,
@@ -6919,7 +6919,7 @@ def api_wms_etiqueta_nf_itens():
     numero_nf = (request.args.get('numero_nf') or request.args.get('nf') or '').strip()
     sku = (request.args.get('sku') or '').strip() or None
     n_item = request.args.get('n_item')
-    auto_print = request.args.get('auto_print', '1') != '0'
+    auto_print = request.args.get('auto_print', '0') == '1'
     if not documento_id and not numero_nf:
         return jsonify({'erro': 'Informe documento_id ou numero_nf.'}), 400
     conn = _db()

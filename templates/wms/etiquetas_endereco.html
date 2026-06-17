@@ -243,8 +243,8 @@
 </head>
 <body>
 <div class="toolbar">
-  <button type="button" onclick="window.print()">Imprimir</button>
-  <button type="button" class="sec" onclick="window.close()">Fechar</button>
+  <button type="button" id="btn-wms-etq-imprimir">Imprimir</button>
+  <button type="button" class="sec" id="btn-wms-etq-fechar">Fechar</button>
 </div>
 
 {% macro etiqueta_longarina(e) %}
@@ -323,6 +323,7 @@
 {% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260602b"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
@@ -381,11 +382,12 @@
     });
   });
 
-  {% if auto_print %}
-  window.addEventListener('load', function() {
-    setTimeout(function() { renderTodos(); window.print(); }, 500);
+  document.getElementById('btn-wms-etq-imprimir').addEventListener('click', function() {
+    wmsEtiquetaImprimir(renderTodos);
   });
-  {% endif %}
+  document.getElementById('btn-wms-etq-fechar').addEventListener('click', function() {
+    window.close();
+  });
 })();
 </script>
 </body>

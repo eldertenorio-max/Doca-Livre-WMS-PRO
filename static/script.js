@@ -5554,11 +5554,7 @@ async function loadWmsLocalizacoes() {
     }
 }
 
-function _wmsAbrirEtiquetaUrl(url, opts) {
-    opts = opts || {};
-    if (opts.autoPrint !== false && url.indexOf('auto_print=') < 0) {
-        url += (url.indexOf('?') >= 0 ? '&' : '?') + 'auto_print=1';
-    }
+function _wmsAbrirEtiquetaUrl(url) {
     var w = window.open(url, '_blank');
     if (!w) showMessage('Pop-up bloqueado — libere pop-ups para imprimir etiquetas.', 'error');
 }
@@ -5869,11 +5865,11 @@ function wmsImprimirEtqUnico() {
 }
 
 function wmsImprimirEtqDemo() {
-    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/modelo?tipo=endereco', { autoPrint: false });
+    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/modelo?tipo=endereco');
 }
 
 window.wmsImprimirEtqPaleteModelo = function() {
-    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/modelo?tipo=palete', { autoPrint: false });
+    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/modelo?tipo=palete');
 };
 
 async function loadWmsProdutos() {
@@ -6080,7 +6076,7 @@ function wmsImprimirEtiquetasNfTodos() {
         showMessage('Busque a NF primeiro.', 'warning');
         return;
     }
-    var url = '/api/wms/etiqueta/nf-itens?auto_print=1';
+    var url = '/api/wms/etiqueta/nf-itens?';
     if (docId) url += '&documento_id=' + encodeURIComponent(docId);
     else url += '&numero_nf=' + encodeURIComponent(String(nf).trim());
     _wmsAbrirEtiquetaUrl(url);
@@ -6089,7 +6085,7 @@ function wmsImprimirEtiquetasNfTodos() {
 window.wmsImprimirEtiquetaNfItem = function(nItem, sku) {
     var docId = (document.getElementById('wms-rec-terceiros-doc-id') || {}).value || '';
     if (!docId) { showMessage('Busque a NF primeiro.', 'warning'); return; }
-    var url = '/api/wms/etiqueta/nf-itens?documento_id=' + encodeURIComponent(docId) + '&auto_print=1';
+    var url = '/api/wms/etiqueta/nf-itens?documento_id=' + encodeURIComponent(docId);
     if (nItem) url += '&n_item=' + encodeURIComponent(nItem);
     else if (sku) url += '&sku=' + encodeURIComponent(sku);
     _wmsAbrirEtiquetaUrl(url);
