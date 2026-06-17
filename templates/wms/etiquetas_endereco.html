@@ -93,6 +93,9 @@
     height: 100%;
     padding: 3% 1.5% 2%;
   }
+  .loc-col:not(:last-child) {
+    border-right: 0.4mm solid var(--ink);
+  }
   .loc-lbl {
     font-size: 7.5cqh;
     font-weight: 700;
@@ -243,6 +246,7 @@
 
     .arrow.up { border-bottom-color: #000 !important; }
     .arrow.down { border-top-color: #000 !important; }
+    .loc-col:not(:last-child) { border-right: 0.4mm solid #000 !important; }
   }
 </style>
 </head>
@@ -333,7 +337,7 @@
 {% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603html4"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603html5"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
