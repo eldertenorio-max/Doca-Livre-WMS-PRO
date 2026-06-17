@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Imprimir Zebra — {{ titulo or 'Longarina' }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #f5f5f5;
+    color: #222;
+    padding: 20px;
+    line-height: 1.5;
+  }
+  .card {
+    max-width: 560px;
+    margin: 0 auto;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    padding: 22px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  }
+  h1 { font-size: 20px; margin-bottom: 6px; color: #1565c0; }
+  .sub { color: #555; font-size: 13px; margin-bottom: 18px; }
+  .steps {
+    background: #e8f5e9;
+    border: 1px solid #81c784;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .steps ol { margin: 8px 0 0 18px; }
+  .steps li { margin-bottom: 6px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+  button, .btn {
+    padding: 12px 18px;
+    font-size: 15px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .btn-main { background: #2e7d32; color: #fff; font-weight: 700; }
+  .btn-sec { background: #546e7a; color: #fff; }
+  .btn-link { background: #eee; color: #333; border: 1px solid #ccc; }
+  .warn {
+    background: #fff3e0;
+    border: 1px solid #ffb74d;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 13px;
+    margin-top: 14px;
+  }
+  .status { margin-top: 12px; font-size: 13px; color: #1565c0; min-height: 20px; }
+  code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Impressão Zebra ZD220 (ZPL)</h1>
+  <p class="sub"><strong>{{ total }}</strong> etiqueta(s) · 60×40 mm · {{ titulo or 'Longarina' }}</p>
+
+  <div class="steps">
+    <strong>Recomendado — não usa Chrome (evita etiqueta pequena/errada):</strong>
+    <ol>
+      <li>Clique em <strong>Baixar arquivo Zebra</strong> abaixo</li>
+      <li>Baixe também <a href="/static/zebra/enviar_prn_zebra.bat" download>enviar_prn_zebra.bat</a> (uma vez)</li>
+      <li><strong>Arraste</strong> o arquivo <code>.txt</code> em cima do <code>.bat</code></li>
+    </ol>
+  </div>
+
+  <div class="btns">
+    <button type="button" class="btn-main" id="btn-baixar">Baixar arquivo Zebra (.txt)</button>
+    <button type="button" class="btn-sec" id="btn-copiar">Copiar ZPL</button>
+    {% if html_url %}
+    <a class="btn btn-link" href="{{ html_url }}" target="_blank" rel="noopener">Prévia HTML</a>
+    {% endif %}
+    <button type="button" class="btn-link" onclick="window.close()">Fechar</button>
+  </div>
+
+  <p class="status" id="status"></p>
+
+  <div class="warn">
+    <strong>Por que não HTML?</strong> O Chrome + driver Zebra quase sempre distorce tamanho e margem.
+    O arquivo <code>.txt</code> manda comandos <strong>direto</strong> para a impressora (60×40 mm fixo).
+    No driver: pode deixar o tamanho que estiver — o ZPL define a etiqueta.
+  </div>
+</div>
+<script>
+(function() {
+  var zplUrl = {{ zpl_api_url|tojson }};
+  var nomeArquivo = {{ nome_arquivo|tojson }};
+  var statusEl = document.getElementById('status');
+
+  function setStatus(msg, ok) {
+    statusEl.textContent = msg || '';
+    statusEl.style.color = ok ? '#2e7d32' : '#1565c0';
+  }
+
+  async function carregarZpl() {
+    var resp = await fetch(zplUrl, { credentials: 'same-origin' });
+    if (!resp.ok) {
+      var err = {};
+      try { err = await resp.json(); } catch (e) {}
+      throw new Error((err && err.erro) || ('Erro ' + resp.status));
+    }
+    return resp.text();
+  }
+
+  async function baixar() {
+    try {
+      setStatus('Gerando arquivo…');
+      var zpl = await carregarZpl();
+      var blob = new Blob([zpl], { type: 'text/plain;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = nomeArquivo || 'longarinas.txt';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function() {
+        URL.revokeObjectURL(a.href);
+        a.remove();
+      }, 300);
+      setStatus('Arquivo baixado. Arraste sobre enviar_prn_zebra.bat', true);
+    } catch (e) {
+      setStatus((e && e.message) || 'Erro ao baixar', false);
+    }
+  }
+
+  async function copiar() {
+    try {
+      setStatus('Carregando…');
+      var zpl = await carregarZpl();
+      await navigator.clipboard.writeText(zpl);
+      setStatus('ZPL copiado — cole no utilitário Zebra se preferir.', true);
+    } catch (e) {
+      setStatus((e && e.message) || 'Erro ao copiar', false);
+    }
+  }
+
+  document.getElementById('btn-baixar').addEventListener('click', baixar);
+  document.getElementById('btn-copiar').addEventListener('click', copiar);
+
+  {% if auto_download %}
+  window.addEventListener('load', function() { setTimeout(baixar, 400); });
+  {% endif %}
+})();
+</script>
+</body>
+</html>

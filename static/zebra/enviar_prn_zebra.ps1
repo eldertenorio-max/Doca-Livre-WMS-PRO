@@ -1,8 +1,4 @@
-# Envia arquivo .prn (ZPL) para impressora Zebra no Windows — sem Zebra Setup Utilities.
-# Uso: clique direito → Executar com PowerShell
-#   .\enviar_prn_zebra.ps1 -Arquivo "C:\Downloads\longarina_11-A-01-1.prn"
-# Ou arraste o .prn sobre enviar_prn_zebra.bat
-
+# Envia ZPL (.txt / .prn) para impressora Zebra — metodo RAW (ignora driver Chrome).
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$Arquivo
@@ -16,60 +12,84 @@ if (-not (Test-Path -LiteralPath $Arquivo)) {
 }
 
 $caminho = (Resolve-Path -LiteralPath $Arquivo).Path
+$bytes = [System.IO.File]::ReadAllBytes($caminho)
+
+Add-Type @"
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+public class ZebraRawPrint {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct DOCINFOA {
+        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+    }
+    [DllImport("winspool.drv", EntryPoint="OpenPrinterA", SetLastError=true, CharSet=CharSet.Ansi)]
+    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
+    [DllImport("winspool.drv", SetLastError=true)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint="StartDocPrinterA", SetLastError=true, CharSet=CharSet.Ansi)]
+    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, ref DOCINFOA di);
+    [DllImport("winspool.drv", SetLastError=true)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", SetLastError=true)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", SetLastError=true)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", SetLastError=true)]
+    public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+    public static bool Send(string printerName, byte[] data) {
+        IntPtr h = IntPtr.Zero;
+        if (!OpenPrinter(printerName, out h, IntPtr.Zero)) return false;
+        try {
+            var di = new DOCINFOA();
+            di.pDocName = "WMS ZPL";
+            di.pDataType = "RAW";
+            if (!StartDocPrinter(h, 1, ref di)) return false;
+            try {
+                if (!StartPagePrinter(h)) return false;
+                IntPtr buf = Marshal.AllocCoTaskMem(data.Length);
+                try {
+                    Marshal.Copy(data, 0, buf, data.Length);
+                    int written;
+                    if (!WritePrinter(h, buf, data.Length, out written)) return false;
+                } finally { Marshal.FreeCoTaskMem(buf); }
+                EndPagePrinter(h);
+            } finally { EndDocPrinter(h); }
+        } finally { ClosePrinter(h); }
+        return true;
+    }
+}
+"@
+
 $printers = @(Get-Printer -ErrorAction SilentlyContinue | Where-Object {
     $_.Name -match 'ZDesigner|ZD220|ZD230|Zebra'
 })
 
 if ($printers.Count -eq 0) {
-    Write-Host ""
-    Write-Host "Nenhuma impressora Zebra/ZDesigner encontrada no Windows." -ForegroundColor Yellow
-    Write-Host "Instale o driver da ZD220: https://www.zebra.com/ap/en/support-downloads/printers/desktop/ZD200d.html"
-    Write-Host "Ou o Zebra Setup Utilities: https://www.zebra.com/setup"
-    Write-Host ""
-    Write-Host "Impressoras instaladas:"
-    Get-Printer -ErrorAction SilentlyContinue | Format-Table Name, PortName, DriverName -AutoSize
+    Write-Host "Nenhuma impressora Zebra encontrada. Instale o driver ZDesigner ZD220." -ForegroundColor Yellow
+    Get-Printer -ErrorAction SilentlyContinue | Format-Table Name, PortName -AutoSize
     exit 1
 }
 
-$printer = $null
-if ($printers.Count -eq 1) {
-    $printer = $printers[0]
-} else {
-    Write-Host ""
-    Write-Host "Varias impressoras Zebra encontradas:"
+$printer = if ($printers.Count -eq 1) { $printers[0] } else {
+    Write-Host "Impressoras Zebra:"
     for ($i = 0; $i -lt $printers.Count; $i++) {
-        $p = $printers[$i]
-        Write-Host "  [$i] $($p.Name)  (porta: $($p.PortName))"
+        Write-Host "  [$i] $($printers[$i].Name)"
     }
-    $sel = Read-Host "Digite o numero da impressora"
-    $idx = [int]$sel
-    if ($idx -lt 0 -or $idx -ge $printers.Count) {
-        Write-Host "ERRO: numero invalido." -ForegroundColor Red
+    $idx = [int](Read-Host "Numero")
+    $printers[$idx]
+}
+
+Write-Host "Enviando $caminho para $($printer.Name) (RAW)..."
+$ok = [ZebraRawPrint]::Send($printer.Name, $bytes)
+if (-not $ok) {
+    Write-Host "Falha RAW. Tentando copy /b na porta $($printer.PortName)..."
+    $null = cmd /c "copy /b `"$caminho`" $($printer.PortName)"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERRO ao imprimir." -ForegroundColor Red
         exit 1
     }
-    $printer = $printers[$idx]
 }
-
-$port = $printer.PortName
-if (-not $port) {
-    Write-Host "ERRO: porta da impressora nao encontrada." -ForegroundColor Red
-    exit 1
-}
-
-Write-Host ""
-Write-Host "Arquivo : $caminho"
-Write-Host "Impressora: $($printer.Name)"
-Write-Host "Porta   : $port"
-Write-Host "Enviando..."
-Write-Host ""
-
-# Metodo classico Zebra Windows: copia binaria direto para a porta USB/COM
-$null = cmd /c "copy /b `"$caminho`" $port"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERRO ao enviar para $port" -ForegroundColor Red
-    Write-Host "Tente instalar Zebra Setup Utilities: https://www.zebra.com/setup"
-    exit 1
-}
-
-Write-Host "OK — comandos enviados para a impressora." -ForegroundColor Green
-Write-Host ""
+Write-Host "OK — etiqueta(s) enviada(s)." -ForegroundColor Green

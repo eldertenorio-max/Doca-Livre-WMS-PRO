@@ -12,6 +12,7 @@ import secrets
 import string
 from collections import Counter
 from datetime import date, datetime, timezone
+from urllib.parse import quote
 
 from flask import Blueprint, jsonify, make_response, render_template, request, session
 
@@ -6515,14 +6516,98 @@ def api_wms_etiqueta_modelo():
 
 def _resposta_zpl_longarina(zpl, nome_arquivo='longarinas', ext='prn'):
     safe = re.sub(r'[^\w\-.]+', '_', str(nome_arquivo or 'longarinas'))[:80]
-    ext = 'txt' if str(ext or '').lower() == 'txt' else 'prn'
+    ext = str(ext or 'prn').lower()
+    if ext not in ('txt', 'prn'):
+        ext = 'prn'
     ctype = 'text/plain; charset=utf-8' if ext == 'txt' else 'application/octet-stream'
+    if not safe.lower().endswith(f'.{ext}'):
+        safe = f'{safe}.{ext}'
     return make_response(zpl, 200, {
         'Content-Type': ctype,
-        'Content-Disposition': f'attachment; filename="{safe}.{ext}"',
+        'Content-Disposition': f'attachment; filename="{safe}"',
     })
 
 
+def _pagina_zebra_longarina(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False, auto_download=False):
+    """Página auxiliar: download ZPL + script Windows (alternativa ao HTML/Chrome)."""
+    etiquetas, err = _list_etiquetas_endereco(
+        conn, camara=camara, rua=rua, posicao=posicao, codigo=codigo, todas=todas,
+    )
+    if err:
+        return None, err
+    total = len(etiquetas)
+    if codigo:
+        titulo = codigo
+        nome_arquivo = f'longarina_{codigo}.txt'
+        zpl_api_url = f'/api/wms/etiqueta/endereco/zpl?codigo={quote(codigo)}&ext=txt'
+        html_url = f'/api/wms/etiqueta/endereco?codigo={quote(codigo)}'
+    elif todas:
+        titulo = 'Armazém completo'
+        nome_arquivo = 'longarinas_armazem.txt'
+        zpl_api_url = '/api/wms/etiqueta/enderecos/zpl?todas=1&ext=txt'
+        html_url = '/api/wms/etiqueta/enderecos?todas=1'
+    elif camara and rua and posicao:
+        titulo = f'Câm {camara} · {rua} · col {posicao}'
+        nome_arquivo = f'longarinas_{camara}_{rua}_{posicao}.txt'
+        zpl_api_url = (
+            f'/api/wms/etiqueta/enderecos/zpl?camara={camara}&rua={quote(rua)}&posicao={posicao}&ext=txt'
+        )
+        html_url = f'/api/wms/etiqueta/enderecos?camara={camara}&rua={quote(rua)}&posicao={posicao}'
+    elif camara:
+        titulo = f'Câmara {camara}'
+        nome_arquivo = f'longarinas_camara_{camara}.txt'
+        zpl_api_url = f'/api/wms/etiqueta/enderecos/zpl?camara={camara}&ext=txt'
+        html_url = f'/api/wms/etiqueta/enderecos?camara={camara}'
+    else:
+        titulo = 'Lote'
+        nome_arquivo = 'longarinas_lote.txt'
+        zpl_api_url = '/api/wms/etiqueta/enderecos/zpl?ext=txt'
+        html_url = None
+    html = render_template(
+        'wms/etiqueta_longarina_zebra.html',
+        total=total,
+        titulo=titulo,
+        zpl_api_url=zpl_api_url,
+        nome_arquivo=nome_arquivo,
+        html_url=html_url,
+        auto_download=auto_download,
+    )
+    return html, None
+
+
+@bp.route('/etiqueta/zebra', methods=['GET'])
+def api_wms_etiqueta_zebra_page():
+    """Assistente ZPL — impressão direta Zebra (sem Chrome)."""
+    conn = _db()
+    ensure_wms_schema(conn)
+    codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip() or None
+    todas = (request.args.get('todas') or '').strip().lower() in ('1', 'true', 'sim', 'all')
+    camara = request.args.get('camara', type=int)
+    rua = (request.args.get('rua') or '').strip() or None
+    posicao = request.args.get('posicao', type=int)
+    auto_download = (request.args.get('auto') or '1') != '0'
+    if not codigo and not todas and not camara and not rua and not posicao:
+        return jsonify({'erro': 'Informe codigo, todas=1, camara, ou coluna (camara+rua+posicao).'}), 400
+    try:
+        html, err = _pagina_zebra_longarina(
+            conn,
+            camara=camara,
+            rua=rua,
+            posicao=posicao,
+            codigo=codigo,
+            todas=todas,
+            auto_download=auto_download,
+        )
+        conn.close()
+        if err:
+            return jsonify({'erro': err}), 404
+        return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
 @bp.route('/etiqueta/endereco/zpl', methods=['GET'])
 def api_wms_etiqueta_endereco_zpl():
     """Download ZPL nativo (Zebra ZD220) — uma etiqueta."""

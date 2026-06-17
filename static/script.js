@@ -5544,7 +5544,7 @@ async function loadWmsLocalizacoes() {
             var cod = escHtml(r.codigo_endereco || '');
             var bcLong = escHtml(r.barcode_longarina || '');
             var codJs = String(r.codigo_endereco || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            return '<tr><td>' + cod + '</td><td><strong>' + bcLong + '</strong></td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(catCol) + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Longarina</button></td></tr>';
+            return '<tr><td>' + cod + '</td><td><strong>' + bcLong + '</strong></td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(catCol) + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Zebra</button></td></tr>';
         }).join('') : '<tr><td colspan="10">Nenhuma localização. Clique em Atualizar ou use o painel para recalcular o layout.</td></tr>';
     } catch (e) {
         if (tb) {
@@ -5559,9 +5559,14 @@ function _wmsAbrirEtiquetaUrl(url) {
     if (!w) showMessage('Pop-up bloqueado — libere pop-ups para imprimir etiquetas.', 'error');
 }
 
+function _wmsAbrirEtqZebraUrl(url) {
+    var w = window.open(url, '_blank');
+    if (!w) showMessage('Pop-up bloqueado — libere pop-ups para imprimir na Zebra.', 'error');
+}
+
 window.wmsImprimirEtqEndereco = function(codigo) {
     if (!codigo) return;
-    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/endereco?codigo=' + encodeURIComponent(codigo));
+    _wmsAbrirEtqZebraUrl('/api/wms/etiqueta/zebra?codigo=' + encodeURIComponent(codigo));
 };
 
 function wmsImprimirEtqColuna() {
@@ -5570,9 +5575,9 @@ function wmsImprimirEtqColuna() {
     var pos = (document.getElementById('wms-etq-pos') || {}).value || '';
     if (!cam) { showMessage('Selecione a câmara (Rua).', 'error'); return; }
     if (!rua || !pos) { showMessage('Selecione a rua interna e o prédio (coluna).', 'error'); return; }
-    var url = '/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam) +
+    var url = '/api/wms/etiqueta/zebra?camara=' + encodeURIComponent(cam) +
         '&rua=' + encodeURIComponent(rua) + '&posicao=' + encodeURIComponent(pos);
-    _wmsAbrirEtiquetaUrl(url);
+    _wmsAbrirEtqZebraUrl(url);
 };
 
 window._wmsEtqOpcoes = null;
@@ -5784,7 +5789,7 @@ function wmsImprimirEtqCamara() {
     var cam = (document.getElementById('wms-etq-camara') || {}).value || '';
     if (!cam) { showMessage('Selecione a câmara.', 'error'); return; }
     if (!confirm('Imprimir todas as longarinas da câmara ' + cam + '?')) return;
-    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam));
+    _wmsAbrirEtqZebraUrl('/api/wms/etiqueta/zebra?camara=' + encodeURIComponent(cam));
 }
 
 async function loadWmsEtqLongarinaResumo(opcoes) {
@@ -5855,7 +5860,7 @@ function wmsImprimirEtqTodasLongarinas() {
         msg += '? O arquivo pode ser grande.';
     }
     if (!confirm(msg)) return;
-    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?todas=1');
+    _wmsAbrirEtqZebraUrl('/api/wms/etiqueta/zebra?todas=1');
 }
 
 function wmsImprimirEtqUnico() {
