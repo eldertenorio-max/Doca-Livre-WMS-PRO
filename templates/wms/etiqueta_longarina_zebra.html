@@ -77,13 +77,14 @@
   <div class="btns">
     <button type="button" class="btn-main" id="btn-imprimir">Imprimir na Zebra</button>
     <button type="button" class="btn-sec" id="btn-teste">Teste 60×40</button>
+    <button type="button" class="btn-sec" id="btn-teste-swap">Teste 40×60</button>
     <button type="button" class="btn-link" onclick="window.close()">Fechar</button>
   </div>
 
   <p class="status" id="status"></p>
 
   <div class="warn">
-    Impressão via <strong>ZPL + Browser Print</strong> — etiqueta inteira 60×40 mm. Não use o botão Imprimir do Chrome.
+    ZPL em <strong>milímetros</strong> (60×40). Se a borda ainda sair pequena, no driver ZD220: Preferências → <strong>60×40 mm</strong> e teste também <strong>Teste 40×60</strong> (rótulo girado na impressora).
   </div>
 </div>
 <script src="/static/zebra/imprimir-zpl.js?v=20260602bp"></script>
@@ -132,6 +133,7 @@
 
   document.getElementById('btn-imprimir').addEventListener('click', function() { imprimir(); });
   document.getElementById('btn-teste').addEventListener('click', function() { imprimir(testeUrl); });
+  document.getElementById('btn-teste-swap').addEventListener('click', function() { imprimir(testeUrl + '?swap=1'); });
 
   {% if auto_download %}
   window.addEventListener('load', function() { setTimeout(function() { imprimir(); }, 500); });

@@ -6219,14 +6219,33 @@ def _zpl_escape(texto):
             .replace('~', '\\~'))
 
 
+def _zpl_cabecalho_mm(largura_mm=60, altura_mm=40):
+    """Cabeçalho ZPL em milímetros (ZD220 203 dpi = 8 dots/mm)."""
+    return [
+        '^XA',
+        '^MMT',
+        '^MNY',
+        '^MUm,8,8',
+        f'^PW{largura_mm}',
+        f'^LL{altura_mm}',
+        '^LH0,0',
+        '^LS0',
+        '^LT0',
+        '^CI28',
+    ]
+
+
+def _zpl_calibrar_media():
+    """Calibra gap/sensor antes do lote (uma etiqueta em branco pode sair)."""
+    return '^XA^JMA^XZ'
+
+
 def _zpl_etiqueta_longarina(e, dpi=203):
-    """ZPL 60×40 mm — layout ocupa 100% da etiqueta (ZD220, 203 dpi, sem Chrome)."""
-    dpmm = dpi / 25.4
-    w = int(round(60 * dpmm))   # 472
-    h = int(round(40 * dpmm))   # 315
-    y2 = int(round(h * 0.34))   # faixa superior
-    y3 = y2 + int(round(h * 0.42))  # início rodapé
-    col_w = w // 4
+    """ZPL 60×40 mm em milímetros — preenche a etiqueta inteira na ZD220."""
+    w, h = 60, 40
+    y2 = 13.6   # 34 %
+    y3 = 30.4   # 34 + 42 %
+    col_w = 15.0
 
     cam = _zpl_escape(e.get('camara') or e.get('rua_num') or '')
     rua = _zpl_escape(e.get('rua_letra') or '-')
@@ -6235,18 +6254,11 @@ def _zpl_etiqueta_longarina(e, dpi=203):
     bc = _zpl_escape(e.get('barcode') or '')
     cod = _zpl_escape(e.get('codigo_wms') or e.get('codigo') or bc)
 
-    partes = [
-        '^XA',
-        '^MMT',
-        f'^PW{w}',
-        f'^LL{h}',
-        '^LH0,0',
-        '^LS0',
-        '^LT0',
-        '^CI28',
-        f'^FO0,0^GB{w},{h},5^FS',
-        f'^FO0,{y2}^GB{w},3,3^FS',
-        f'^FO0,{y3}^GB{w},3,3^FS',
+    partes = _zpl_cabecalho_mm(w, h)
+    partes += [
+        f'^FO0,0^GB{w},{h},0.7^FS',
+        f'^FO0,{y2}^GB{w},0.35,0.35^FS',
+        f'^FO0,{y3}^GB{w},0.35,0.35^FS',
     ]
     cols = [
         ('CAMARA', cam),
@@ -6257,49 +6269,50 @@ def _zpl_etiqueta_longarina(e, dpi=203):
     for i, (lbl, val) in enumerate(cols):
         x = i * col_w
         val_len = len(str(val or ''))
-        fs_val = 44 if val_len > 2 else 58
+        fs_val = 6.5 if val_len > 2 else 8.5
         if lbl == 'RUA' and val_len == 1:
-            fs_val = 54
-        partes.append(f'^FO{x},6^FB{col_w},1,0,C^A0N,15,15^FD{lbl}^FS')
-        partes.append(f'^FO{x},28^FB{col_w},1,0,C^A0N,{fs_val},{fs_val}^FD{val}^FS')
+            fs_val = 7.5
+        partes.append(f'^FO{x},1.2^FB{col_w},1,0,C^A0N,2.2,2.2^FD{lbl}^FS')
+        partes.append(f'^FO{x},4.5^FB{col_w},1,0,C^A0N,{fs_val},{fs_val}^FD{val}^FS')
         if i < 3:
-            partes.append(f'^FO{x + col_w},0^GB3,{y2},3^FS')
+            partes.append(f'^FO{x + col_w},0^GB0.35,{y2},0.35^FS')
 
-    bc_h = max(72, min(108, y3 - y2 - 44))
-    bc_y = y2 + 4
-    bc_x = max(28, (w - int(len(bc or '') * 14 + 80)) // 2)
-    partes.append(f'^FO{bc_x},{bc_y}^BY2,3,{bc_h}^BCN,{bc_h},N,N,N^FD{bc}^FS')
-    cod_y = y2 + bc_h + 10
-    if cod_y < y3 - 6:
-        partes.append(f'^FO0,{cod_y}^FB{w},1,0,C^A0N,22,22^FD{cod}^FS')
+    bc_h = 11.0
+    bc_y = y2 + 1.0
+    bc_x = 8.0
+    partes.append(f'^FO{bc_x},{bc_y}^BY1.5,2,{bc_h}^BCN,{bc_h},N,N,N^FD{bc}^FS')
+    cod_y = y2 + bc_h + 1.8
+    if cod_y < y3 - 1.5:
+        partes.append(f'^FO0,{cod_y}^FB{w},1,0,C^A0N,3.2,3.2^FD{cod}^FS')
 
-    foot_y = y3 + max(10, (h - y3 - 28) // 2)
+    foot_y = y3 + 2.8
     if e.get('destino_fixo'):
         zona = _zpl_escape(e.get('destino_label') or e.get('zona') or '')
-        partes.append(f'^FO0,{foot_y}^FB{w},1,0,C^A0N,26,26^FD{zona}^FS')
+        partes.append(f'^FO0,{foot_y}^FB{w},1,0,C^A0N,3.8,3.8^FD{zona}^FS')
     elif e.get('picking'):
-        partes.append(f'^FO18,{foot_y}^A0N,34,34^FDPICKING^FS')
-        partes.append(f'^FO{w - 44},{foot_y - 2}^A0N,38,38^FDv^FS')
+        partes.append(f'^FO2,{foot_y}^A0N,4.5,4.5^FDPICKING^FS')
+        partes.append(f'^FO{w - 6},{foot_y - 0.5}^A0N,5,5^FDv^FS')
     else:
-        partes.append(f'^FO18,{foot_y}^A0N,34,34^FDPULMAO^FS')
-        partes.append(f'^FO{w - 44},{foot_y - 2}^A0N,38,38^FD\\^FS')
+        partes.append(f'^FO2,{foot_y}^A0N,4.5,4.5^FDPULMAO^FS')
+        partes.append(f'^FO{w - 6},{foot_y - 0.5}^A0N,5,5^FD\\^FS')
 
     partes.append('^XZ')
     return '\n'.join(partes)
 
 
-def _zpl_etiqueta_teste_calibracao(dpi=203):
-    """Etiqueta teste: borda preenche 60×40 mm — use para validar ZPL na ZD220."""
-    dpmm = dpi / 25.4
-    w = int(round(60 * dpmm))
-    h = int(round(40 * dpmm))
-    return '\n'.join([
-        '^XA', '^MMT', f'^PW{w}', f'^LL{h}', '^LH0,0', '^LS0', '^LT0', '^CI28',
-        f'^FO0,0^GB{w},{h},6^FS',
-        f'^FO0,{int(h * 0.32)}^FB{w},1,0,C^A0N,36,36^FDTESTE 60x40 mm^FS',
-        f'^FO0,{int(h * 0.52)}^FB{w},1,0,C^A0N,22,22^FDA borda deve encostar na etiqueta^FS',
+def _zpl_etiqueta_teste_calibracao(swap=False):
+    """Etiqueta teste — borda deve encostar nos 4 lados (60×40 mm ou 40×60 se swap)."""
+    w, h = (40, 60) if swap else (60, 40)
+    rot = ' (40x60)' if swap else ''
+    partes = _zpl_cabecalho_mm(w, h)
+    partes += [
+        f'^FO0,0^GB{w},{h},0.9^FS',
+        f'^FO0.5,0.5^GB{w - 1},{h - 1},0.25^FS',
+        f'^FO0,{h * 0.38}^FB{w},1,0,C^A0N,5,5^FDTESTE{rot}^FS',
+        f'^FO0,{h * 0.52}^FB{w},1,0,C^A0N,3,3^FDBorda = etiqueta^FS',
         '^XZ',
-    ])
+    ]
+    return '\n'.join(partes)
 
 
 def _list_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False):
@@ -6319,7 +6332,8 @@ def _render_etiquetas_endereco_zpl(conn, camara=None, rua=None, posicao=None, co
     )
     if err:
         return None, err
-    zpl = '\n'.join(_zpl_etiqueta_longarina(e) for e in etiquetas)
+    labels = [_zpl_etiqueta_longarina(e) for e in etiquetas]
+    zpl = _zpl_calibrar_media() + '\n' + '\n'.join(labels)
     return zpl, None
 
 
@@ -6637,8 +6651,14 @@ def _pagina_zebra_longarina(conn, camara=None, rua=None, posicao=None, codigo=No
 
 @bp.route('/etiqueta/zebra/teste/zpl', methods=['GET'])
 def api_wms_etiqueta_zebra_teste_zpl():
-    """Uma etiqueta teste 60×40 — borda deve encostar nos 4 lados."""
-    return _resposta_zpl_longarina(_zpl_etiqueta_teste_calibracao(), 'teste_60x40', ext=request.args.get('ext') or 'txt')
+    """Etiqueta teste — borda deve encostar nos 4 lados. ?swap=1 testa 40×60 (rótulo na impressora)."""
+    swap = (request.args.get('swap') or '').strip().lower() in ('1', 'true', 'sim')
+    nome = 'teste_40x60' if swap else 'teste_60x40'
+    zpl = _zpl_calibrar_media() + '\n' + _zpl_etiqueta_teste_calibracao(swap=swap)
+    ext = request.args.get('ext')
+    if ext:
+        return _resposta_zpl_longarina(zpl, nome, ext=ext)
+    return make_response(zpl, 200, {'Content-Type': 'text/plain; charset=utf-8'})
 
 
 @bp.route('/etiqueta/zebra', methods=['GET'])
