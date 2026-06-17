@@ -35,6 +35,10 @@ ETIQUETA_ZEBRA_ZD220 = {
     'grid_top_pct': 34,
     'grid_mid_pct': 42,
     'grid_bot_pct': 24,
+    # ZPL: 203 dpi ≈ 8 dots/mm; ^A/^BC sempre em dots; ^FO/^GB em mm com ^MUm
+    'zpl_dots_per_mm': 8,
+    # ^A0N na Zebra costuma sair ~15% maior que o mm nominal — ajuste fino aqui
+    'zpl_font_scale': 0.82,
 }
 
 
@@ -91,12 +95,19 @@ def zpl_dots(mm):
 
 
 def zpl_font_mm(altura_mm, largura_mm=None):
-    """Par altura/largura de fonte ^A0N em dots."""
-    h = zpl_dots(altura_mm)
+    """Par altura/largura de fonte ^A0N em dots (^A ignora ^MUm)."""
+    z = ETIQUETA_ZEBRA_ZD220
+    scale = z.get('zpl_font_scale', 1.0)
+    h = zpl_dots(altura_mm * scale)
     if largura_mm is None:
         largura_mm = altura_mm * 0.9
-    w = zpl_dots(largura_mm)
-    return h, w
+    w = zpl_dots(largura_mm * scale)
+    return max(8, h), max(8, w)
+
+
+def zpl_barcode_dots(altura_mm):
+    """Altura de código de barras ^BC em dots."""
+    return max(16, zpl_dots(altura_mm * ETIQUETA_ZEBRA_ZD220.get('zpl_font_scale', 1.0)))
 
 
 def zpl_longarina_grid_dots():
