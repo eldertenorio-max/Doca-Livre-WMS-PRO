@@ -108,13 +108,14 @@
     display: flex;
     flex-direction: row;
     align-items: center;
+    justify-content: center;
     padding: 2% 3%;
-    gap: 3%;
     min-width: 0;
     overflow: hidden;
   }
   .dest-wms {
-    flex-shrink: 0;
+    width: 100%;
+    text-align: center;
     font-size: 8.5cqh;
     font-weight: 900;
     font-family: Consolas, 'Courier New', monospace;
@@ -387,7 +388,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603pal8"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603pal9"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
