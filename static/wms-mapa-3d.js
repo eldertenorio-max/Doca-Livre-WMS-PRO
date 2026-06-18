@@ -569,7 +569,7 @@
 
     function _fallbackCamera() {
         if (!state.camera || !state.controls) return;
-        state.camera.position.set(12, 14, -28);
+        state.camera.position.set(-28, 14, 14);
         state.controls.target.set(12, 2, 12);
         state.controls.update();
         state.defaultCamPos = state.camera.position.clone();
@@ -595,7 +595,12 @@
         var center = box.getCenter(new THREE.Vector3());
         var size = box.getSize(new THREE.Vector3());
         var maxDim = Math.max(size.x, size.y, size.z, 8);
-        state.camera.position.set(center.x, center.y + size.y * 0.65 + 2, center.z - maxDim * 1.15);
+        /* Vista frontal como planta 2D: posições na horizontal (Z), níveis na vertical (Y) */
+        state.camera.position.set(
+            center.x - maxDim * 1.12,
+            center.y + size.y * 0.52 + 1.8,
+            center.z + size.z * 0.06
+        );
         state.controls.target.copy(center);
         state.controls.update();
         state.defaultCamPos = state.camera.position.clone();
@@ -785,7 +790,7 @@
                 state.controls.enableDamping = true;
                 state.controls.dampingFactor = 0.08;
                 state.controls.maxPolarAngle = Math.PI / 2.05;
-                state.camera.position.set(12, 14, -28);
+                state.camera.position.set(-28, 14, 14);
                 state.controls.target.set(12, 2, 12);
                 state.controls.update();
 
