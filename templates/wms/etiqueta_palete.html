@@ -86,20 +86,21 @@
   }
   .dest-titulo {
     width: auto;
-    min-width: 11.5mm;
-    max-width: 14mm;
+    min-width: 14.5mm;
+    max-width: 16mm;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 4% 5%;
-    font-size: 4.8cqh;
+    padding: 1.2mm 2mm;
+    font-size: 4.6pt;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0;
-    line-height: 1.08;
+    line-height: 1.12;
     text-align: center;
     border-right: 0.4mm solid var(--ink);
+    overflow: visible;
   }
   .dest-info {
     flex: 1;
@@ -397,7 +398,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603pal2"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603pal3"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
