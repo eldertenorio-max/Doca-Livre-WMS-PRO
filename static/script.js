@@ -5086,84 +5086,98 @@ function _wmsEndColunasExistentes(posMap) {
         .sort(function(a, b) { return a - b; });
 }
 
+function _wmsEndNiveisExistentes(niveisMap) {
+    return Object.keys(niveisMap || {})
+        .map(function(k) { return parseInt(k, 10); })
+        .filter(function(n) { return n > 0; })
+        .sort(function(a, b) { return b - a; });
+}
+
+function _wmsEndMaxStackRua(posMap) {
+    var max = 1;
+    _wmsEndColunasExistentes(posMap).forEach(function(p) {
+        var n = _wmsEndNiveisExistentes(posMap[p]).length;
+        if (n > max) max = n;
+    });
+    return max;
+}
+
 function _wmsEndDrawRackRuaGrade(ctx, x, y, w, h, rua, posMap, maxPos, maxNiveis) {
-    maxNiveis = maxNiveis || 5;
     var colunas = _wmsEndColunasExistentes(posMap);
     if (!colunas.length) return;
     ctx.save();
-    _wmsEndRoundRect(ctx, x, y, w, h, 8);
-    ctx.fillStyle = '#f8fafc';
+
+    var pad = 6;
+    var tituloH = 16;
+    var posLblH = 11;
+    var innerX = x + pad;
+    var innerY = y + pad + tituloH;
+    var innerW = Math.max(20, w - pad * 2);
+    var innerH = Math.max(20, h - pad * 2 - tituloH);
+
+    ctx.fillStyle = '#546e7a';
+    ctx.font = 'bold 11px Segoe UI, system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Rua ' + String(rua || '—'), x + pad, y + pad);
+
+    var maxStack = _wmsEndMaxStackRua(posMap);
+    var gapCol = 4;
+    var gapCell = 2;
+    var colW = Math.floor((innerW - gapCol * Math.max(0, colunas.length - 1)) / colunas.length);
+    colW = Math.max(14, Math.min(colW, 34));
+    var cellW = Math.max(12, colW - 2);
+    var cellH = Math.floor((innerH - posLblH - 8 - gapCell * Math.max(0, maxStack - 1)) / maxStack);
+    cellH = Math.max(11, Math.min(cellH, 24));
+    var stackBlockH = maxStack * cellH + gapCell * Math.max(0, maxStack - 1);
+    var rackW = colunas.length * colW + gapCol * Math.max(0, colunas.length - 1);
+    var rackH = stackBlockH + posLblH + 8;
+    var rackX = innerX + Math.max(0, (innerW - rackW) / 2);
+    var rackY = innerY + Math.max(0, (innerH - rackH) / 2);
+
+    var beamG = ctx.createLinearGradient(rackX, rackY, rackX + rackW, rackY);
+    beamG.addColorStop(0, '#bf360c');
+    beamG.addColorStop(0.5, '#ff6f00');
+    beamG.addColorStop(1, '#e65100');
+    ctx.fillStyle = '#ffffff';
+    _wmsEndRoundRect(ctx, rackX - 3, rackY - 3, rackW + 6, rackH + 6, 6);
     ctx.fill();
-    ctx.strokeStyle = '#cbd5e1';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#e65100';
+    ctx.lineWidth = 2;
     ctx.stroke();
-
-    var labelW = 54;
-    var levelLabelW = 16;
-    var colLabelH = 14;
-    var gridX = x + labelW + levelLabelW;
-    var gridY = y + 10;
-    var gridW = Math.max(10, w - labelW - levelLabelW - 12);
-    var gridH = Math.max(10, h - 22 - colLabelH);
-    var gapCell = 3;
-    var cellSize = Math.floor(Math.min(
-        20,
-        (gridW - gapCell * Math.max(0, colunas.length - 1)) / Math.max(colunas.length, 1),
-        (gridH - gapCell * Math.max(0, maxNiveis - 1)) / Math.max(maxNiveis, 1)
-    ));
-    cellSize = Math.max(5, cellSize);
-    var rackW = colunas.length * cellSize + Math.max(0, colunas.length - 1) * gapCell;
-    var rackH = maxNiveis * cellSize + Math.max(0, maxNiveis - 1) * gapCell;
-    var rackX = gridX + Math.max(0, (gridW - rackW) / 2);
-    var rackY = gridY + Math.max(0, (gridH - rackH) / 2);
-
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 14px Segoe UI, system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Rua', x + labelW / 2, y + h / 2 - 12);
-    ctx.font = 'bold 24px Segoe UI, system-ui, sans-serif';
-    ctx.fillStyle = '#1565c0';
-    ctx.fillText(String(rua || '—'), x + labelW / 2, y + h / 2 + 12);
-
-    if (cellSize >= 8) {
-        ctx.fillStyle = '#64748b';
-        ctx.font = 'bold 8px Segoe UI, system-ui, sans-serif';
-        ctx.textAlign = 'right';
-        ctx.textBaseline = 'middle';
-        for (var nLabel = maxNiveis; nLabel >= 1; nLabel--) {
-            var rowTop = maxNiveis - nLabel;
-            ctx.fillText(String(nLabel), rackX - 5, rackY + rowTop * (cellSize + gapCell) + cellSize / 2);
-        }
-    }
+    ctx.fillStyle = beamG;
+    ctx.fillRect(rackX - 1, rackY - 5, rackW + 2, 4);
+    ctx.fillRect(rackX - 1, rackY + stackBlockH + 3, rackW + 2, 3);
+    ctx.fillStyle = 'rgba(230,81,0,0.07)';
+    ctx.fillRect(rackX, rackY, rackW, stackBlockH);
 
     colunas.forEach(function(p, idxCol) {
-        var cx = rackX + idxCol * (cellSize + gapCell);
+        var cx = rackX + idxCol * (colW + gapCol);
         var niveisMap = posMap[p] || {};
-        for (var n = 1; n <= maxNiveis; n++) {
-            if (!niveisMap[n]) continue;
-            var rowFromTop = maxNiveis - n;
-            var cy = rackY + rowFromTop * (cellSize + gapCell);
+        var niveis = _wmsEndNiveisExistentes(niveisMap);
+        var stackH = niveis.length * cellH + gapCell * Math.max(0, niveis.length - 1);
+        var startY = rackY + stackBlockH - stackH;
+        niveis.forEach(function(n, idxN) {
+            var cy = startY + idxN * (cellH + gapCell);
             var slot = niveisMap[n];
             var st = _wmsEndCellStyle(slot);
-            _wmsEndDrawSlotCell(ctx, cx, cy, cellSize, cellSize, st);
-            if (cellSize >= 12) {
+            var sx = cx + (colW - cellW) / 2;
+            _wmsEndDrawSlotCell(ctx, sx, cy, cellW, cellH, st);
+            if (cellW >= 10 && cellH >= 10) {
                 ctx.save();
-                ctx.fillStyle = (st.fill === '#c62828') ? 'rgba(255,255,255,0.95)' : 'rgba(15,23,42,0.76)';
-                ctx.font = 'bold 8px Segoe UI, system-ui, sans-serif';
+                ctx.fillStyle = (st.fill === '#c62828') ? 'rgba(255,255,255,0.95)' : 'rgba(55,71,79,0.82)';
+                ctx.font = 'bold ' + (cellH >= 14 ? 9 : 8) + 'px Segoe UI, system-ui, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(String(n), cx + cellSize / 2, cy + cellSize / 2);
+                ctx.fillText(String(n), sx + cellW / 2, cy + cellH / 2);
                 ctx.restore();
             }
-        }
-        if (cellSize >= 7) {
-            ctx.fillStyle = '#475569';
-            ctx.font = 'bold 8px Segoe UI, system-ui, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
-            ctx.fillText(String(p), cx + cellSize / 2, rackY + rackH + 4);
-        }
+        });
+        ctx.fillStyle = '#78909c';
+        ctx.font = '600 8px Segoe UI, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(String(p), cx + colW / 2, rackY + stackBlockH + 5);
     });
 
     ctx.restore();
@@ -5304,12 +5318,12 @@ function _wmsEndDrawCamaraFria(ctx, cam, x, y, bw, bh, regions) {
     _wmsEndDrawOccBar(ctx, x + bw - barW - 12, y + padIn + 10, barW, 8, pct);
 
     var ruasDraw = ruas.length ? ruas.slice() : ['—'];
-    var gapRua = 10;
-    var ruaH = (innerH - gapRua * Math.max(0, ruasDraw.length - 1)) / ruasDraw.length;
+    var gapRua = 8;
+    var ruaW = (innerW - gapRua * Math.max(0, ruasDraw.length - 1)) / ruasDraw.length;
     ruasDraw.forEach(function(rua, idx) {
-        var ry = innerY + idx * (ruaH + gapRua);
+        var rx = innerX + idx * (ruaW + gapRua);
         var posMap = _wmsEndSlotsPorRua(slots, rua);
-        _wmsEndDrawRackRuaGrade(ctx, innerX, ry, innerW, ruaH, rua, posMap, maxPos, maxNiv);
+        _wmsEndDrawRackRuaGrade(ctx, rx, innerY, ruaW, innerH, rua, posMap, maxPos, maxNiv);
     });
 
     ctx.textBaseline = 'alphabetic';
@@ -5393,8 +5407,17 @@ function _wmsEndDraw2D() {
     var camOrder = [11, 12, 13, 21].filter(function(cod) { return !!camByCod[cod]; });
     function camAltura(cod) {
         var cam = camByCod[cod] || {};
-        var ruas = (cam.ruas || []).length || 1;
-        return Math.max(150, 58 + ruas * 72 + Math.max(0, ruas - 1) * 10);
+        var ruas = cam.ruas || [];
+        var maxStack = _wmsEndMaxNiveisCamara(cam, cam.slots || [], ruas);
+        var maxCols = 1;
+        ruas.forEach(function(rua) {
+            var n = _wmsEndColunasExistentes(_wmsEndSlotsPorRua(cam.slots || [], rua)).length;
+            if (n > maxCols) maxCols = n;
+        });
+        var rackH = maxStack * 16 + 52;
+        var needW = maxCols * 18 + Math.max(0, ruas.length - 1) * 8;
+        if (needW > W - pad * 2) rackH += 8;
+        return Math.max(168, 58 + rackH);
     }
     var y98base = pad + camOrder.reduce(function(acc, cod) { return acc + camAltura(cod) + gap; }, 0);
     var H = Math.max(500, y98base + 138);
