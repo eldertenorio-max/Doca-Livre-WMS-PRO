@@ -341,12 +341,6 @@
       <div class="dest-info">
         {% if codigo_wms %}<div class="dest-wms">{{ codigo_wms }}</div>{% endif %}
         {% if camara %}<div class="dest-camara">Câm <b>{{ camara }}</b></div>{% endif %}
-        {% if endereco_barcode %}
-        <div class="dest-bip">
-          <span class="lbl">Bip</span>
-          <span class="val">{{ endereco_barcode }}</span>
-        </div>
-        {% endif %}
         {% if endereco_texto %}
         <div class="dest-loc">{{ endereco_texto }}</div>
         {% elif camara and rua and coluna and nivel %}
@@ -399,7 +393,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603pal5"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603pal7"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
