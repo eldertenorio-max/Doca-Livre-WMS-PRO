@@ -4934,7 +4934,8 @@ function _wmsEndMaxNiveisCamara(cam, slots, ruas) {
 function _wmsEndMaxPosicao(slots, ruas) {
     var max = 1;
     (slots || []).forEach(function(s) {
-        if (ruas.indexOf(s.rua) >= 0 && s.posicao > max) max = s.posicao;
+        var pos = parseInt(s.posicao, 10) || 0;
+        if (ruas.indexOf(s.rua) >= 0 && pos > max) max = pos;
     });
     return max;
 }
@@ -5074,6 +5075,78 @@ function _wmsEndDrawRackColuna(ctx, x, y, w, h, rua, posMap, maxPos, maxNiveis) 
     ctx.restore();
 }
 
+function _wmsEndDrawRackRuaGrade(ctx, x, y, w, h, rua, posMap, maxPos, maxNiveis) {
+    maxNiveis = maxNiveis || 5;
+    ctx.save();
+    _wmsEndRoundRect(ctx, x, y, w, h, 8);
+    ctx.fillStyle = '#f8fafc';
+    ctx.fill();
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    var labelW = 58;
+    var colLabelH = 14;
+    var gridX = x + labelW;
+    var gridY = y + 10;
+    var gridW = Math.max(10, w - labelW - 8);
+    var gridH = Math.max(10, h - 20 - colLabelH);
+    var colW = gridW / Math.max(maxPos, 1);
+    var cellGap = colW >= 12 ? 2 : 1;
+    var cellH = gridH / maxNiveis;
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 14px Segoe UI, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Rua', x + labelW / 2, y + h / 2 - 12);
+    ctx.font = 'bold 24px Segoe UI, system-ui, sans-serif';
+    ctx.fillStyle = '#1565c0';
+    ctx.fillText(String(rua || '—'), x + labelW / 2, y + h / 2 + 12);
+
+    ctx.strokeStyle = 'rgba(148,163,184,0.45)';
+    ctx.lineWidth = 1;
+    for (var nLine = 1; nLine < maxNiveis; nLine++) {
+        var ly = gridY + nLine * cellH;
+        ctx.beginPath();
+        ctx.moveTo(gridX, ly);
+        ctx.lineTo(gridX + gridW, ly);
+        ctx.stroke();
+    }
+
+    for (var p = 1; p <= maxPos; p++) {
+        var cx = gridX + (p - 1) * colW;
+        var cw = Math.max(colW - cellGap, 2);
+        var niveisMap = posMap[p] || {};
+        for (var n = 1; n <= maxNiveis; n++) {
+            var rowFromTop = maxNiveis - n;
+            var cy = gridY + rowFromTop * cellH + 1;
+            var ch = Math.max(cellH - 2, 2);
+            var slot = niveisMap[n] || null;
+            var st = _wmsEndCellStyle(slot);
+            _wmsEndDrawSlotCell(ctx, cx + cellGap / 2, cy, cw, ch, st);
+            if (cw >= 10 && ch >= 8) {
+                ctx.save();
+                ctx.fillStyle = (st.fill === '#c62828') ? 'rgba(255,255,255,0.95)' : 'rgba(15,23,42,0.76)';
+                ctx.font = 'bold 8px Segoe UI, system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(String(n), cx + cw / 2, cy + ch / 2);
+                ctx.restore();
+            }
+        }
+        if (colW >= 12) {
+            ctx.fillStyle = '#475569';
+            ctx.font = 'bold 8px Segoe UI, system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText(String(p), cx + cw / 2, gridY + gridH + 3);
+        }
+    }
+
+    ctx.restore();
+}
+
 function _wmsEndDrawAisle(ctx, x, y, w, h, opts) {
     opts = opts || {};
     var isRefrig = !!opts.refrigerado;
@@ -5154,8 +5227,6 @@ function _wmsEndDrawMetalDoor(ctx, x, y, w, h) {
 
 function _wmsEndDrawCamaraFria(ctx, cam, x, y, bw, bh, regions) {
     var ruas = cam.ruas || [];
-    var ruaL = ruas[0] || 'A';
-    var ruaR = ruas[1] || ruas[0];
     var slots = cam.slots || [];
     var maxPos = _wmsEndMaxPosicao(slots, ruas);
     var totalPos = slots.length || 0;
@@ -5163,6 +5234,7 @@ function _wmsEndDrawCamaraFria(ctx, cam, x, y, bw, bh, regions) {
     var ocup = cam._ocup != null ? cam._ocup : 0;
     var isRefrig = cam.codigo === 21;
     var isSelected = _wmsEndState.selectedCamara === cam.codigo;
+    var maxNiv = _wmsEndMaxNiveisCamara(cam, slots, ruas);
 
     ctx.save();
     if (isSelected) {
@@ -5185,18 +5257,12 @@ function _wmsEndDrawCamaraFria(ctx, cam, x, y, bw, bh, regions) {
     ctx.lineWidth = isSelected ? 2.5 : 1.2;
     ctx.stroke();
 
-    var padIn = 8;
-    var doorH = 16;
-    var headH = 38;
+    var padIn = 10;
+    var headH = 36;
     var innerX = x + padIn;
     var innerY = y + padIn + headH;
     var innerW = bw - padIn * 2;
-    var innerH = bh - padIn * 2 - headH - doorH - 6;
-    var aisleW = Math.max(innerW * 0.30, 54);
-    var rackW = (innerW - aisleW) / 2;
-    var rackX_L = innerX;
-    var rackX_R = innerX + rackW + aisleW;
-    var aisleX = innerX + rackW;
+    var innerH = bh - padIn * 2 - headH;
 
     var hdrG = ctx.createLinearGradient(x, y, x, y + headH + padIn);
     hdrG.addColorStop(0, isRefrig ? '#0277bd' : '#0d47a1');
@@ -5211,47 +5277,18 @@ function _wmsEndDrawCamaraFria(ctx, cam, x, y, bw, bh, regions) {
     ctx.fillText('Câmara ' + cam.codigo, x + 12, y + padIn + 14);
     ctx.font = '10px Segoe UI, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.88)';
-    ctx.fillText(totalPos + ' pos. · ' + ocup + ' ocup. (' + pct + '%)', x + 12, y + padIn + 28);
+    ctx.fillText(totalPos + ' posições · ' + ocup + ' ocupadas (' + pct + '%) · níveis 1 a ' + maxNiv, x + 12, y + padIn + 28);
     var barW = Math.min(110, bw * 0.32);
     _wmsEndDrawOccBar(ctx, x + bw - barW - 12, y + padIn + 10, barW, 8, pct);
 
-    var mapL = _wmsEndSlotsPorRua(slots, ruaL);
-    var mapR = _wmsEndSlotsPorRua(slots, ruaR);
-    var maxNiv = _wmsEndMaxNiveisCamara(cam, slots, ruas);
-    _wmsEndDrawRackColuna(ctx, rackX_L, innerY, rackW, innerH, ruaL, mapL, maxPos, maxNiv);
-    _wmsEndDrawRackColuna(ctx, rackX_R, innerY, rackW, innerH, ruaR, mapR, maxPos, maxNiv);
-    _wmsEndDrawAisle(ctx, aisleX, innerY, aisleW, innerH, { refrigerado: isRefrig });
-
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = 'bold 44px Segoe UI, system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(0,0,0,0.06)';
-    ctx.fillText(String(cam.codigo), aisleX + aisleW / 2 + 2, innerY + innerH * 0.36 + 2);
-    ctx.fillStyle = isRefrig ? '#0277bd' : '#c62828';
-    ctx.fillText(String(cam.codigo), aisleX + aisleW / 2, innerY + innerH * 0.36);
-
-    ctx.save();
-    ctx.translate(aisleX + aisleW / 2, innerY + innerH * 0.68);
-    ctx.rotate(-Math.PI / 2);
-    ctx.font = 'bold 13px Segoe UI, system-ui, sans-serif';
-    ctx.fillStyle = '#455a64';
-    ctx.fillText(isRefrig ? 'REFRIGERADO' : 'CONGELADO', 0, 0);
-    ctx.restore();
-
-    var tempTxt = isRefrig ? '+2°C' : '−20°C';
-    var badgeW = 42, badgeH = 16;
-    var badgeX = aisleX + (aisleW - badgeW) / 2;
-    var badgeY = innerY + innerH - badgeH - 6;
-    _wmsEndFillRoundGrad(ctx, badgeX, badgeY, badgeW, badgeH, 4, '#e3f2fd', '#90caf9', '#64b5f6', 1);
-    ctx.fillStyle = '#0d47a1';
-    ctx.font = 'bold 9px Segoe UI, sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(tempTxt, badgeX + badgeW / 2, badgeY + badgeH / 2);
-
-    var doorW = aisleW * 0.62;
-    var doorX = aisleX + (aisleW - doorW) / 2;
-    var doorY = y + bh - padIn - doorH;
-    _wmsEndDrawMetalDoor(ctx, doorX, doorY, doorW, doorH);
+    var ruasDraw = ruas.length ? ruas.slice() : ['—'];
+    var gapRua = 10;
+    var ruaH = (innerH - gapRua * Math.max(0, ruasDraw.length - 1)) / ruasDraw.length;
+    ruasDraw.forEach(function(rua, idx) {
+        var ry = innerY + idx * (ruaH + gapRua);
+        var posMap = _wmsEndSlotsPorRua(slots, rua);
+        _wmsEndDrawRackRuaGrade(ctx, innerX, ry, innerW, ruaH, rua, posMap, maxPos, maxNiv);
+    });
 
     ctx.textBaseline = 'alphabetic';
     ctx.restore();
@@ -5328,13 +5365,17 @@ function _wmsEndDraw2D() {
             camByCod[c.camara]._ocup = c.ocupadas || 0;
         }
     });
-    var pad = 16;
-    var gap = 14;
-    var mainH = 360;
-    var cam21 = camByCod[21];
     var W = Math.max(wrap.clientWidth || 900, 640);
-    var y98base = pad + mainH + gap + (cam21 ? 210 + gap : 0);
-    var H = Math.max(500, y98base + 130);
+    var pad = 16;
+    var gap = 16;
+    var camOrder = [11, 12, 13, 21].filter(function(cod) { return !!camByCod[cod]; });
+    function camAltura(cod) {
+        var cam = camByCod[cod] || {};
+        var ruas = (cam.ruas || []).length || 1;
+        return Math.max(150, 58 + ruas * 72 + Math.max(0, ruas - 1) * 10);
+    }
+    var y98base = pad + camOrder.reduce(function(acc, cod) { return acc + camAltura(cod) + gap; }, 0);
+    var H = Math.max(500, y98base + 138);
     canvas.width = W;
     canvas.height = H;
     var ctx = canvas.getContext('2d');
@@ -5347,17 +5388,15 @@ function _wmsEndDraw2D() {
     ctx.fillRect(0, 0, W, H);
     _wmsEndDrawFloorGrid(ctx, W, H);
     var regions = [];
-    var colW = (W - pad * 2 - gap * 2) / 3;
-    [11, 12, 13].forEach(function(cod, i) {
+    var camW = W - pad * 2;
+    var yCam = pad;
+    camOrder.forEach(function(cod) {
         var cam = camByCod[cod];
         if (!cam) return;
-        _wmsEndDrawCamaraFria(ctx, cam, pad + i * (colW + gap), pad, colW, mainH, regions);
+        var ch = camAltura(cod);
+        _wmsEndDrawCamaraFria(ctx, cam, pad, yCam, camW, ch, regions);
+        yCam += ch + gap;
     });
-    if (cam21) {
-        var w21 = Math.min(colW * 1.35, W * 0.38);
-        var x21 = (W - w21) / 2;
-        _wmsEndDrawCamaraCompacta(ctx, cam21, x21, pad + mainH + gap, w21, 200, regions);
-    }
     var areas98 = (data.areas || []);
     var y98 = y98base;
     var h98 = Math.max(H - y98 - pad, 88);
