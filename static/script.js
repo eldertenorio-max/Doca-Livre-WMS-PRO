@@ -2990,7 +2990,8 @@ var _SIDEBAR_ICONES = {
     wms: {
         painel: '📊', 'etiquetas-longarina': '🏷️', localizacoes: '📍', 'mapa-3d': '🧊', produtos: '📦', movimentacoes: '↔️',
         recebimento: '📥', 'controle-paletes': '🧱', 'historico-nf': '🕐', relatorios: '📈', separacao: '✂️',
-        'enderecamento': '📍', inventario: '🔢', pesquisa: '🔍'
+        'enderecamento': '📍', ocupacao: '📈', 'estoque-seguranca': '🛡️', 'shelf-life': '⏱️', 'visao-cruzada': '🔀',
+        inventario: '🔢', pesquisa: '🔍'
     }
 };
 
