@@ -209,17 +209,37 @@
         state.slotIndex = [];
         state.camGroups = {};
         if (!state.rackGroup) return;
+        var disposedGeo = typeof Set !== 'undefined' ? new Set() : null;
+        var disposedMat = typeof Set !== 'undefined' ? new Set() : null;
         state.rackGroup.traverse(function (ch) {
-            if (ch.geometry) ch.geometry.dispose();
+            if (ch.geometry) {
+                if (!disposedGeo || !disposedGeo.has(ch.geometry)) {
+                    if (disposedGeo) disposedGeo.add(ch.geometry);
+                    ch.geometry.dispose();
+                }
+            }
             if (ch.material) {
-                if (Array.isArray(ch.material)) ch.material.forEach(function (m) { m.dispose(); });
-                else ch.material.dispose();
+                var mats = Array.isArray(ch.material) ? ch.material : [ch.material];
+                mats.forEach(function (m) {
+                    if (!m) return;
+                    if (disposedMat && disposedMat.has(m)) return;
+                    if (disposedMat) disposedMat.add(m);
+                    m.dispose();
+                });
             }
         });
         while (state.rackGroup.children.length) {
             state.rackGroup.remove(state.rackGroup.children[0]);
         }
         state._rackMats = null;
+    }
+
+    function _setInstanceColor(im, i, color) {
+        if (typeof im.setColorAt === 'function') {
+            im.setColorAt(i, color);
+        } else if (im.instanceColor) {
+            im.instanceColor.setXYZ(i, color.r, color.g, color.b);
+        }
     }
 
     function finalizeInstancedMesh(im) {
@@ -229,6 +249,21 @@
         if (typeof im.computeBoundingSphere === 'function') {
             im.computeBoundingSphere();
         }
+    }
+
+    function _ruasCamara(cam) {
+        var ruas = cam.ruas || [];
+        if (ruas.length) return ruas;
+        var seen = {};
+        var out = [];
+        (cam.slots || []).forEach(function (s) {
+            var r = String(s.rua || '').trim().toUpperCase();
+            if (r && !seen[r]) {
+                seen[r] = true;
+                out.push(r);
+            }
+        });
+        return out.sort();
     }
 
     function _rackMaterials(THREE) {
@@ -329,8 +364,9 @@
 
         var mat = _slotInstanceMaterial(THREE);
         var im = new THREE.InstancedMesh(shelfGeo, mat, ruaSlots.length);
-        if (THREE.DynamicDrawUsage) im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(ruaSlots.length * 3), 3);
+        if (THREE.DynamicDrawUsage && im.instanceMatrix && typeof im.instanceMatrix.setUsage === 'function') {
+            im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        }
         im.userData = { isRack: true, camara: camCod, rua: rua };
 
         ruaSlots.forEach(function (slot, i) {
@@ -344,7 +380,7 @@
             dummy.updateMatrix();
             im.setMatrixAt(i, dummy.matrix);
             col.setHex(slotColor(slot));
-            im.setColorAt(i, col);
+            _setInstanceColor(im, i, col);
             state.slotIndex.push({ mesh: im, instanceId: i, slot: slot, camara: camCod });
         });
         finalizeInstancedMesh(im);
@@ -391,7 +427,7 @@
     }
 
     function buildOneCamara(THREE, cam, camOffsetX, shelfGeo, dummy, col) {
-        var ruas = cam.ruas || [];
+        var ruas = _ruasCamara(cam);
         var cod = parseInt(cam.codigo, 10);
         var maxNiv = _maxNivCam(cod);
         var slots = _filterSlotsNiv(cam.slots, maxNiv);
@@ -452,7 +488,12 @@
         return ensureThree().then(function () {
             var THREE = T();
             clearRack();
-            if (!data || !data.camaras || !data.camaras.length || !state.rackGroup) return;
+            if (!data || !data.camaras || !data.camaras.length) {
+                return Promise.reject(new Error('Dados do mapa 3D inválidos.'));
+            }
+            if (!state.rackGroup) {
+                return Promise.reject(new Error('Renderizador 3D não inicializado.'));
+            }
 
             var pendingFilter = state.camFilter;
             var camaras = _sortCamaras(data.camaras);
@@ -462,22 +503,38 @@
             var camOffsetX = 0;
             var idx = 0;
 
-            return new Promise(function (resolve) {
+            return new Promise(function (resolve, reject) {
                 function next() {
                     if (idx >= camaras.length) {
+                        if (!state.rackGroup.children.length) {
+                            return reject(new Error('Nenhum rack montado no mapa 3D. Verifique layout e ruas.'));
+                        }
                         onResize();
                         state.camFilter = pendingFilter;
                         _applyCamFilter();
                         renderFrame();
                         return resolve();
                     }
-                    camOffsetX = buildOneCamara(THREE, camaras[idx], camOffsetX, shelfGeo, dummy, col);
+                    try {
+                        camOffsetX = buildOneCamara(THREE, camaras[idx], camOffsetX, shelfGeo, dummy, col);
+                    } catch (err) {
+                        return reject(err);
+                    }
                     idx += 1;
                     requestAnimationFrame(next);
                 }
                 next();
             });
         });
+    }
+
+    function _fallbackCamera() {
+        if (!state.camera || !state.controls) return;
+        state.camera.position.set(12, 14, -28);
+        state.controls.target.set(12, 2, 12);
+        state.controls.update();
+        state.defaultCamPos = state.camera.position.clone();
+        state.defaultTarget = state.controls.target.clone();
     }
 
     function centerCameraOnRack() {
@@ -492,7 +549,10 @@
             }
         });
         if (!hasVisible) box.setFromObject(state.rackGroup);
-        if (box.isEmpty()) return;
+        if (box.isEmpty()) {
+            _fallbackCamera();
+            return;
+        }
         var center = box.getCenter(new THREE.Vector3());
         var size = box.getSize(new THREE.Vector3());
         var maxDim = Math.max(size.x, size.y, size.z, 8);
@@ -686,6 +746,9 @@
                 state.controls.enableDamping = true;
                 state.controls.dampingFactor = 0.08;
                 state.controls.maxPolarAngle = Math.PI / 2.05;
+                state.camera.position.set(12, 14, -28);
+                state.controls.target.set(12, 2, 12);
+                state.controls.update();
 
                 state.scene.add(new THREE.AmbientLight(0xffffff, 0.62));
                 var hemi = new THREE.HemisphereLight(0xffffff, 0xb0bec5, 0.48);
@@ -721,6 +784,7 @@
 
                 renderLegenda();
                 state.inited = true;
+                onResize();
                 animate();
                 renderFrame();
             });
@@ -758,6 +822,13 @@
         onResize: onResize,
         renderFrame: renderFrame,
         getPrefix: function () { return state.prefix; },
+        getBuildStats: function () {
+            return {
+                inited: !!state.inited,
+                racks: state.rackGroup ? state.rackGroup.children.length : 0,
+                pickables: state.pickables.length
+            };
+        },
         dispose: disposeInternal
     };
     global.__wmsMapa3dReady = true;

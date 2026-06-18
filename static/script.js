@@ -4750,8 +4750,10 @@ async function loadWmsMapa3d() {
         await new Promise(function(r) { requestAnimationFrame(r); });
         if (window.WmsMapa3d.setCamaraFilter) WmsMapa3d.setCamaraFilter(camFiltro || null);
         await Promise.resolve(WmsMapa3d.build(data));
+        await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
         if (WmsMapa3d.onResize) WmsMapa3d.onResize();
         setTimeout(function() {
+            if (WmsMapa3d.onResize) WmsMapa3d.onResize();
             if (WmsMapa3d.resetView) WmsMapa3d.resetView();
             if (WmsMapa3d.renderFrame) WmsMapa3d.renderFrame();
         }, 120);
@@ -5607,6 +5609,8 @@ function _wmsEndPrimeiraCamara3d() {
 
 async function wmsEndAbrir3d(opts) {
     opts = opts || {};
+    if (window._wmsEnd3dBusy) return;
+    window._wmsEnd3dBusy = true;
     var camRaw = opts.camara;
     var cam = camRaw != null && camRaw !== '' ? parseInt(camRaw, 10) : null;
     if (cam === 98) {
@@ -5649,13 +5653,17 @@ async function wmsEndAbrir3d(opts) {
             _wmsEndState.mapa3d = data;
         }
         if (!data.camaras || !data.camaras.length) throw new Error('Nenhuma posição no layout');
+        var totalSlots = data.camaras.reduce(function(n, c) { return n + ((c.slots || []).length); }, 0);
+        if (!totalSlots) throw new Error('Layout 3D sem posições. Clique em «Atualizar ocupação».');
         var wire = document.getElementById('wms-end-3d-wireframe');
         WmsMapa3d.setWireframe(wire && wire.checked);
         setLoad(true, 'Montando posições…');
         if (window.WmsMapa3d.setCamaraFilter) WmsMapa3d.setCamaraFilter(cam);
         await Promise.resolve(WmsMapa3d.build(data));
+        await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
         if (WmsMapa3d.onResize) WmsMapa3d.onResize();
         setTimeout(function() {
+            if (WmsMapa3d.onResize) WmsMapa3d.onResize();
             if (WmsMapa3d.resetView) WmsMapa3d.resetView();
             if (WmsMapa3d.renderFrame) WmsMapa3d.renderFrame();
         }, 120);
@@ -5663,6 +5671,7 @@ async function wmsEndAbrir3d(opts) {
         showMessage((e && e.message) || 'Erro ao abrir mapa 3D.', 'error');
         _wmsEndFechar3d();
     } finally {
+        window._wmsEnd3dBusy = false;
         setLoad(false);
     }
 }
