@@ -153,6 +153,27 @@ def _validar_data_producao_fifo(dp):
     return None
 
 
+def _formatar_data_etiqueta(val):
+    """Converte data ISO (YYYY-MM-DD) para DD/MM/YYYY na etiqueta."""
+    if val is None or val == '':
+        return None
+    if hasattr(val, 'strftime'):
+        try:
+            return val.strftime('%d/%m/%Y')
+        except Exception:
+            pass
+    s = str(val).strip()
+    if not s:
+        return None
+    m = re.match(r'^(\d{4})-(\d{2})-(\d{2})', s)
+    if m:
+        return f'{m.group(3)}/{m.group(2)}/{m.group(1)}'
+    m_br = re.match(r'^(\d{2})/(\d{2})/(\d{4})', s)
+    if m_br:
+        return f'{m_br.group(1)}/{m_br.group(2)}/{m_br.group(3)}'
+    return s[:10]
+
+
 def _codigo_endereco(camara, rua, posicao, nivel):
     return f'{int(camara):02d}-{str(rua).strip().upper()}-{int(posicao):02d}-{int(nivel)}'
 
@@ -6579,8 +6600,8 @@ def _html_etiqueta_palete(etiqueta, sku=None, lote=None, qtd=None, descricao=Non
         lote=lote,
         qtd=qtd,
         descricao=descricao,
-        data_producao=data_producao,
-        data_validade=data_validade,
+        data_producao=_formatar_data_etiqueta(data_producao),
+        data_validade=_formatar_data_etiqueta(data_validade),
         destino=destino,
         endereco_barcode=endereco_barcode,
         endereco_texto=endereco_texto,
@@ -6720,8 +6741,8 @@ def api_wms_etiqueta_modelo():
             lote='L202501',
             qtd=48,
             descricao='Pão de forma integral 500g',
-            data_producao='2025-06-01',
-            data_validade='2025-12-01',
+            data_producao='01/06/2025',
+            data_validade='01/12/2025',
             destino='12.14.1 — Câmara 12 · Rua C · Col 14 · Nív 1 (PICKING)',
             endereco_barcode='12.14.1',
             endereco_texto='Câmara 12 · Rua C · Col 14 · Nív 1 (PICKING)',

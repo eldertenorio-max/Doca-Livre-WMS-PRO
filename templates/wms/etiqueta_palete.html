@@ -365,11 +365,11 @@
         </div>
         <div class="dados-cell w-fab">
           <span class="lbl">Fabric.</span>
-          <span class="val nowrap">{% if data_producao %}{{ data_producao|string|truncate(10, True, '') }}{% else %}—{% endif %}</span>
+          <span class="val nowrap">{{ data_producao or '—' }}</span>
         </div>
         <div class="dados-cell w-val">
           <span class="lbl">Valid.</span>
-          <span class="val nowrap">{% if data_validade %}{{ data_validade|string|truncate(10, True, '') }}{% else %}—{% endif %}</span>
+          <span class="val nowrap">{{ data_validade or '—' }}</span>
         </div>
       </div>
       <div class="dados-row">
@@ -388,7 +388,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603palb"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603palc"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
