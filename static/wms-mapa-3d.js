@@ -1,15 +1,17 @@
 /**
- * Visualização 3D do layout WMS — Three.js r160 (script global).
+ * Visualização 3D do layout WMS — Three.js r128 (script global).
  */
 (function (global) {
     'use strict';
 
-    var SLOT_W = 1.15;
-    var SLOT_H = 0.85;
-    var SLOT_D = 1.05;
-    var GAP_POS = 0.12;
-    var GAP_RUA = 2.4;
+    var SLOT_W = 1.05;
+    var SLOT_H = 0.78;
+    var SLOT_D = 0.95;
+    var GAP_POS = 0.14;
+    var GAP_RUA = 3.2;
     var GAP_CAM = 22;
+    var FRAME_COLOR = 0xff6f00;
+    var _slotGeo = null;
 
     var LEGENDA = [
         { key: 'vazia', label: 'Vazia (pulmão)', color: '#a5d6a7' },
@@ -112,24 +114,53 @@
         while (state.rackGroup.children.length) {
             var ch = state.rackGroup.children[0];
             state.rackGroup.remove(ch);
-            if (ch.geometry) ch.geometry.dispose();
-            if (ch.material) {
-                if (Array.isArray(ch.material)) ch.material.forEach(function (m) { m.dispose(); });
-                else ch.material.dispose();
-            }
+            ch.traverse(function (o) {
+                if (o.geometry && o.geometry !== _slotGeo) o.geometry.dispose();
+                if (o.material) {
+                    if (Array.isArray(o.material)) o.material.forEach(function (m) { m.dispose(); });
+                    else o.material.dispose();
+                }
+            });
         }
     }
 
-    function finalizeInstancedMesh(im) {
-        im.instanceMatrix.needsUpdate = true;
-        if (im.instanceColor) im.instanceColor.needsUpdate = true;
-        im.frustumCulled = false;
-        if (typeof im.computeBoundingSphere === 'function') {
-            im.computeBoundingSphere();
-        }
+    function slotGeometry(THREE) {
+        if (!_slotGeo) _slotGeo = new THREE.BoxGeometry(SLOT_W * 0.9, SLOT_H * 0.86, SLOT_D * 0.9);
+        return _slotGeo;
     }
 
-    function buildOneCamara(THREE, cam, camOffsetX, boxGeo, dummy, col) {
+    function frameMaterial(THREE) {
+        return new THREE.MeshPhongMaterial({ color: FRAME_COLOR, shininess: 20, specular: 0x442200 });
+    }
+
+    function slotMaterial(THREE, slot) {
+        var c = slotColor(slot);
+        var mat = new THREE.MeshPhongMaterial({
+            color: c,
+            shininess: 45,
+            specular: 0x333333
+        });
+        if ((slot.status || '') === 'ocupada') {
+            mat.emissive = new THREE.Color(c);
+            mat.emissive.multiplyScalar(0.18);
+        }
+        return mat;
+    }
+
+    function addRuaFrame(THREE, ruaGroup, rackW, rackH, maxNiv) {
+        var frameMat = frameMaterial(THREE);
+        var back = new THREE.Mesh(new THREE.BoxGeometry(rackW + 0.24, rackH + 0.18, 0.12), frameMat);
+        back.position.set(rackW / 2, rackH / 2, -0.08);
+        ruaGroup.add(back);
+        var top = new THREE.Mesh(new THREE.BoxGeometry(rackW + 0.28, 0.1, SLOT_D + 0.35), frameMat);
+        top.position.set(rackW / 2, maxNiv * SLOT_H + 0.04, SLOT_D / 2);
+        ruaGroup.add(top);
+        var bot = new THREE.Mesh(new THREE.BoxGeometry(rackW + 0.28, 0.1, SLOT_D + 0.35), frameMat);
+        bot.position.set(rackW / 2, -0.04, SLOT_D / 2);
+        ruaGroup.add(bot);
+    }
+
+    function buildOneCamara(THREE, cam, camOffsetX) {
         var ruas = cam.ruas || [];
         var ruaIndex = {};
         ruas.forEach(function (r, i) { ruaIndex[r] = i; });
@@ -137,45 +168,67 @@
         if (!slots.length) return camOffsetX;
 
         var maxPos = 1;
-        slots.forEach(function (s) { if (s.posicao > maxPos) maxPos = s.posicao; });
+        var maxNiv = 1;
+        slots.forEach(function (s) {
+            var p = parseInt(s.posicao, 10) || 0;
+            var n = parseInt(s.nivel, 10) || 1;
+            if (p > maxPos) maxPos = p;
+            if (n > maxNiv) maxNiv = n;
+        });
 
         var camGroup = new THREE.Group();
         camGroup.name = 'camara-' + cam.codigo;
-        var mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-        var im = new THREE.InstancedMesh(boxGeo, mat, slots.length);
-        im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        im.userData = { isRack: true, camara: cam.codigo };
+        var geo = slotGeometry(THREE);
 
-        slots.forEach(function (slot, i) {
+        slots.forEach(function (slot) {
             var ri = ruaIndex[slot.rua] != null ? ruaIndex[slot.rua] : 0;
-            var x = (slot.posicao - 1) * (SLOT_W + GAP_POS);
-            var y = (slot.nivel - 1) * SLOT_H;
+            var pos = parseInt(slot.posicao, 10) || 1;
+            var niv = parseInt(slot.nivel, 10) || 1;
+            var x = (pos - 1) * (SLOT_W + GAP_POS);
+            var y = (niv - 1) * SLOT_H;
             var z = ri * (SLOT_D + GAP_RUA);
-            dummy.position.set(x + SLOT_W / 2, y + SLOT_H * 0.46, z + SLOT_D / 2);
-            dummy.rotation.set(0, 0, 0);
-            dummy.updateMatrix();
-            im.setMatrixAt(i, dummy.matrix);
-            col.setHex(slotColor(slot));
-            im.setColorAt(i, col);
-            state.slotIndex.push({
-                mesh: im,
-                instanceId: i,
-                slot: slot,
-                camara: cam.codigo
-            });
+            var mesh = new THREE.Mesh(geo, slotMaterial(THREE, slot));
+            mesh.position.set(x + SLOT_W / 2, y + SLOT_H * 0.43, z + SLOT_D / 2);
+            mesh.userData = { isSlot: true, slot: slot, camara: cam.codigo };
+            camGroup.add(mesh);
+            state.pickables.push(mesh);
+            state.slotIndex.push({ mesh: mesh, slot: slot, camara: cam.codigo });
         });
-        finalizeInstancedMesh(im);
-        camGroup.add(im);
-        state.pickables.push(im);
+
+        ruas.forEach(function (rua, ri) {
+            var ruaSlots = slots.filter(function (s) { return s.rua === rua; });
+            if (!ruaSlots.length) return;
+            var rMaxPos = 1;
+            var rMaxNiv = 1;
+            ruaSlots.forEach(function (s) {
+                var p = parseInt(s.posicao, 10) || 0;
+                var n = parseInt(s.nivel, 10) || 1;
+                if (p > rMaxPos) rMaxPos = p;
+                if (n > rMaxNiv) rMaxNiv = n;
+            });
+            var rackW = rMaxPos * (SLOT_W + GAP_POS);
+            var rackH = rMaxNiv * SLOT_H;
+            var ruaGroup = new THREE.Group();
+            ruaGroup.position.z = ri * (SLOT_D + GAP_RUA);
+            addRuaFrame(THREE, ruaGroup, rackW, rackH, rMaxNiv);
+            var floorGeo = new THREE.PlaneGeometry(rackW + 1.2, SLOT_D + 0.8);
+            var floorMat = new THREE.MeshPhongMaterial({ color: 0xcfd8dc, side: THREE.DoubleSide, shininess: 5 });
+            var floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.set(rackW / 2, -0.03, SLOT_D / 2);
+            ruaGroup.add(floor);
+            camGroup.add(ruaGroup);
+        });
 
         var floorW = maxPos * (SLOT_W + GAP_POS) + 2;
-        var floorD = ruas.length * (SLOT_D + GAP_RUA) + 2;
-        var floorGeo = new THREE.PlaneGeometry(floorW, floorD);
-        var floorMat = new THREE.MeshLambertMaterial({ color: 0xb0bec5, side: THREE.DoubleSide });
-        var floor = new THREE.Mesh(floorGeo, floorMat);
-        floor.rotation.x = -Math.PI / 2;
-        floor.position.set(floorW / 2 - 1, -0.02, floorD / 2 - 1);
-        camGroup.add(floor);
+        var floorD = ruas.length * (SLOT_D + GAP_RUA) + 1.5;
+        var baseGeo = new THREE.PlaneGeometry(floorW, floorD);
+        var baseMat = new THREE.MeshPhongMaterial({ color: 0xeceff1, side: THREE.DoubleSide });
+        var base = new THREE.Mesh(baseGeo, baseMat);
+        base.rotation.x = -Math.PI / 2;
+        base.position.set(floorW / 2 - 0.5, -0.05, floorD / 2 - 0.8);
+        camGroup.add(base);
+
         camGroup.position.x = camOffsetX;
         state.rackGroup.add(camGroup);
         return camOffsetX + floorW + GAP_CAM;
@@ -192,9 +245,6 @@
             if (!data || !data.camaras || !data.camaras.length || !state.rackGroup) return;
 
             var camaras = data.camaras.slice();
-            var boxGeo = new THREE.BoxGeometry(SLOT_W, SLOT_H * 0.92, SLOT_D);
-            var dummy = new THREE.Object3D();
-            var col = new THREE.Color();
             var camOffsetX = 0;
             var idx = 0;
 
@@ -206,9 +256,10 @@
                         renderFrame();
                         return resolve();
                     }
-                    camOffsetX = buildOneCamara(THREE, camaras[idx], camOffsetX, boxGeo, dummy, col);
+                    camOffsetX = buildOneCamara(THREE, camaras[idx], camOffsetX);
                     idx += 1;
-                    requestAnimationFrame(next);
+                    if (idx % 2 === 0) requestAnimationFrame(next);
+                    else next();
                 }
                 next();
             });
@@ -265,14 +316,13 @@
         state.raycaster.setFromCamera(state.mouse, state.camera);
         var hits = state.raycaster.intersectObjects(state.pickables, false);
         for (var h = 0; h < hits.length; h++) {
-            var hit = hits[h];
-            if (hit.instanceId == null || hit.instanceId < 0) continue;
-            var mesh = hit.object;
-            for (var i = 0; i < state.slotIndex.length; i++) {
-                var rec = state.slotIndex[i];
-                if (rec.mesh === mesh && rec.instanceId === hit.instanceId) {
-                    return rec;
-                }
+            var mesh = hits[h].object;
+            if (mesh && mesh.userData && mesh.userData.isSlot && mesh.userData.slot) {
+                return {
+                    mesh: mesh,
+                    slot: mesh.userData.slot,
+                    camara: mesh.userData.camara
+                };
             }
         }
         return null;
@@ -412,10 +462,14 @@
                 state.controls.dampingFactor = 0.08;
                 state.controls.maxPolarAngle = Math.PI / 2.05;
 
-                state.scene.add(new THREE.AmbientLight(0xffffff, 0.72));
-                var dir = new THREE.DirectionalLight(0xffffff, 0.8);
-                dir.position.set(12, 24, 16);
+                state.scene.add(new THREE.HemisphereLight(0xffffff, 0x90a4ae, 0.62));
+                state.scene.add(new THREE.AmbientLight(0xffffff, 0.28));
+                var dir = new THREE.DirectionalLight(0xffffff, 0.82);
+                dir.position.set(18, 28, 14);
                 state.scene.add(dir);
+                var fill = new THREE.DirectionalLight(0xb3e5fc, 0.35);
+                fill.position.set(-12, 14, -10);
+                state.scene.add(fill);
 
                 state.rackGroup = new THREE.Group();
                 state.scene.add(state.rackGroup);
@@ -446,9 +500,8 @@
 
     function setWireframe(on) {
         state.wireframe = !!on;
-        if (!state.rackGroup) return;
-        state.rackGroup.traverse(function (o) {
-            if (o.isInstancedMesh && o.material) o.material.wireframe = state.wireframe;
+        state.pickables.forEach(function (mesh) {
+            if (mesh.material) mesh.material.wireframe = state.wireframe;
         });
         renderFrame();
     }

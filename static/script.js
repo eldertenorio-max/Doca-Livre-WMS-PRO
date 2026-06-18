@@ -4584,7 +4584,7 @@ function _wmsMostrarSubtab(tab) {
 
 var _wmsMapa3dScriptPromise = null;
 var _WMS_THREE_LEGACY_CDN = 'https://cdn.jsdelivr.net/npm/three@0.128.0';
-var _WMS_MAPA3D_VER = '20260604c';
+var _WMS_MAPA3D_VER = '20260604d';
 
 function _wmsAguardarThreePronto() {
     return new Promise(function(resolve, reject) {
