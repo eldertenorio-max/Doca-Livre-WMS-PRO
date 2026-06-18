@@ -76,14 +76,17 @@
                 <div class="baixa-ravex-toolbar painel-filtros-toolbar" style="margin-bottom: 8px;">
                     <div class="baixa-ravex-filtros">
                         <span class="baixa-ravex-filtro-label">Filtros</span>
-                        <label class="baixa-ravex-filtro-data-livre">Data
-                            <input type="date" id="painel-filtro-data" class="baixa-ravex-filtro-data-input" title="Data de referência">
+                        <label class="baixa-ravex-filtro-data-livre">Data início
+                            <input type="date" id="painel-filtro-data-inicio" class="baixa-ravex-filtro-data-input" title="Data de início do período">
                         </label>
                         <label class="baixa-ravex-filtro-data-livre">Hora início
-                            <input type="time" id="painel-filtro-hora-inicio" class="baixa-ravex-filtro-data-input" title="Hora inicial (opcional)">
+                            <input type="time" id="painel-filtro-hora-inicio" class="baixa-ravex-filtro-data-input" title="Hora inicial">
+                        </label>
+                        <label class="baixa-ravex-filtro-data-livre">Data fim
+                            <input type="date" id="painel-filtro-data-fim" class="baixa-ravex-filtro-data-input" title="Data de fim do período">
                         </label>
                         <label class="baixa-ravex-filtro-data-livre">Hora fim
-                            <input type="time" id="painel-filtro-hora-fim" class="baixa-ravex-filtro-data-input" title="Hora final (opcional)">
+                            <input type="time" id="painel-filtro-hora-fim" class="baixa-ravex-filtro-data-input" title="Hora final">
                         </label>
                         <button type="button" class="btn btn-primary btn-sm" id="btn-painel-filtrar">Filtrar</button>
                         <button type="button" class="btn btn-secondary btn-sm" id="btn-painel-limpar-filtros">Limpar filtros</button>
@@ -852,27 +855,37 @@
                 <p class="info-text">Histórico do que foi baixado/importado do Ravex (por período, por ID único ou por lista). Mostra o status, quantidade de viagens e itens gravados.</p>
                 <div class="baixa-ravex-toolbar">
                     <div class="baixa-ravex-filtros">
-                        <span class="baixa-ravex-filtro-label">Data</span>
-                        <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn baixa-ravex-filtro-btn--ativo" data-baixa-ravex-filtro-data="todos" data-baixa-ravex-scope="carregamento">Todos</button>
-                        <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="hoje" data-baixa-ravex-scope="carregamento">Hoje</button>
-                        <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="ontem" data-baixa-ravex-scope="carregamento">Ontem</button>
-                        <label class="baixa-ravex-filtro-data-livre">De
-                            <input type="date" id="baixa-ravex-filtro-data-inicio" class="baixa-ravex-filtro-data-input" title="Data inicial">
-                        </label>
-                        <label class="baixa-ravex-filtro-data-livre">Até
-                            <input type="date" id="baixa-ravex-filtro-data-fim" class="baixa-ravex-filtro-data-input" title="Data final">
-                        </label>
-                        <label class="baixa-ravex-filtro-data-livre">Hora início
-                            <input type="time" id="baixa-ravex-filtro-hora-inicio" class="baixa-ravex-filtro-data-input" title="Hora inicial (opcional)">
-                        </label>
-                        <label class="baixa-ravex-filtro-data-livre">Hora fim
-                            <input type="time" id="baixa-ravex-filtro-hora-fim" class="baixa-ravex-filtro-data-input" title="Hora final (opcional)">
-                        </label>
-                        <span class="baixa-ravex-filtro-label baixa-ravex-filtro-label-usuario">Usuário</span>
-                        <select id="baixa-ravex-filtro-usuario" class="baixa-ravex-filtro-usuario-select" title="Filtrar por usuário">
-                            <option value="">Todos</option>
-                        </select>
-                        <button type="button" class="btn btn-secondary btn-sm" id="btn-baixa-ravex-limpar-filtros">Limpar filtros</button>
+                        <div class="baixa-ravex-filtro-rapido">
+                            <span class="baixa-ravex-filtro-label">Período</span>
+                            <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn baixa-ravex-filtro-btn--ativo" data-baixa-ravex-filtro-data="todos" data-baixa-ravex-scope="carregamento">Todos</button>
+                            <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="hoje" data-baixa-ravex-scope="carregamento">Hoje</button>
+                            <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="ontem" data-baixa-ravex-scope="carregamento">Ontem</button>
+                        </div>
+                        <div class="baixa-ravex-filtro-grupo">
+                            <span class="baixa-ravex-filtro-grupo-titulo">Início</span>
+                            <label class="baixa-ravex-filtro-data-livre">Data
+                                <input type="date" id="baixa-ravex-filtro-data-inicio" class="baixa-ravex-filtro-data-input" title="Data de início">
+                            </label>
+                            <label class="baixa-ravex-filtro-data-livre">Hora
+                                <input type="time" id="baixa-ravex-filtro-hora-inicio" class="baixa-ravex-filtro-data-input" title="Hora de início">
+                            </label>
+                        </div>
+                        <div class="baixa-ravex-filtro-grupo">
+                            <span class="baixa-ravex-filtro-grupo-titulo">Fim</span>
+                            <label class="baixa-ravex-filtro-data-livre">Data
+                                <input type="date" id="baixa-ravex-filtro-data-fim" class="baixa-ravex-filtro-data-input" title="Data de fim">
+                            </label>
+                            <label class="baixa-ravex-filtro-data-livre">Hora
+                                <input type="time" id="baixa-ravex-filtro-hora-fim" class="baixa-ravex-filtro-data-input" title="Hora de fim">
+                            </label>
+                        </div>
+                        <div class="baixa-ravex-filtro-extra">
+                            <span class="baixa-ravex-filtro-label baixa-ravex-filtro-label-usuario">Usuário</span>
+                            <select id="baixa-ravex-filtro-usuario" class="baixa-ravex-filtro-usuario-select" title="Filtrar por usuário">
+                                <option value="">Todos</option>
+                            </select>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-baixa-ravex-limpar-filtros">Limpar filtros</button>
+                        </div>
                     </div>
                     <button type="button" class="btn btn-secondary" id="btn-atualizar-baixados-ravex" onclick="loadBaixadosRavex('carregamento', { forcar: true })">🔄 Atualizar lista</button>
                 </div>
@@ -1511,27 +1524,37 @@
                     <p class="info-text">Histórico do que foi baixado/importado do Ravex (por período, por ID único ou por lista). Mostra o status, quantidade de viagens e itens gravados.</p>
                     <div class="baixa-ravex-toolbar">
                         <div class="baixa-ravex-filtros">
-                            <span class="baixa-ravex-filtro-label">Data</span>
-                            <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn baixa-ravex-filtro-btn--ativo" data-baixa-ravex-filtro-data="todos" data-baixa-ravex-scope="devolucao">Todos</button>
-                            <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="hoje" data-baixa-ravex-scope="devolucao">Hoje</button>
-                            <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="ontem" data-baixa-ravex-scope="devolucao">Ontem</button>
-                            <label class="baixa-ravex-filtro-data-livre">De
-                                <input type="date" id="dev-baixa-ravex-filtro-data-inicio" class="baixa-ravex-filtro-data-input" title="Data inicial">
-                            </label>
-                            <label class="baixa-ravex-filtro-data-livre">Até
-                                <input type="date" id="dev-baixa-ravex-filtro-data-fim" class="baixa-ravex-filtro-data-input" title="Data final">
-                            </label>
-                            <label class="baixa-ravex-filtro-data-livre">Hora início
-                                <input type="time" id="dev-baixa-ravex-filtro-hora-inicio" class="baixa-ravex-filtro-data-input" title="Hora inicial (opcional)">
-                            </label>
-                            <label class="baixa-ravex-filtro-data-livre">Hora fim
-                                <input type="time" id="dev-baixa-ravex-filtro-hora-fim" class="baixa-ravex-filtro-data-input" title="Hora final (opcional)">
-                            </label>
-                            <span class="baixa-ravex-filtro-label baixa-ravex-filtro-label-usuario">Usuário</span>
-                            <select id="dev-baixa-ravex-filtro-usuario" class="baixa-ravex-filtro-usuario-select" title="Filtrar por usuário">
-                                <option value="">Todos</option>
-                            </select>
-                            <button type="button" class="btn btn-secondary btn-sm" id="dev-btn-baixa-ravex-limpar-filtros">Limpar filtros</button>
+                            <div class="baixa-ravex-filtro-rapido">
+                                <span class="baixa-ravex-filtro-label">Período</span>
+                                <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn baixa-ravex-filtro-btn--ativo" data-baixa-ravex-filtro-data="todos" data-baixa-ravex-scope="devolucao">Todos</button>
+                                <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="hoje" data-baixa-ravex-scope="devolucao">Hoje</button>
+                                <button type="button" class="btn btn-secondary btn-sm baixa-ravex-filtro-data-btn" data-baixa-ravex-filtro-data="ontem" data-baixa-ravex-scope="devolucao">Ontem</button>
+                            </div>
+                            <div class="baixa-ravex-filtro-grupo">
+                                <span class="baixa-ravex-filtro-grupo-titulo">Início</span>
+                                <label class="baixa-ravex-filtro-data-livre">Data
+                                    <input type="date" id="dev-baixa-ravex-filtro-data-inicio" class="baixa-ravex-filtro-data-input" title="Data de início">
+                                </label>
+                                <label class="baixa-ravex-filtro-data-livre">Hora
+                                    <input type="time" id="dev-baixa-ravex-filtro-hora-inicio" class="baixa-ravex-filtro-data-input" title="Hora de início">
+                                </label>
+                            </div>
+                            <div class="baixa-ravex-filtro-grupo">
+                                <span class="baixa-ravex-filtro-grupo-titulo">Fim</span>
+                                <label class="baixa-ravex-filtro-data-livre">Data
+                                    <input type="date" id="dev-baixa-ravex-filtro-data-fim" class="baixa-ravex-filtro-data-input" title="Data de fim">
+                                </label>
+                                <label class="baixa-ravex-filtro-data-livre">Hora
+                                    <input type="time" id="dev-baixa-ravex-filtro-hora-fim" class="baixa-ravex-filtro-data-input" title="Hora de fim">
+                                </label>
+                            </div>
+                            <div class="baixa-ravex-filtro-extra">
+                                <span class="baixa-ravex-filtro-label baixa-ravex-filtro-label-usuario">Usuário</span>
+                                <select id="dev-baixa-ravex-filtro-usuario" class="baixa-ravex-filtro-usuario-select" title="Filtrar por usuário">
+                                    <option value="">Todos</option>
+                                </select>
+                                <button type="button" class="btn btn-secondary btn-sm" id="dev-btn-baixa-ravex-limpar-filtros">Limpar filtros</button>
+                            </div>
                         </div>
                         <button type="button" class="btn btn-secondary" onclick="loadBaixadosRavex('devolucao', { forcar: true })">🔄 Atualizar lista</button>
                     </div>
@@ -2497,19 +2520,19 @@
                 <div id="estoque-sp-filtros-data" class="baixa-ravex-toolbar painel-filtros-toolbar" style="margin-bottom: 16px; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
                     <div class="form-group">
                         <label for="estoque-sp-data-inicio">Data início</label>
-                        <input type="date" id="estoque-sp-data-inicio" class="baixa-ravex-filtro-data-input">
-                    </div>
-                    <div class="form-group">
-                        <label for="estoque-sp-data-fim">Data fim</label>
-                        <input type="date" id="estoque-sp-data-fim" class="baixa-ravex-filtro-data-input">
+                        <input type="date" id="estoque-sp-data-inicio" class="baixa-ravex-filtro-data-input" title="Data de início">
                     </div>
                     <div class="form-group">
                         <label for="estoque-sp-hora-inicio">Hora início</label>
-                        <input type="time" id="estoque-sp-hora-inicio" class="baixa-ravex-filtro-data-input" title="Hora inicial (opcional)">
+                        <input type="time" id="estoque-sp-hora-inicio" class="baixa-ravex-filtro-data-input" title="Hora de início">
+                    </div>
+                    <div class="form-group">
+                        <label for="estoque-sp-data-fim">Data fim</label>
+                        <input type="date" id="estoque-sp-data-fim" class="baixa-ravex-filtro-data-input" title="Data de fim">
                     </div>
                     <div class="form-group">
                         <label for="estoque-sp-hora-fim">Hora fim</label>
-                        <input type="time" id="estoque-sp-hora-fim" class="baixa-ravex-filtro-data-input" title="Hora final (opcional)">
+                        <input type="time" id="estoque-sp-hora-fim" class="baixa-ravex-filtro-data-input" title="Hora de fim">
                     </div>
                     <div class="form-group">
                         <label for="estoque-sp-filtro-codigo">Cód. produto</label>

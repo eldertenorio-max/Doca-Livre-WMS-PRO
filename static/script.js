@@ -3741,10 +3741,8 @@ function _estoqueSpAtualizarResumoFiltros() {
     var cp = document.getElementById('estoque-sp-filtro-codigo');
     var cb = document.getElementById('estoque-sp-filtro-barras');
     var pr = document.getElementById('estoque-sp-filtro-produto');
-    if (di && di.value) partes.push('de ' + di.value);
-    if (df && df.value) partes.push('até ' + df.value);
-    if (hi && hi.value) partes.push('hora ≥ ' + hi.value);
-    if (hf && hf.value) partes.push('hora ≤ ' + hf.value);
+    if (di && di.value) partes.push('início ' + di.value + (hi && hi.value ? ' ' + hi.value.slice(0, 5) : ''));
+    if (df && df.value) partes.push('fim ' + df.value + (hf && hf.value ? ' ' + hf.value.slice(0, 5) : ''));
     if (cp && cp.value.trim()) partes.push('cód. ' + cp.value.trim());
     if (cb && cb.value.trim()) partes.push('barras ' + cb.value.trim());
     if (pr && pr.value.trim()) partes.push('produto “' + pr.value.trim() + '”');
@@ -9066,10 +9064,12 @@ function initBaixadosRavexFiltros(scope) {
                 f.hora_inicio = '';
                 f.hora_fim = '';
             } else {
-                if (di) di.value = '';
-                if (df) df.value = '';
-                f.data_inicio = '';
-                f.data_fim = '';
+                var iso = p === 'ontem' ? _painelDataIsoOffset(-1) : _painelHojeIso();
+                if (di) di.value = iso;
+                if (df) df.value = iso;
+                f.data_inicio = iso;
+                f.data_fim = iso;
+                f.periodo = 'todos';
                 f.hora_inicio = hi ? hi.value.slice(0, 5) : '';
                 f.hora_fim = hf ? hf.value.slice(0, 5) : '';
             }
@@ -9118,9 +9118,15 @@ function _baixadosRavexAtualizarBtnsData(scope) {
     var panelId = _baixadosRavexScope(scope) === 'devolucao' ? 'devolucoes-panel-baixa-ravex' : 'baixa-ravex';
     var panel = document.getElementById(panelId);
     if (!panel) return;
+    var hoje = _painelHojeIso();
+    var ontem = _painelDataIsoOffset(-1);
     panel.querySelectorAll('.baixa-ravex-filtro-data-btn').forEach(function(btn) {
         var t = btn.getAttribute('data-baixa-ravex-filtro-data') || 'todos';
-        btn.classList.toggle('baixa-ravex-filtro-btn--ativo', !temDataLivre && t === (f.periodo || 'todos'));
+        var ativo = false;
+        if (!temDataLivre && t === (f.periodo || 'todos')) ativo = true;
+        if (temDataLivre && t === 'hoje' && f.data_inicio === hoje && f.data_fim === hoje) ativo = true;
+        if (temDataLivre && t === 'ontem' && f.data_inicio === ontem && f.data_fim === ontem) ativo = true;
+        btn.classList.toggle('baixa-ravex-filtro-btn--ativo', ativo);
     });
 }
 
@@ -9171,15 +9177,15 @@ function _baixadosRavexAtualizarResumoFiltro(total, scope) {
     var f = _baixadosRavexFiltroState(scope);
     var partes = [];
     if (f.data_inicio || f.data_fim) {
-        var horaTxt = '';
-        if (f.hora_inicio || f.hora_fim) {
-            horaTxt = ' · ' + (f.hora_inicio || '00:00') + '–' + (f.hora_fim || '23:59');
-        }
-        partes.push('período ' + (f.data_inicio || '…') + ' a ' + (f.data_fim || '…') + horaTxt);
+        var diTxt = f.data_inicio || '…';
+        var dfTxt = f.data_fim || f.data_inicio || '…';
+        var hiTxt = f.hora_inicio || '00:00';
+        var hfTxt = f.hora_fim || '23:59';
+        partes.push('de ' + diTxt + ' ' + hiTxt + ' até ' + dfTxt + ' ' + hfTxt);
     } else if (f.periodo === 'hoje') {
-        partes.push('hoje' + (f.hora_inicio || f.hora_fim ? (' · ' + (f.hora_inicio || '00:00') + '–' + (f.hora_fim || '23:59')) : ''));
+        partes.push('hoje' + (f.hora_inicio || f.hora_fim ? (' · ' + (f.hora_inicio || '00:00') + ' → ' + (f.hora_fim || '23:59')) : ''));
     } else if (f.periodo === 'ontem') {
-        partes.push('ontem' + (f.hora_inicio || f.hora_fim ? (' · ' + (f.hora_inicio || '00:00') + '–' + (f.hora_fim || '23:59')) : ''));
+        partes.push('ontem' + (f.hora_inicio || f.hora_fim ? (' · ' + (f.hora_inicio || '00:00') + ' → ' + (f.hora_fim || '23:59')) : ''));
     }
     if (f.usuario) partes.push('usuário ' + f.usuario);
     el.textContent = total + ' registro(s) — filtro: ' + partes.join(', ');
@@ -17731,22 +17737,34 @@ function _painelHojeIso() {
     return hoje.getFullYear() + '-' + pad(hoje.getMonth() + 1) + '-' + pad(hoje.getDate());
 }
 
+function _painelDataIsoOffset(dias) {
+    var d = new Date();
+    d.setDate(d.getDate() + (dias || 0));
+    var pad = function(n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
 function _painelBuildQueryString() {
     var parts = [];
-    var dataInput = document.getElementById('painel-filtro-data');
+    var dataIni = document.getElementById('painel-filtro-data-inicio');
+    var dataFim = document.getElementById('painel-filtro-data-fim');
     var horaIni = document.getElementById('painel-filtro-hora-inicio');
     var horaFim = document.getElementById('painel-filtro-hora-fim');
-    if (dataInput && dataInput.value) parts.push('data=' + encodeURIComponent(dataInput.value));
+    if (dataIni && dataIni.value) parts.push('data_inicio=' + encodeURIComponent(dataIni.value));
+    if (dataFim && dataFim.value) parts.push('data_fim=' + encodeURIComponent(dataFim.value));
     if (horaIni && horaIni.value) parts.push('hora_inicio=' + encodeURIComponent(horaIni.value.slice(0, 5)));
     if (horaFim && horaFim.value) parts.push('hora_fim=' + encodeURIComponent(horaFim.value.slice(0, 5)));
     return parts.length ? '?' + parts.join('&') : '';
 }
 
 function limparPainelFiltros() {
-    var dataInput = document.getElementById('painel-filtro-data');
+    var dataIni = document.getElementById('painel-filtro-data-inicio');
+    var dataFim = document.getElementById('painel-filtro-data-fim');
     var horaIni = document.getElementById('painel-filtro-hora-inicio');
     var horaFim = document.getElementById('painel-filtro-hora-fim');
-    if (dataInput) dataInput.value = _painelHojeIso();
+    var hoje = _painelHojeIso();
+    if (dataIni) dataIni.value = hoje;
+    if (dataFim) dataFim.value = hoje;
     if (horaIni) horaIni.value = '';
     if (horaFim) horaFim.value = '';
     loadPainelCompleto();
@@ -17755,10 +17773,13 @@ function limparPainelFiltros() {
 function initPainelFiltros() {
     if (window._painelFiltrosInit) return;
     window._painelFiltrosInit = true;
-    var dataInput = document.getElementById('painel-filtro-data');
+    var dataIni = document.getElementById('painel-filtro-data-inicio');
+    var dataFim = document.getElementById('painel-filtro-data-fim');
     var btnFiltrar = document.getElementById('btn-painel-filtrar');
     var btnLimpar = document.getElementById('btn-painel-limpar-filtros');
-    if (dataInput && !dataInput.value) dataInput.value = _painelHojeIso();
+    var hoje = _painelHojeIso();
+    if (dataIni && !dataIni.value) dataIni.value = hoje;
+    if (dataFim && !dataFim.value) dataFim.value = hoje;
     if (btnFiltrar) btnFiltrar.addEventListener('click', function() { loadPainelCompleto(); });
     if (btnLimpar) btnLimpar.addEventListener('click', function() { limparPainelFiltros(); });
 }

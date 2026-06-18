@@ -1013,6 +1013,77 @@ def _estoque_sp_sql_apenas_disposicao_normal(prefix=''):
     )
 
 
+def _parse_hora_hhmm(val, default_h=0, default_m=0):
+    if not val or not str(val).strip():
+        return default_h, default_m, ''
+    m = re.match(r'^(\d{1,2}):(\d{2})', str(val).strip())
+    if m:
+        h, mi = int(m.group(1)), int(m.group(2))
+        return h, mi, f'{h:02d}:{mi:02d}'
+    return default_h, default_m, ''
+
+
+def _parse_janela_datahora(data_inicio=None, data_fim=None, hora_inicio=None, hora_fim=None, data_legacy=None):
+    """Monta janela [início, fim) com data/hora de início e data/hora de fim (America/Sao_Paulo)."""
+    tz = _ravex_tz_baixados()
+    di = (data_inicio or data_legacy or '').strip()[:10]
+    df = (data_fim or '').strip()[:10]
+    if not di and not df:
+        dia = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        return {
+            'inicio': dia,
+            'fim_excl': dia + timedelta(days=1),
+            'data_inicio_iso': dia.strftime('%Y-%m-%d'),
+            'data_fim_iso': dia.strftime('%Y-%m-%d'),
+            'data_iso': dia.strftime('%Y-%m-%d'),
+            'data': dia.strftime('%d/%m/%Y'),
+            'hora_inicio': '',
+            'hora_fim': '',
+            'legivel': dia.strftime('%d/%m/%Y') + ' (dia inteiro)',
+        }
+    if di and not df:
+        df = di
+    if df and not di:
+        di = df
+    try:
+        d_ini = datetime.strptime(di, '%Y-%m-%d').replace(tzinfo=tz)
+    except ValueError:
+        d_ini = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        di = d_ini.strftime('%Y-%m-%d')
+    try:
+        d_fim = datetime.strptime(df, '%Y-%m-%d').replace(tzinfo=tz)
+    except ValueError:
+        d_fim = d_ini
+        df = di
+    tem_hi = bool(hora_inicio and str(hora_inicio).strip())
+    tem_hf = bool(hora_fim and str(hora_fim).strip())
+    hi, mi, hora_ini_out = _parse_hora_hhmm(hora_inicio, 0, 0)
+    hf, mf, hora_fim_out = _parse_hora_hhmm(hora_fim, 23, 59)
+    if not tem_hi:
+        hora_ini_out = ''
+    if not tem_hf:
+        hora_fim_out = ''
+        hf, mf = 23, 59
+    inicio = d_ini.replace(hour=hi, minute=mi, second=0, microsecond=0)
+    dia_fim = d_fim
+    if di == df and tem_hi and tem_hf and (hf * 60 + mf) <= (hi * 60 + mi):
+        dia_fim = d_fim + timedelta(days=1)
+    fim_excl = dia_fim.replace(hour=hf, minute=mf, second=59, microsecond=999999) + timedelta(microseconds=1)
+    legivel = d_ini.strftime('%d/%m/%Y') + ' · ' + (hora_ini_out or '00:00')
+    legivel += ' → ' + dia_fim.strftime('%d/%m/%Y') + ' · ' + (hora_fim_out or '23:59')
+    return {
+        'inicio': inicio,
+        'fim_excl': fim_excl,
+        'data_inicio_iso': di,
+        'data_fim_iso': df,
+        'data_iso': di,
+        'data': d_ini.strftime('%d/%m/%Y'),
+        'hora_inicio': hora_ini_out,
+        'hora_fim': hora_fim_out,
+        'legivel': legivel,
+    }
+
+
 def _estoque_sp_parse_filtros_query():
     """Filtros comuns das abas Estoque SP (query string)."""
     return {
@@ -1028,38 +1099,20 @@ def _estoque_sp_parse_filtros_query():
 
 def _estoque_sp_bounds_datahora(filtros, conn):
     """Janela [início, fim) para filtro de data/hora em movimentações."""
-    tz = _ravex_tz_baixados()
-    di = (filtros or {}).get('data_inicio') or ''
-    df = (filtros or {}).get('data_fim') or ''
-    hi = (filtros or {}).get('hora_inicio') or ''
-    hf = (filtros or {}).get('hora_fim') or ''
-    if not di and not df and not hi and not hf:
+    f = filtros or {}
+    meta = _parse_janela_datahora(
+        f.get('data_inicio'),
+        f.get('data_fim'),
+        f.get('hora_inicio'),
+        f.get('hora_fim'),
+    )
+    if not (f.get('data_inicio') or f.get('data_fim') or f.get('hora_inicio') or f.get('hora_fim')):
         return None, None
-    if di and df:
-        try:
-            inicio = datetime.strptime(di, '%Y-%m-%d').replace(tzinfo=tz)
-            fim_excl = datetime.strptime(df, '%Y-%m-%d').replace(tzinfo=tz) + timedelta(days=1)
-        except ValueError:
-            return None, None
-    elif di:
-        try:
-            inicio = datetime.strptime(di, '%Y-%m-%d').replace(tzinfo=tz)
-            fim_excl = inicio + timedelta(days=1)
-        except ValueError:
-            return None, None
-    elif df:
-        try:
-            fim_excl = datetime.strptime(df, '%Y-%m-%d').replace(tzinfo=tz) + timedelta(days=1)
-            inicio = fim_excl - timedelta(days=1)
-        except ValueError:
-            return None, None
-    else:
-        now = datetime.now(tz)
-        inicio = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        fim_excl = inicio + timedelta(days=1)
-    inicio, fim_excl = _ravex_aplicar_hora_janela(inicio, fim_excl, hi, hf)
+    inicio = meta['inicio']
+    fim_excl = meta['fim_excl']
     if getattr(conn, 'kind', None) == 'pg':
         return inicio, fim_excl
+    tz = _ravex_tz_baixados()
     ini_s = inicio.astimezone(tz).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M:%S')
     fim_s = fim_excl.astimezone(tz).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M:%S')
     return ini_s, fim_s
@@ -5678,7 +5731,10 @@ def _ravex_aplicar_hora_janela(inicio, fim_excl, hora_inicio=None, hora_fim=None
         return new_inicio, new_fim
     new_inicio = inicio.replace(hour=hi, minute=mi, second=0, microsecond=0)
     if hora_fim and str(hora_fim).strip():
-        new_fim = inicio.replace(hour=hf, minute=mf, second=59, microsecond=999999) + timedelta(microseconds=1)
+        dia_fim = inicio
+        if (hf * 60 + mf) <= (hi * 60 + mi):
+            dia_fim = inicio + timedelta(days=1)
+        new_fim = dia_fim.replace(hour=hf, minute=mf, second=59, microsecond=999999) + timedelta(microseconds=1)
     else:
         new_fim = fim_excl
     return new_inicio, new_fim
@@ -7616,9 +7672,14 @@ def api_ravex_listar_importacoes():
             limit_i = max(10, min(500, int(limit)))
         except Exception:
             limit_i = 150
-        inicio_dt, fim_dt = _ravex_filtro_periodo_datas(periodo, data_inicio, data_fim)
-        if inicio_dt and fim_dt and (hora_inicio or hora_fim):
-            inicio_dt, fim_dt = _ravex_aplicar_hora_janela(inicio_dt, fim_dt, hora_inicio, hora_fim)
+        inicio_dt, fim_dt = None, None
+        if data_inicio or data_fim or hora_inicio or hora_fim:
+            meta = _parse_janela_datahora(data_inicio, data_fim, hora_inicio, hora_fim)
+            inicio_dt, fim_dt = meta['inicio'], meta['fim_excl']
+        else:
+            inicio_dt, fim_dt = _ravex_filtro_periodo_datas(periodo, data_inicio, data_fim)
+            if inicio_dt and fim_dt and (hora_inicio or hora_fim):
+                inicio_dt, fim_dt = _ravex_aplicar_hora_janela(inicio_dt, fim_dt, hora_inicio, hora_fim)
         tem_filtros = bool(inicio_dt and fim_dt) or bool(usuario_filtro) or bool(hora_inicio or hora_fim)
         where = []
         params = []
@@ -10130,47 +10191,9 @@ def _build_mapas_peso_para_bipagem(conn):
     return mapa_peso, mapa_barras_codigo
 
 
-def _parse_painel_janela(data_ref=None, hora_inicio=None, hora_fim=None):
-    """Janela de filtro do painel (data + hora opcional) em America/Sao_Paulo. Retorna inicio, fim_exclusivo, metadados."""
-    tz = _ravex_tz_baixados()
-    if data_ref:
-        try:
-            dia = datetime.strptime(str(data_ref).strip()[:10], '%Y-%m-%d').replace(tzinfo=tz)
-        except ValueError:
-            dia = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-    else:
-        dia = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-    hi, mi = 0, 0
-    hf, mf = 23, 59
-    hora_ini_out = ''
-    hora_fim_out = ''
-    if hora_inicio and str(hora_inicio).strip():
-        m = re.match(r'^(\d{1,2}):(\d{2})', str(hora_inicio).strip())
-        if m:
-            hi, mi = int(m.group(1)), int(m.group(2))
-            hora_ini_out = f'{hi:02d}:{mi:02d}'
-    if hora_fim and str(hora_fim).strip():
-        m = re.match(r'^(\d{1,2}):(\d{2})', str(hora_fim).strip())
-        if m:
-            hf, mf = int(m.group(1)), int(m.group(2))
-            hora_fim_out = f'{hf:02d}:{mf:02d}'
-    inicio = dia.replace(hour=hi, minute=mi, second=0, microsecond=0)
-    if hora_fim_out:
-        fim_excl = dia.replace(hour=hf, minute=mf, second=59, microsecond=999999) + timedelta(microseconds=1)
-    else:
-        fim_excl = dia + timedelta(days=1)
-    legivel = dia.strftime('%d/%m/%Y')
-    if hora_ini_out or hora_fim_out:
-        legivel += ' · ' + (hora_ini_out or '00:00') + ' – ' + (hora_fim_out or '23:59')
-    return {
-        'inicio': inicio,
-        'fim_excl': fim_excl,
-        'data': dia.strftime('%d/%m/%Y'),
-        'data_iso': dia.strftime('%Y-%m-%d'),
-        'hora_inicio': hora_ini_out,
-        'hora_fim': hora_fim_out,
-        'legivel': legivel,
-    }
+def _parse_painel_janela(data_inicio=None, data_fim=None, hora_inicio=None, hora_fim=None, data_ref=None):
+    """Janela de filtro do painel (data/hora início e fim) em America/Sao_Paulo."""
+    return _parse_janela_datahora(data_inicio, data_fim, hora_inicio, hora_fim, data_legacy=data_ref)
 
 
 def _painel_sql_janela_params(inicio, fim_excl, conn):
@@ -10443,15 +10466,18 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None, janela_inicio=None, janela
 @app.route('/api/painel-completo', methods=['GET'])
 def get_painel_completo():
     """Um único request: estatísticas + viagens + gráficos. Estatísticas em 1 query para carregar mais rápido."""
-    data_painel = (request.args.get('data') or '').strip()[:10] or None
+    data_inicio = (request.args.get('data_inicio') or request.args.get('data') or '').strip()[:10] or None
+    data_fim = (request.args.get('data_fim') or request.args.get('data') or '').strip()[:10] or None
     hora_inicio = (request.args.get('hora_inicio') or '').strip()[:5] or None
     hora_fim = (request.args.get('hora_fim') or '').strip()[:5] or None
-    janela_meta = _parse_painel_janela(data_painel, hora_inicio, hora_fim)
+    janela_meta = _parse_painel_janela(data_inicio, data_fim, hora_inicio, hora_fim)
     inicio_j = janela_meta['inicio']
     fim_excl = janela_meta['fim_excl']
     filtros_resp = {
         'data': janela_meta['data'],
         'data_iso': janela_meta['data_iso'],
+        'data_inicio': janela_meta['data_inicio_iso'],
+        'data_fim': janela_meta['data_fim_iso'],
         'hora_inicio': janela_meta['hora_inicio'],
         'hora_fim': janela_meta['hora_fim'],
         'legivel': janela_meta['legivel'],

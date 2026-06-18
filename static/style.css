@@ -2612,51 +2612,74 @@ h2 {
 }
 
 /* Baixados Ravex — filtros */
-#baixa-ravex .baixa-ravex-toolbar {
+.baixa-ravex-filtros {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
+    align-items: flex-end;
+    gap: 10px 12px;
+    flex: 1;
+    min-width: 280px;
 }
-#baixa-ravex .baixa-ravex-filtros {
+.baixa-ravex-filtro-rapido {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px 8px;
-    flex: 1;
-    min-width: 280px;
 }
-#baixa-ravex .baixa-ravex-filtro-label {
+.baixa-ravex-filtro-grupo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    padding: 6px 10px;
+    border: 1px solid #cfd8dc;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+.baixa-ravex-filtro-grupo-titulo {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #546e7a;
+    margin-right: 2px;
+}
+.baixa-ravex-filtro-extra {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+}
+.baixa-ravex-filtro-label {
     font-size: 12px;
     font-weight: 600;
     color: #366092;
     margin-right: 2px;
 }
-#baixa-ravex .baixa-ravex-filtro-label-usuario {
-    margin-left: 8px;
+.baixa-ravex-filtro-label-usuario {
+    margin-left: 0;
 }
-#baixa-ravex .baixa-ravex-filtro-btn--ativo {
+.baixa-ravex-filtro-btn--ativo {
     background: #1976d2 !important;
     color: #fff !important;
     border-color: #1565c0 !important;
 }
-#baixa-ravex .baixa-ravex-filtro-data-livre {
+.baixa-ravex-filtro-data-livre {
     display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    font-size: 11px;
     font-weight: 600;
     color: #366092;
 }
-#baixa-ravex .baixa-ravex-filtro-data-input {
+.baixa-ravex-filtro-data-input {
     padding: 4px 8px;
     border: 1px solid #90a4ae;
     border-radius: 4px;
     font-size: 13px;
 }
-#baixa-ravex .baixa-ravex-filtro-usuario-select {
+.baixa-ravex-filtro-usuario-select {
     padding: 4px 8px;
     border: 1px solid #90a4ae;
     border-radius: 4px;
@@ -2664,10 +2687,20 @@ h2 {
     min-width: 120px;
     max-width: 180px;
 }
-#baixa-ravex .baixa-ravex-filtro-resumo {
+.baixa-ravex-filtro-resumo {
     font-size: 13px;
     color: #555;
     margin: 0 0 10px 0;
+}
+
+#baixa-ravex .baixa-ravex-toolbar,
+#devolucoes-panel-baixa-ravex .baixa-ravex-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
 }
 
 .baixa-ravex-acoes {
