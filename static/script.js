@@ -5478,8 +5478,18 @@ function _wmsEndAbrirPainel3d() {
     }
 }
 
+function _wmsEndPrimeiraCamara3d() {
+    var mapa = _wmsEndState.mapa3d || {};
+    var cams = (mapa.camaras || [])
+        .map(function(c) { return parseInt(c.codigo, 10); })
+        .filter(function(c) { return c && c !== 98; });
+    if (cams.length) return cams[0];
+    return 11;
+}
+
 async function wmsEndAbrir3d(opts) {
-    var cam = parseInt(opts && opts.camara, 10);
+    opts = opts || {};
+    var cam = parseInt(opts.camara, 10) || _wmsEndPrimeiraCamara3d();
     if (!cam || cam === 98) {
         showMessage('Visualização 3D disponível para câmaras 11, 12, 13 e 21.', 'info');
         return;
@@ -5550,11 +5560,8 @@ function _wmsEndBindAccordion() {
         btn3d._wmsBound = true;
         btn3d.addEventListener('click', function() {
             var sel = document.getElementById('wms-end-3d-camara');
-            var cam = parseInt(sel && sel.value, 10);
-            if (!cam) {
-                showMessage('Selecione uma câmara para abrir o mapa 3D.', 'info');
-                return;
-            }
+            var cam = parseInt(sel && sel.value, 10) || _wmsEndPrimeiraCamara3d();
+            if (sel && !sel.value) sel.value = String(cam);
             wmsEndAbrir3d({ camara: cam, label: 'Câmara ' + cam });
         });
     }
@@ -5562,6 +5569,13 @@ function _wmsEndBindAccordion() {
     if (acc3d && !acc3d._wmsBound) {
         acc3d._wmsBound = true;
         acc3d.addEventListener('toggle', function() {
+            if (acc3d.open && (!window.WmsMapa3d || !WmsMapa3d.getPrefix || WmsMapa3d.getPrefix() !== 'wms-end-3d')) {
+                var sel = document.getElementById('wms-end-3d-camara');
+                var cam = parseInt(sel && sel.value, 10) || _wmsEndPrimeiraCamara3d();
+                if (sel && !sel.value) sel.value = String(cam);
+                wmsEndAbrir3d({ camara: cam, label: 'Câmara ' + cam });
+                return;
+            }
             if (acc3d.open && window.WmsMapa3d && WmsMapa3d.getPrefix && WmsMapa3d.getPrefix() === 'wms-end-3d') {
                 requestAnimationFrame(function() {
                     if (WmsMapa3d.onResize) WmsMapa3d.onResize();
