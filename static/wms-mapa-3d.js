@@ -567,10 +567,41 @@
         });
     }
 
+    function _boxFromRackGroup(rackGroup) {
+        var THREE = T();
+        var box = new THREE.Box3();
+        if (!rackGroup) return box;
+        rackGroup.updateMatrixWorld(true);
+        rackGroup.traverse(function (ch) {
+            if (ch.isInstancedMesh) {
+                if (typeof ch.computeBoundingSphere === 'function') ch.computeBoundingSphere();
+                if (ch.boundingSphere) {
+                    var bs = ch.boundingSphere;
+                    var c = bs.center.clone();
+                    ch.localToWorld(c);
+                    var r = Math.max(bs.radius || 0, 0.5);
+                    box.expandByPoint(new THREE.Vector3(c.x + r, c.y + r, c.z + r));
+                    box.expandByPoint(new THREE.Vector3(c.x - r, c.y - r, c.z - r));
+                }
+                return;
+            }
+            if (ch.isMesh) {
+                if (!ch.geometry) return;
+                if (!ch.geometry.boundingBox) ch.geometry.computeBoundingBox();
+                if (ch.geometry.boundingBox) {
+                    var b = ch.geometry.boundingBox.clone();
+                    b.applyMatrix4(ch.matrixWorld);
+                    box.union(b);
+                }
+            }
+        });
+        return box;
+    }
+
     function _fallbackCamera() {
         if (!state.camera || !state.controls) return;
-        state.camera.position.set(-28, 14, 14);
-        state.controls.target.set(12, 2, 12);
+        state.camera.position.set(-35, 14, 14);
+        state.controls.target.set(25, 2, 8);
         state.controls.update();
         state.defaultCamPos = state.camera.position.clone();
         state.defaultTarget = state.controls.target.clone();
@@ -579,15 +610,26 @@
     function centerCameraOnRack() {
         if (!state.rackGroup || !state.camera || !state.controls) return;
         var THREE = T();
-        var box = new THREE.Box3();
-        var hasVisible = false;
-        state.rackGroup.children.forEach(function (ch) {
-            if (ch.visible) {
-                box.expandByObject(ch);
-                hasVisible = true;
+        var box = _boxFromRackGroup(state.rackGroup);
+        if (state.camFilter && state.camGroups[String(state.camFilter)]) {
+            var g = state.camGroups[String(state.camFilter)];
+            if (g && g.visible) {
+                box = _boxFromRackGroup(g);
             }
-        });
-        if (!hasVisible) box.setFromObject(state.rackGroup);
+        } else {
+            var visBox = new THREE.Box3();
+            var hasVis = false;
+            state.rackGroup.children.forEach(function (ch) {
+                if (ch.visible) {
+                    var b = _boxFromRackGroup(ch);
+                    if (!b.isEmpty()) {
+                        if (!hasVis) { visBox.copy(b); hasVis = true; }
+                        else visBox.union(b);
+                    }
+                }
+            });
+            if (hasVis) box = visBox;
+        }
         if (box.isEmpty()) {
             _fallbackCamera();
             return;
@@ -595,11 +637,10 @@
         var center = box.getCenter(new THREE.Vector3());
         var size = box.getSize(new THREE.Vector3());
         var maxDim = Math.max(size.x, size.y, size.z, 8);
-        /* Vista frontal como planta 2D: posições na horizontal (Z), níveis na vertical (Y) */
         state.camera.position.set(
-            center.x - maxDim * 1.12,
-            center.y + size.y * 0.52 + 1.8,
-            center.z + size.z * 0.06
+            box.min.x - maxDim * 0.42,
+            center.y + Math.max(size.y * 0.52, 2.5),
+            center.z + size.z * 0.05
         );
         state.controls.target.copy(center);
         state.controls.update();
@@ -775,7 +816,7 @@
             return waitForLayout(wrap).then(function () {
                 state.scene = new THREE.Scene();
                 state.scene.background = new THREE.Color(0xedf0f3);
-                state.scene.fog = new THREE.Fog(0xedf0f3, 70, 200);
+                state.scene.fog = new THREE.Fog(0xedf0f3, 35, 280);
 
                 var rect = wrap.getBoundingClientRect();
                 var w = Math.max(rect.width || wrap.clientWidth, 320);
@@ -790,8 +831,8 @@
                 state.controls.enableDamping = true;
                 state.controls.dampingFactor = 0.08;
                 state.controls.maxPolarAngle = Math.PI / 2.05;
-                state.camera.position.set(-28, 14, 14);
-                state.controls.target.set(12, 2, 12);
+                state.camera.position.set(-35, 14, 14);
+                state.controls.target.set(25, 2, 8);
                 state.controls.update();
 
                 state.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
