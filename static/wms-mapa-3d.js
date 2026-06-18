@@ -4,18 +4,27 @@
 (function (global) {
     'use strict';
 
-    var SLOT_W = 0.88;
-    var SLOT_H = 0.62;
-    var SLOT_D = 0.88;
-    var GAP_POS = 0.14;
-    var GAP_RUA = 0;
+    var SLOT_W = 0.92;
+    var SLOT_H = 0.68;
+    var SLOT_D = 0.90;
+    var GAP_POS = 0.10;
     var GAP_CAM = 14;
     var MAX_NIV = 5;
-    var AISLE_W = 2.6;
+    var AISLE_W = 2.8;
+    var LEVEL_H = 0.72;
+    var UPR_W = 0.065;
+    var UPR_D = 0.065;
+    var BEAM_H = 0.055;
+    var BEAM_FACE = 0.085;
+    var SHELF_TH = 0.038;
+
+    var COL_GRAY = 0xc8ccd0;
+    var COL_ORANGE = 0xff7700;
+    var COL_FLOOR = 0xd8dde2;
 
     var LEGENDA = [
-        { key: 'vazia', label: 'Vazia (pulmão)', color: '#a5d6a7' },
-        { key: 'picking_vazia', label: 'Vazia (picking nív.1)', color: '#c8e6c9' },
+        { key: 'vazia', label: 'Vazia (pulmão)', color: '#ffffff' },
+        { key: 'picking_vazia', label: 'Vazia (picking nív.1)', color: '#e3f2fd' },
         { key: 'ocupada', label: 'Ocupada', color: '#ef5350' },
         { key: 'envio_mg', label: 'ENVIO P/ MINAS', color: '#42a5f5' },
         { key: 'retrabalho', label: 'RETRABALHO', color: '#ffca28' },
@@ -95,7 +104,8 @@
             if (cat === 'D') return hex('#8e24aa');
             return hex('#ef5350');
         }
-        return parseInt(slot.nivel, 10) === 1 ? hex('#42a5f5') : hex('#0d47a1');
+        if (parseInt(slot.nivel, 10) === 1) return hex('#e3f2fd');
+        return hex('#ffffff');
     }
 
     function renderLegenda() {
@@ -111,15 +121,17 @@
         state.pickables = [];
         state.slotIndex = [];
         if (!state.rackGroup) return;
-        while (state.rackGroup.children.length) {
-            var ch = state.rackGroup.children[0];
-            state.rackGroup.remove(ch);
+        state.rackGroup.traverse(function (ch) {
             if (ch.geometry) ch.geometry.dispose();
             if (ch.material) {
                 if (Array.isArray(ch.material)) ch.material.forEach(function (m) { m.dispose(); });
                 else ch.material.dispose();
             }
+        });
+        while (state.rackGroup.children.length) {
+            state.rackGroup.remove(state.rackGroup.children[0]);
         }
+        state._rackMats = null;
     }
 
     function finalizeInstancedMesh(im) {
@@ -131,27 +143,126 @@
         }
     }
 
+    function _rackMaterials(THREE) {
+        if (state._rackMats) return state._rackMats;
+        state._rackMats = {
+            gray: new THREE.MeshPhongMaterial({ color: COL_GRAY, shininess: 28, specular: 0x444444 }),
+            orange: new THREE.MeshPhongMaterial({ color: COL_ORANGE, shininess: 40, specular: 0x663300 }),
+            bracing: new THREE.MeshPhongMaterial({ color: 0xb0b4b8, shininess: 20 })
+        };
+        return state._rackMats;
+    }
+
     function _slotInstanceMaterial(THREE) {
         var vc = THREE.VertexColors !== undefined ? THREE.VertexColors : true;
-        return new THREE.MeshLambertMaterial({
+        return new THREE.MeshPhongMaterial({
             color: 0xffffff,
-            vertexColors: vc
+            vertexColors: vc,
+            shininess: 35,
+            specular: 0x222222
         });
     }
 
-    function _addRackFrame(THREE, parent, w, h, d, ox, oy, oz) {
-        var frameGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d));
-        var frameMat = new THREE.LineBasicMaterial({ color: 0xe65100, linewidth: 1 });
-        var frame = new THREE.LineSegments(frameGeo, frameMat);
-        frame.position.set(ox + w / 2, oy + h / 2, oz + d / 2);
-        parent.add(frame);
-        var beamMat = new THREE.MeshLambertMaterial({ color: 0xff6f00 });
-        var topBeam = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, 0.06, d + 0.08), beamMat);
-        topBeam.position.set(ox + w / 2, oy + h + 0.03, oz + d / 2);
-        parent.add(topBeam);
-        var botBeam = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, 0.05, d + 0.08), beamMat);
-        botBeam.position.set(ox + w / 2, oy - 0.025, oz + d / 2);
-        parent.add(botBeam);
+    function _rackXs(xBase, towardAisle) {
+        if (towardAisle > 0) {
+            return { front: xBase + BEAM_FACE * 0.55, back: xBase - BEAM_FACE * 0.55 };
+        }
+        return { front: xBase - BEAM_FACE * 0.55, back: xBase + BEAM_FACE * 0.55 };
+    }
+
+    function _addBox(THREE, parent, w, h, d, x, y, z, mat) {
+        var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+        m.position.set(x, y, z);
+        parent.add(m);
+        return m;
+    }
+
+    function _addUprightPair(THREE, parent, xF, xB, z, rackH, mats) {
+        _addBox(THREE, parent, UPR_W, rackH, UPR_D, xF, rackH / 2, z, mats.gray);
+        _addBox(THREE, parent, UPR_W, rackH, UPR_D, xB, rackH / 2, z, mats.gray);
+        _addBox(THREE, parent, 0.14, 0.045, 0.14, xF, 0.022, z, mats.orange);
+        _addBox(THREE, parent, 0.14, 0.045, 0.14, xB, 0.022, z, mats.orange);
+        var midY = rackH * 0.45;
+        var dx = xF - xB;
+        var len = Math.sqrt(dx * dx + 0.04);
+        var brace = _addBox(THREE, parent, len, 0.028, 0.028, (xF + xB) / 2, midY, z, mats.bracing);
+        brace.rotation.z = Math.atan2(0.2, dx);
+        var brace2 = _addBox(THREE, parent, len, 0.028, 0.028, (xF + xB) / 2, midY + rackH * 0.18, z, mats.bracing);
+        brace2.rotation.z = -Math.atan2(0.2, dx);
+    }
+
+    function _addBeamRun(THREE, parent, xF, xB, z0, z1, y, mats) {
+        var cx = (xF + xB) / 2;
+        var cz = (z0 + z1) / 2;
+        var w = Math.abs(xF - xB) + UPR_W;
+        var d = Math.max(UPR_D, Math.abs(z1 - z0) + UPR_D * 0.5);
+        _addBox(THREE, parent, w, BEAM_H, d, cx, y, cz, mats.orange);
+    }
+
+    function _colunasRua(slots) {
+        var set = {};
+        (slots || []).forEach(function (s) {
+            var p = parseInt(s.posicao, 10) || 0;
+            if (p > 0) set[p] = true;
+        });
+        return Object.keys(set).map(function (k) { return parseInt(k, 10); }).sort(function (a, b) { return a - b; });
+    }
+
+    function _buildIndustrialRackSide(THREE, parent, xBase, towardAisle, rua, ruaSlots, camCod, shelfGeo, dummy, col) {
+        if (!ruaSlots.length) return 0;
+        var mats = _rackMaterials(THREE);
+        var xs = _rackXs(xBase, towardAisle);
+        var xF = xs.front;
+        var xB = xs.back;
+        var colunas = _colunasRua(ruaSlots);
+        var maxNiv = MAX_NIV;
+        var rackH = maxNiv * LEVEL_H + 0.35;
+        var bayStep = SLOT_D + GAP_POS;
+        var zMarks = [0];
+        colunas.forEach(function (p) {
+            zMarks.push((p - 1) * bayStep + SLOT_D);
+        });
+        if (zMarks[zMarks.length - 1] < colunas.length * bayStep) {
+            zMarks.push(colunas.length * bayStep + 0.15);
+        }
+        zMarks.forEach(function (z) {
+            _addUprightPair(THREE, parent, xF, xB, z, rackH, mats);
+        });
+        for (var n = 1; n <= maxNiv; n++) {
+            var y = (n - 1) * LEVEL_H + BEAM_H * 0.5;
+            for (var i = 0; i < zMarks.length - 1; i++) {
+                _addBeamRun(THREE, parent, xF, xB, zMarks[i], zMarks[i + 1], y, mats);
+            }
+        }
+        var topY = maxNiv * LEVEL_H + BEAM_H * 0.5;
+        for (var ti = 0; ti < zMarks.length - 1; ti++) {
+            _addBeamRun(THREE, parent, xF, xB, zMarks[ti], zMarks[ti + 1], topY, mats);
+        }
+
+        var mat = _slotInstanceMaterial(THREE);
+        var im = new THREE.InstancedMesh(shelfGeo, mat, ruaSlots.length);
+        if (THREE.DynamicDrawUsage) im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(ruaSlots.length * 3), 3);
+        im.userData = { isRack: true, camara: camCod, rua: rua };
+
+        ruaSlots.forEach(function (slot, i) {
+            var pos = parseInt(slot.posicao, 10) || 1;
+            var niv = parseInt(slot.nivel, 10) || 1;
+            var z = (pos - 1) * bayStep + SLOT_D / 2;
+            var y = (niv - 1) * LEVEL_H + BEAM_H + SHELF_TH * 0.55;
+            var cx = (xF + xB) / 2;
+            dummy.position.set(cx, y, z);
+            dummy.rotation.set(0, 0, 0);
+            dummy.updateMatrix();
+            im.setMatrixAt(i, dummy.matrix);
+            col.setHex(slotColor(slot));
+            im.setColorAt(i, col);
+            state.slotIndex.push({ mesh: im, instanceId: i, slot: slot, camara: camCod });
+        });
+        finalizeInstancedMesh(im);
+        parent.add(im);
+        state.pickables.push(im);
+        return zMarks[zMarks.length - 1] + 0.2;
     }
 
     function _ruaSlots(cam, rua) {
@@ -180,24 +291,20 @@
     }
 
     function _rackXBase(ruaIndex, totalRuas) {
-        if (totalRuas <= 1) return -(AISLE_W / 2 + SLOT_W * 0.55);
+        if (totalRuas <= 1) return -(AISLE_W / 2 + BEAM_FACE * 0.65);
         return ruaIndex === 0
-            ? -(AISLE_W / 2 + SLOT_W * 0.55)
-            : (AISLE_W / 2 + SLOT_W * 0.55);
+            ? -(AISLE_W / 2 + BEAM_FACE * 0.65)
+            : (AISLE_W / 2 + BEAM_FACE * 0.65);
     }
 
-    function buildOneCamara(THREE, cam, camOffsetX, boxGeo, dummy, col) {
+    function buildOneCamara(THREE, cam, camOffsetX, shelfGeo, dummy, col) {
         var ruas = cam.ruas || [];
         var slots = _filterSlots15(cam.slots);
         if (!slots.length) return camOffsetX;
 
-        var dims = _camMaxPosNiv(slots);
-        var maxPos = dims.maxPos;
-        var maxNiv = Math.min(MAX_NIV, dims.maxNiv);
-        var aisleLen = maxPos * (SLOT_D + GAP_POS) + 0.8;
-
         var camGroup = new THREE.Group();
         camGroup.name = 'camara-' + cam.codigo;
+        var aisleLen = 0;
 
         ruas.forEach(function (rua, ri) {
             var ruaSlots = _ruaSlots(cam, rua).filter(function (s) {
@@ -205,67 +312,37 @@
                 return n >= 1 && n <= MAX_NIV;
             });
             if (!ruaSlots.length) return;
-
+            var xBase = _rackXBase(ri, ruas.length);
+            var towardAisle = ri === 0 ? 1 : -1;
+            if (ruas.length <= 1) towardAisle = 1;
             var ruaGroup = new THREE.Group();
             ruaGroup.name = 'rua-' + rua;
-            var xBase = _rackXBase(ri, ruas.length);
-            var mat = _slotInstanceMaterial(THREE);
-            var im = new THREE.InstancedMesh(boxGeo, mat, ruaSlots.length);
-            if (THREE.DynamicDrawUsage) im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-            im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(ruaSlots.length * 3), 3);
-            im.userData = { isRack: true, camara: cam.codigo, rua: rua };
-
-            ruaSlots.forEach(function (slot, i) {
-                var pos = parseInt(slot.posicao, 10) || 1;
-                var niv = parseInt(slot.nivel, 10) || 1;
-                var z = (pos - 1) * (SLOT_D + GAP_POS);
-                var y = (niv - 1) * (SLOT_H + 0.04);
-                dummy.position.set(xBase, y + SLOT_H * 0.46, z + SLOT_D / 2);
-                dummy.rotation.set(0, 0, 0);
-                dummy.updateMatrix();
-                im.setMatrixAt(i, dummy.matrix);
-                col.setHex(slotColor(slot));
-                im.setColorAt(i, col);
-                state.slotIndex.push({
-                    mesh: im,
-                    instanceId: i,
-                    slot: slot,
-                    camara: cam.codigo
-                });
-            });
-            finalizeInstancedMesh(im);
-            ruaGroup.add(im);
-            state.pickables.push(im);
-
-            var frameW = SLOT_W + 0.18;
-            var frameH = maxNiv * (SLOT_H + 0.04) + 0.08;
-            var frameD = aisleLen;
-            _addRackFrame(THREE, ruaGroup, frameW, frameH, frameD, xBase - frameW / 2, -0.04, 0);
+            var len = _buildIndustrialRackSide(THREE, ruaGroup, xBase, towardAisle, rua, ruaSlots, cam.codigo, shelfGeo, dummy, col);
+            if (len > aisleLen) aisleLen = len;
             camGroup.add(ruaGroup);
         });
 
+        if (aisleLen < 1) return camOffsetX;
+        aisleLen += 0.5;
+
         var aisleGeo = new THREE.PlaneGeometry(AISLE_W, aisleLen);
-        var aisleMat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+        var aisleMat = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 10, side: THREE.DoubleSide });
         var aisle = new THREE.Mesh(aisleGeo, aisleMat);
         aisle.rotation.x = -Math.PI / 2;
-        aisle.position.set(0, -0.05, aisleLen / 2 - 0.2);
+        aisle.position.set(0, -0.02, aisleLen / 2);
         camGroup.add(aisle);
 
-        var doorGeo = new THREE.BoxGeometry(AISLE_W * 0.55, 0.08, 0.35);
-        var doorMat = new THREE.MeshLambertMaterial({ color: 0xffc107 });
-        var door = new THREE.Mesh(doorGeo, doorMat);
-        door.position.set(0, 0.02, 0.18);
-        camGroup.add(door);
+        _addBox(THREE, camGroup, AISLE_W * 0.5, 0.07, 0.32, 0, 0.035, 0.16, _rackMaterials(THREE).orange);
 
-        var floorW = AISLE_W + SLOT_W * 2.4;
-        var floorGeo = new THREE.PlaneGeometry(floorW, aisleLen + 0.6);
-        var floorMat = new THREE.MeshLambertMaterial({ color: 0xeceff1, side: THREE.DoubleSide });
+        var floorW = AISLE_W + BEAM_FACE * 2.8;
+        var floorGeo = new THREE.PlaneGeometry(floorW, aisleLen + 0.8);
+        var floorMat = new THREE.MeshPhongMaterial({ color: COL_FLOOR, shininess: 5, side: THREE.DoubleSide });
         var floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
-        floor.position.set(0, -0.06, aisleLen / 2 - 0.2);
+        floor.position.set(0, -0.04, aisleLen / 2);
         camGroup.add(floor);
 
-        var totalW = floorW + 1.2;
+        var totalW = floorW + 1.4;
         camGroup.position.set(camOffsetX + totalW / 2, 0, 0);
         state.rackGroup.add(camGroup);
         return camOffsetX + totalW + GAP_CAM;
@@ -282,7 +359,7 @@
             if (!data || !data.camaras || !data.camaras.length || !state.rackGroup) return;
 
             var camaras = data.camaras.slice();
-            var boxGeo = new THREE.BoxGeometry(SLOT_W * 0.94, SLOT_H * 0.9, SLOT_D * 0.94);
+            var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 0.92, SHELF_TH, SLOT_D * 0.88);
             var dummy = new THREE.Object3D();
             var col = new THREE.Color();
             var camOffsetX = 0;
@@ -296,7 +373,7 @@
                         renderFrame();
                         return resolve();
                     }
-                    camOffsetX = buildOneCamara(THREE, camaras[idx], camOffsetX, boxGeo, dummy, col);
+                    camOffsetX = buildOneCamara(THREE, camaras[idx], camOffsetX, shelfGeo, dummy, col);
                     idx += 1;
                     requestAnimationFrame(next);
                 }
@@ -312,9 +389,9 @@
         if (box.isEmpty()) return;
         var center = box.getCenter(new THREE.Vector3());
         var size = box.getSize(new THREE.Vector3());
-        var maxDim = Math.max(size.x, size.y, size.z, 8);
-        var dist = maxDim * 1.05;
-        state.camera.position.set(center.x + dist * 0.55, center.y + dist * 0.85, center.z + dist * 0.65);
+        var maxDim = Math.max(size.x, size.y, size.z, 10);
+        var dist = maxDim * 0.95;
+        state.camera.position.set(center.x + dist * 0.62, center.y + dist * 0.52, center.z + dist * 0.72);
         state.controls.target.copy(center);
         state.controls.update();
         state.defaultCamPos = state.camera.position.clone();
@@ -447,6 +524,7 @@
         state.scene = null;
         state.camera = null;
         state.rackGroup = null;
+        state._rackMats = null;
         state._canvas = null;
         state.inited = false;
     }
@@ -485,8 +563,8 @@
 
             return waitForLayout(wrap).then(function () {
                 state.scene = new THREE.Scene();
-                state.scene.background = new THREE.Color(0xe8eef2);
-                state.scene.fog = new THREE.Fog(0xe8eef2, 55, 180);
+                state.scene.background = new THREE.Color(0xedf0f3);
+                state.scene.fog = new THREE.Fog(0xedf0f3, 70, 200);
 
                 var rect = wrap.getBoundingClientRect();
                 var w = Math.max(rect.width || wrap.clientWidth, 320);
@@ -502,15 +580,18 @@
                 state.controls.dampingFactor = 0.08;
                 state.controls.maxPolarAngle = Math.PI / 2.05;
 
-                state.scene.add(new THREE.AmbientLight(0xffffff, 0.58));
-                var hemi = new THREE.HemisphereLight(0xffffff, 0x90a4ae, 0.42);
+                state.scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+                var hemi = new THREE.HemisphereLight(0xffffff, 0xb0bec5, 0.48);
                 state.scene.add(hemi);
-                var dir = new THREE.DirectionalLight(0xffffff, 0.72);
-                dir.position.set(18, 28, 14);
+                var dir = new THREE.DirectionalLight(0xffffff, 0.78);
+                dir.position.set(22, 32, 18);
                 state.scene.add(dir);
-                var fill = new THREE.DirectionalLight(0xffffff, 0.28);
-                fill.position.set(-12, 14, -10);
+                var fill = new THREE.DirectionalLight(0xffffff, 0.32);
+                fill.position.set(-16, 18, -12);
                 state.scene.add(fill);
+                var back = new THREE.DirectionalLight(0xffffff, 0.22);
+                back.position.set(0, 12, -24);
+                state.scene.add(back);
 
                 state.rackGroup = new THREE.Group();
                 state.scene.add(state.rackGroup);
