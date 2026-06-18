@@ -10,7 +10,7 @@
     --lh: {{ etq_altura_in }}in;
     --ink: #000;
     --paper: #fff;
-    --etq-side: 5mm;
+    --etq-side: 6.5mm;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -85,22 +85,23 @@
     max-height: 19cqh;
   }
   .dest-titulo {
-    width: 18mm;
-    min-width: 18mm;
-    max-width: 18mm;
+    width: 22mm;
+    min-width: 22mm;
+    max-width: 22mm;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 1.2mm 2.5mm;
-    font-size: 6.8cqh;
+    padding: 1.4mm 3.5mm;
+    font-size: 2.75mm;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0;
-    line-height: 1.06;
+    letter-spacing: -0.02em;
+    line-height: 1.08;
     text-align: center;
     border-right: 0.4mm solid var(--ink);
-    overflow: visible;
+    overflow: hidden;
+    word-break: keep-all;
   }
   .dest-info {
     flex: 1;
@@ -403,7 +404,7 @@
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
   var MM_PX = 96 / 25.4;
-  var SIDE_MM = 5;
+  var SIDE_MM = 6.5;
 
   function renderPaleteBc() {
     var el = document.getElementById('bc-palete');
