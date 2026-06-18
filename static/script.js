@@ -5408,6 +5408,84 @@ function _wmsEndDrawArea98Zone(ctx, ax, ay, aw, ah, a) {
     ctx.fillText((a.ocupadas || 0) + '/' + slots + ' ocup.', ax + 8, ay + ah - 6);
 }
 
+function _wmsEndCellStylePlanta(slot) {
+    if (!slot) return { fill: '#eceff1', stroke: '#ff9800' };
+    var st = _wmsEndCellStyle(slot);
+    if ((slot.status || '') !== 'ocupada' && !(slot.destino_acao || '')) {
+        if (parseInt(slot.nivel, 10) === 1) st.fill = '#42a5f5';
+        else st.fill = '#0d47a1';
+        st.stroke = '#ff9800';
+    }
+    return st;
+}
+
+function _wmsEndCamaraPlantaMeta(cod) {
+    cod = parseInt(cod, 10);
+    if (cod === 21) return { tipo: 'Refrigerado', temp: '-18' };
+    if (cod === 98) return { tipo: 'Quarentena', temp: '' };
+    return { tipo: 'Congelado', temp: '-20' };
+}
+
+function _wmsEndSlotsNivel15(slots) {
+    return (slots || []).filter(function(s) {
+        var n = parseInt(s.nivel, 10) || 1;
+        return n >= 1 && n <= 5;
+    });
+}
+
+function _wmsEndRenderPlantaRackSide(rua, slots) {
+    slots = _wmsEndSlotsNivel15(slots);
+    var posMap = _wmsEndSlotsPorRua(slots, rua);
+    var colunas = _wmsEndColunasExistentes(posMap);
+    if (!colunas.length) return '';
+    var html = '';
+    colunas.forEach(function(p) {
+        var niveisMap = posMap[p] || {};
+        var niveis = _wmsEndNiveisExistentes(niveisMap).filter(function(n) { return n >= 1 && n <= 5; });
+        if (!niveis.length) return;
+        html += '<div class="wms-planta-col">';
+        niveis.sort(function(a, b) { return b - a; }).forEach(function(n) {
+            var slot = niveisMap[n];
+            var st = _wmsEndCellStylePlanta(slot);
+            var tit = slot.codigo_endereco || ('Rua ' + rua + ' · pos ' + p + ' · nív ' + n);
+            html += '<div class="wms-planta-cell" style="background:' + st.fill + ';border-color:' + st.stroke + ';" title="' + escHtml(tit) + '"></div>';
+        });
+        html += '</div>';
+    });
+    return html;
+}
+
+function _wmsEndRenderPlantaCamaraHtml(cam, selCam) {
+    var cod = cam.codigo;
+    var ruas = cam.ruas || [];
+    var slots = _wmsEndSlotsNivel15(cam.slots || []);
+    var total = cam._total != null ? cam._total : slots.length;
+    var ocup = cam._ocup != null ? cam._ocup : 0;
+    var pct = cam._pct != null ? cam._pct : 0;
+    var meta = _wmsEndCamaraPlantaMeta(cod);
+    var act = selCam === cod ? ' wms-planta-cam--ativo' : '';
+    var ruaEsq = ruas[0] || 'A';
+    var ruaDir = ruas[1] || ruas[0] || 'B';
+    var rackEsq = _wmsEndRenderPlantaRackSide(ruaEsq, cam.slots || []);
+    var rackDir = ruas.length > 1 ? _wmsEndRenderPlantaRackSide(ruaDir, cam.slots || []) : '';
+    var html = '<div class="wms-planta-cam wms-planta-cam--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-label="Câmara ' + escHtml(String(cod)) + '" role="button" tabindex="0" title="Clique para abrir 3D">';
+    html += '<div class="wms-planta-cam-top">' + escHtml(total) + ' Posições · níveis 1–5</div>';
+    html += '<div class="wms-planta-cam-body">';
+    html += '<div class="wms-planta-rack-side wms-planta-rack-side--esq">' + (rackEsq || '<span style="font-size:8px;color:#999;">—</span>') + '</div>';
+    html += '<div class="wms-planta-corredor">';
+    html += '<div class="wms-planta-corredor-meta">CÂMARA FRIA<br>ruas ' + escHtml(ruas.join('/') || '—') + '</div>';
+    html += '<div class="wms-planta-corredor-num">' + escHtml(String(cod)) + '</div>';
+    html += '<div class="wms-planta-corredor-tipo">' + escHtml(meta.tipo) + '</div>';
+    if (meta.temp) html += '<div class="wms-planta-corredor-temp">' + escHtml(meta.temp) + '</div>';
+    html += '<div class="wms-planta-porta" title="Entrada"></div>';
+    html += '</div>';
+    html += '<div class="wms-planta-rack-side wms-planta-rack-side--dir">' + (rackDir || '<span style="font-size:8px;color:#999;">—</span>') + '</div>';
+    html += '</div>';
+    html += '<div class="wms-planta-cam-stats">' + escHtml(ocup) + '/' + escHtml(total) + ' ocup. · ' + escHtml(pct) + '% · clique p/ 3D</div>';
+    html += '</div>';
+    return html;
+}
+
 function _wmsEndRender2DPlanta() {
     var root = document.getElementById('wms-end-2d-planta');
     if (!root) return;
@@ -5429,34 +5507,14 @@ function _wmsEndRender2DPlanta() {
     var selCam = _wmsEndState.selectedCamara;
     var html = '';
     camOrder.forEach(function(cod) {
-        var cam = camByCod[cod];
-        if (!cam) return;
-        var ruasTxt = (cam.ruas || []).join(' / ');
-        var pct = cam._pct != null ? cam._pct : 0;
-        var ocup = cam._ocup != null ? cam._ocup : 0;
-        var total = cam._total || (cam.slots || []).length;
-        var maxNiv = cam.niveis || _wmsEndMaxNiveisCamara(cam, cam.slots || [], cam.ruas || []);
-        var act = selCam === cod ? ' wms-end-2d-cam-card--ativo' : '';
-        html += '<div class="wms-end-2d-cam-card wms-end-2d-cam-card--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-label="Câmara ' + escHtml(String(cod)) + '" role="button" tabindex="0" title="Clique para abrir 3D">';
-        html += '<div class="wms-end-2d-cam-head">';
-        html += '<div class="wms-end-2d-cam-titulo"><strong>Câmara ' + escHtml(String(cod)) + '</strong>';
-        if (ruasTxt || maxNiv) {
-            html += '<span class="wms-end-row-sub">' + escHtml(ruasTxt ? 'ruas ' + ruasTxt : '') + (ruasTxt && maxNiv ? ' · ' : '') + (maxNiv ? maxNiv + ' níveis' : '') + '</span>';
-        }
-        html += '</div>';
-        html += '<div class="wms-end-2d-cam-meta">' + escHtml(ocup) + '/' + escHtml(total) + ' ocup. · ' + escHtml(pct) + '% · <span class="wms-end-2d-cam-link">Clique para 3D</span></div>';
-        html += '</div>';
-        html += '<div class="wms-end-2d-cam-racks">' + _wmsEndRenderPosicoesPorNiveis(cam.slots || [], maxNiv) + '</div>';
-        html += '</div>';
+        html += _wmsEndRenderPlantaCamaraHtml(camByCod[cod], selCam);
     });
     var areas98 = data.areas || [];
     if (areas98.length) {
-        html += '<div class="wms-end-2d-cam-card wms-end-2d-cam-card--98">';
-        html += '<div class="wms-end-2d-cam-head"><div class="wms-end-2d-cam-titulo"><strong>Câmara 98</strong><span class="wms-end-row-sub">Quarentena e fluxos especiais · sem 3D</span></div></div>';
-        html += '<div class="wms-end-2d-areas98">';
+        html += '<div class="wms-planta-row-98">';
         areas98.forEach(function(a) {
-            html += '<div class="wms-end-2d-area98">';
-            html += '<div class="wms-end-2d-area98-tit">' + escHtml(a.label || a.area || 'Área') + '</div>';
+            html += '<div class="wms-end-2d-area98" style="flex:1;min-width:200px;">';
+            html += '<div class="wms-end-2d-area98-tit">Câm. 98 — ' + escHtml(a.label || a.area || 'Área') + '</div>';
             var pos = a.posicoes || [];
             if (pos.length && _wmsEndPosicoesTemNiveis(pos)) {
                 html += _wmsEndRenderPosicoesPorNiveis(pos, 5);
@@ -5465,7 +5523,7 @@ function _wmsEndRender2DPlanta() {
             }
             html += '</div>';
         });
-        html += '</div></div>';
+        html += '</div>';
     }
     root.innerHTML = html || '<p class="wms-end-2d-vazio">Nenhuma câmara no layout.</p>';
 }
@@ -5481,12 +5539,18 @@ function _wmsEndHighlightRow(camara) {
     document.querySelectorAll('.wms-end-2d-cam-card--clickable').forEach(function(el) {
         el.classList.remove('wms-end-2d-cam-card--ativo');
     });
+    document.querySelectorAll('.wms-planta-cam--clickable').forEach(function(el) {
+        el.classList.remove('wms-planta-cam--ativo');
+    });
     if (!camara) return;
     document.querySelectorAll('.wms-end-row--clickable[data-camara="' + camara + '"]').forEach(function(el) {
         el.classList.add('wms-end-row--ativo');
     });
     document.querySelectorAll('.wms-end-2d-cam-card--clickable[data-camara="' + camara + '"]').forEach(function(el) {
         el.classList.add('wms-end-2d-cam-card--ativo');
+    });
+    document.querySelectorAll('.wms-planta-cam--clickable[data-camara="' + camara + '"]').forEach(function(el) {
+        el.classList.add('wms-planta-cam--ativo');
     });
 }
 
@@ -5622,7 +5686,7 @@ function _wmsEndBind2dEvents() {
     if (planta && !planta._wmsEnd2dBound) {
         planta._wmsEnd2dBound = true;
         planta.addEventListener('click', function(ev) {
-            var card = ev.target.closest('.wms-end-2d-cam-card--clickable');
+            var card = ev.target.closest('.wms-planta-cam--clickable') || ev.target.closest('.wms-end-2d-cam-card--clickable');
             if (!card) return;
             var cam = parseInt(card.getAttribute('data-camara'), 10);
             var label = card.getAttribute('data-label') || '';
@@ -5630,7 +5694,7 @@ function _wmsEndBind2dEvents() {
         });
         planta.addEventListener('keydown', function(ev) {
             if (ev.key !== 'Enter' && ev.key !== ' ') return;
-            var card = ev.target.closest('.wms-end-2d-cam-card--clickable');
+            var card = ev.target.closest('.wms-planta-cam--clickable') || ev.target.closest('.wms-end-2d-cam-card--clickable');
             if (!card) return;
             ev.preventDefault();
             var cam = parseInt(card.getAttribute('data-camara'), 10);

@@ -4,12 +4,14 @@
 (function (global) {
     'use strict';
 
-    var SLOT_W = 0.92;
-    var SLOT_H = 0.68;
-    var SLOT_D = 0.92;
-    var GAP_POS = 0.16;
-    var GAP_RUA = 1.6;
-    var GAP_CAM = 18;
+    var SLOT_W = 0.88;
+    var SLOT_H = 0.62;
+    var SLOT_D = 0.88;
+    var GAP_POS = 0.14;
+    var GAP_RUA = 0;
+    var GAP_CAM = 14;
+    var MAX_NIV = 5;
+    var AISLE_W = 2.6;
 
     var LEGENDA = [
         { key: 'vazia', label: 'Vazia (pulmão)', color: '#a5d6a7' },
@@ -93,7 +95,7 @@
             if (cat === 'D') return hex('#8e24aa');
             return hex('#ef5350');
         }
-        return parseInt(slot.nivel, 10) === 1 ? hex('#c8e6c9') : hex('#a5d6a7');
+        return parseInt(slot.nivel, 10) === 1 ? hex('#42a5f5') : hex('#0d47a1');
     }
 
     function renderLegenda() {
@@ -170,26 +172,43 @@
         return { maxPos: maxPos, maxNiv: maxNiv };
     }
 
+    function _filterSlots15(slots) {
+        return (slots || []).filter(function (s) {
+            var n = parseInt(s.nivel, 10) || 1;
+            return n >= 1 && n <= MAX_NIV;
+        });
+    }
+
+    function _rackXBase(ruaIndex, totalRuas) {
+        if (totalRuas <= 1) return -(AISLE_W / 2 + SLOT_W * 0.55);
+        return ruaIndex === 0
+            ? -(AISLE_W / 2 + SLOT_W * 0.55)
+            : (AISLE_W / 2 + SLOT_W * 0.55);
+    }
+
     function buildOneCamara(THREE, cam, camOffsetX, boxGeo, dummy, col) {
         var ruas = cam.ruas || [];
-        var slots = cam.slots || [];
+        var slots = _filterSlots15(cam.slots);
         if (!slots.length) return camOffsetX;
 
         var dims = _camMaxPosNiv(slots);
         var maxPos = dims.maxPos;
-        var maxNiv = dims.maxNiv;
+        var maxNiv = Math.min(MAX_NIV, dims.maxNiv);
+        var aisleLen = maxPos * (SLOT_D + GAP_POS) + 0.8;
+
         var camGroup = new THREE.Group();
         camGroup.name = 'camara-' + cam.codigo;
 
-        var ruaZ = 0;
-        var ruaCount = 0;
-        ruas.forEach(function (rua) {
-            var ruaSlots = _ruaSlots(cam, rua);
+        ruas.forEach(function (rua, ri) {
+            var ruaSlots = _ruaSlots(cam, rua).filter(function (s) {
+                var n = parseInt(s.nivel, 10) || 1;
+                return n >= 1 && n <= MAX_NIV;
+            });
             if (!ruaSlots.length) return;
-            ruaCount += 1;
 
             var ruaGroup = new THREE.Group();
             ruaGroup.name = 'rua-' + rua;
+            var xBase = _rackXBase(ri, ruas.length);
             var mat = _slotInstanceMaterial(THREE);
             var im = new THREE.InstancedMesh(boxGeo, mat, ruaSlots.length);
             if (THREE.DynamicDrawUsage) im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -199,9 +218,9 @@
             ruaSlots.forEach(function (slot, i) {
                 var pos = parseInt(slot.posicao, 10) || 1;
                 var niv = parseInt(slot.nivel, 10) || 1;
-                var x = (pos - 1) * (SLOT_W + GAP_POS);
-                var y = (niv - 1) * (SLOT_H + 0.05);
-                dummy.position.set(x + SLOT_W / 2, y + SLOT_H * 0.46, SLOT_D / 2);
+                var z = (pos - 1) * (SLOT_D + GAP_POS);
+                var y = (niv - 1) * (SLOT_H + 0.04);
+                dummy.position.set(xBase, y + SLOT_H * 0.46, z + SLOT_D / 2);
                 dummy.rotation.set(0, 0, 0);
                 dummy.updateMatrix();
                 im.setMatrixAt(i, dummy.matrix);
@@ -218,30 +237,38 @@
             ruaGroup.add(im);
             state.pickables.push(im);
 
-            var rackW = maxPos * (SLOT_W + GAP_POS) - GAP_POS + 0.2;
-            var rackH = maxNiv * (SLOT_H + 0.05) - 0.05 + SLOT_H;
-            _addRackFrame(THREE, ruaGroup, rackW, rackH, SLOT_D + 0.14, -0.1, 0, -0.07);
-
-            ruaGroup.position.z = ruaZ;
-            ruaZ += SLOT_D + GAP_RUA;
+            var frameW = SLOT_W + 0.18;
+            var frameH = maxNiv * (SLOT_H + 0.04) + 0.08;
+            var frameD = aisleLen;
+            _addRackFrame(THREE, ruaGroup, frameW, frameH, frameD, xBase - frameW / 2, -0.04, 0);
             camGroup.add(ruaGroup);
         });
 
-        if (!ruaCount) return camOffsetX;
+        var aisleGeo = new THREE.PlaneGeometry(AISLE_W, aisleLen);
+        var aisleMat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+        var aisle = new THREE.Mesh(aisleGeo, aisleMat);
+        aisle.rotation.x = -Math.PI / 2;
+        aisle.position.set(0, -0.05, aisleLen / 2 - 0.2);
+        camGroup.add(aisle);
 
-        var floorW = maxPos * (SLOT_W + GAP_POS) + 1.2;
-        var floorD = Math.max(ruaZ, SLOT_D) + 0.8;
-        var floorGeo = new THREE.PlaneGeometry(floorW, floorD);
-        var floorMat = new THREE.MeshLambertMaterial({ color: 0xcfd8dc, side: THREE.DoubleSide });
+        var doorGeo = new THREE.BoxGeometry(AISLE_W * 0.55, 0.08, 0.35);
+        var doorMat = new THREE.MeshLambertMaterial({ color: 0xffc107 });
+        var door = new THREE.Mesh(doorGeo, doorMat);
+        door.position.set(0, 0.02, 0.18);
+        camGroup.add(door);
+
+        var floorW = AISLE_W + SLOT_W * 2.4;
+        var floorGeo = new THREE.PlaneGeometry(floorW, aisleLen + 0.6);
+        var floorMat = new THREE.MeshLambertMaterial({ color: 0xeceff1, side: THREE.DoubleSide });
         var floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
-        floor.position.set(floorW / 2 - 0.6, -0.04, floorD / 2 - 0.4);
-        floor.receiveShadow = false;
+        floor.position.set(0, -0.06, aisleLen / 2 - 0.2);
         camGroup.add(floor);
 
-        camGroup.position.x = camOffsetX;
+        var totalW = floorW + 1.2;
+        camGroup.position.set(camOffsetX + totalW / 2, 0, 0);
         state.rackGroup.add(camGroup);
-        return camOffsetX + floorW + GAP_CAM;
+        return camOffsetX + totalW + GAP_CAM;
     }
 
     function buildRack(data) {
@@ -285,9 +312,9 @@
         if (box.isEmpty()) return;
         var center = box.getCenter(new THREE.Vector3());
         var size = box.getSize(new THREE.Vector3());
-        var maxDim = Math.max(size.x, size.y, size.z, 6);
-        var dist = maxDim * 1.15;
-        state.camera.position.set(center.x + dist * 0.72, center.y + dist * 0.62, center.z + dist * 0.95);
+        var maxDim = Math.max(size.x, size.y, size.z, 8);
+        var dist = maxDim * 1.05;
+        state.camera.position.set(center.x + dist * 0.55, center.y + dist * 0.85, center.z + dist * 0.65);
         state.controls.target.copy(center);
         state.controls.update();
         state.defaultCamPos = state.camera.position.clone();
