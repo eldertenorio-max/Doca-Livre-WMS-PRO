@@ -4715,6 +4715,7 @@ async function loadWmsMapa3d() {
         var el = document.getElementById('wms-mapa3d-loading');
         if (el) {
             el.hidden = !on;
+            el.style.display = on ? 'flex' : 'none';
             if (on && msg) el.textContent = msg;
             else if (!on) el.textContent = 'Carregando mapa 3D…';
         }
@@ -5469,6 +5470,7 @@ async function wmsEndAbrir3d(opts) {
         var el = document.getElementById('wms-end-3d-loading');
         if (el) {
             el.hidden = !on;
+            el.style.display = on ? 'flex' : 'none';
             if (on && msg) el.textContent = msg;
             else if (!on) el.textContent = 'Carregando mapa 3D…';
         }

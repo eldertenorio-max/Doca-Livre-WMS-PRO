@@ -58,6 +58,10 @@
     z-index: 2;
 }
 
+.wms-mapa3d-loading[hidden] {
+    display: none !important;
+}
+
 .wms-mapa3d-tooltip {
     position: absolute;
     pointer-events: none;
