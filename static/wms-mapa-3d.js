@@ -12,14 +12,17 @@
     var MAX_NIV = 5;
     var AISLE_W = 2.8;
     var LEVEL_H = 0.72;
-    var UPR_W = 0.065;
-    var UPR_D = 0.065;
-    var BEAM_H = 0.055;
-    var BEAM_FACE = 0.085;
-    var SHELF_TH = 0.038;
+    var UPR_W = 0.078;
+    var UPR_D = 0.078;
+    var BEAM_H = 0.062;
+    var BEAM_FACE = 0.095;
+    var SHELF_TH = 0.034;
 
-    var COL_GRAY = 0xc8ccd0;
-    var COL_ORANGE = 0xff7700;
+    var COL_BLUE = 0x1a56a5;
+    var COL_BLUE_DARK = 0x0c3563;
+    var COL_ORANGE = 0xff6d00;
+    var COL_DECK = 0xc9a86c;
+    var COL_DECK_METAL = 0x9eabb3;
     var COL_FLOOR = 0xd8dde2;
 
     var LEGENDA = [
@@ -269,9 +272,12 @@
     function _rackMaterials(THREE) {
         if (state._rackMats) return state._rackMats;
         state._rackMats = {
-            gray: new THREE.MeshPhongMaterial({ color: COL_GRAY, shininess: 28, specular: 0x444444 }),
-            orange: new THREE.MeshPhongMaterial({ color: COL_ORANGE, shininess: 40, specular: 0x663300 }),
-            bracing: new THREE.MeshPhongMaterial({ color: 0xb0b4b8, shininess: 20 })
+            blue: new THREE.MeshPhongMaterial({ color: COL_BLUE, shininess: 48, specular: 0x336699 }),
+            blueDark: new THREE.MeshPhongMaterial({ color: COL_BLUE_DARK, shininess: 28, specular: 0x112233 }),
+            orange: new THREE.MeshPhongMaterial({ color: COL_ORANGE, shininess: 52, specular: 0x994400 }),
+            bracing: new THREE.MeshPhongMaterial({ color: COL_BLUE, shininess: 40, specular: 0x224466 }),
+            deck: new THREE.MeshPhongMaterial({ color: COL_DECK, shininess: 18, specular: 0x443322 }),
+            deckMetal: new THREE.MeshPhongMaterial({ color: COL_DECK_METAL, shininess: 58, specular: 0x888888 })
         };
         return state._rackMats;
     }
@@ -300,26 +306,54 @@
         return m;
     }
 
-    function _addUprightPair(THREE, parent, xF, xB, z, rackH, mats) {
-        _addBox(THREE, parent, UPR_W, rackH, UPR_D, xF, rackH / 2, z, mats.gray);
-        _addBox(THREE, parent, UPR_W, rackH, UPR_D, xB, rackH / 2, z, mats.gray);
-        _addBox(THREE, parent, 0.14, 0.045, 0.14, xF, 0.022, z, mats.orange);
-        _addBox(THREE, parent, 0.14, 0.045, 0.14, xB, 0.022, z, mats.orange);
-        var midY = rackH * 0.45;
-        var dx = xF - xB;
-        var len = Math.sqrt(dx * dx + 0.04);
-        var brace = _addBox(THREE, parent, len, 0.028, 0.028, (xF + xB) / 2, midY, z, mats.bracing);
-        brace.rotation.z = Math.atan2(0.2, dx);
-        var brace2 = _addBox(THREE, parent, len, 0.028, 0.028, (xF + xB) / 2, midY + rackH * 0.18, z, mats.bracing);
-        brace2.rotation.z = -Math.atan2(0.2, dx);
+    function _addUprightHoles(THREE, parent, x, z, rackH, towardAisle, mats) {
+        var holeX = towardAisle > 0 ? x + UPR_W * 0.52 : x - UPR_W * 0.52;
+        var step = Math.max(LEVEL_H * 0.85, 0.55);
+        for (var hy = step * 0.6; hy < rackH - 0.15; hy += step) {
+            _addBox(THREE, parent, 0.012, 0.028, 0.012, holeX, hy, z, mats.blueDark);
+        }
     }
 
-    function _addBeamRun(THREE, parent, xF, xB, z0, z1, y, mats) {
+    function _addUprightPair(THREE, parent, xF, xB, z, rackH, mats, towardAisle) {
+        var foot = UPR_W * 2.35;
+        var baseY = 0.014;
+        _addBox(THREE, parent, foot, 0.028, foot, xF, baseY, z, mats.blue);
+        _addBox(THREE, parent, foot, 0.028, foot, xB, baseY, z, mats.blue);
+        var cy = rackH / 2 + 0.028;
+        _addBox(THREE, parent, UPR_W, rackH, UPR_D, xF, cy, z, mats.blue);
+        _addBox(THREE, parent, UPR_W, rackH, UPR_D, xB, cy, z, mats.blue);
+        var aisleX = towardAisle > 0 ? xF : xB;
+        _addUprightHoles(THREE, parent, aisleX, z, rackH, towardAisle, mats);
+        var dx = xB - xF;
+        var span = Math.abs(dx);
+        var midY = rackH * 0.38;
+        var topYb = rackH * 0.62;
+        var rise = rackH * 0.28;
+        var lenD = Math.sqrt(span * span + rise * rise);
+        var braceLo = _addBox(THREE, parent, lenD, 0.024, 0.024, (xF + xB) / 2, midY, z, mats.bracing);
+        braceLo.rotation.z = Math.atan2(rise, dx);
+        var braceHi = _addBox(THREE, parent, lenD, 0.024, 0.024, (xF + xB) / 2, topYb, z, mats.bracing);
+        braceHi.rotation.z = -Math.atan2(rise, dx);
+        _addBox(THREE, parent, span * 0.88, 0.02, 0.022, (xF + xB) / 2, rackH * 0.5, z, mats.bracing);
+    }
+
+    function _addBeamRun(THREE, parent, xF, xB, z0, z1, y, mats, towardAisle) {
         var cx = (xF + xB) / 2;
         var cz = (z0 + z1) / 2;
         var w = Math.abs(xF - xB) + UPR_W;
         var d = Math.max(UPR_D, Math.abs(z1 - z0) + UPR_D * 0.5);
-        _addBox(THREE, parent, w, BEAM_H, d, cx, y, cz, mats.orange);
+        _addBox(THREE, parent, w, BEAM_H * 0.68, d, cx, y - BEAM_H * 0.1, cz, mats.orange);
+        var lipOff = towardAisle > 0 ? w * 0.18 : -w * 0.18;
+        _addBox(THREE, parent, w * 0.52, BEAM_H * 0.38, d * 0.94, cx + lipOff, y + BEAM_H * 0.18, cz, mats.orange);
+    }
+
+    function _addBayDeck(THREE, parent, xF, xB, z0, z1, y, mat) {
+        var cx = (xF + xB) / 2;
+        var cz = (z0 + z1) / 2;
+        var w = Math.abs(xF - xB) - UPR_W * 0.35;
+        var d = Math.abs(z1 - z0) - 0.06;
+        if (w < 0.12 || d < 0.12) return;
+        _addBox(THREE, parent, w, SHELF_TH * 0.55, d, cx, y, cz, mat);
     }
 
     function _colunasRua(slots) {
@@ -349,17 +383,22 @@
             zMarks.push(colunas.length * bayStep + 0.15);
         }
         zMarks.forEach(function (z) {
-            _addUprightPair(THREE, parent, xF, xB, z, rackH, mats);
+            _addUprightPair(THREE, parent, xF, xB, z, rackH, mats, towardAisle);
         });
         for (var n = 1; n <= maxNiv; n++) {
-            var y = (n - 1) * LEVEL_H + BEAM_H * 0.5;
+            var yBeam = (n - 1) * LEVEL_H + BEAM_H * 0.5;
+            var yDeck = (n - 1) * LEVEL_H + BEAM_H + SHELF_TH * 0.22;
+            var deckMat = n === maxNiv ? mats.deckMetal : mats.deck;
             for (var i = 0; i < zMarks.length - 1; i++) {
-                _addBeamRun(THREE, parent, xF, xB, zMarks[i], zMarks[i + 1], y, mats);
+                _addBeamRun(THREE, parent, xF, xB, zMarks[i], zMarks[i + 1], yBeam, mats, towardAisle);
+                _addBayDeck(THREE, parent, xF, xB, zMarks[i], zMarks[i + 1], yDeck, deckMat);
             }
         }
         var topY = maxNiv * LEVEL_H + BEAM_H * 0.5;
+        var topDeckY = maxNiv * LEVEL_H + BEAM_H + SHELF_TH * 0.22;
         for (var ti = 0; ti < zMarks.length - 1; ti++) {
-            _addBeamRun(THREE, parent, xF, xB, zMarks[ti], zMarks[ti + 1], topY, mats);
+            _addBeamRun(THREE, parent, xF, xB, zMarks[ti], zMarks[ti + 1], topY, mats, towardAisle);
+            _addBayDeck(THREE, parent, xF, xB, zMarks[ti], zMarks[ti + 1], topDeckY, mats.deckMetal);
         }
 
         var mat = _slotInstanceMaterial(THREE);
@@ -373,7 +412,7 @@
             var pos = parseInt(slot.posicao, 10) || 1;
             var niv = parseInt(slot.nivel, 10) || 1;
             var z = (pos - 1) * bayStep + SLOT_D / 2;
-            var y = (niv - 1) * LEVEL_H + BEAM_H + SHELF_TH * 0.55;
+            var y = (niv - 1) * LEVEL_H + BEAM_H + SHELF_TH * 0.72;
             var cx = (xF + xB) / 2;
             dummy.position.set(cx, y, z);
             dummy.rotation.set(0, 0, 0);
@@ -497,7 +536,7 @@
 
             var pendingFilter = state.camFilter;
             var camaras = _sortCamaras(data.camaras);
-            var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 0.92, SHELF_TH, SLOT_D * 0.88);
+            var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 0.88, SHELF_TH * 0.92, SLOT_D * 0.84);
             var dummy = new THREE.Object3D();
             var col = new THREE.Color();
             var camOffsetX = 0;
@@ -750,18 +789,18 @@
                 state.controls.target.set(12, 2, 12);
                 state.controls.update();
 
-                state.scene.add(new THREE.AmbientLight(0xffffff, 0.62));
-                var hemi = new THREE.HemisphereLight(0xffffff, 0xb0bec5, 0.48);
+                state.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+                var hemi = new THREE.HemisphereLight(0xe8f0ff, 0xb0bec5, 0.42);
                 state.scene.add(hemi);
-                var dir = new THREE.DirectionalLight(0xffffff, 0.78);
-                dir.position.set(22, 32, 18);
+                var dir = new THREE.DirectionalLight(0xffffff, 0.85);
+                dir.position.set(22, 36, 18);
                 state.scene.add(dir);
-                var fill = new THREE.DirectionalLight(0xffffff, 0.32);
-                fill.position.set(-16, 18, -12);
+                var fill = new THREE.DirectionalLight(0xddeeff, 0.38);
+                fill.position.set(-18, 20, -14);
                 state.scene.add(fill);
-                var back = new THREE.DirectionalLight(0xffffff, 0.22);
-                back.position.set(0, 12, -24);
-                state.scene.add(back);
+                var rim = new THREE.DirectionalLight(0xffffff, 0.28);
+                rim.position.set(0, 14, -28);
+                state.scene.add(rim);
 
                 state.rackGroup = new THREE.Group();
                 state.scene.add(state.rackGroup);
