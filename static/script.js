@@ -5419,6 +5419,11 @@ function _wmsEndCellStylePlanta(slot) {
     return st;
 }
 
+function _wmsEndCellStylePlantaEmpty(nivel) {
+    if (parseInt(nivel, 10) === 1) return { fill: '#90caf9', stroke: '#ff9800' };
+    return { fill: '#0d47a1', stroke: '#ff9800' };
+}
+
 function _wmsEndCamaraPlantaMeta(cod) {
     cod = parseInt(cod, 10);
     if (cod === 21) return { tipo: 'Refrigerado', temp: '-18' };
@@ -5426,30 +5431,45 @@ function _wmsEndCamaraPlantaMeta(cod) {
     return { tipo: 'Congelado', temp: '-20' };
 }
 
-function _wmsEndSlotsNivel15(slots) {
+function _wmsEndPlantaMaxNivel(cod) {
+    return parseInt(cod, 10) === 21 ? 2 : 5;
+}
+
+function _wmsEndPlantaNivelLabel(cod) {
+    return _wmsEndPlantaMaxNivel(cod) === 2 ? '1–2' : '1–5';
+}
+
+function _wmsEndSlotsPorNivel(slots, maxNiv) {
+    maxNiv = maxNiv || 5;
     return (slots || []).filter(function(s) {
         var n = parseInt(s.nivel, 10) || 1;
-        return n >= 1 && n <= 5;
+        return n >= 1 && n <= maxNiv;
     });
 }
 
-function _wmsEndRenderPlantaRackSide(rua, slots) {
-    slots = _wmsEndSlotsNivel15(slots);
+function _wmsEndSlotsNivel15(slots) {
+    return _wmsEndSlotsPorNivel(slots, 5);
+}
+
+function _wmsEndRenderPlantaRackSide(rua, slots, maxNiv) {
+    maxNiv = maxNiv || 5;
+    slots = _wmsEndSlotsPorNivel(slots, maxNiv);
     var posMap = _wmsEndSlotsPorRua(slots, rua);
     var colunas = _wmsEndColunasExistentes(posMap);
     if (!colunas.length) return '';
     var html = '';
     colunas.forEach(function(p) {
         var niveisMap = posMap[p] || {};
-        var niveis = _wmsEndNiveisExistentes(niveisMap).filter(function(n) { return n >= 1 && n <= 5; });
-        if (!niveis.length) return;
-        html += '<div class="wms-planta-col">';
-        niveis.sort(function(a, b) { return b - a; }).forEach(function(n) {
+        html += '<div class="wms-planta-col" title="Rua ' + escHtml(String(rua)) + ' · pos ' + p + '">';
+        for (var n = maxNiv; n >= 1; n--) {
             var slot = niveisMap[n];
-            var st = _wmsEndCellStylePlanta(slot);
-            var tit = slot.codigo_endereco || ('Rua ' + rua + ' · pos ' + p + ' · nív ' + n);
-            html += '<div class="wms-planta-cell" style="background:' + st.fill + ';border-color:' + st.stroke + ';" title="' + escHtml(tit) + '"></div>';
-        });
+            var st = slot ? _wmsEndCellStylePlanta(slot) : _wmsEndCellStylePlantaEmpty(n);
+            var tit = slot
+                ? (slot.codigo_endereco || ('Rua ' + rua + ' · pos ' + p + ' · nív ' + n))
+                : ('Rua ' + rua + ' · pos ' + p + ' · nív ' + n + ' (vazio)');
+            html += '<div class="wms-planta-cell" style="background:' + st.fill + ';border-color:' + st.stroke + ';" title="' + escHtml(tit) + '" data-nivel="' + n + '"></div>';
+        }
+        html += '<div class="wms-planta-col-pos">' + escHtml(String(p)) + '</div>';
         html += '</div>';
     });
     return html;
@@ -5458,7 +5478,8 @@ function _wmsEndRenderPlantaRackSide(rua, slots) {
 function _wmsEndRenderPlantaCamaraHtml(cam, selCam) {
     var cod = cam.codigo;
     var ruas = cam.ruas || [];
-    var slots = _wmsEndSlotsNivel15(cam.slots || []);
+    var maxNiv = _wmsEndPlantaMaxNivel(cod);
+    var slots = _wmsEndSlotsPorNivel(cam.slots || [], maxNiv);
     var total = cam._total != null ? cam._total : slots.length;
     var ocup = cam._ocup != null ? cam._ocup : 0;
     var pct = cam._pct != null ? cam._pct : 0;
@@ -5466,10 +5487,10 @@ function _wmsEndRenderPlantaCamaraHtml(cam, selCam) {
     var act = selCam === cod ? ' wms-planta-cam--ativo' : '';
     var ruaEsq = ruas[0] || 'A';
     var ruaDir = ruas[1] || ruas[0] || 'B';
-    var rackEsq = _wmsEndRenderPlantaRackSide(ruaEsq, cam.slots || []);
-    var rackDir = ruas.length > 1 ? _wmsEndRenderPlantaRackSide(ruaDir, cam.slots || []) : '';
+    var rackEsq = _wmsEndRenderPlantaRackSide(ruaEsq, cam.slots || [], maxNiv);
+    var rackDir = ruas.length > 1 ? _wmsEndRenderPlantaRackSide(ruaDir, cam.slots || [], maxNiv) : '';
     var html = '<div class="wms-planta-cam wms-planta-cam--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-label="Câmara ' + escHtml(String(cod)) + '" role="button" tabindex="0" title="Clique para abrir 3D">';
-    html += '<div class="wms-planta-cam-top">' + escHtml(total) + ' Posições · níveis 1–5</div>';
+    html += '<div class="wms-planta-cam-top">' + escHtml(total) + ' Posições · níveis ' + escHtml(_wmsEndPlantaNivelLabel(cod)) + '</div>';
     html += '<div class="wms-planta-cam-body">';
     html += '<div class="wms-planta-rack-side wms-planta-rack-side--esq">' + (rackEsq || '<span style="font-size:8px;color:#999;">—</span>') + '</div>';
     html += '<div class="wms-planta-corredor">';

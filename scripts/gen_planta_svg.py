@@ -8,8 +8,6 @@ COR_W = 108
 TOP_H = 34
 FOOT_H = 32
 PAD = 4
-CELL_BIG = 17
-CELL_SMALL = 9
 
 
 def col_w(cell):
@@ -20,12 +18,12 @@ def rack_w(cols, cell):
     return cols * col_w(cell) + 8 if cols else 0
 
 
-def rack_grid(cols, cell, ox, oy):
+def rack_grid(cols, cell, ox, oy, levels):
     parts = []
     cw = col_w(cell)
     for c in range(cols):
-        for lv in range(LEVELS):
-            n = LEVELS - lv
+        for lv in range(levels):
+            n = levels - lv
             x = ox + c * cw
             y = oy + lv * (cell + GAP)
             fill = "#90caf9" if n == 1 else "#0d47a1"
@@ -33,13 +31,18 @@ def rack_grid(cols, cell, ox, oy):
                 f'<rect x="{x}" y="{y}" width="{cell}" height="{cell}" '
                 f'fill="{fill}" stroke="#ff9800" stroke-width="2"/>'
             )
+        px = ox + c * cw + cell / 2
+        py = oy + levels * (cell + GAP) + 2
+        parts.append(
+            f'<text x="{px}" y="{py + 8}" text-anchor="middle" class="col-pos">{c + 1}</text>'
+        )
     return "".join(parts)
 
 
-def cam_card(x, rack_cols_l, rack_cols_r, cod, total, ruas, tipo, temp, cell):
+def cam_card(x, rack_cols_l, rack_cols_r, cod, total, ruas, tipo, temp, cell, levels, nivel_label):
     rw_l = rack_w(rack_cols_l, cell)
     rw_r = rack_w(rack_cols_r, cell)
-    body_h = LEVELS * (cell + GAP) + 16
+    body_h = levels * (cell + GAP) + 22
     w = rw_l + COR_W + rw_r + PAD * 4
     card_h = TOP_H + body_h + FOOT_H
     parts = [f'<g transform="translate({x},56)">']
@@ -51,7 +54,7 @@ def cam_card(x, rack_cols_l, rack_cols_r, cod, total, ruas, tipo, temp, cell):
     )
     parts.append(
         f'<text x="{w/2}" y="{TOP_H - 12}" text-anchor="middle" class="topo">'
-        f"{total} Posições · níveis 1–5</text>"
+        f"{total} Posições · níveis {nivel_label}</text>"
     )
     parts.append(f'<line x1="0" y1="{TOP_H}" x2="{w}" y2="{TOP_H}" stroke="#ffe0b2"/>')
 
@@ -62,7 +65,7 @@ def cam_card(x, rack_cols_l, rack_cols_r, cod, total, ruas, tipo, temp, cell):
         f'fill="#fff" stroke="#ff9800" stroke-width="3"/>'
     )
     if rack_cols_l:
-        parts.append(rack_grid(rack_cols_l, cell, lx + 4, y0 + 6))
+        parts.append(rack_grid(rack_cols_l, cell, lx + 4, y0 + 4, levels))
 
     cx = lx + rw_l + PAD
     cx_mid = cx + COR_W / 2
@@ -105,7 +108,7 @@ def cam_card(x, rack_cols_l, rack_cols_r, cod, total, ruas, tipo, temp, cell):
         f'fill="#fff" stroke="#ff9800" stroke-width="3"/>'
     )
     if rack_cols_r:
-        parts.append(rack_grid(rack_cols_r, cell, rx + 4, y0 + 6))
+        parts.append(rack_grid(rack_cols_r, cell, rx + 4, y0 + 4, levels))
 
     fy = TOP_H + body_h + PAD
     parts.append(f'<rect y="{fy}" width="{w}" height="{FOOT_H}" fill="#fafafa"/>')
@@ -153,18 +156,18 @@ def legend_bar(total_w, card_bottom):
 
 def main():
     cards = [
-        (11, 148, "A/B", "Congelado", "−20", 15, 15, CELL_BIG),
-        (12, 133, "C/D", "Congelado", "−20", 15, 14, CELL_BIG),
-        (13, 142, "E/F", "Congelado", "−20", 15, 15, CELL_BIG),
-        (21, 28, "G/H", "Refrigerado", "−18", 7, 7, CELL_SMALL),
+        (11, 148, "A/B", "Congelado", "−20", 15, 15, 11, 5, "1–5"),
+        (12, 133, "C/D", "Congelado", "−20", 15, 14, 11, 5, "1–5"),
+        (13, 142, "E/F", "Congelado", "−20", 15, 15, 11, 5, "1–5"),
+        (21, 28, "G/H", "Refrigerado", "−18", 7, 7, 10, 2, "1–2"),
     ]
     x = 16
     body = []
     max_bottom = 0
-    for cod, total, ruas, tipo, temp, cl, cr, cell in cards:
-        s, gw = cam_card(x, cl, cr, cod, total, ruas, tipo, temp, cell)
+    for cod, total, ruas, tipo, temp, cl, cr, cell, levels, nivel_label in cards:
+        s, gw = cam_card(x, cl, cr, cod, total, ruas, tipo, temp, cell, levels, nivel_label)
         body.append(s)
-        card_h = TOP_H + LEVELS * (cell + GAP) + 16 + FOOT_H + PAD
+        card_h = TOP_H + levels * (cell + GAP) + 22 + FOOT_H + PAD
         max_bottom = max(max_bottom, 56 + card_h)
         x += gw
 
@@ -182,6 +185,7 @@ def main():
 .cor-temp{{font:800 22px Arial,sans-serif;fill:#c62828}}
 .rodape{{font:400 9px Arial,sans-serif;fill:#616161}}
 .legenda{{font:400 9px Arial,sans-serif;fill:#424242}}
+.col-pos{{font:700 7px Arial,sans-serif;fill:#546e7a}}
 </style>
 <rect width="{total_w}" height="{svg_h}" fill="#f5f5f5"/>
 <text x="{total_w/2}" y="28" text-anchor="middle" class="titulo">Planta 2D – Endereçamento WMS – CD Guarulhos</text>
@@ -191,8 +195,8 @@ def main():
 
     out = pathlib.Path(__file__).resolve().parents[1] / "static" / "wms-planta-2d-referencia.svg"
     out.write_text(svg, encoding="utf-8")
-    w11 = rack_w(15, CELL_BIG) * 2 + COR_W + PAD * 4
-    w21 = rack_w(7, CELL_SMALL) * 2 + COR_W + PAD * 4
+    w11 = rack_w(15, 11) * 2 + COR_W + PAD * 4
+    w21 = rack_w(7, 10) * 2 + COR_W + PAD * 4
     print(f"Gerado: {out}")
     print(f"Ratio cam21/cam11: {w21/w11:.1%} (meta ~40%)")
 

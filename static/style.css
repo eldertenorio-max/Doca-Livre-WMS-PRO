@@ -749,9 +749,9 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-cam {
-    flex: 1 1 220px;
-    max-width: 340px;
-    min-width: 200px;
+    flex: 1 1 460px;
+    max-width: 520px;
+    min-width: 420px;
     display: flex;
     flex-direction: column;
     border: 2px solid #ff9800;
@@ -762,24 +762,20 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-cam[data-camara="21"] {
-    flex: 0 1 148px;
-    max-width: 148px;
-    min-width: 132px;
+    flex: 0 1 210px;
+    max-width: 210px;
+    min-width: 190px;
 }
 
 .wms-planta-cam[data-camara="21"] .wms-planta-cell {
-    width: 10px;
-    height: 10px;
+    width: 14px;
+    height: 14px;
+}
+
+.wms-planta-cam:not([data-camara="21"]) .wms-planta-cell {
+    width: 11px;
+    height: 11px;
     border-width: 1px;
-}
-
-.wms-planta-cam[data-camara="21"] .wms-planta-col {
-    gap: 1px;
-}
-
-.wms-planta-cam[data-camara="21"] .wms-planta-rack-side {
-    gap: 1px;
-    padding: 3px 1px 4px;
 }
 
 .wms-planta-cam--clickable {
@@ -813,22 +809,22 @@ body.hub-modulos-aberto .container {
 .wms-planta-cam-body {
     display: flex;
     flex-direction: row;
-    flex: 1;
-    min-height: 380px;
+    flex: 0 0 auto;
     align-items: stretch;
 }
 
 .wms-planta-rack-side {
-    flex: 1;
+    flex: 1 1 0;
     display: flex;
     flex-direction: row;
-    align-items: flex-end;
+    align-items: flex-start;
     justify-content: center;
-    gap: 2px;
-    padding: 4px 2px 6px;
+    gap: 1px;
+    padding: 6px 2px 4px;
     background: #fff;
     border: 3px solid #ff9800;
     min-width: 0;
+    overflow-x: auto;
 }
 
 .wms-planta-rack-side--esq {
@@ -842,31 +838,41 @@ body.hub-modulos-aberto .container {
 .wms-planta-col {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
     align-items: stretch;
+    flex-shrink: 0;
+}
+
+.wms-planta-col-pos {
+    font-size: 7px;
+    font-weight: 700;
+    color: #546e7a;
+    text-align: center;
+    line-height: 1;
+    margin-top: 2px;
 }
 
 .wms-planta-cell {
-    width: 17px;
-    height: 17px;
-    border: 2px solid #ff9800;
+    width: 11px;
+    height: 11px;
+    border: 1px solid #ff9800;
     border-radius: 1px;
     box-sizing: border-box;
     flex-shrink: 0;
 }
 
 .wms-planta-corredor {
-    flex: 0 0 108px;
+    flex: 0 0 96px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    padding: 10px 6px 8px;
+    justify-content: flex-start;
+    padding: 8px 4px 6px;
     background: #fff;
     border-top: 3px solid #ff9800;
     border-bottom: 3px solid #ff9800;
     text-align: center;
-    min-height: 100%;
+    align-self: stretch;
 }
 
 .wms-planta-corredor-meta {
@@ -877,15 +883,11 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-corredor-num {
-    font-size: 56px;
+    font-size: 40px;
     font-weight: 800;
     line-height: 1;
     color: #c62828;
-    margin: 8px 0;
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    margin: 6px 0 4px;
 }
 
 .wms-planta-corredor-tipo {
