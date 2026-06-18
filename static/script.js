@@ -4818,11 +4818,14 @@ function _wmsEndRenderPosicoesPorNiveis(posicoes, maxNiveis) {
         html += '<div class="wms-end-rack-cols">';
         colNums.forEach(function(colNum) {
             var niveisMap = cols[colNum];
+            var niveisExistentes = Object.keys(niveisMap)
+                .map(function(k) { return parseInt(k, 10); })
+                .filter(function(n) { return n > 0; })
+                .sort(function(a, b) { return b - a; });
             html += '<div class="wms-end-rack-col">';
-            for (var n = maxNiveis; n >= 1; n--) {
-                var slot = niveisMap[n];
-                html += slot ? _wmsEndSlotHtml(slot) : _wmsEndSlotPlaceholder(rua, colNum, n);
-            }
+            niveisExistentes.forEach(function(n) {
+                html += _wmsEndSlotHtml(niveisMap[n]);
+            });
             html += '<div class="wms-end-rack-col-pos">' + escHtml(String(colNum)) + '</div>';
             html += '</div>';
         });
@@ -5076,8 +5079,17 @@ function _wmsEndDrawRackColuna(ctx, x, y, w, h, rua, posMap, maxPos, maxNiveis) 
     ctx.restore();
 }
 
+function _wmsEndColunasExistentes(posMap) {
+    return Object.keys(posMap || {})
+        .map(function(k) { return parseInt(k, 10); })
+        .filter(function(n) { return n > 0; })
+        .sort(function(a, b) { return a - b; });
+}
+
 function _wmsEndDrawRackRuaGrade(ctx, x, y, w, h, rua, posMap, maxPos, maxNiveis) {
     maxNiveis = maxNiveis || 5;
+    var colunas = _wmsEndColunasExistentes(posMap);
+    if (!colunas.length) return;
     ctx.save();
     _wmsEndRoundRect(ctx, x, y, w, h, 8);
     ctx.fillStyle = '#f8fafc';
@@ -5092,7 +5104,7 @@ function _wmsEndDrawRackRuaGrade(ctx, x, y, w, h, rua, posMap, maxPos, maxNiveis
     var gridY = y + 10;
     var gridW = Math.max(10, w - labelW - 8);
     var gridH = Math.max(10, h - 20 - colLabelH);
-    var colW = gridW / Math.max(maxPos, 1);
+    var colW = gridW / Math.max(colunas.length, 1);
     var cellGap = colW >= 12 ? 2 : 1;
     var cellH = gridH / maxNiveis;
 
@@ -5115,15 +5127,16 @@ function _wmsEndDrawRackRuaGrade(ctx, x, y, w, h, rua, posMap, maxPos, maxNiveis
         ctx.stroke();
     }
 
-    for (var p = 1; p <= maxPos; p++) {
-        var cx = gridX + (p - 1) * colW;
+    colunas.forEach(function(p, idxCol) {
+        var cx = gridX + idxCol * colW;
         var cw = Math.max(colW - cellGap, 2);
         var niveisMap = posMap[p] || {};
         for (var n = 1; n <= maxNiveis; n++) {
+            if (!niveisMap[n]) continue;
             var rowFromTop = maxNiveis - n;
             var cy = gridY + rowFromTop * cellH + 1;
             var ch = Math.max(cellH - 2, 2);
-            var slot = niveisMap[n] || null;
+            var slot = niveisMap[n];
             var st = _wmsEndCellStyle(slot);
             _wmsEndDrawSlotCell(ctx, cx + cellGap / 2, cy, cw, ch, st);
             if (cw >= 10 && ch >= 8) {
@@ -5143,7 +5156,7 @@ function _wmsEndDrawRackRuaGrade(ctx, x, y, w, h, rua, posMap, maxPos, maxNiveis
             ctx.textBaseline = 'top';
             ctx.fillText(String(p), cx + cw / 2, gridY + gridH + 3);
         }
-    }
+    });
 
     ctx.restore();
 }
