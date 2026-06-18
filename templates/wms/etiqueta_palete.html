@@ -258,11 +258,12 @@
     font-size: 4.8cqh;
     letter-spacing: -0.02em;
   }
-  .dados-cell.w-sku { width: 30%; }
+  .dados-cell.w-sku { width: 28%; }
   .dados-cell.w-lote { width: 14%; }
-  .dados-cell.w-dt { width: 22%; }
-  .dados-cell.w-cx { width: 34%; }
-  .dados-cell.w-val { width: 24%; }
+  .dados-cell.w-fab { width: 24%; }
+  .dados-cell.w-cx { width: 18%; }
+  .dados-cell.w-val { width: 22%; }
+  .dados-cell.w-up { width: 16%; }
   .dados-desc {
     flex: 1;
     padding: 2.5% 2%;
@@ -363,19 +364,23 @@
           <span class="lbl">Lote</span>
           <span class="val nowrap">{{ lote or '—' }}</span>
         </div>
-        <div class="dados-cell w-dt">
-          <span class="lbl">Prod.</span>
-          <span class="val nowrap">{{ data_producao or '—' }}</span>
+        <div class="dados-cell w-fab">
+          <span class="lbl">Fabric.</span>
+          <span class="val nowrap">{% if data_producao %}{{ data_producao|string|truncate(10, True, '') }}{% else %}—{% endif %}</span>
         </div>
         <div class="dados-cell w-cx">
           <span class="lbl">Caixas</span>
-          <span class="val nowrap">{{ qtd if qtd is not none else '—' }}{% if up %} · UP {{ up }}{% endif %}</span>
+          <span class="val nowrap">{{ qtd if qtd is not none else '—' }}</span>
         </div>
       </div>
       <div class="dados-row">
         <div class="dados-cell w-val">
           <span class="lbl">Valid.</span>
-          <span class="val nowrap">{{ data_validade or '—' }}</span>
+          <span class="val nowrap">{% if data_validade %}{{ data_validade|string|truncate(10, True, '') }}{% else %}—{% endif %}</span>
+        </div>
+        <div class="dados-cell w-up">
+          <span class="lbl">UP</span>
+          <span class="val nowrap">{{ up or '—' }}</span>
         </div>
         <div class="dados-desc">
           <span class="lbl">Descrição</span>
@@ -388,7 +393,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603pal9"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603pala"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
