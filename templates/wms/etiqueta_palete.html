@@ -81,21 +81,23 @@
     align-items: stretch;
     border-top: 0.55mm solid var(--ink);
     border-bottom: 0.45mm solid var(--ink);
-    min-height: 14cqh;
-    max-height: 18cqh;
+    min-height: 15cqh;
+    max-height: 19cqh;
   }
   .dest-titulo {
-    width: 11cqw;
+    width: auto;
+    min-width: 11.5mm;
+    max-width: 14mm;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 2%;
-    font-size: 5.5cqh;
+    padding: 4% 5%;
+    font-size: 4.8cqh;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
-    line-height: 1.05;
+    letter-spacing: 0;
+    line-height: 1.08;
     text-align: center;
     border-right: 0.4mm solid var(--ink);
   }
@@ -111,21 +113,21 @@
   }
   .dest-wms {
     flex-shrink: 0;
-    font-size: 9.5cqh;
+    font-size: 8.5cqh;
     font-weight: 900;
     font-family: Consolas, 'Courier New', monospace;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.02em;
     line-height: 1;
     white-space: nowrap;
   }
   .dest-camara {
     flex-shrink: 0;
-    font-size: 6.5cqh;
+    font-size: 6cqh;
     font-weight: 800;
     line-height: 1;
     white-space: nowrap;
   }
-  .dest-camara b { font-size: 8.5cqh; font-weight: 900; }
+  .dest-camara b { font-size: 7.5cqh; font-weight: 900; }
   .dest-bip {
     flex-shrink: 0;
     margin-left: auto;
@@ -158,15 +160,16 @@
 
   /* ── Código de barras principal (destaque) ── */
   .etq-hero-bc {
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
+    max-height: 44cqh;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 2% 1% 1.5%;
+    padding: 1.5% 0 1%;
     border-bottom: 0.45mm solid var(--ink);
-    gap: 2%;
+    gap: 1.5%;
   }
   .brand {
     font-size: 5.5cqh;
@@ -195,70 +198,86 @@
   }
   .codigo-hero {
     flex-shrink: 0;
-    font-size: 7cqh;
+    font-size: 6cqh;
     font-family: Consolas, 'Courier New', monospace;
     font-weight: 800;
     text-align: center;
     line-height: 1;
-    letter-spacing: 0.03em;
-    word-break: break-all;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     max-width: 100%;
   }
 
   /* ── Dados do produto (rodapé) ── */
   .etq-dados {
-    flex-shrink: 0;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
-    font-size: 5.5cqh;
-    line-height: 1.1;
-    max-height: 38cqh;
+    font-size: 5cqh;
+    line-height: 1.15;
+    min-height: 30cqh;
   }
   .dados-row {
     display: flex;
     flex-direction: row;
     border-bottom: 0.35mm solid var(--ink);
-    min-height: 0;
+    min-height: 13cqh;
   }
-  .dados-row:last-child { border-bottom: none; flex: 1; min-height: 0; }
+  .dados-row:last-child { border-bottom: none; min-height: 14cqh; }
   .dados-cell {
-    padding: 2% 2.5%;
+    padding: 2.5% 2%;
     border-right: 0.35mm solid var(--ink);
     overflow: hidden;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
   .dados-cell:last-child { border-right: none; }
   .dados-cell .lbl {
     display: block;
-    font-size: 4.5cqh;
+    font-size: 4.2cqh;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
-    margin-bottom: 2%;
+    letter-spacing: 0;
+    margin-bottom: 3%;
+    line-height: 1;
   }
   .dados-cell .val {
     font-weight: 700;
-    word-break: break-word;
-    font-size: 5.5cqh;
+    font-size: 5cqh;
+    line-height: 1.1;
   }
-  .dados-cell.w-sku { width: 26%; }
-  .dados-cell.w-lote { width: 18%; }
-  .dados-cell.w-dt { width: 24%; }
-  .dados-cell.w-cx { width: 32%; }
+  .dados-cell .val.nowrap {
+    white-space: nowrap;
+    font-size: 4.8cqh;
+    letter-spacing: -0.02em;
+  }
+  .dados-cell.w-sku { width: 30%; }
+  .dados-cell.w-lote { width: 14%; }
+  .dados-cell.w-dt { width: 22%; }
+  .dados-cell.w-cx { width: 34%; }
+  .dados-cell.w-val { width: 24%; }
   .dados-desc {
     flex: 1;
-    padding: 2% 2.5%;
+    padding: 2.5% 2%;
     overflow: hidden;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
   .dados-desc .lbl {
-    font-size: 4.5cqh;
+    font-size: 4.2cqh;
     font-weight: 800;
     text-transform: uppercase;
-    margin-bottom: 2%;
+    margin-bottom: 3%;
+    line-height: 1;
   }
   .dados-desc .val {
-    font-size: 5.5cqh;
+    font-size: 4.8cqh;
     font-weight: 700;
     line-height: 1.12;
     overflow: hidden;
@@ -269,9 +288,9 @@
 
   .etq-sem-destino .etq-hero-bc {
     border-top: 0.55mm solid var(--ink);
-    flex: 1.15;
+    max-height: 50cqh;
   }
-  .etq-sem-destino .etq-dados { max-height: 32cqh; }
+  .etq-sem-destino .etq-dados { min-height: 28cqh; }
 
   @media print {
     @page { size: {{ etq_page_size_in }}; size: {{ etq_page_size_mm }}; margin: 0; }
@@ -316,7 +335,7 @@
 
     {% if endereco_barcode or destino or codigo_wms %}
     <div class="etq-destino">
-      <div class="dest-titulo ink-block">Guardar em</div>
+      <div class="dest-titulo ink-block">Guardar<br>em</div>
       <div class="dest-info">
         {% if codigo_wms %}<div class="dest-wms">{{ codigo_wms }}</div>{% endif %}
         {% if camara %}<div class="dest-camara">Câm <b>{{ camara }}</b></div>{% endif %}
@@ -347,25 +366,25 @@
       <div class="dados-row">
         <div class="dados-cell w-sku">
           <span class="lbl">SKU</span>
-          <span class="val">{{ sku or '—' }}</span>
+          <span class="val nowrap">{{ sku or '—' }}</span>
         </div>
         <div class="dados-cell w-lote">
           <span class="lbl">Lote</span>
-          <span class="val">{{ lote or '—' }}</span>
+          <span class="val nowrap">{{ lote or '—' }}</span>
         </div>
         <div class="dados-cell w-dt">
-          <span class="lbl">Produção</span>
-          <span class="val">{{ data_producao or '—' }}</span>
+          <span class="lbl">Prod.</span>
+          <span class="val nowrap">{{ data_producao or '—' }}</span>
         </div>
         <div class="dados-cell w-cx">
           <span class="lbl">Caixas</span>
-          <span class="val">{{ qtd if qtd is not none else '—' }}{% if up %} · UP {{ up }}{% endif %}</span>
+          <span class="val nowrap">{{ qtd if qtd is not none else '—' }}{% if up %} · UP {{ up }}{% endif %}</span>
         </div>
       </div>
       <div class="dados-row">
-        <div class="dados-cell w-dt">
-          <span class="lbl">Validade</span>
-          <span class="val">{{ data_validade or '—' }}</span>
+        <div class="dados-cell w-val">
+          <span class="lbl">Valid.</span>
+          <span class="val nowrap">{{ data_validade or '—' }}</span>
         </div>
         <div class="dados-desc">
           <span class="lbl">Descrição</span>
@@ -378,7 +397,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603pal1"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603pal2"></script>
 <script>
 (function() {
   var LARGURA_MM = {{ etq_largura_mm }};
@@ -394,10 +413,10 @@
     var w = wrap.clientWidth;
     var h = wrap.clientHeight;
     if (w < 20 && page) w = page.clientWidth - Math.round(SIDE_MM * 2 * MM_PX);
-    if (h < 10) h = Math.round(page ? page.clientHeight * 0.42 : LARGURA_MM * MM_PX * 0.35);
+    if (h < 10) h = Math.round(page ? page.clientHeight * 0.36 : LARGURA_MM * MM_PX * 0.32);
     var modulos = Math.max(11, code.length * 11 + 35);
-    var barW = Math.max(1.2, Math.min(3.8, w / modulos));
-    var barH = Math.max(28, Math.round(h * 0.88));
+    var barW = Math.max(1.2, Math.min(3.6, w / modulos));
+    var barH = Math.max(24, Math.round(h * 0.85));
     try {
       JsBarcode(el, code, {
         format: 'CODE128',
