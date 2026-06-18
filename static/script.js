@@ -5491,13 +5491,15 @@ function _wmsEndRenderPlantaCamaraHtml(cam, selCam) {
     var rackDir = ruas.length > 1 ? _wmsEndRenderPlantaRackSide(ruaDir, cam.slots || [], maxNiv) : '';
     var html = '<div class="wms-planta-cam wms-planta-cam--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-label="Câmara ' + escHtml(String(cod)) + '" role="button" tabindex="0" title="Clique para abrir 3D">';
     html += '<div class="wms-planta-cam-top">' + escHtml(total) + ' Posições · níveis ' + escHtml(_wmsEndPlantaNivelLabel(cod)) + '</div>';
-    html += '<div class="wms-planta-cam-body">';
+    html += '<div class="wms-planta-cam-body wms-planta-cam-body--n' + maxNiv + '">';
     html += '<div class="wms-planta-rack-side wms-planta-rack-side--esq">' + (rackEsq || '<span style="font-size:8px;color:#999;">—</span>') + '</div>';
     html += '<div class="wms-planta-corredor">';
     html += '<div class="wms-planta-corredor-meta">CÂMARA FRIA<br>ruas ' + escHtml(ruas.join('/') || '—') + '</div>';
+    html += '<div class="wms-planta-corredor-mid">';
     html += '<div class="wms-planta-corredor-num">' + escHtml(String(cod)) + '</div>';
     html += '<div class="wms-planta-corredor-tipo">' + escHtml(meta.tipo) + '</div>';
     if (meta.temp) html += '<div class="wms-planta-corredor-temp">' + escHtml(meta.temp) + '</div>';
+    html += '</div>';
     html += '<div class="wms-planta-porta" title="Entrada"></div>';
     html += '</div>';
     html += '<div class="wms-planta-rack-side wms-planta-rack-side--dir">' + (rackDir || '<span style="font-size:8px;color:#999;">—</span>') + '</div>';
