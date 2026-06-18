@@ -5412,7 +5412,7 @@ function _wmsEndCellStylePlanta(slot) {
     if (!slot) return { fill: '#eceff1', stroke: '#ff9800' };
     var st = _wmsEndCellStyle(slot);
     if ((slot.status || '') !== 'ocupada' && !(slot.destino_acao || '')) {
-        if (parseInt(slot.nivel, 10) === 1) st.fill = '#42a5f5';
+        if (parseInt(slot.nivel, 10) === 1) st.fill = '#90caf9';
         else st.fill = '#0d47a1';
         st.stroke = '#ff9800';
     }

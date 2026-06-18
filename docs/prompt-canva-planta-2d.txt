@@ -1,0 +1,70 @@
+Planta 2D – Endereçamento WMS – CD Guarulhos.
+
+Estilo: infográfico técnico flat, vetorial, dashboard WMS 2D, sem perspectiva, sem render 3D, sem foto, sem wireframe. Fundo geral cinza muito claro (#F5F5F5).
+
+IMPORTANTE: NÃO mostrar porta-paletes 3D, NÃO mostrar montantes vazios, NÃO mostrar estruturas com interior vazio. Os racks devem ser representados apenas como grades de pequenos quadrados coloridos.
+
+Layout horizontal com 4 cartões lado a lado:
+- Câmara 11
+- Câmara 12
+- Câmara 13
+- Câmara 21
+
+A Câmara 21 deve ter largura aproximada de 40% da largura das demais.
+
+Cada cartão possui borda laranja (#FF9800, 2 px).
+
+TOPO DE CADA CARTÃO:
+Faixa branca com texto azul escuro (#1565C0), negrito, centralizado:
+- Câmara 11: "148 Posições · níveis 1–5"
+- Câmara 12: "133 Posições · níveis 1–5"
+- Câmara 13: "142 Posições · níveis 1–5"
+- Câmara 21: "28 Posições · níveis 1–5"
+
+CORPO:
+Dividido em três faixas verticais:
+[RACK ESQ] | [CORREDOR] | [RACK DIR]
+
+RACK ESQUERDO E DIREITO:
+- Retângulos com borda laranja grossa (#FF9800)
+- Interior formado apenas por várias colunas de quadrados pequenos
+- Cada coluna representa uma posição
+- Cada coluna contém exatamente 5 quadrados empilhados
+- Nível 5 no topo e nível 1 embaixo
+- Borda dos quadrados em laranja (#FF9800)
+- Posição vazia: nível 1 azul claro (#90CAF9), níveis 2–5 azul escuro (#0D47A1)
+- Sem vigas, sem montantes, sem estrutura vazia, somente a grade de quadrados
+
+CORREDOR CENTRAL:
+Faixa branca com bordas laranja superior e inferior.
+
+Câmara 11: topo "CÂMARA FRIA" / "ruas A/B" · centro número 11 · "Congelado" vertical · "-20" · porta amarela
+Câmara 12: topo "CÂMARA FRIA" / "ruas C/D" · centro número 12 · "Congelado" vertical · "-20" · porta amarela
+Câmara 13: topo "CÂMARA FRIA" / "ruas E/F" · centro número 13 · "Congelado" vertical · "-20" · porta amarela
+Câmara 21: topo "CÂMARA FRIA" / "ruas G/H" · centro número 21 · "Refrigerado" vertical · "-18" · porta amarela
+
+RODAPÉ DOS CARTÕES (faixa #FAFAFA):
+- Câmara 11: "0/148 ocup. · 0% · clique p/ 3D"
+- Câmara 12: "0/133 ocup. · 0% · clique p/ 3D"
+- Câmara 13: "0/142 ocup. · 0% · clique p/ 3D"
+- Câmara 21: "0/28 ocup. · 0% · clique p/ 3D"
+
+LEGENDA INFERIOR (copiar exatamente):
+□ Posição livre (vazia) — azul claro
+□ Posição ocupada (palete) — vermelho
+□ Borda laranja — estrutura do rack
+□ ENVIO P/ MINAS — azul
+□ RETRABALHO — amarelo
+□ DESCARTE — marrom
+□ AVARIA — roxo
+□ REENTREGAS — violeta
+□ Entrada da câmara — amarelo
+□ Cada coluna = posição · quadrados 1–5 = níveis (1 embaixo, 5 em cima)
+
+PROIBIDO:
+rack 3D, wireframe, perspectiva, interior vazio de porta-palete, texto em inglês, códigos hex visíveis, palavras inventadas, quatro câmaras com a mesma largura.
+
+Resultado esperado: dashboard WMS 2D profissional, limpo, vetorial, com grades de quadrados coloridos representando posições e níveis de armazenagem.
+
+---
+DICA: anexe também o arquivo static/wms-planta-2d-referencia.svg como imagem de referência visual (Upload → usar como base).

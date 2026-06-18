@@ -15,7 +15,7 @@ def rack_grid(cols, ox, oy):
             n = LEVELS - lv
             x = ox + c * COL_W
             y = oy + lv * (CELL + GAP)
-            fill = "#42a5f5" if n == 1 else "#0d47a1"
+            fill = "#90caf9" if n == 1 else "#0d47a1"
             parts.append(
                 f'<rect x="{x}" y="{y}" width="{CELL}" height="{CELL}" '
                 f'fill="{fill}" stroke="#ff9800" stroke-width="2"/>'
@@ -103,10 +103,12 @@ def main():
     ]
     x = 20
     body = []
+    total_w = 40
     for cod, total, ruas, tipo, temp, cl, cr in cards:
         s, gw = cam_card(x, cl, cr, cod, total, ruas, tipo, temp)
         body.append(s)
         x += gw
+        total_w = x + 20
 
     legenda_y = 460
     leg_items = [
@@ -135,7 +137,7 @@ def main():
     )
 
     svg = f"""<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 500" width="1280" height="500">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {total_w} 500" width="{total_w}" height="500">
 <style>
 .titulo{{font:700 22px Arial,sans-serif;fill:#1565c0}}
 .topo{{font:700 11px Arial,sans-serif;fill:#1565c0}}
@@ -146,9 +148,8 @@ def main():
 .rodape{{font:400 9px Arial,sans-serif;fill:#616161}}
 .legenda{{font:400 10px Arial,sans-serif;fill:#424242}}
 </style>
-<rect width="1280" height="500" fill="#f5f5f5"/>
-<text x="640" y="28" text-anchor="middle" class="titulo">Planta 2D – Endereçamento WMS – CD Guarulhos</text>
-<text x="640" y="48" text-anchor="middle" class="legenda">Referência: 4 cartões · cada um = rack esquerdo + corredor + rack direito</text>
+<rect width="{total_w}" height="500" fill="#f5f5f5"/>
+<text x="{total_w/2}" y="28" text-anchor="middle" class="titulo">Planta 2D – Endereçamento WMS – CD Guarulhos</text>
 {"".join(body)}
 {leg}
 </svg>"""
