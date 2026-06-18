@@ -4583,7 +4583,8 @@ function _wmsMostrarSubtab(tab) {
 }
 
 var _wmsMapa3dScriptPromise = null;
-var _WMS_MAPA3D_VER = '20260604b';
+var _WMS_THREE_LEGACY_CDN = 'https://cdn.jsdelivr.net/npm/three@0.128.0';
+var _WMS_MAPA3D_VER = '20260604c';
 
 function _wmsAguardarThreePronto() {
     return new Promise(function(resolve, reject) {
@@ -4610,6 +4611,21 @@ function _wmsAguardarThreePronto() {
             else setTimeout(tick, 50);
         })();
     });
+}
+
+function _wmsGarantirThreeLegacy() {
+    if (window.THREE && window.THREE.OrbitControls) return Promise.resolve();
+    return _wmsLoadScriptOnce(_WMS_THREE_LEGACY_CDN + '/build/three.min.js')
+        .then(function() {
+            if (!window.THREE) throw new Error('Three.js não inicializou');
+            if (window.THREE.OrbitControls) return;
+            return _wmsLoadScriptOnce(_WMS_THREE_LEGACY_CDN + '/examples/js/controls/OrbitControls.js');
+        })
+        .then(function() {
+            if (!window.THREE || !window.THREE.OrbitControls) {
+                throw new Error('OrbitControls não carregou');
+            }
+        });
 }
 
 function _wmsLoadScriptOnce(src) {
@@ -4671,7 +4687,8 @@ function _wmsCarregarScriptMapa3d() {
     if (window.WmsMapa3d && WmsMapa3d.renderFrame && window.THREE && window.THREE.OrbitControls) return Promise.resolve();
     if (_wmsMapa3dScriptPromise) return _wmsMapa3dScriptPromise;
     _wmsMapa3dScriptPromise = _wmsWithTimeout(
-        _wmsAguardarThreePronto()
+        _wmsGarantirThreeLegacy()
+            .then(_wmsAguardarThreePronto)
             .then(function() {
                 if (window.WmsMapa3d && WmsMapa3d.renderFrame) return;
                 return _wmsLoadScriptOnce('/static/wms-mapa-3d.js?v=' + _WMS_MAPA3D_VER);
