@@ -5098,15 +5098,24 @@ function _wmsEndDrawRackRuaGrade(ctx, x, y, w, h, rua, posMap, maxPos, maxNiveis
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    var labelW = 58;
+    var labelW = 54;
+    var levelLabelW = 16;
     var colLabelH = 14;
-    var gridX = x + labelW;
+    var gridX = x + labelW + levelLabelW;
     var gridY = y + 10;
-    var gridW = Math.max(10, w - labelW - 8);
-    var gridH = Math.max(10, h - 20 - colLabelH);
-    var colW = gridW / Math.max(colunas.length, 1);
-    var cellGap = colW >= 12 ? 2 : 1;
-    var cellH = gridH / maxNiveis;
+    var gridW = Math.max(10, w - labelW - levelLabelW - 12);
+    var gridH = Math.max(10, h - 22 - colLabelH);
+    var gapCell = 3;
+    var cellSize = Math.floor(Math.min(
+        20,
+        (gridW - gapCell * Math.max(0, colunas.length - 1)) / Math.max(colunas.length, 1),
+        (gridH - gapCell * Math.max(0, maxNiveis - 1)) / Math.max(maxNiveis, 1)
+    ));
+    cellSize = Math.max(5, cellSize);
+    var rackW = colunas.length * cellSize + Math.max(0, colunas.length - 1) * gapCell;
+    var rackH = maxNiveis * cellSize + Math.max(0, maxNiveis - 1) * gapCell;
+    var rackX = gridX + Math.max(0, (gridW - rackW) / 2);
+    var rackY = gridY + Math.max(0, (gridH - rackH) / 2);
 
     ctx.fillStyle = '#0f172a';
     ctx.font = 'bold 14px Segoe UI, system-ui, sans-serif';
@@ -5117,44 +5126,43 @@ function _wmsEndDrawRackRuaGrade(ctx, x, y, w, h, rua, posMap, maxPos, maxNiveis
     ctx.fillStyle = '#1565c0';
     ctx.fillText(String(rua || '—'), x + labelW / 2, y + h / 2 + 12);
 
-    ctx.strokeStyle = 'rgba(148,163,184,0.45)';
-    ctx.lineWidth = 1;
-    for (var nLine = 1; nLine < maxNiveis; nLine++) {
-        var ly = gridY + nLine * cellH;
-        ctx.beginPath();
-        ctx.moveTo(gridX, ly);
-        ctx.lineTo(gridX + gridW, ly);
-        ctx.stroke();
+    if (cellSize >= 8) {
+        ctx.fillStyle = '#64748b';
+        ctx.font = 'bold 8px Segoe UI, system-ui, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        for (var nLabel = maxNiveis; nLabel >= 1; nLabel--) {
+            var rowTop = maxNiveis - nLabel;
+            ctx.fillText(String(nLabel), rackX - 5, rackY + rowTop * (cellSize + gapCell) + cellSize / 2);
+        }
     }
 
     colunas.forEach(function(p, idxCol) {
-        var cx = gridX + idxCol * colW;
-        var cw = Math.max(colW - cellGap, 2);
+        var cx = rackX + idxCol * (cellSize + gapCell);
         var niveisMap = posMap[p] || {};
         for (var n = 1; n <= maxNiveis; n++) {
             if (!niveisMap[n]) continue;
             var rowFromTop = maxNiveis - n;
-            var cy = gridY + rowFromTop * cellH + 1;
-            var ch = Math.max(cellH - 2, 2);
+            var cy = rackY + rowFromTop * (cellSize + gapCell);
             var slot = niveisMap[n];
             var st = _wmsEndCellStyle(slot);
-            _wmsEndDrawSlotCell(ctx, cx + cellGap / 2, cy, cw, ch, st);
-            if (cw >= 10 && ch >= 8) {
+            _wmsEndDrawSlotCell(ctx, cx, cy, cellSize, cellSize, st);
+            if (cellSize >= 12) {
                 ctx.save();
                 ctx.fillStyle = (st.fill === '#c62828') ? 'rgba(255,255,255,0.95)' : 'rgba(15,23,42,0.76)';
                 ctx.font = 'bold 8px Segoe UI, system-ui, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(String(n), cx + cw / 2, cy + ch / 2);
+                ctx.fillText(String(n), cx + cellSize / 2, cy + cellSize / 2);
                 ctx.restore();
             }
         }
-        if (colW >= 12) {
+        if (cellSize >= 7) {
             ctx.fillStyle = '#475569';
             ctx.font = 'bold 8px Segoe UI, system-ui, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
-            ctx.fillText(String(p), cx + cw / 2, gridY + gridH + 3);
+            ctx.fillText(String(p), cx + cellSize / 2, rackY + rackH + 4);
         }
     });
 
