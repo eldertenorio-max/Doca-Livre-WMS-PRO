@@ -8,8 +8,9 @@
   :root {
     --lw: {{ etq_largura_in }}in;
     --lh: {{ etq_altura_in }}in;
-    --ink: #000000;
-    --paper: #ffffff;
+    --ink: #000;
+    --paper: #fff;
+    --etq-side: 5mm;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -19,22 +20,19 @@
     margin: 0;
   }
 
-  html, body { width: var(--lw); }
+  html { background: #eee; }
   body {
     font-family: Arial, Helvetica, sans-serif;
-    background: #eee;
-    padding: 6px;
     color: var(--ink);
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
   .toolbar {
-    margin: 0 0 10px;
+    margin: 8px;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    width: calc(var(--lw) + 12px);
-    max-width: 100%;
+    max-width: calc(var(--lw) + 16px);
   }
   .toolbar button {
     padding: 8px; font-size: 13px; cursor: pointer;
@@ -50,18 +48,23 @@
   .etq-page {
     width: var(--lw);
     height: var(--lh);
-    margin: 0 0 2mm;
+    margin: 0 0 0 8px;
     overflow: hidden;
     background: var(--paper);
+    position: relative;
   }
   .etq {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
-    border: 2pt solid var(--ink);
     background: var(--paper);
+    padding: 0 var(--etq-side);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    container-type: size;
+    container-name: etq;
   }
   .ink-block {
     background: var(--ink) !important;
@@ -70,207 +73,211 @@
     print-color-adjust: exact !important;
   }
 
-  /* ── Faixa destino (topo) ── */
+  /* ── Destino (topo compacto) ── */
   .etq-destino {
     flex-shrink: 0;
     display: flex;
     flex-direction: row;
     align-items: stretch;
-    border-bottom: 1.5pt solid var(--ink);
-    min-height: 0.40in;
-    max-height: 0.44in;
+    border-top: 0.55mm solid var(--ink);
+    border-bottom: 0.45mm solid var(--ink);
+    min-height: 14cqh;
+    max-height: 18cqh;
   }
   .dest-titulo {
-    width: 0.48in;
+    width: 11cqw;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0.02in;
-    font-size: 4.5pt;
+    padding: 2%;
+    font-size: 5.5cqh;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.3px;
-    line-height: 1.1;
+    letter-spacing: 0.02em;
+    line-height: 1.05;
     text-align: center;
-    border-right: 1.5pt solid var(--ink);
+    border-right: 0.4mm solid var(--ink);
   }
   .dest-info {
     flex: 1;
     display: flex;
     flex-direction: row;
     align-items: center;
-    padding: 0.03in 0.05in;
-    gap: 0.05in;
+    padding: 2% 3%;
+    gap: 3%;
     min-width: 0;
     overflow: hidden;
   }
   .dest-wms {
     flex-shrink: 0;
-    font-size: 8.5pt;
+    font-size: 9.5cqh;
     font-weight: 900;
     font-family: Consolas, 'Courier New', monospace;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.04em;
     line-height: 1;
     white-space: nowrap;
   }
   .dest-camara {
     flex-shrink: 0;
-    font-size: 5.5pt;
+    font-size: 6.5cqh;
     font-weight: 800;
     line-height: 1;
     white-space: nowrap;
   }
-  .dest-camara b {
-    font-size: 7.5pt;
-    font-weight: 900;
-  }
-  .dest-bc {
-    flex: 1;
-    min-width: 0;
-    text-align: center;
-    line-height: 0;
-  }
-  .dest-bc svg {
-    width: 100%;
-    max-width: 100%;
-    height: 0.16in;
-  }
+  .dest-camara b { font-size: 8.5cqh; font-weight: 900; }
   .dest-bip {
     flex-shrink: 0;
+    margin-left: auto;
     text-align: right;
-    line-height: 1.1;
+    line-height: 1.05;
   }
   .dest-bip .lbl {
     display: block;
-    font-size: 4pt;
+    font-size: 4.5cqh;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.2px;
   }
   .dest-bip .val {
     display: block;
-    font-size: 5.5pt;
+    font-size: 6.5cqh;
     font-weight: 800;
     font-family: Consolas, monospace;
   }
   .dest-loc {
-    flex-shrink: 0;
-    max-width: 0.75in;
-    font-size: 3.5pt;
+    flex: 1;
+    min-width: 0;
+    font-size: 5cqh;
     font-weight: 700;
     line-height: 1.1;
     text-align: right;
-  }
-
-  /* ── Corpo palete ── */
-  .etq-body {
-    flex: 1;
-    display: flex;
-    flex-direction: row;
-    min-height: 0;
     overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .etq-palete-bc {
-    width: 0.90in;
-    flex-shrink: 0;
+  /* ── Código de barras principal (destaque) ── */
+  .etq-hero-bc {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.02in 0.03in;
-    border-right: 1.5pt solid var(--ink);
+    padding: 2% 1% 1.5%;
+    border-bottom: 0.45mm solid var(--ink);
+    gap: 2%;
   }
   .brand {
-    font-size: 4pt;
+    font-size: 5.5cqh;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.2px;
-    text-align: center;
-    margin-bottom: 0.02in;
+    letter-spacing: 0.06em;
     line-height: 1;
+    flex-shrink: 0;
   }
-  .bc-wrap { width: 100%; text-align: center; line-height: 0; }
-  .bc-wrap svg { width: 100%; height: 0.22in; }
-  .codigo {
-    margin-top: 0.015in;
-    font-size: 4pt;
-    font-family: Consolas, monospace;
+  .bc-hero-wrap {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    overflow: hidden;
+  }
+  .bc-hero-wrap svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+  }
+  .codigo-hero {
+    flex-shrink: 0;
+    font-size: 7cqh;
+    font-family: Consolas, 'Courier New', monospace;
     font-weight: 800;
     text-align: center;
     line-height: 1;
+    letter-spacing: 0.03em;
     word-break: break-all;
+    max-width: 100%;
   }
 
+  /* ── Dados do produto (rodapé) ── */
   .etq-dados {
-    flex: 1;
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    min-width: 0;
-    font-size: 5pt;
-    line-height: 1.15;
+    font-size: 5.5cqh;
+    line-height: 1.1;
+    max-height: 38cqh;
   }
   .dados-row {
     display: flex;
     flex-direction: row;
-    border-bottom: 1pt solid var(--ink);
+    border-bottom: 0.35mm solid var(--ink);
     min-height: 0;
   }
-  .dados-row:last-child { border-bottom: none; flex: 1; }
+  .dados-row:last-child { border-bottom: none; flex: 1; min-height: 0; }
   .dados-cell {
-    padding: 0.02in 0.04in;
-    border-right: 1pt solid var(--ink);
+    padding: 2% 2.5%;
+    border-right: 0.35mm solid var(--ink);
     overflow: hidden;
+    min-width: 0;
   }
   .dados-cell:last-child { border-right: none; }
   .dados-cell .lbl {
     display: block;
-    font-size: 4pt;
+    font-size: 4.5cqh;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.3px;
-    margin-bottom: 0.01in;
+    letter-spacing: 0.03em;
+    margin-bottom: 2%;
   }
   .dados-cell .val {
     font-weight: 700;
     word-break: break-word;
+    font-size: 5.5cqh;
   }
-  .dados-cell.w-sku { width: 28%; }
-  .dados-cell.w-lote { width: 22%; }
-  .dados-cell.w-dt { width: 25%; }
-  .dados-cell.w-cx { width: 25%; }
+  .dados-cell.w-sku { width: 26%; }
+  .dados-cell.w-lote { width: 18%; }
+  .dados-cell.w-dt { width: 24%; }
+  .dados-cell.w-cx { width: 32%; }
   .dados-desc {
     flex: 1;
-    padding: 0.02in 0.04in;
+    padding: 2% 2.5%;
     overflow: hidden;
+    min-width: 0;
   }
   .dados-desc .lbl {
-    font-size: 4pt;
+    font-size: 4.5cqh;
     font-weight: 800;
     text-transform: uppercase;
-    margin-bottom: 0.01in;
+    margin-bottom: 2%;
   }
   .dados-desc .val {
-    font-size: 4.5pt;
+    font-size: 5.5cqh;
     font-weight: 700;
     line-height: 1.12;
-    max-height: 0.26in;
     overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
 
-  .etq-sem-destino .etq-palete-bc {
-    width: 0.98in;
+  .etq-sem-destino .etq-hero-bc {
+    border-top: 0.55mm solid var(--ink);
+    flex: 1.15;
   }
-  .etq-sem-destino .bc-wrap svg { height: 0.28in; }
-  .etq-sem-destino .dados-desc .val { max-height: 0.42in; }
+  .etq-sem-destino .etq-dados { max-height: 32cqh; }
 
   @media print {
     @page { size: {{ etq_page_size_in }}; size: {{ etq_page_size_mm }}; margin: 0; }
 
     html, body {
-      width: var(--lw) !important;
-      height: var(--lh) !important;
+      width: {{ etq_largura_in }}in !important;
       margin: 0 !important;
       padding: 0 !important;
       background: #fff !important;
@@ -278,19 +285,14 @@
     }
     .toolbar { display: none !important; }
     .etq-page {
-      width: var(--lw) !important;
-      height: var(--lh) !important;
+      width: {{ etq_largura_in }}in !important;
+      height: {{ etq_altura_in }}in !important;
       margin: 0 !important;
       padding: 0 !important;
-      page-break-after: auto;
-      break-after: auto;
-      overflow: hidden;
+      overflow: hidden !important;
     }
     .etq {
-      width: 100% !important;
-      height: 100% !important;
-      margin: 0 !important;
-      border: 2pt solid #000 !important;
+      padding: 0 var(--etq-side) !important;
     }
     .ink-block {
       background: #000 !important;
@@ -299,7 +301,11 @@
   }
 </style>
 </head>
-<body data-etq-page="{{ etq_page_size_in }}">
+<body
+  data-etq-page="{{ etq_page_size_in }}"
+  data-etq-w="{{ etq_largura_in }}in"
+  data-etq-h="{{ etq_altura_in }}in"
+>
 <div class="toolbar">
   <button type="button" id="btn-wms-etq-imprimir">Imprimir</button>
   <p class="print-setup-hint">{{ etq_driver_hint | safe }}</p>
@@ -314,12 +320,7 @@
       <div class="dest-info">
         {% if codigo_wms %}<div class="dest-wms">{{ codigo_wms }}</div>{% endif %}
         {% if camara %}<div class="dest-camara">Câm <b>{{ camara }}</b></div>{% endif %}
-        {% if codigo_wms or endereco_barcode %}
-        <div class="dest-bc">
-          <svg id="bc-endereco" data-code="{{ codigo_wms or endereco_barcode }}"></svg>
-        </div>
-        {% endif %}
-        {% if endereco_barcode and (not codigo_wms or endereco_barcode != codigo_wms) %}
+        {% if endereco_barcode %}
         <div class="dest-bip">
           <span class="lbl">Bip</span>
           <span class="val">{{ endereco_barcode }}</span>
@@ -334,42 +335,41 @@
     </div>
     {% endif %}
 
-    <div class="etq-body">
-      <div class="etq-palete-bc">
-        <div class="brand">Ultrapão · WMS</div>
-        <div class="bc-wrap">
-          <svg id="bc-palete" data-code="{{ etiqueta }}"></svg>
-        </div>
-        <div class="codigo">{{ etiqueta }}</div>
+    <div class="etq-hero-bc">
+      <div class="brand">Ultrapão · WMS</div>
+      <div class="bc-hero-wrap">
+        <svg id="bc-palete" data-code="{{ etiqueta }}"></svg>
       </div>
-      <div class="etq-dados">
-        <div class="dados-row">
-          <div class="dados-cell w-sku">
-            <span class="lbl">SKU</span>
-            <span class="val">{{ sku or '—' }}</span>
-          </div>
-          <div class="dados-cell w-lote">
-            <span class="lbl">Lote</span>
-            <span class="val">{{ lote or '—' }}</span>
-          </div>
-          <div class="dados-cell w-dt">
-            <span class="lbl">Produção</span>
-            <span class="val">{{ data_producao or '—' }}</span>
-          </div>
-          <div class="dados-cell w-cx">
-            <span class="lbl">Caixas</span>
-            <span class="val">{{ qtd if qtd is not none else '—' }}{% if up %} · UP {{ up }}{% endif %}</span>
-          </div>
+      <div class="codigo-hero">{{ etiqueta }}</div>
+    </div>
+
+    <div class="etq-dados">
+      <div class="dados-row">
+        <div class="dados-cell w-sku">
+          <span class="lbl">SKU</span>
+          <span class="val">{{ sku or '—' }}</span>
         </div>
-        <div class="dados-row">
-          <div class="dados-cell w-dt">
-            <span class="lbl">Validade</span>
-            <span class="val">{{ data_validade or '—' }}</span>
-          </div>
-          <div class="dados-desc" style="flex:1;border-right:none;">
-            <span class="lbl">Descrição</span>
-            <span class="val">{{ descricao or '—' }}</span>
-          </div>
+        <div class="dados-cell w-lote">
+          <span class="lbl">Lote</span>
+          <span class="val">{{ lote or '—' }}</span>
+        </div>
+        <div class="dados-cell w-dt">
+          <span class="lbl">Produção</span>
+          <span class="val">{{ data_producao or '—' }}</span>
+        </div>
+        <div class="dados-cell w-cx">
+          <span class="lbl">Caixas</span>
+          <span class="val">{{ qtd if qtd is not none else '—' }}{% if up %} · UP {{ up }}{% endif %}</span>
+        </div>
+      </div>
+      <div class="dados-row">
+        <div class="dados-cell w-dt">
+          <span class="lbl">Validade</span>
+          <span class="val">{{ data_validade or '—' }}</span>
+        </div>
+        <div class="dados-desc">
+          <span class="lbl">Descrição</span>
+          <span class="val">{{ descricao or '—' }}</span>
         </div>
       </div>
     </div>
@@ -378,25 +378,56 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-<script src="/static/wms/imprimir-etiqueta.js?v=20260603html"></script>
+<script src="/static/wms/imprimir-etiqueta.js?v=20260603pal1"></script>
 <script>
 (function() {
-  function renderBc(id, opts) {
-    var el = document.getElementById(id);
+  var LARGURA_MM = {{ etq_largura_mm }};
+  var MM_PX = 96 / 25.4;
+  var SIDE_MM = 5;
+
+  function renderPaleteBc() {
+    var el = document.getElementById('bc-palete');
+    var wrap = el && el.parentElement;
     var code = el && el.getAttribute('data-code');
-    if (!code) return;
+    if (!code || !wrap) return;
+    var page = wrap.closest('.etq-page');
+    var w = wrap.clientWidth;
+    var h = wrap.clientHeight;
+    if (w < 20 && page) w = page.clientWidth - Math.round(SIDE_MM * 2 * MM_PX);
+    if (h < 10) h = Math.round(page ? page.clientHeight * 0.42 : LARGURA_MM * MM_PX * 0.35);
+    var modulos = Math.max(11, code.length * 11 + 35);
+    var barW = Math.max(1.2, Math.min(3.8, w / modulos));
+    var barH = Math.max(28, Math.round(h * 0.88));
     try {
-      JsBarcode(el, code, Object.assign({
-        format: 'CODE128', displayValue: false, margin: 0, lineColor: '#000', background: '#fff'
-      }, opts || {}));
+      JsBarcode(el, code, {
+        format: 'CODE128',
+        width: barW,
+        height: barH,
+        displayValue: false,
+        margin: 0,
+        lineColor: '#000',
+        background: '#fff'
+      });
+      el.style.width = '100%';
+      el.style.height = '100%';
+      el.style.maxWidth = '100%';
+      el.style.maxHeight = '100%';
+      el.removeAttribute('width');
+      el.removeAttribute('height');
     } catch (e) { console.warn(e); }
   }
+
   function renderTodos() {
-    renderBc('bc-palete', { width: 1.0, height: 20 });
-    renderBc('bc-endereco', { width: 0.9, height: 14 });
+    renderPaleteBc();
   }
+
   renderTodos();
-  window.addEventListener('beforeprint', renderTodos);
+  window.addEventListener('resize', renderTodos);
+  window.addEventListener('beforeprint', function() {
+    requestAnimationFrame(function() {
+      requestAnimationFrame(renderTodos);
+    });
+  });
   document.getElementById('btn-wms-etq-imprimir').addEventListener('click', function() {
     wmsEtiquetaImprimir(renderTodos);
   });
