@@ -4584,7 +4584,7 @@ function _wmsMostrarSubtab(tab) {
 
 var _wmsMapa3dScriptPromise = null;
 var _WMS_THREE_LEGACY_CDN = 'https://cdn.jsdelivr.net/npm/three@0.128.0';
-var _WMS_MAPA3D_VER = '20260604d';
+var _WMS_MAPA3D_VER = '20260604c';
 
 function _wmsAguardarThreePronto() {
     return new Promise(function(resolve, reject) {
@@ -4764,8 +4764,34 @@ async function loadWmsMapa3d() {
 
 function _wmsEndSlotHtml(p) {
     var st = (p.status || '').toLowerCase();
-    var cls = st === 'ocupada' ? 'wms-end-slot--ocup' : (st === 'nao_criada' ? 'wms-end-slot--nao' : 'wms-end-slot--livre');
-    var lbl = st === 'ocupada' ? 'ocup.' : (st === 'nao_criada' ? '—' : 'livre');
+    var dest = (p.destino_acao || '').toLowerCase();
+    var cls = 'wms-end-slot--livre';
+    var lbl = 'livre';
+    if (st === 'ocupada') {
+        cls = 'wms-end-slot--ocup';
+        lbl = 'ocup.';
+    } else if (st === 'nao_criada') {
+        cls = 'wms-end-slot--nao';
+        lbl = '—';
+    } else if (dest === 'envio_mg') {
+        cls = 'wms-end-slot--dest-mg';
+        lbl = 'MG';
+    } else if (dest === 'retrabalho') {
+        cls = 'wms-end-slot--dest-ret';
+        lbl = 'retr.';
+    } else if (dest === 'descarte_perdas') {
+        cls = 'wms-end-slot--dest-desc';
+        lbl = 'desc.';
+    } else if (dest === 'palete_bloqueado') {
+        cls = 'wms-end-slot--dest-bloq';
+        lbl = 'bloq.';
+    } else if (dest === 'avaria') {
+        cls = 'wms-end-slot--dest-avaria';
+        lbl = 'avaria';
+    } else if (dest === 'reentregas') {
+        cls = 'wms-end-slot--dest-reent';
+        lbl = 'reent.';
+    }
     var tit = p.codigo_endereco || ('Pos ' + (p.coluna != null ? p.coluna : p.posicao));
     if (st === 'ocupada') {
         tit += ' · Palete ' + (p.etiqueta || p.palete_id || '?');
@@ -4812,9 +4838,7 @@ function _wmsEndRenderPosicoesPorNiveis(posicoes, maxNiveis) {
         var cols = porRua[rua];
         var colNums = Object.keys(cols).map(function(k) { return parseInt(k, 10); }).sort(function(a, b) { return a - b; });
         html += '<div class="wms-end-rack-rua">';
-        if (ruaOrder.length > 1) {
-            html += '<div class="wms-end-rack-rua-label">Rua ' + escHtml(rua) + '</div>';
-        }
+        html += '<div class="wms-end-rack-rua-label">Rua ' + escHtml(rua) + '</div>';
         html += '<div class="wms-end-rack-cols">';
         colNums.forEach(function(colNum) {
             var niveisMap = cols[colNum];
@@ -5384,10 +5408,9 @@ function _wmsEndDrawArea98Zone(ctx, ax, ay, aw, ah, a) {
     ctx.fillText((a.ocupadas || 0) + '/' + slots + ' ocup.', ax + 8, ay + ah - 6);
 }
 
-function _wmsEndDraw2D() {
-    var canvas = document.getElementById('wms-end-2d-canvas');
-    var wrap = document.getElementById('wms-end-2d-wrap');
-    if (!canvas || !wrap) return;
+function _wmsEndRender2DPlanta() {
+    var root = document.getElementById('wms-end-2d-planta');
+    if (!root) return;
     _wmsEndRenderLegenda2d();
     var mapa = _wmsEndState.mapa3d || {};
     var data = _wmsEndState.data || {};
@@ -5399,86 +5422,71 @@ function _wmsEndDraw2D() {
         if (camByCod[c.camara]) {
             camByCod[c.camara]._pct = c.percentual_ocupacao || 0;
             camByCod[c.camara]._ocup = c.ocupadas || 0;
+            camByCod[c.camara]._total = c.slots || c.total_slots || (camByCod[c.camara].slots || []).length;
         }
     });
-    var W = Math.max(wrap.clientWidth || 900, 640);
-    var pad = 16;
-    var gap = 16;
     var camOrder = [11, 12, 13, 21].filter(function(cod) { return !!camByCod[cod]; });
-    function camAltura(cod) {
-        var cam = camByCod[cod] || {};
-        var ruas = cam.ruas || [];
-        var maxStack = _wmsEndMaxNiveisCamara(cam, cam.slots || [], ruas);
-        var maxCols = 1;
-        ruas.forEach(function(rua) {
-            var n = _wmsEndColunasExistentes(_wmsEndSlotsPorRua(cam.slots || [], rua)).length;
-            if (n > maxCols) maxCols = n;
-        });
-        var rackH = maxStack * 16 + 52;
-        var needW = maxCols * 18 + Math.max(0, ruas.length - 1) * 8;
-        if (needW > W - pad * 2) rackH += 8;
-        return Math.max(168, 58 + rackH);
-    }
-    var y98base = pad + camOrder.reduce(function(acc, cod) { return acc + camAltura(cod) + gap; }, 0);
-    var H = Math.max(500, y98base + 138);
-    canvas.width = W;
-    canvas.height = H;
-    var ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    var grad = ctx.createLinearGradient(0, 0, W, H);
-    grad.addColorStop(0, '#e8edf2');
-    grad.addColorStop(0.45, '#f4f6f8');
-    grad.addColorStop(1, '#dce3ea');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-    _wmsEndDrawFloorGrid(ctx, W, H);
-    var regions = [];
-    var camW = W - pad * 2;
-    var yCam = pad;
+    var selCam = _wmsEndState.selectedCamara;
+    var html = '';
     camOrder.forEach(function(cod) {
         var cam = camByCod[cod];
         if (!cam) return;
-        var ch = camAltura(cod);
-        _wmsEndDrawCamaraFria(ctx, cam, pad, yCam, camW, ch, regions);
-        yCam += ch + gap;
+        var ruasTxt = (cam.ruas || []).join(' / ');
+        var pct = cam._pct != null ? cam._pct : 0;
+        var ocup = cam._ocup != null ? cam._ocup : 0;
+        var total = cam._total || (cam.slots || []).length;
+        var maxNiv = cam.niveis || _wmsEndMaxNiveisCamara(cam, cam.slots || [], cam.ruas || []);
+        var act = selCam === cod ? ' wms-end-2d-cam-card--ativo' : '';
+        html += '<div class="wms-end-2d-cam-card wms-end-2d-cam-card--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-label="Câmara ' + escHtml(String(cod)) + '" role="button" tabindex="0" title="Clique para abrir 3D">';
+        html += '<div class="wms-end-2d-cam-head">';
+        html += '<div class="wms-end-2d-cam-titulo"><strong>Câmara ' + escHtml(String(cod)) + '</strong>';
+        if (ruasTxt || maxNiv) {
+            html += '<span class="wms-end-row-sub">' + escHtml(ruasTxt ? 'ruas ' + ruasTxt : '') + (ruasTxt && maxNiv ? ' · ' : '') + (maxNiv ? maxNiv + ' níveis' : '') + '</span>';
+        }
+        html += '</div>';
+        html += '<div class="wms-end-2d-cam-meta">' + escHtml(ocup) + '/' + escHtml(total) + ' ocup. · ' + escHtml(pct) + '% · <span class="wms-end-2d-cam-link">Clique para 3D</span></div>';
+        html += '</div>';
+        html += '<div class="wms-end-2d-cam-racks">' + _wmsEndRenderPosicoesPorNiveis(cam.slots || [], maxNiv) + '</div>';
+        html += '</div>';
     });
-    var areas98 = (data.areas || []);
-    var y98 = y98base;
-    var h98 = Math.max(H - y98 - pad, 88);
-    var bw98 = W - pad * 2;
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.1)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 3;
-    _wmsEndFillRoundGrad(ctx, pad, y98, bw98, h98, 12, '#fff8e1', '#fffde7', '#ff8f00', 2);
-    ctx.shadowColor = 'transparent';
-    ctx.restore();
-    ctx.fillStyle = '#e65100';
-    ctx.font = 'bold 13px Segoe UI, system-ui, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('Câmara 98 — Quarentena e fluxos especiais', pad + 14, y98 + 22);
-    ctx.font = '10px Segoe UI, sans-serif';
-    ctx.fillStyle = '#795548';
-    ctx.fillText('Áreas de destino fixo · sem visualização 3D', pad + 14, y98 + 36);
-    var n98 = Math.max(areas98.length, 1);
-    var aw = (bw98 - 28 - (n98 - 1) * 10) / n98;
-    areas98.forEach(function(a, i) {
-        var ax = pad + 14 + i * (aw + 10);
-        var ay = y98 + 44;
-        var ah = h98 - 52;
-        _wmsEndDrawArea98Zone(ctx, ax, ay, aw, ah, a);
-        regions.push({ x: ax, y: ay, w: aw, h: ah, camara: 98, area: a.area, label: a.label, no3d: true });
-    });
-    _wmsEndState.regions = regions;
+    var areas98 = data.areas || [];
+    if (areas98.length) {
+        html += '<div class="wms-end-2d-cam-card wms-end-2d-cam-card--98">';
+        html += '<div class="wms-end-2d-cam-head"><div class="wms-end-2d-cam-titulo"><strong>Câmara 98</strong><span class="wms-end-row-sub">Quarentena e fluxos especiais · sem 3D</span></div></div>';
+        html += '<div class="wms-end-2d-areas98">';
+        areas98.forEach(function(a) {
+            html += '<div class="wms-end-2d-area98">';
+            html += '<div class="wms-end-2d-area98-tit">' + escHtml(a.label || a.area || 'Área') + '</div>';
+            var pos = a.posicoes || [];
+            if (pos.length && _wmsEndPosicoesTemNiveis(pos)) {
+                html += _wmsEndRenderPosicoesPorNiveis(pos, 5);
+            } else {
+                html += '<div class="wms-end-row-slots">' + pos.map(_wmsEndSlotHtml).join('') + '</div>';
+            }
+            html += '</div>';
+        });
+        html += '</div></div>';
+    }
+    root.innerHTML = html || '<p class="wms-end-2d-vazio">Nenhuma câmara no layout.</p>';
+}
+
+function _wmsEndDraw2D() {
+    _wmsEndRender2DPlanta();
 }
 
 function _wmsEndHighlightRow(camara) {
     document.querySelectorAll('.wms-end-row--ativo').forEach(function(el) {
         el.classList.remove('wms-end-row--ativo');
     });
+    document.querySelectorAll('.wms-end-2d-cam-card--clickable').forEach(function(el) {
+        el.classList.remove('wms-end-2d-cam-card--ativo');
+    });
     if (!camara) return;
     document.querySelectorAll('.wms-end-row--clickable[data-camara="' + camara + '"]').forEach(function(el) {
         el.classList.add('wms-end-row--ativo');
+    });
+    document.querySelectorAll('.wms-end-2d-cam-card--clickable[data-camara="' + camara + '"]').forEach(function(el) {
+        el.classList.add('wms-end-2d-cam-card--ativo');
     });
 }
 
@@ -5610,29 +5618,26 @@ function _wmsEndBindAccordion() {
 }
 
 function _wmsEndBind2dEvents() {
-    var canvas = document.getElementById('wms-end-2d-canvas');
-    if (!canvas || canvas._wmsEnd2dBound) return;
-    canvas._wmsEnd2dBound = true;
-    canvas.addEventListener('click', function(ev) {
-        var rect = canvas.getBoundingClientRect();
-        if (rect.width < 1) return;
-        var scaleX = canvas.width / rect.width;
-        var scaleY = canvas.height / rect.height;
-        var px = (ev.clientX - rect.left) * scaleX;
-        var py = (ev.clientY - rect.top) * scaleY;
-        var regions = _wmsEndState.regions || [];
-        for (var i = regions.length - 1; i >= 0; i--) {
-            var r = regions[i];
-            if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
-                if (r.no3d) {
-                    showMessage((r.label || 'Área 98') + ' — detalhe na lista abaixo (sem 3D).', 'info');
-                    return;
-                }
-                wmsEndAbrir3d({ camara: r.camara, label: r.label });
-                return;
-            }
-        }
-    });
+    var planta = document.getElementById('wms-end-2d-planta');
+    if (planta && !planta._wmsEnd2dBound) {
+        planta._wmsEnd2dBound = true;
+        planta.addEventListener('click', function(ev) {
+            var card = ev.target.closest('.wms-end-2d-cam-card--clickable');
+            if (!card) return;
+            var cam = parseInt(card.getAttribute('data-camara'), 10);
+            var label = card.getAttribute('data-label') || '';
+            if (cam && cam !== 98) wmsEndAbrir3d({ camara: cam, label: label });
+        });
+        planta.addEventListener('keydown', function(ev) {
+            if (ev.key !== 'Enter' && ev.key !== ' ') return;
+            var card = ev.target.closest('.wms-end-2d-cam-card--clickable');
+            if (!card) return;
+            ev.preventDefault();
+            var cam = parseInt(card.getAttribute('data-camara'), 10);
+            var label = card.getAttribute('data-label') || '';
+            if (cam && cam !== 98) wmsEndAbrir3d({ camara: cam, label: label });
+        });
+    }
     var grid = document.getElementById('wms-enderecamento-grid');
     if (grid && !grid._wmsEndRowBound) {
         grid._wmsEndRowBound = true;
@@ -5737,14 +5742,7 @@ async function loadWmsEnderecamento() {
         }
         _wmsEndBindAccordion();
         _wmsEndBind2dEvents();
-        if (acc2d && acc2d.open) _wmsEndDraw2D();
-        if (typeof ResizeObserver !== 'undefined') {
-            var wrap2d = document.getElementById('wms-end-2d-wrap');
-            if (wrap2d && !wrap2d._wmsEndRo) {
-                wrap2d._wmsEndRo = new ResizeObserver(function() { _wmsEndDraw2D(); });
-                wrap2d._wmsEndRo.observe(wrap2d);
-            }
-        }
+        if (acc2d && acc2d.open) _wmsEndRender2DPlanta();
     } catch (e) {
         if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;padding:14px;">' + escHtml((e && e.message) || 'Erro.') + '</p>';
     }

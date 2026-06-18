@@ -615,6 +615,42 @@ body.hub-modulos-aberto .container {
     color: #9e9e9e;
 }
 
+.wms-end-slot--dest-mg {
+    background: #42a5f5;
+    border-color: #f57c00;
+    color: #0d47a1;
+}
+
+.wms-end-slot--dest-ret {
+    background: #ffca28;
+    border-color: #f57c00;
+    color: #5d4037;
+}
+
+.wms-end-slot--dest-desc {
+    background: #8d6e63;
+    border-color: #f57c00;
+    color: #fff;
+}
+
+.wms-end-slot--dest-bloq {
+    background: #78909c;
+    border-color: #f57c00;
+    color: #fff;
+}
+
+.wms-end-slot--dest-avaria {
+    background: #ab47bc;
+    border-color: #f57c00;
+    color: #fff;
+}
+
+.wms-end-slot--dest-reent {
+    background: #7e57c2;
+    border-color: #f57c00;
+    color: #fff;
+}
+
 .wms-end-row-stats {
     font-size: 13px;
     color: #424242;
@@ -692,22 +728,113 @@ body.hub-modulos-aberto .container {
 .wms-end-2d-wrap {
     position: relative;
     width: 100%;
-    border: 1px solid #b0bec5;
-    border-radius: 12px;
-    background: linear-gradient(145deg, #e2e8f0 0%, #f8fafc 45%, #dfe6ee 100%);
-    overflow: hidden;
-    padding: 10px;
-    box-shadow: 0 4px 18px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fff;
+    overflow: auto;
+    padding: 0;
+    box-shadow: none;
 }
 
-.wms-end-2d-wrap canvas {
-    display: block;
-    width: 100%;
-    height: auto;
-    min-height: 400px;
+.wms-end-2d-planta {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-height: 120px;
+}
+
+.wms-end-2d-vazio {
+    margin: 0;
+    padding: 20px 16px;
+    color: #757575;
+    font-size: 13px;
+}
+
+.wms-end-2d-cam-card {
+    padding: 14px 16px;
+    border-bottom: 1px solid #eceff1;
+    background: #fff;
+}
+
+.wms-end-2d-cam-card:last-child {
+    border-bottom: none;
+}
+
+.wms-end-2d-cam-card--clickable {
     cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.wms-end-2d-cam-card--clickable:hover {
+    background: #f5f9ff;
+}
+
+.wms-end-2d-cam-card--clickable.wms-end-2d-cam-card--ativo,
+.wms-end-2d-cam-card--clickable:focus-visible {
+    background: #e3f2fd;
+    outline: 2px solid #1565c0;
+    outline-offset: -2px;
+}
+
+.wms-end-2d-cam-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px 16px;
+    margin-bottom: 12px;
+}
+
+.wms-end-2d-cam-titulo {
+    font-size: 14px;
+    line-height: 1.35;
+    color: #212121;
+}
+
+.wms-end-2d-cam-meta {
+    font-size: 12px;
+    color: #616161;
+    white-space: nowrap;
+}
+
+.wms-end-2d-cam-link {
+    color: #1565c0;
+    font-weight: 600;
+}
+
+.wms-end-2d-cam-racks .wms-end-rack {
+    gap: 18px;
+}
+
+.wms-end-2d-cam-racks .wms-end-rack-cols {
+    gap: 4px;
+}
+
+.wms-end-2d-cam-racks .wms-end-rack-col .wms-end-slot {
+    min-width: 34px;
+    padding: 4px 3px;
+}
+
+.wms-end-2d-areas98 {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.wms-end-2d-area98 {
+    flex: 1 1 200px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid #ffe082;
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    background: #fffde7;
+}
+
+.wms-end-2d-area98-tit {
+    font-size: 12px;
+    font-weight: 700;
+    color: #e65100;
+    margin-bottom: 8px;
 }
 
 .wms-end-2d-legenda {
