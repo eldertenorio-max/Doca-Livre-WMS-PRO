@@ -56,6 +56,8 @@
         slotIndex: [],
         camGroups: {},
         camFilter: null,
+        _studioGroup: null,
+        _camIntroId: null,
         _canvas: null,
         _onPointerMove: null,
         _onClick: null,
@@ -162,20 +164,19 @@
         _addBox(THREE, camGroup, AISLE_W * 0.42, 0.06, 0.28, 0, 0.03, 0.18, new THREE.MeshPhongMaterial({ color: 0xffeb3b }));
     }
 
-    function _applyCamFilter() {
+    function _applyCamFilter(intro) {
         var filter = state.camFilter;
         Object.keys(state.camGroups).forEach(function (cod) {
             var g = state.camGroups[cod];
             if (g) g.visible = !filter || parseInt(cod, 10) === filter;
         });
-        centerCameraOnRack();
-        renderFrame();
+        centerCameraOnRack(!!intro);
     }
 
     function setCamaraFilter(cod) {
         state.camFilter = cod ? parseInt(cod, 10) : null;
         if (!state.rackGroup || !Object.keys(state.camGroups).length) return;
-        _applyCamFilter();
+        _applyCamFilter(false);
     }
 
     function slotColor(slot) {
@@ -211,6 +212,7 @@
         state.pickables = [];
         state.slotIndex = [];
         state.camGroups = {};
+        _clearStudio();
         if (!state.rackGroup) return;
         var disposedGeo = typeof Set !== 'undefined' ? new Set() : null;
         var disposedMat = typeof Set !== 'undefined' ? new Set() : null;
@@ -302,6 +304,8 @@
     function _addBox(THREE, parent, w, h, d, x, y, z, mat) {
         var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
         m.position.set(x, y, z);
+        m.castShadow = true;
+        m.receiveShadow = true;
         parent.add(m);
         return m;
     }
@@ -423,6 +427,8 @@
             state.slotIndex.push({ mesh: im, instanceId: i, slot: slot, camara: camCod });
         });
         finalizeInstancedMesh(im);
+        im.castShadow = true;
+        im.receiveShadow = true;
         parent.add(im);
         state.pickables.push(im);
         return zMarks[zMarks.length - 1] + 0.2;
@@ -550,7 +556,7 @@
                         }
                         onResize();
                         state.camFilter = pendingFilter;
-                        _applyCamFilter();
+                        _applyCamFilter(true);
                         renderFrame();
                         return resolve();
                     }
@@ -565,6 +571,86 @@
                 next();
             });
         });
+    }
+
+    function _clearStudio() {
+        if (state._studioGroup && state.scene) {
+            state.scene.remove(state._studioGroup);
+            state._studioGroup.traverse(function (ch) {
+                if (ch.geometry) ch.geometry.dispose();
+                if (ch.material) {
+                    if (Array.isArray(ch.material)) ch.material.forEach(function (m) { m.dispose(); });
+                    else ch.material.dispose();
+                }
+            });
+        }
+        state._studioGroup = null;
+    }
+
+    function _addStudioEnvironment(box) {
+        var THREE = T();
+        _clearStudio();
+        if (!state.scene || box.isEmpty()) return;
+        var center = box.getCenter(new THREE.Vector3());
+        var size = box.getSize(new THREE.Vector3());
+        var group = new THREE.Group();
+        group.name = 'studio';
+        var pw = Math.max(size.x + 24, 48);
+        var pd = Math.max(size.z + 16, 24);
+        var floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(pw, pd),
+            new THREE.MeshPhongMaterial({ color: 0xeceff1, shininess: 12, specular: 0x222222 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.set(center.x, -0.055, center.z);
+        floor.receiveShadow = true;
+        group.add(floor);
+        if (THREE.GridHelper) {
+            var gSize = Math.max(pw, pd);
+            var grid = new THREE.GridHelper(gSize, Math.min(40, Math.max(12, Math.floor(gSize / 2))), 0xb0bec5, 0xdde3e8);
+            grid.position.set(center.x, -0.048, center.z);
+            group.add(grid);
+        }
+        state.scene.add(group);
+        state._studioGroup = group;
+    }
+
+    function _cancelCamIntro() {
+        if (state._camIntroId) {
+            cancelAnimationFrame(state._camIntroId);
+            state._camIntroId = null;
+        }
+    }
+
+    function _runCameraIntro(fromPos, toPos, target, ms) {
+        _cancelCamIntro();
+        if (!state.camera || !state.controls) return;
+        var THREE = T();
+        var fp = fromPos.clone();
+        var tp = toPos.clone();
+        var tt = target.clone();
+        state.camera.position.copy(fp);
+        state.controls.target.copy(tt);
+        state.controls.update();
+        var t0 = null;
+        ms = ms || 1100;
+        function step(ts) {
+            if (!state.camera) return;
+            if (!t0) t0 = ts;
+            var k = Math.min((ts - t0) / ms, 1);
+            k = k * k * (3 - 2 * k);
+            state.camera.position.lerpVectors(fp, tp, k);
+            state.controls.target.copy(tt);
+            state.controls.update();
+            renderFrame();
+            if (k < 1) state._camIntroId = requestAnimationFrame(step);
+            else {
+                state._camIntroId = null;
+                state.defaultCamPos = tp.clone();
+                state.defaultTarget = tt.clone();
+            }
+        }
+        state._camIntroId = requestAnimationFrame(step);
     }
 
     function _boxFromRackGroup(rackGroup) {
@@ -598,54 +684,80 @@
         return box;
     }
 
-    function _fallbackCamera() {
-        if (!state.camera || !state.controls) return;
-        state.camera.position.set(-35, 14, 14);
-        state.controls.target.set(25, 2, 8);
-        state.controls.update();
-        state.defaultCamPos = state.camera.position.clone();
-        state.defaultTarget = state.controls.target.clone();
+    function _showcaseCameraPos(box, center, size, maxDim) {
+        var dist = Math.max(maxDim * 1.05, 14);
+        return {
+            x: center.x - dist * 0.78,
+            y: center.y + Math.max(size.y * 0.55, dist * 0.42),
+            z: center.z + dist * 0.55
+        };
     }
 
-    function centerCameraOnRack() {
-        if (!state.rackGroup || !state.camera || !state.controls) return;
+    function _computeVisibleBox() {
         var THREE = T();
-        var box = _boxFromRackGroup(state.rackGroup);
+        if (!state.rackGroup) return new THREE.Box3();
         if (state.camFilter && state.camGroups[String(state.camFilter)]) {
             var g = state.camGroups[String(state.camFilter)];
-            if (g && g.visible) {
-                box = _boxFromRackGroup(g);
-            }
-        } else {
-            var visBox = new THREE.Box3();
-            var hasVis = false;
-            state.rackGroup.children.forEach(function (ch) {
-                if (ch.visible) {
-                    var b = _boxFromRackGroup(ch);
-                    if (!b.isEmpty()) {
-                        if (!hasVis) { visBox.copy(b); hasVis = true; }
-                        else visBox.union(b);
-                    }
-                }
-            });
-            if (hasVis) box = visBox;
+            if (g && g.visible) return _boxFromRackGroup(g);
         }
+        var visBox = new THREE.Box3();
+        var hasVis = false;
+        state.rackGroup.children.forEach(function (ch) {
+            if (ch.visible) {
+                var b = _boxFromRackGroup(ch);
+                if (!b.isEmpty()) {
+                    if (!hasVis) { visBox.copy(b); hasVis = true; }
+                    else visBox.union(b);
+                }
+            }
+        });
+        return hasVis ? visBox : _boxFromRackGroup(state.rackGroup);
+    }
+
+    function _fallbackCamera(intro) {
+        if (!state.camera || !state.controls) return;
+        var THREE = T();
+        var dest = new THREE.Vector3(-38, 18, 22);
+        var target = new THREE.Vector3(28, 2.5, 8);
+        if (intro) {
+            var from = dest.clone().add(new THREE.Vector3(-14, 10, 12));
+            _runCameraIntro(from, dest, target);
+        } else {
+            state.camera.position.copy(dest);
+            state.controls.target.copy(target);
+            state.controls.update();
+            state.defaultCamPos = dest.clone();
+            state.defaultTarget = target.clone();
+            renderFrame();
+        }
+    }
+
+    function centerCameraOnRack(intro) {
+        if (!state.rackGroup || !state.camera || !state.controls) return;
+        var THREE = T();
+        var box = _computeVisibleBox();
         if (box.isEmpty()) {
-            _fallbackCamera();
+            _fallbackCamera(intro !== false);
             return;
         }
+        _addStudioEnvironment(box);
         var center = box.getCenter(new THREE.Vector3());
         var size = box.getSize(new THREE.Vector3());
         var maxDim = Math.max(size.x, size.y, size.z, 8);
-        state.camera.position.set(
-            box.min.x - maxDim * 0.42,
-            center.y + Math.max(size.y * 0.52, 2.5),
-            center.z + size.z * 0.05
-        );
-        state.controls.target.copy(center);
-        state.controls.update();
-        state.defaultCamPos = state.camera.position.clone();
-        state.defaultTarget = center.clone();
+        var sp = _showcaseCameraPos(box, center, size, maxDim);
+        var dest = new THREE.Vector3(sp.x, sp.y, sp.z);
+        if (intro !== false) {
+            var from = dest.clone().add(new THREE.Vector3(-maxDim * 0.55, maxDim * 0.38, maxDim * 0.42));
+            _runCameraIntro(from, dest, center);
+        } else {
+            _cancelCamIntro();
+            state.camera.position.copy(dest);
+            state.controls.target.copy(center);
+            state.controls.update();
+            state.defaultCamPos = dest.clone();
+            state.defaultTarget = center.clone();
+            renderFrame();
+        }
     }
 
     function onResize() {
@@ -746,6 +858,7 @@
     }
 
     function disposeInternal() {
+        _cancelCamIntro();
         if (state.animId) {
             cancelAnimationFrame(state.animId);
             state.animId = null;
@@ -815,37 +928,50 @@
 
             return waitForLayout(wrap).then(function () {
                 state.scene = new THREE.Scene();
-                state.scene.background = new THREE.Color(0xedf0f3);
-                state.scene.fog = new THREE.Fog(0xedf0f3, 35, 280);
+                state.scene.background = new THREE.Color(0xf4f6f8);
+                state.scene.fog = new THREE.Fog(0xf4f6f8, 55, 320);
 
                 var rect = wrap.getBoundingClientRect();
                 var w = Math.max(rect.width || wrap.clientWidth, 320);
                 var h = Math.max(rect.height || wrap.clientHeight, 280);
-                state.camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 400);
+                state.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 400);
                 state.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false });
                 state.renderer.setPixelRatio(Math.min(global.devicePixelRatio || 1, 2));
                 state.renderer.setSize(w, h, false);
+                state.renderer.shadowMap.enabled = true;
+                state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
                 if (!THREE.OrbitControls) throw new Error('OrbitControls não carregou');
                 state.controls = new THREE.OrbitControls(state.camera, canvas);
                 state.controls.enableDamping = true;
                 state.controls.dampingFactor = 0.08;
                 state.controls.maxPolarAngle = Math.PI / 2.05;
-                state.camera.position.set(-35, 14, 14);
-                state.controls.target.set(25, 2, 8);
+                state.controls.minDistance = 4;
+                state.controls.maxDistance = 220;
+                state.camera.position.set(-38, 18, 22);
+                state.controls.target.set(28, 2.5, 8);
                 state.controls.update();
 
-                state.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-                var hemi = new THREE.HemisphereLight(0xe8f0ff, 0xb0bec5, 0.42);
+                state.scene.add(new THREE.AmbientLight(0xffffff, 0.58));
+                var hemi = new THREE.HemisphereLight(0xf0f4ff, 0xcfd8dc, 0.45);
                 state.scene.add(hemi);
-                var dir = new THREE.DirectionalLight(0xffffff, 0.85);
-                dir.position.set(22, 36, 18);
+                var dir = new THREE.DirectionalLight(0xffffff, 0.92);
+                dir.position.set(28, 42, 22);
+                dir.castShadow = true;
+                dir.shadow.mapSize.width = 1024;
+                dir.shadow.mapSize.height = 1024;
+                dir.shadow.camera.near = 0.5;
+                dir.shadow.camera.far = 180;
+                dir.shadow.camera.left = -70;
+                dir.shadow.camera.right = 70;
+                dir.shadow.camera.top = 70;
+                dir.shadow.camera.bottom = -70;
                 state.scene.add(dir);
-                var fill = new THREE.DirectionalLight(0xddeeff, 0.38);
-                fill.position.set(-18, 20, -14);
+                var fill = new THREE.DirectionalLight(0xddeeff, 0.35);
+                fill.position.set(-24, 22, -16);
                 state.scene.add(fill);
-                var rim = new THREE.DirectionalLight(0xffffff, 0.28);
-                rim.position.set(0, 14, -28);
+                var rim = new THREE.DirectionalLight(0xffffff, 0.22);
+                rim.position.set(0, 16, -32);
                 state.scene.add(rim);
 
                 state.rackGroup = new THREE.Group();
@@ -887,8 +1013,9 @@
 
     function resetView() {
         if (!state.camera || !state.controls) return;
+        _cancelCamIntro();
         if (!state.defaultCamPos || !state.defaultTarget) {
-            centerCameraOnRack();
+            centerCameraOnRack(false);
             return;
         }
         state.camera.position.copy(state.defaultCamPos);

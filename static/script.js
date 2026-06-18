@@ -4584,7 +4584,7 @@ function _wmsMostrarSubtab(tab) {
 
 var _wmsMapa3dScriptPromise = null;
 var _WMS_THREE_LEGACY_CDN = 'https://cdn.jsdelivr.net/npm/three@0.128.0';
-var _WMS_MAPA3D_VER = '20260618d';
+var _WMS_MAPA3D_VER = '20260618e';
 
 function _wmsAguardarThreePronto() {
     return new Promise(function(resolve, reject) {
@@ -4752,9 +4752,9 @@ async function loadWmsMapa3d() {
         await Promise.resolve(WmsMapa3d.build(data));
         await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
         if (WmsMapa3d.onResize) WmsMapa3d.onResize();
+        if (WmsMapa3d.renderFrame) WmsMapa3d.renderFrame();
         setTimeout(function() {
             if (WmsMapa3d.onResize) WmsMapa3d.onResize();
-            if (WmsMapa3d.resetView) WmsMapa3d.resetView();
             if (WmsMapa3d.renderFrame) WmsMapa3d.renderFrame();
         }, 120);
     } catch (e) {
@@ -5662,11 +5662,9 @@ async function wmsEndAbrir3d(opts) {
         await Promise.resolve(WmsMapa3d.build(data));
         await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
         if (WmsMapa3d.onResize) WmsMapa3d.onResize();
-        if (WmsMapa3d.resetView) WmsMapa3d.resetView();
         if (WmsMapa3d.renderFrame) WmsMapa3d.renderFrame();
         setTimeout(function() {
             if (WmsMapa3d.onResize) WmsMapa3d.onResize();
-            if (WmsMapa3d.resetView) WmsMapa3d.resetView();
             if (WmsMapa3d.renderFrame) WmsMapa3d.renderFrame();
         }, 150);
     } catch (e) {
