@@ -1201,6 +1201,14 @@ body.hub-modulos-aberto .container {
     margin-bottom: 18px;
 }
 
+.wms-inv-acoes-cell {
+    white-space: nowrap;
+}
+
+.wms-inv-acoes-cell .btn + .btn {
+    margin-left: 6px;
+}
+
 .wms-inv-sec-titulo {
     margin: 18px 0 8px;
     font-size: 14px;

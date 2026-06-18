@@ -8662,8 +8662,9 @@ async function loadWmsInventarios() {
             var abrir = ((i.status || '').toLowerCase() !== 'finalizado')
                 ? '<button type="button" class="btn btn-secondary btn-sm wms-inv-abrir" data-id="' + escHtml(String(i.id)) + '">Abrir</button>'
                 : '<button type="button" class="btn btn-secondary btn-sm wms-inv-abrir" data-id="' + escHtml(String(i.id)) + '">Ver</button>';
-            return '<tr><td>' + escHtml(i.id) + '</td><td>' + escHtml(i.descricao || '—') + '</td><td>' + escHtml(wmsInvFormatarData(i.criado_em))
-                + '</td><td>' + escHtml(prog) + '</td><td>' + escHtml(wmsInvStatusLabel(i.status)) + '</td><td>' + abrir + '</td></tr>';
+            var excluir = '<button type="button" class="btn btn-danger btn-sm wms-inv-excluir" data-id="' + escHtml(String(i.id)) + '" title="Excluir inventário">Excluir</button>';
+            return '<tr><td>' + escHtml(i.id) + '</td><td>' + escHtml(i.descricao || '—') + '</td><td>' + escHtml(formatarDataHoraPtBR(i.criado_em))
+                + '</td><td>' + escHtml(prog) + '</td><td>' + escHtml(wmsInvStatusLabel(i.status)) + '</td><td class="wms-inv-acoes-cell">' + abrir + ' ' + excluir + '</td></tr>';
         }).join('') : '<tr><td colspan="6">Nenhum inventário. Clique em «Iniciar inventário» para registrar o estoque atual.</td></tr>';
     } catch (e) {
         if (tb) tb.innerHTML = '<tr><td colspan="6">' + escHtml((e && e.message) || 'Erro ao carregar inventários.') + '</td></tr>';
@@ -8751,6 +8752,26 @@ async function wmsInvFinalizar() {
     }
 }
 
+async function wmsInvExcluir(id) {
+    if (!id) return;
+    if (!confirm('Excluir o inventário #' + id + '? Esta ação não pode ser desfeita.')) return;
+    try {
+        var data = await fetchAPI('/wms/inventarios', {
+            method: 'POST',
+            body: JSON.stringify({ acao: 'excluir', inventario_id: id })
+        });
+        if (data && data.ok) {
+            showMessage(data.mensagem || 'Inventário excluído.', 'success');
+            if (_wmsInvState.id === id) wmsInvMostrarLista();
+            await loadWmsInventarios();
+        } else {
+            showMessage((data && data.erro) || 'Erro ao excluir inventário.', 'error');
+        }
+    } catch (e) {
+        showMessage((e && e.message) || 'Erro ao excluir inventário.', 'error');
+    }
+}
+
 function wmsInitInventarioUi() {
     if (window._wmsInvUiBound) return;
     window._wmsInvUiBound = true;
@@ -8758,9 +8779,16 @@ function wmsInitInventarioUi() {
     if (tb) {
         tb.addEventListener('click', function(ev) {
             var btn = ev.target.closest('.wms-inv-abrir');
-            if (!btn) return;
-            var id = parseInt(btn.getAttribute('data-id'), 10);
-            if (id) wmsAbrirInventario(id);
+            if (btn) {
+                var id = parseInt(btn.getAttribute('data-id'), 10);
+                if (id) wmsAbrirInventario(id);
+                return;
+            }
+            var btnExc = ev.target.closest('.wms-inv-excluir');
+            if (btnExc) {
+                var idExc = parseInt(btnExc.getAttribute('data-id'), 10);
+                if (idExc) wmsInvExcluir(idExc);
+            }
         });
     }
     var bVoltar = document.getElementById('btn-wms-inv-voltar');

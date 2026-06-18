@@ -7362,6 +7362,21 @@ def api_wms_inventarios():
             conn.close()
             return jsonify({'ok': True})
 
+        if acao == 'excluir':
+            iid = data.get('inventario_id')
+            if not iid:
+                conn.close()
+                return jsonify({'erro': 'Informe inventario_id.'}), 400
+            inv = conn.execute(f'SELECT id FROM {t_inv} WHERE id = ?', (int(iid),)).fetchone()
+            if not inv:
+                conn.close()
+                return jsonify({'erro': 'Inventário não encontrado.'}), 404
+            conn.execute(f'DELETE FROM {t_lin} WHERE inventario_id = ?', (int(iid),))
+            conn.execute(f'DELETE FROM {t_inv} WHERE id = ?', (int(iid),))
+            conn.commit()
+            conn.close()
+            return jsonify({'ok': True, 'mensagem': 'Inventário excluído.'})
+
         if acao == 'contar':
             conn.execute(
                 f'''INSERT INTO {t_lin}
