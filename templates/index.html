@@ -7,6 +7,7 @@
     {% from '_app_head_icons.html' import app_head_icons %}
     {{ app_head_icons() }}
     <link rel="stylesheet" href="../static/style.css?v=20260603g">
+    <link rel="stylesheet" href="{{ url_for('static', filename='wms-analise.css') }}?v=20260604">
     <link rel="stylesheet" href="../static/stock-system.css">
     <link rel="stylesheet" href="../static/entrada-modulos.css">
     <link rel="stylesheet" href="../static/modulo-sidebar.css?v=20260602j">
@@ -1083,6 +1084,26 @@
                         <h2 class="painel-titulo-texto">Painel de Devoluções</h2>
                         <p class="painel-titulo-sub">Visão geral do retorno bipado nas viagens</p>
                     </div>
+                    <div class="baixa-ravex-toolbar painel-filtros-toolbar" style="margin-bottom: 8px;">
+                        <div class="baixa-ravex-filtros">
+                            <span class="baixa-ravex-filtro-label">Filtros</span>
+                            <label class="baixa-ravex-filtro-data-livre">Data início
+                                <input type="date" id="dev-painel-filtro-data-inicio" class="baixa-ravex-filtro-data-input" title="Data de início do período">
+                            </label>
+                            <label class="baixa-ravex-filtro-data-livre">Hora início
+                                <input type="time" id="dev-painel-filtro-hora-inicio" class="baixa-ravex-filtro-data-input" title="Hora inicial">
+                            </label>
+                            <label class="baixa-ravex-filtro-data-livre">Data fim
+                                <input type="date" id="dev-painel-filtro-data-fim" class="baixa-ravex-filtro-data-input" title="Data de fim do período">
+                            </label>
+                            <label class="baixa-ravex-filtro-data-livre">Hora fim
+                                <input type="time" id="dev-painel-filtro-hora-fim" class="baixa-ravex-filtro-data-input" title="Hora final">
+                            </label>
+                            <button type="button" class="btn btn-primary btn-sm" id="btn-dev-painel-filtrar">Filtrar</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-dev-painel-limpar-filtros">Limpar filtros</button>
+                        </div>
+                    </div>
+                    <p id="dev-painel-filtro-resumo" class="baixa-ravex-filtro-resumo" style="margin-bottom: 16px;"></p>
 
                     <div class="stats-grid">
                         <div class="stat-card">
@@ -1683,6 +1704,26 @@
                         <h2 class="painel-titulo-texto">Painel de Recebimento de Terceiros</h2>
                         <p class="painel-titulo-sub">Visão geral das NF-e, recebimento no WMS, etapas do fluxo e envio para MG</p>
                     </div>
+                    <div class="baixa-ravex-toolbar painel-filtros-toolbar" style="margin-bottom: 8px;">
+                        <div class="baixa-ravex-filtros">
+                            <span class="baixa-ravex-filtro-label">Filtros</span>
+                            <label class="baixa-ravex-filtro-data-livre">Data início
+                                <input type="date" id="ter-painel-filtro-data-inicio" class="baixa-ravex-filtro-data-input" title="Data de início do período">
+                            </label>
+                            <label class="baixa-ravex-filtro-data-livre">Hora início
+                                <input type="time" id="ter-painel-filtro-hora-inicio" class="baixa-ravex-filtro-data-input" title="Hora inicial">
+                            </label>
+                            <label class="baixa-ravex-filtro-data-livre">Data fim
+                                <input type="date" id="ter-painel-filtro-data-fim" class="baixa-ravex-filtro-data-input" title="Data de fim do período">
+                            </label>
+                            <label class="baixa-ravex-filtro-data-livre">Hora fim
+                                <input type="time" id="ter-painel-filtro-hora-fim" class="baixa-ravex-filtro-data-input" title="Hora final">
+                            </label>
+                            <button type="button" class="btn btn-primary btn-sm" id="btn-ter-painel-filtrar">Filtrar</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-ter-painel-limpar-filtros">Limpar filtros</button>
+                        </div>
+                    </div>
+                    <p id="ter-painel-filtro-resumo" class="baixa-ravex-filtro-resumo" style="margin-bottom: 16px;"></p>
                     <div class="stats-grid ter-painel-stats-grid">
                         <div class="stat-card"><h3>Total de NFs</h3><p class="stat-number" id="ter-stat-total-nf">0</p></div>
                         <div class="stat-card"><h3>Pendência de recebimento</h3><p class="stat-number" id="ter-stat-pendencia">0</p></div>
@@ -2700,6 +2741,10 @@
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="relatorios">RELATÓRIOS</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="separacao">SEPARAÇÃO</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="enderecamento">ENDEREÇAMENTO</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="ocupacao">OCUPAÇÃO</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="estoque-seguranca">ESTOQUE SEG.</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="shelf-life">SHELF LIFE</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="visao-cruzada">VISÃO CRUZADA</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="inventario">INVENTÁRIO</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="pesquisa">PESQUISA SKU</button>
                 </nav>
@@ -2801,10 +2846,11 @@
                     <div id="wms-panel-produtos" class="wms-inner-panel" hidden>
                         <div class="form-row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
                             <div class="form-group"><label>Categoria</label><select id="wms-filtro-categoria"><option value="">Todas</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div>
+                            <div class="form-group" style="flex: 1; min-width: 200px;"><label>Buscar</label><input type="text" id="wms-filtro-produto-q" placeholder="SKU, descrição, lote, UP ou endereço"></div>
                             <button type="button" class="btn btn-primary" id="btn-wms-produtos">Atualizar</button>
                         </div>
-                        <div class="table-container"><table class="data-table"><thead><tr><th>SKU</th><th>Descrição</th><th>Cat.</th><th>Status</th><th>Pos. WMS</th><th>Caixas WMS</th><th>PLT</th><th>Conv.</th></tr></thead><tbody id="wms-tbody-produtos"><tr><td colspan="8" class="loading">Carregando...</td></tr></tbody></table></div>
-                        <p class="info-text" style="font-size:12px;margin-top:8px;">Estoque e status = sempre do WMS real (paletes armazenados). Metas vêm do cadastro.</p>
+                        <div class="table-container wms-produtos-table-wrap"><table class="data-table wms-tabela-estoque"><thead><tr><th>Câm.</th><th>Rua</th><th>Col.</th><th>Nív.</th><th>Código</th><th>Descrição</th><th>Qtd.</th><th>Fabricação</th><th>Validade</th><th>UP</th><th>Lote</th></tr></thead><tbody id="wms-tbody-produtos"><tr><td colspan="11" class="loading">Carregando...</td></tr></tbody></table></div>
+                        <p id="wms-produtos-resumo" class="info-text" style="font-size:12px;margin-top:8px;">Estoque real por endereço (paletes armazenados no WMS).</p>
                     </div>
                     <div id="wms-panel-movimentacoes" class="wms-inner-panel" hidden>
                         <section class="form-container" style="margin-bottom: 20px; background: #e8f5e9; border-left: 4px solid #388e3c;">
@@ -3189,6 +3235,48 @@
                         </details>
                         <h3 class="wms-end-vis-titulo" style="margin-top: 20px;">Detalhe por finalidade</h3>
                         <div id="wms-enderecamento-grid" class="wms-enderecamento-grid"></div>
+                    </div>
+                    <div id="wms-panel-ocupacao" class="wms-inner-panel" hidden>
+                        <div class="wms-analise-wrap" id="wms-ocupacao-root">
+                            <div class="wms-analise-toolbar">
+                                <p class="wms-analise-fonte">Fonte: estoque WMS em tempo real (câmaras 11, 12 e 13)</p>
+                                <button type="button" class="btn btn-primary btn-sm" id="btn-wms-ocupacao-atualizar">Atualizar</button>
+                            </div>
+                            <div id="wms-ocupacao-conteudo"><p class="loading">Carregando ocupação…</p></div>
+                        </div>
+                    </div>
+                    <div id="wms-panel-estoque-seguranca" class="wms-inner-panel" hidden>
+                        <div class="wms-analise-wrap" id="wms-seg-root">
+                            <div class="wms-analise-toolbar">
+                                <div class="form-group" style="margin:0;"><label>Categoria</label>
+                                    <select id="wms-seg-filtro-cat"><option value="">Todas</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select>
+                                </div>
+                                <button type="button" class="btn btn-primary btn-sm" id="btn-wms-seg-atualizar">Atualizar</button>
+                            </div>
+                            <div id="wms-seg-conteudo"><p class="loading">Carregando estoque de segurança…</p></div>
+                        </div>
+                    </div>
+                    <div id="wms-panel-shelf-life" class="wms-inner-panel" hidden>
+                        <div class="wms-analise-wrap" id="wms-shelf-root">
+                            <div class="wms-analise-toolbar">
+                                <div class="form-group" style="margin:0;"><label>Categoria</label>
+                                    <select id="wms-shelf-filtro-cat"><option value="">Todas</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select>
+                                </div>
+                                <button type="button" class="btn btn-primary btn-sm" id="btn-wms-shelf-atualizar">Atualizar</button>
+                            </div>
+                            <div id="wms-shelf-conteudo"><p class="loading">Carregando shelf life…</p></div>
+                        </div>
+                    </div>
+                    <div id="wms-panel-visao-cruzada" class="wms-inner-panel" hidden>
+                        <div class="wms-analise-wrap" id="wms-cruz-root">
+                            <div class="wms-analise-toolbar">
+                                <div class="form-group" style="margin:0;"><label>Categoria</label>
+                                    <select id="wms-cruz-filtro-cat"><option value="">Todas</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select>
+                                </div>
+                                <button type="button" class="btn btn-primary btn-sm" id="btn-wms-cruz-atualizar">Atualizar</button>
+                            </div>
+                            <div id="wms-cruz-conteudo"><p class="loading">Carregando visão cruzada…</p></div>
+                        </div>
                     </div>
                     <div id="wms-panel-inventario" class="wms-inner-panel" hidden>
                         <div id="wms-inv-lista-view">
@@ -3760,6 +3848,7 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
     <script src="{{ url_for('static', filename='wms-mapa-3d.js') }}?v=20260604a"></script>
+    <script src="{{ url_for('static', filename='wms-analise.js') }}?v=20260604"></script>
     <script src="../static/script.js?v=20260602zpl"></script>
 </body>
 </html>

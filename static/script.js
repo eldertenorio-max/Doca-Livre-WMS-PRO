@@ -4575,6 +4575,10 @@ function _wmsMostrarSubtab(tab) {
     else if (tab === 'relatorios') wmsInitRelatoriosAba();
     else if (tab === 'separacao') loadWmsSeparacao();
     else if (tab === 'enderecamento' || tab === 'areas-especiais') loadWmsEnderecamento();
+    else if (tab === 'ocupacao') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsOcupacao === 'function') loadWmsOcupacao(); }
+    else if (tab === 'estoque-seguranca') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsEstoqueSeguranca === 'function') loadWmsEstoqueSeguranca(); }
+    else if (tab === 'shelf-life') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsShelfLife === 'function') loadWmsShelfLife(); }
+    else if (tab === 'visao-cruzada') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsVisaoCruzada === 'function') loadWmsVisaoCruzada(); }
     else if (tab === 'inventario') loadWmsInventarios();
 }
 
@@ -5625,6 +5629,7 @@ function wmsAtualizarAvisoEstadoEntrada() {
 
 function initWmsEnderecamento() {
     if (!document.getElementById('modulo-enderecamento-wms')) return;
+    if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels();
     document.querySelectorAll('.wms-subtab[data-wms-tab]').forEach(function(btn) {
         btn.addEventListener('click', function() {
             _wmsMostrarSubtab(btn.getAttribute('data-wms-tab') || 'painel');
@@ -5672,6 +5677,13 @@ function initWmsEnderecamento() {
     }
     var bProd = document.getElementById('btn-wms-produtos');
     if (bProd) bProd.addEventListener('click', loadWmsProdutos);
+    var wmsFiltroProdQ = document.getElementById('wms-filtro-produto-q');
+    if (wmsFiltroProdQ && !wmsFiltroProdQ.dataset.bound) {
+        wmsFiltroProdQ.dataset.bound = '1';
+        wmsFiltroProdQ.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); loadWmsProdutos(); }
+        });
+    }
     var bPesq = document.getElementById('btn-wms-pesquisa');
     if (bPesq) bPesq.addEventListener('click', loadWmsPesquisaSku);
     var bRec = document.getElementById('btn-wms-novo-recebimento');
@@ -5788,7 +5800,7 @@ function initWmsEnderecamento() {
     });
 
     window._wmsIniciarModulo = function(tab) {
-        var abasWms = ['painel', 'localizacoes', 'etiquetas-longarina', 'produtos', 'movimentacoes', 'recebimento', 'controle-paletes', 'historico-nf', 'relatorios', 'separacao', 'enderecamento', 'inventario', 'pesquisa'];
+        var abasWms = ['painel', 'localizacoes', 'etiquetas-longarina', 'produtos', 'movimentacoes', 'recebimento', 'controle-paletes', 'historico-nf', 'relatorios', 'separacao', 'enderecamento', 'ocupacao', 'estoque-seguranca', 'shelf-life', 'visao-cruzada', 'inventario', 'pesquisa'];
         var t = (tab || 'painel').trim();
         if (t === 'areas-especiais') t = 'enderecamento';
         if (abasWms.indexOf(t) === -1) t = 'painel';
@@ -6240,37 +6252,54 @@ window.wmsImprimirEtqPaleteModelo = function() {
 };
 
 async function loadWmsProdutos() {
-    _wmsSetTbody('wms-tbody-produtos', 8, '<span class="loading">Carregando...</span>');
+    var colCount = 11;
+    _wmsSetTbody('wms-tbody-produtos', colCount, '<span class="loading">Carregando...</span>');
     var tb = document.getElementById('wms-tbody-produtos');
+    var resumo = document.getElementById('wms-produtos-resumo');
     try {
         var cat = document.getElementById('wms-filtro-categoria');
-        var path = '/wms/produtos';
-        if (cat && cat.value) path += '?categoria=' + encodeURIComponent(cat.value);
+        var qEl = document.getElementById('wms-filtro-produto-q');
+        var parts = [];
+        if (cat && cat.value) parts.push('categoria=' + encodeURIComponent(cat.value));
+        if (qEl && qEl.value.trim()) parts.push('q=' + encodeURIComponent(qEl.value.trim()));
+        var path = '/wms/produtos' + (parts.length ? '?' + parts.join('&') : '');
         var data = await _wmsFetchGet(path, 45000);
         if (!tb) return;
         if (!data || data.erro) {
-            tb.innerHTML = '<tr><td colspan="8">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar produtos.')) + '</td></tr>';
+            tb.innerHTML = '<tr><td colspan="' + colCount + '">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar estoque.')) + '</td></tr>';
+            if (resumo) resumo.textContent = 'Estoque real por endereço (paletes armazenados no WMS).';
             return;
         }
-        function corStatus(st) {
-            st = (st || '').toLowerCase();
-            if (st === 'vermelho') return '#ffcdd2';
-            if (st === 'amarelo') return '#fff9c4';
-            if (st === 'excedido') return '#ffe0b2';
-            if (st === 'verde') return '#e8f5e9';
-            return '';
+        var rows = data.estoque || [];
+        var fmtData = function(v) {
+            if (!v) return '—';
+            return formatarDataPtBR(v) || String(v).slice(0, 10) || '—';
+        };
+        tb.innerHTML = rows.length ? rows.map(function(r) {
+            return '<tr>'
+                + '<td>' + escHtml(r.camara != null ? r.camara : '—') + '</td>'
+                + '<td><strong>' + escHtml(r.rua || '—') + '</strong></td>'
+                + '<td>' + escHtml(r.coluna != null ? r.coluna : '—') + '</td>'
+                + '<td>' + escHtml(r.nivel != null ? r.nivel : '—') + '</td>'
+                + '<td><strong>' + escHtml(r.sku || '—') + '</strong></td>'
+                + '<td>' + escHtml(r.descricao || '') + '</td>'
+                + '<td><strong>' + escHtml(r.quantidade != null ? r.quantidade : 0) + '</strong></td>'
+                + '<td>' + escHtml(fmtData(r.data_fabricacao)) + '</td>'
+                + '<td>' + escHtml(fmtData(r.data_validade)) + '</td>'
+                + '<td>' + escHtml(r.up || '—') + '</td>'
+                + '<td>' + escHtml(r.lote || '—') + '</td>'
+                + '</tr>';
+        }).join('') : '<tr><td colspan="' + colCount + '">Nenhum item armazenado no WMS com os filtros atuais.</td></tr>';
+        if (resumo) {
+            var totQtd = rows.reduce(function(acc, r) { return acc + (parseInt(r.quantidade, 10) || 0); }, 0);
+            resumo.textContent = rows.length
+                ? (rows.length + ' linha(s) · ' + totQtd + ' caixa(s) no total · fonte: estoque WMS armazenado')
+                : 'Nenhum palete armazenado encontrado.';
         }
-        var rows = data.produtos || [];
-        tb.innerHTML = rows.length ? rows.map(function(p) {
-            var bg = corStatus(p.status_condicional);
-            var est = p.estoque_atual != null ? p.estoque_atual : '0';
-            var pos = p.posicao_atual != null ? p.posicao_atual : '0';
-            var posPlan = p.posicoes_med != null ? ' / plan ' + p.posicoes_med : '';
-            return '<tr style="' + (bg ? 'background:' + bg + ';' : '') + '"><td>' + escHtml(p.sku) + '</td><td>' + escHtml(p.descricao || '') + '</td><td><strong>' + escHtml(p.categoria) + '</strong></td><td><strong>' + escHtml(p.status_condicional || 'Verde') + '</strong></td><td>' + escHtml(pos + posPlan) + '</td><td>' + escHtml(est) + '</td><td>' + escHtml(p.padrao_plt || '') + '</td><td>' + escHtml(p.conversao || '') + '</td></tr>';
-        }).join('') : '<tr><td colspan="8">Importe data/wms_produtos_planejamento.tsv</td></tr>';
     } catch (e) {
-        if (tb) tb.innerHTML = '<tr><td colspan="8">' + escHtml((e && e.message) || 'Erro ao carregar produtos.') + '</td></tr>';
-        showMessage('Erro ao carregar produtos WMS.', 'error');
+        if (tb) tb.innerHTML = '<tr><td colspan="' + colCount + '">' + escHtml((e && e.message) || 'Erro ao carregar estoque.') + '</td></tr>';
+        if (resumo) resumo.textContent = 'Estoque real por endereço (paletes armazenados no WMS).';
+        showMessage('Erro ao carregar estoque WMS.', 'error');
     }
 }
 
@@ -9230,6 +9259,8 @@ function loadAllData() {
 }
 
 async function loadPainelDevolucoes() {
+    initDevPainelFiltros();
+    var qs = _devPainelBuildQueryString();
     var tabelasPainel = [['dev-tbody-painel-viagens', 7], ['dev-tbody-painel-itens', 3], ['dev-tbody-painel-veiculos', 3], ['dev-tbody-painel-docas', 3], ['dev-tbody-painel-usuarios', 3]];
     var statIds = ['dev-stat-bipados', 'dev-stat-soma-quantidades', 'dev-stat-unicos', 'dev-stat-viagens', 'dev-stat-docas', 'dev-stat-usuarios'];
     tabelasPainel.forEach(function(pair) {
@@ -9241,7 +9272,7 @@ async function loadPainelDevolucoes() {
         if (el) el.textContent = '…';
     });
     try {
-    const data = await _modFetchGet('/devolucoes/painel', 60000);
+    const data = await _modFetchGet('/devolucoes/painel' + qs, 60000);
     if (!data) {
         var msgFalha = 'Não foi possível carregar o painel. Use «Atualizar aba» e tente novamente.';
         statIds.forEach(function(sid) {
@@ -9295,6 +9326,8 @@ async function loadPainelDevolucoes() {
     set('dev-stat-viagens', stats.total_viagens ?? 0);
     set('dev-stat-docas', stats.total_docas ?? 0);
     set('dev-stat-usuarios', stats.total_usuarios ?? 0);
+
+    _modPainelFiltroResumo('dev-painel-filtro-resumo', data.filtros);
 
     const preencherTabela = function(tbodyId, rows, emptyMsg, renderRow) {
         const tbody = document.getElementById(tbodyId);
@@ -9835,6 +9868,7 @@ function _terceirosRenderPainelTerceirosData(data) {
         return;
     }
     _aplicarPainelTerceirosStats(data.estatisticas || {});
+    _modPainelFiltroResumo('ter-painel-filtro-resumo', data.filtros);
 
     var preencher = function(tbodyId, rows, cols, emptyMsg, renderRow) {
         var tbody = document.getElementById(tbodyId);
@@ -9885,15 +9919,18 @@ function _terceirosRenderPainelTerceirosData(data) {
 
 async function loadPainelTerceiros(opcoes) {
     opcoes = opcoes || {};
+    initTerPainelFiltros();
+    var qs = _terPainelBuildQueryString();
+    var usarApiFiltrada = !!qs;
     var cacheHit = _terceirosObterCacheLista({ staleOk: true });
     var renderizouLocal = false;
-    if (cacheHit && cacheHit.rows && cacheHit.rows.length) {
+    if (!usarApiFiltrada && cacheHit && cacheHit.rows && cacheHit.rows.length) {
         _terceirosRenderPainelTerceirosData(_terceirosPainelDataLocalFromRows(
             _terceirosMesclarRecebidosLocaisNasRows(cacheHit.rows)
         ));
         renderizouLocal = true;
     }
-    if (!renderizouLocal && !opcoes.force) {
+    if (!renderizouLocal && !opcoes.force && !usarApiFiltrada) {
         try {
             var dataLista = await fetchTerceirosDocumentosTodos();
             if (dataLista && Array.isArray(dataLista.rows) && dataLista.rows.length) {
@@ -9904,12 +9941,12 @@ async function loadPainelTerceiros(opcoes) {
             console.error('loadPainelTerceiros lista local:', eListaPainel);
         }
     }
-    if (renderizouLocal && !opcoes.force) {
+    if (renderizouLocal && !opcoes.force && !usarApiFiltrada) {
         var agoraBg = Date.now();
         if (_terceirosPainelFetchPromise && agoraBg - _terceirosPainelFetchUltimoTs < 15000) return;
         var seqBg = ++_terceirosPainelFetchSeq;
         _terceirosPainelFetchUltimoTs = agoraBg;
-        _terceirosPainelFetchPromise = fetchAPIComTimeout('/terceiros/painel', {}, 12000).then(function(data) {
+        _terceirosPainelFetchPromise = fetchAPIComTimeout('/terceiros/painel' + qs, {}, 12000).then(function(data) {
             if (!data || seqBg !== _terceirosPainelFetchSeq) return;
             if (data.erro) {
                 console.error('loadPainelTerceiros background:', data.erro);
@@ -9927,7 +9964,7 @@ async function loadPainelTerceiros(opcoes) {
     var seq = ++_terceirosPainelFetchSeq;
     var data;
     try {
-        data = await fetchAPIComTimeout('/terceiros/painel', {}, 15000);
+        data = await fetchAPIComTimeout('/terceiros/painel' + qs, {}, 15000);
     } catch (ePainel) {
         if (!renderizouLocal) {
             _terceirosRenderPainelTerceirosData({ erro: _modErroMsg(null, (ePainel && ePainel.message) || 'Erro ao carregar painel de terceiros.') });
@@ -17745,11 +17782,15 @@ function _painelDataIsoOffset(dias) {
 }
 
 function _painelBuildQueryString() {
+    return _modPainelFiltroBuildQuery('painel-filtro');
+}
+
+function _modPainelFiltroBuildQuery(baseId) {
     var parts = [];
-    var dataIni = document.getElementById('painel-filtro-data-inicio');
-    var dataFim = document.getElementById('painel-filtro-data-fim');
-    var horaIni = document.getElementById('painel-filtro-hora-inicio');
-    var horaFim = document.getElementById('painel-filtro-hora-fim');
+    var dataIni = document.getElementById(baseId + '-data-inicio');
+    var dataFim = document.getElementById(baseId + '-data-fim');
+    var horaIni = document.getElementById(baseId + '-hora-inicio');
+    var horaFim = document.getElementById(baseId + '-hora-fim');
     if (dataIni && dataIni.value) parts.push('data_inicio=' + encodeURIComponent(dataIni.value));
     if (dataFim && dataFim.value) parts.push('data_fim=' + encodeURIComponent(dataFim.value));
     if (horaIni && horaIni.value) parts.push('hora_inicio=' + encodeURIComponent(horaIni.value.slice(0, 5)));
@@ -17757,31 +17798,100 @@ function _painelBuildQueryString() {
     return parts.length ? '?' + parts.join('&') : '';
 }
 
-function limparPainelFiltros() {
-    var dataIni = document.getElementById('painel-filtro-data-inicio');
-    var dataFim = document.getElementById('painel-filtro-data-fim');
-    var horaIni = document.getElementById('painel-filtro-hora-inicio');
-    var horaFim = document.getElementById('painel-filtro-hora-fim');
+function _modPainelFiltroInit(opts) {
+    opts = opts || {};
+    var baseId = opts.baseId;
+    var initKey = opts.initKey;
+    if (!baseId || !initKey) return;
+    if (window[initKey]) return;
+    window[initKey] = true;
+    var dataIni = document.getElementById(baseId + '-data-inicio');
+    var dataFim = document.getElementById(baseId + '-data-fim');
+    var btnFiltrar = document.getElementById(opts.btnFiltrarId);
+    var btnLimpar = document.getElementById(opts.btnLimparId);
+    var hoje = _painelHojeIso();
+    if (dataIni && !dataIni.value) dataIni.value = hoje;
+    if (dataFim && !dataFim.value) dataFim.value = hoje;
+    if (btnFiltrar && opts.onFiltrar) btnFiltrar.addEventListener('click', opts.onFiltrar);
+    if (btnLimpar && opts.onLimpar) btnLimpar.addEventListener('click', opts.onLimpar);
+}
+
+function _modPainelFiltroLimpar(baseId, onReload) {
+    var dataIni = document.getElementById(baseId + '-data-inicio');
+    var dataFim = document.getElementById(baseId + '-data-fim');
+    var horaIni = document.getElementById(baseId + '-hora-inicio');
+    var horaFim = document.getElementById(baseId + '-hora-fim');
     var hoje = _painelHojeIso();
     if (dataIni) dataIni.value = hoje;
     if (dataFim) dataFim.value = hoje;
     if (horaIni) horaIni.value = '';
     if (horaFim) horaFim.value = '';
-    loadPainelCompleto();
+    if (onReload) onReload();
+}
+
+function _modPainelFiltroResumo(resumoId, filtros) {
+    var resumoEl = document.getElementById(resumoId);
+    if (!resumoEl) return;
+    if (filtros && filtros.legivel) {
+        resumoEl.textContent = 'Exibindo: ' + filtros.legivel;
+        resumoEl.style.display = '';
+    } else {
+        resumoEl.textContent = '';
+        resumoEl.style.display = 'none';
+    }
+}
+
+function limparPainelFiltros() {
+    _modPainelFiltroLimpar('painel-filtro', loadPainelCompleto);
 }
 
 function initPainelFiltros() {
-    if (window._painelFiltrosInit) return;
-    window._painelFiltrosInit = true;
-    var dataIni = document.getElementById('painel-filtro-data-inicio');
-    var dataFim = document.getElementById('painel-filtro-data-fim');
-    var btnFiltrar = document.getElementById('btn-painel-filtrar');
-    var btnLimpar = document.getElementById('btn-painel-limpar-filtros');
-    var hoje = _painelHojeIso();
-    if (dataIni && !dataIni.value) dataIni.value = hoje;
-    if (dataFim && !dataFim.value) dataFim.value = hoje;
-    if (btnFiltrar) btnFiltrar.addEventListener('click', function() { loadPainelCompleto(); });
-    if (btnLimpar) btnLimpar.addEventListener('click', function() { limparPainelFiltros(); });
+    _modPainelFiltroInit({
+        baseId: 'painel-filtro',
+        initKey: '_painelFiltrosInit',
+        btnFiltrarId: 'btn-painel-filtrar',
+        btnLimparId: 'btn-painel-limpar-filtros',
+        onFiltrar: function() { loadPainelCompleto(); },
+        onLimpar: function() { limparPainelFiltros(); }
+    });
+}
+
+function _devPainelBuildQueryString() {
+    return _modPainelFiltroBuildQuery('dev-painel-filtro');
+}
+
+function limparDevPainelFiltros() {
+    _modPainelFiltroLimpar('dev-painel-filtro', loadPainelDevolucoes);
+}
+
+function initDevPainelFiltros() {
+    _modPainelFiltroInit({
+        baseId: 'dev-painel-filtro',
+        initKey: '_devPainelFiltrosInit',
+        btnFiltrarId: 'btn-dev-painel-filtrar',
+        btnLimparId: 'btn-dev-painel-limpar-filtros',
+        onFiltrar: function() { loadPainelDevolucoes(); },
+        onLimpar: function() { limparDevPainelFiltros(); }
+    });
+}
+
+function _terPainelBuildQueryString() {
+    return _modPainelFiltroBuildQuery('ter-painel-filtro');
+}
+
+function limparTerPainelFiltros() {
+    _modPainelFiltroLimpar('ter-painel-filtro', function() { loadPainelTerceiros({ force: true }); });
+}
+
+function initTerPainelFiltros() {
+    _modPainelFiltroInit({
+        baseId: 'ter-painel-filtro',
+        initKey: '_terPainelFiltrosInit',
+        btnFiltrarId: 'btn-ter-painel-filtrar',
+        btnLimparId: 'btn-ter-painel-limpar-filtros',
+        onFiltrar: function() { loadPainelTerceiros({ force: true }); },
+        onLimpar: function() { limparTerPainelFiltros(); }
+    });
 }
 
 // Um único request: painel inteiro (estatísticas + viagens + gráficos) = carregamento instantâneo na rede

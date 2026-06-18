@@ -3617,6 +3617,354 @@ def _coletar_ocupacao_estoque_normal(conn):
     }
 
 
+def _parse_data_iso_br(val):
+    if not val:
+        return None
+    if isinstance(val, date) and not isinstance(val, datetime):
+        return val
+    if isinstance(val, datetime):
+        return val.date()
+    s = str(val).strip()
+    if not s:
+        return None
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+        try:
+            return datetime.strptime(s[:10], fmt).date()
+        except ValueError:
+            continue
+    try:
+        return date.fromisoformat(s[:10])
+    except ValueError:
+        return None
+
+
+def _contar_posicoes_avaria_wms(conn):
+    """Posições ocupadas em área de avaria (câm. 98) ou paletes com disposição avaria."""
+    t_loc = _tbl(conn, 'wms_localizacao')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_item = _tbl(conn, 'wms_palete_item')
+    _ensure_wms_palete_item_disposicao(conn)
+    row = conn.execute(
+        f'''SELECT COUNT(DISTINCT l.id) AS c
+            FROM {t_loc} l
+            INNER JOIN {t_pal} p ON p.localizacao_id = l.id
+            INNER JOIN {t_item} i ON i.palete_id = p.id
+            WHERE l.status = 'ocupada'
+              AND (
+                LOWER(TRIM(COALESCE(l.area, ''))) = 'avaria'
+                OR LOWER(TRIM(COALESCE(i.disposicao_estoque, ''))) = 'avaria'
+              )''',
+    ).fetchone()
+    return _int_col(row, 'c')
+
+
+def _coletar_resumo_ocupacao_wms(conn, camaras=(11, 12, 13)):
+    """Resumo estilo painel de ocupação (câmaras frias) a partir do estoque WMS real."""
+    estoque = _coletar_ocupacao_estoque_normal(conn)
+    cam_set = {int(c) for c in camaras}
+    selecionadas = [c for c in (estoque.get('camaras') or []) if int(c.get('camara') or 0) in cam_set]
+    total_slots = sum(int(c.get('slots') or c.get('total_slots') or 0) for c in selecionadas)
+    total_ocup = sum(int(c.get('ocupadas') or 0) for c in selecionadas)
+    total_vazias_fisicas = sum(int(c.get('livres') or 0) for c in selecionadas)
+    avaria = _contar_posicoes_avaria_wms(conn)
+    ocup_com_avaria = total_ocup + avaria
+    pct_ocup = round(100.0 * ocup_com_avaria / total_slots, 1) if total_slots else 0
+    pct_livre = round(100.0 * max(0, total_slots - ocup_com_avaria) / total_slots, 1) if total_slots else 0
+    pct_avaria = round(100.0 * avaria / total_slots, 1) if total_slots else 0
+    camaras_resumo = []
+    for c in selecionadas:
+        slots = int(c.get('slots') or c.get('total_slots') or 0)
+        ocup = int(c.get('ocupadas') or 0)
+        vaz = int(c.get('livres') or 0)
+        camaras_resumo.append({
+            'camara': c.get('camara'),
+            'descricao': c.get('descricao'),
+            'total_posicoes': slots,
+            'ocupadas': ocup,
+            'vazias': vaz,
+            'percentual_ocupacao': c.get('percentual_ocupacao'),
+        })
+    return {
+        'atualizado_em': _now_iso(),
+        'camaras_filtro': list(cam_set),
+        'total_posicoes': total_slots,
+        'posicoes_ocupadas': total_ocup,
+        'posicoes_ocupadas_com_avaria': ocup_com_avaria,
+        'posicoes_livres': max(0, total_slots - ocup_com_avaria),
+        'posicoes_vazias_fisicas': total_vazias_fisicas,
+        'avaria_posicoes': avaria,
+        'percentual_ocupado': pct_ocup,
+        'percentual_livre': pct_livre,
+        'percentual_avaria': pct_avaria,
+        'camaras': camaras_resumo,
+        'estoque_normal': estoque,
+        'areas_especiais': _coletar_ocupacao_areas_especiais(conn),
+    }
+
+
+def _listar_estoque_seguranca_wms(conn, categoria=None, sync=False):
+    """Lista de planejamento com estoque/posições reais do WMS."""
+    _ensure_produto_planejamento_columns(conn)
+    if sync:
+        _sync_all_produtos_estoque_cache(conn)
+        try:
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    t_prod = _tbl(conn, 'wms_produto_enderecamento')
+    sql = f'SELECT * FROM {t_prod} WHERE {_ativo_sql(conn)}'
+    params = []
+    cat = (categoria or '').strip().upper()
+    if cat:
+        sql += ' AND UPPER(TRIM(categoria)) = ?'
+        params.append(cat)
+    sql += ' ORDER BY categoria, sku'
+    rows = conn.execute(sql, tuple(params)).fetchall()
+    out = []
+    resumo = {'Excedido': 0, 'Verde': 0, 'Amarelo': 0, 'Vermelho': 0, 'Analisar': 0}
+    for r in rows or []:
+        rd = _row_dict(r) or {}
+        sku = (rd.get('sku') or '').strip()
+        if not sku:
+            continue
+        info = _info_produto_wms(conn, sku, prod=r)
+        st = (info.get('status_condicional') or 'Verde').strip()
+        if st not in resumo:
+            st = 'Analisar'
+        resumo[st] = resumo.get(st, 0) + 1
+        out.append({
+            'sku': sku,
+            'descricao': info.get('descricao') or '',
+            'categoria': info.get('categoria') or '',
+            'pedido_med_abril': info.get('pedido_med_abril'),
+            'pedido_max_abril': info.get('pedido_max_abril'),
+            'media_5_dias': info.get('media_5_dias'),
+            'estoque_ideal_max': info.get('estoque_ideal_max'),
+            'estoque_ideal_med': info.get('estoque_ideal_med'),
+            'estoque_ideal_min': info.get('estoque_ideal_min'),
+            'dias_estoque_max': info.get('dias_estoque_max'),
+            'dias_estoque_med': info.get('dias_estoque_med'),
+            'dias_estoque_min': info.get('dias_estoque_min'),
+            'posicoes_max': info.get('posicoes_max'),
+            'posicoes_med': info.get('posicoes_med'),
+            'posicoes_min': info.get('posicoes_min'),
+            'estoque_atual': info.get('estoque_atual') or info.get('quantidade_wms') or 0,
+            'posicao_atual': info.get('posicao_atual') or info.get('posicoes_wms') or 0,
+            'para_condicional': st,
+            'padrao_plt': info.get('padrao_plt') or '',
+            'conversao': info.get('conversao'),
+        })
+    return {'itens': out, 'resumo_status': resumo, 'total': len(out)}
+
+
+def _status_shelf_pct(pct):
+    if pct is None:
+        return 'Sem dado', None
+    p = float(pct)
+    if p >= 60:
+        return 'Verde', p
+    if p >= 40:
+        return 'Amarelo', p
+    if p >= 20:
+        return 'Laranja', p
+    return 'Vermelho', p
+
+
+def _listar_shelf_life_wms(conn, categoria=None):
+    """Shelf life calculado a partir de validade dos itens armazenados no WMS."""
+    _ensure_wms_palete_item_disposicao(conn)
+    t_item = _tbl(conn, 'wms_palete_item')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    t_prod = _tbl(conn, 'wms_produto_enderecamento')
+    bloq_off = _bloqueio_off_sql(conn, 'l.bloqueio_saida')
+    sql = f'''SELECT i.sku,
+                     COALESCE(MAX(i.descricao), MAX(pr.descricao), '') AS descricao,
+                     COALESCE(MAX(pr.categoria), '') AS categoria,
+                     MIN(i.data_validade) AS validade_min,
+                     MAX(i.shelf_dias) AS shelf_dias_item,
+                     COALESCE(SUM(i.quantidade_caixas), 0) AS quantidade
+              FROM {t_item} i
+              INNER JOIN {t_pal} p ON p.id = i.palete_id
+              INNER JOIN {t_loc} l ON l.id = p.localizacao_id
+              LEFT JOIN {t_prod} pr ON pr.sku = i.sku AND {_ativo_sql(conn, 'pr')}
+              WHERE p.status = 'armazenado'
+                AND l.status = 'ocupada'
+                AND (p.bloqueio_tipo IS NULL OR TRIM(COALESCE(p.bloqueio_tipo, '')) = '')
+                AND {bloq_off}
+                AND COALESCE(i.quantidade_caixas, 0) > 0'''
+    params = []
+    cat = (categoria or '').strip().upper()
+    if cat:
+        sql += ' AND UPPER(TRIM(COALESCE(pr.categoria, \'\'))) = ?'
+        params.append(cat)
+    sql += ' GROUP BY i.sku ORDER BY validade_min ASC NULLS LAST, i.sku'
+    if not _is_pg(conn):
+        sql = sql.replace(' NULLS LAST', '')
+    rows = conn.execute(sql, tuple(params)).fetchall()
+    hoje = date.today()
+    out = []
+    resumo = {'Verde': 0, 'Amarelo': 0, 'Laranja': 0, 'Vermelho': 0, 'Sem dado': 0}
+    for r in rows or []:
+        rd = _row_dict(r) or {}
+        sku = (rd.get('sku') or '').strip()
+        dv = _parse_data_iso_br(rd.get('validade_min'))
+        shelf_dias = int(rd.get('shelf_dias_item') or 0) or None
+        dias_para_vencer = (dv - hoje).days if dv else None
+        pct = None
+        if dv and shelf_dias and shelf_dias > 0 and dias_para_vencer is not None:
+            pct = round(100.0 * dias_para_vencer / shelf_dias, 1)
+        status, pct_out = _status_shelf_pct(pct)
+        resumo[status] = resumo.get(status, 0) + 1
+        out.append({
+            'sku': sku,
+            'descricao': rd.get('descricao') or '',
+            'categoria': (rd.get('categoria') or '').strip().upper(),
+            'quantidade': int(rd.get('quantidade') or 0),
+            'data_validade': dv.isoformat() if dv else '',
+            'dias_para_vencer': dias_para_vencer,
+            'shelf_dias': shelf_dias,
+            'shelf_pct': pct_out,
+            'status': status,
+        })
+    return {'itens': out, 'resumo_status': resumo, 'total': len(out)}
+
+
+def _nivel_shelf_status(status):
+    if not status or status == 'Sem dado':
+        return 'sem'
+    if status == 'Verde':
+        return 'boa'
+    if status == 'Amarelo':
+        return 'atencao'
+    return 'ruim'
+
+
+def _nivel_estoque_cond(st):
+    s = (st or '').strip()
+    if s == 'Excedido':
+        return 'muito'
+    if s == 'Vermelho':
+        return 'pouco'
+    if s in ('Verde', 'Amarelo', 'Analisar'):
+        return 'ok'
+    return 'sem'
+
+
+def _prioridade_cruzada_wms(cond, shelf):
+    shelf_ruim = shelf in ('Laranja', 'Vermelho')
+    if not cond and shelf and shelf != 'Sem dado':
+        return 'sem_estoque'
+    if cond and (not shelf or shelf == 'Sem dado'):
+        return 'sem_shelf'
+    if cond == 'Vermelho' and shelf_ruim:
+        return 'critico'
+    if cond == 'Excedido' and shelf_ruim:
+        return 'desperdicio'
+    if cond == 'Vermelho':
+        return 'produzir'
+    if cond == 'Excedido' and shelf == 'Verde':
+        return 'excedente_ok'
+    if cond in ('Verde', 'Analisar') and shelf_ruim:
+        return 'validade'
+    if cond == 'Amarelo':
+        return 'avaliar'
+    return 'ok'
+
+
+def _acao_cruzada_wms(p):
+    acoes = {
+        'critico': 'Crítico: pouco estoque e validade curta — conferir lote, FIFO.',
+        'desperdicio': 'Desperdício: muito estoque e validade curta — priorizar consumo.',
+        'produzir': 'Produzir / reabastecer — estoque baixo com shelf aceitável.',
+        'validade': 'Priorizar giro — shelf em atenção ou crítico.',
+        'excedente_ok': 'Não produzir — excedente com data boa.',
+        'avaliar': 'Avaliar manualmente — semáforo Amarelo.',
+        'sem_shelf': 'Sem shelf no WMS — conferir validade nos lotes.',
+        'sem_estoque': 'Shelf sem estoque cadastrado no planejamento.',
+        'ok': 'Ok — estoque e validade dentro das faixas.',
+    }
+    return acoes.get(p, acoes['ok'])
+
+
+def _listar_visao_cruzada_wms(conn, categoria=None, sync=False):
+    est = _listar_estoque_seguranca_wms(conn, categoria=categoria, sync=sync)
+    shelf = _listar_shelf_life_wms(conn, categoria=categoria)
+    shelf_map = {(i.get('sku') or '').strip(): i for i in shelf.get('itens') or []}
+    linhas = []
+    vistos = set()
+    prio_ordem = ['critico', 'desperdicio', 'produzir', 'validade', 'avaliar', 'excedente_ok', 'sem_shelf', 'sem_estoque', 'ok']
+    prio_labels = {
+        'critico': 'Crítico', 'desperdicio': 'Desperdício', 'produzir': 'Produzir', 'validade': 'Validade',
+        'excedente_ok': 'Excedente OK', 'avaliar': 'Avaliar', 'sem_shelf': 'Sem shelf', 'sem_estoque': 'Só shelf', 'ok': 'Ok',
+    }
+    for e in est.get('itens') or []:
+        sku = (e.get('sku') or '').strip()
+        vistos.add(sku)
+        sh = shelf_map.get(sku) or {}
+        cond = e.get('para_condicional') or 'Verde'
+        shelf_st = sh.get('status') or 'Sem dado'
+        prio = _prioridade_cruzada_wms(cond, shelf_st)
+        linhas.append({
+            'sku': sku,
+            'descricao': e.get('descricao') or sh.get('descricao') or '',
+            'condicional': cond,
+            'shelf_status': shelf_st,
+            'shelf_pct': sh.get('shelf_pct'),
+            'dias_para_vencer': sh.get('dias_para_vencer'),
+            'estoque_atual': e.get('estoque_atual') or 0,
+            'nivel_estoque': _nivel_estoque_cond(cond),
+            'nivel_shelf': _nivel_shelf_status(shelf_st),
+            'prioridade': prio,
+            'prioridade_label': prio_labels.get(prio, prio),
+            'acao': _acao_cruzada_wms(prio),
+        })
+    for sku, sh in shelf_map.items():
+        if sku in vistos or not sku:
+            continue
+        shelf_st = sh.get('status') or 'Sem dado'
+        prio = _prioridade_cruzada_wms(None, shelf_st)
+        linhas.append({
+            'sku': sku,
+            'descricao': sh.get('descricao') or '',
+            'condicional': None,
+            'shelf_status': shelf_st,
+            'shelf_pct': sh.get('shelf_pct'),
+            'dias_para_vencer': sh.get('dias_para_vencer'),
+            'estoque_atual': sh.get('quantidade') or 0,
+            'nivel_estoque': 'sem',
+            'nivel_shelf': _nivel_shelf_status(shelf_st),
+            'prioridade': prio,
+            'prioridade_label': prio_labels.get(prio, prio),
+            'acao': _acao_cruzada_wms(prio),
+        })
+    linhas.sort(key=lambda x: (prio_ordem.index(x['prioridade']) if x['prioridade'] in prio_ordem else 99, x.get('sku') or ''))
+    contagem_prio = {k: 0 for k in prio_labels}
+    for l in linhas:
+        contagem_prio[l['prioridade']] = contagem_prio.get(l['prioridade'], 0) + 1
+    matriz_keys = [
+        'pouco-boa', 'pouco-atencao', 'pouco-ruim',
+        'ok-boa', 'ok-atencao', 'ok-ruim',
+        'muito-boa', 'muito-atencao', 'muito-ruim',
+    ]
+    matriz = {k: 0 for k in matriz_keys}
+    for l in linhas:
+        ne = l.get('nivel_estoque')
+        ns = l.get('nivel_shelf')
+        if ne in ('sem', None) or ns in ('sem', None):
+            continue
+        key = f'{ne}-{ns}'
+        if key in matriz:
+            matriz[key] += 1
+    return {
+        'linhas': linhas,
+        'contagem_prioridade': contagem_prio,
+        'matriz': matriz,
+        'urgentes': sum(1 for l in linhas if l['prioridade'] in ('critico', 'desperdicio')),
+        'total': len(linhas),
+    }
+
+
 def _coletar_mapa_destinos_fixos(conn):
     """Mapa câmara → finalidade (área) → endereços reservados no layout."""
     cfg = _layout_camaras_config()
@@ -5462,6 +5810,69 @@ def api_wms_mapa_3d():
         return jsonify({'erro': str(e)}), 500
 
 
+def _listar_estoque_armazenado_wms(conn, categoria=None, q=None, limite=5000):
+    """Linhas de estoque real: palete armazenado + item + endereço (câmara/rua/coluna/nível)."""
+    _ensure_wms_palete_item_disposicao(conn)
+    t_item = _tbl(conn, 'wms_palete_item')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    t_prod = _tbl(conn, 'wms_produto_enderecamento')
+    bloq_off = _bloqueio_off_sql(conn, 'l.bloqueio_saida')
+    sql = f'''SELECT i.sku, i.descricao, i.lote, i.rg_caixa, i.data_producao, i.data_validade,
+                     i.quantidade_caixas,
+                     l.camara, l.rua, l.posicao, l.nivel, l.codigo_endereco,
+                     p.etiqueta AS palete_etiqueta,
+                     pr.categoria
+              FROM {t_item} i
+              INNER JOIN {t_pal} p ON p.id = i.palete_id
+              INNER JOIN {t_loc} l ON l.id = p.localizacao_id
+              LEFT JOIN {t_prod} pr ON pr.sku = i.sku AND {_ativo_sql(conn, 'pr')}
+              WHERE p.status = 'armazenado'
+                AND l.status = 'ocupada'
+                AND (p.bloqueio_tipo IS NULL OR TRIM(COALESCE(p.bloqueio_tipo, '')) = '')
+                AND {bloq_off}
+                AND COALESCE(i.quantidade_caixas, 0) > 0'''
+    params = []
+    cat = (categoria or '').strip().upper()
+    if cat:
+        sql += ' AND UPPER(TRIM(COALESCE(pr.categoria, \'\'))) = ?'
+        params.append(cat)
+    qtxt = (q or '').strip()
+    if qtxt:
+        like = f'%{qtxt}%'
+        if _is_pg(conn):
+            sql += ''' AND (i.sku ILIKE ? OR i.descricao ILIKE ? OR i.lote ILIKE ?
+                     OR COALESCE(i.rg_caixa, '') ILIKE ? OR l.codigo_endereco ILIKE ?)'''
+        else:
+            sql += ''' AND (i.sku LIKE ? OR i.descricao LIKE ? OR i.lote LIKE ?
+                     OR COALESCE(i.rg_caixa, '') LIKE ? OR l.codigo_endereco LIKE ?)'''
+        params.extend([like, like, like, like, like])
+    sql += ' ORDER BY l.camara, l.rua, l.posicao, l.nivel, i.sku, i.lote'
+    sql += f' LIMIT {int(limite)}'
+    rows = conn.execute(sql, tuple(params)).fetchall()
+    out = []
+    for r in rows or []:
+        rd = _row_dict(r) or {}
+        loc = _format_locacao(rd)
+        out.append({
+            'camara': rd.get('camara'),
+            'rua': str(rd.get('rua') or '').upper(),
+            'coluna': rd.get('posicao'),
+            'nivel': rd.get('nivel'),
+            'codigo_endereco': loc.get('codigo_wms') or rd.get('codigo_endereco'),
+            'sku': rd.get('sku') or '',
+            'descricao': rd.get('descricao') or '',
+            'quantidade': int(rd.get('quantidade_caixas') or 0),
+            'data_fabricacao': rd.get('data_producao'),
+            'data_validade': rd.get('data_validade'),
+            'up': rd.get('rg_caixa') or '',
+            'lote': rd.get('lote') or '',
+            'categoria': rd.get('categoria') or '',
+            'palete': rd.get('palete_etiqueta') or '',
+        })
+    return out
+
+
 @bp.route('/produtos', methods=['GET'])
 def api_wms_produtos():
     conn = _db()
@@ -5469,19 +5880,6 @@ def api_wms_produtos():
     cat = (request.args.get('categoria') or '').strip().upper()
     q = (request.args.get('q') or '').strip()
     sync = (request.args.get('sync') or '').strip().lower() in ('1', 'sim', 'true', 'yes')
-    t = _tbl(conn, 'wms_produto_enderecamento')
-    sql = f'''SELECT sku, descricao, categoria, medida_cx, padrao_plt, conversao,
-                     posicoes_min, posicoes_med, posicoes_max,
-                     estoque_atual, posicao_atual, status_condicional
-              FROM {t} WHERE {_ativo_sql(conn)}'''
-    params = []
-    if cat:
-        sql += ' AND categoria = ?'
-        params.append(cat)
-    if q:
-        sql += ' AND (sku ILIKE ? OR descricao ILIKE ?)' if _is_pg(conn) else ' AND (sku LIKE ? OR descricao LIKE ?)'
-        params.extend([f'%{q}%', f'%{q}%'])
-    sql += ' ORDER BY categoria, sku LIMIT 1000'
     try:
         if sync:
             _sync_all_produtos_estoque_cache(conn)
@@ -5489,10 +5887,87 @@ def api_wms_produtos():
                 conn.commit()
             except Exception:
                 conn.rollback()
-        rows = conn.execute(sql, tuple(params)).fetchall()
-        produtos = [_row_dict(r) or {} for r in rows]
+        estoque = _listar_estoque_armazenado_wms(conn, categoria=cat or None, q=q or None)
         conn.close()
-        return jsonify({'produtos': produtos, 'fonte_estoque': 'wms'})
+        return jsonify({
+            'estoque': estoque,
+            'total_linhas': len(estoque),
+            'fonte_estoque': 'wms',
+        })
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/analise/ocupacao', methods=['GET'])
+def api_wms_analise_ocupacao():
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        camaras = request.args.get('camaras', '11,12,13')
+        cam_list = tuple(int(x.strip()) for x in str(camaras).split(',') if x.strip().isdigit()) or (11, 12, 13)
+        data = _coletar_resumo_ocupacao_wms(conn, camaras=cam_list)
+        conn.close()
+        return jsonify(data)
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/analise/estoque-seguranca', methods=['GET'])
+def api_wms_analise_estoque_seguranca():
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        cat = (request.args.get('categoria') or '').strip().upper() or None
+        sync = (request.args.get('sync') or '1').strip().lower() in ('1', 'sim', 'true', 'yes')
+        data = _listar_estoque_seguranca_wms(conn, categoria=cat, sync=sync)
+        data['fonte'] = 'wms'
+        conn.close()
+        return jsonify(data)
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/analise/shelf-life', methods=['GET'])
+def api_wms_analise_shelf_life():
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        cat = (request.args.get('categoria') or '').strip().upper() or None
+        data = _listar_shelf_life_wms(conn, categoria=cat)
+        data['fonte'] = 'wms'
+        conn.close()
+        return jsonify(data)
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
+@bp.route('/analise/visao-cruzada', methods=['GET'])
+def api_wms_analise_visao_cruzada():
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        cat = (request.args.get('categoria') or '').strip().upper() or None
+        sync = (request.args.get('sync') or '1').strip().lower() in ('1', 'sim', 'true', 'yes')
+        data = _listar_visao_cruzada_wms(conn, categoria=cat, sync=sync)
+        data['fonte'] = 'wms'
+        conn.close()
+        return jsonify(data)
     except Exception as e:
         try:
             conn.close()

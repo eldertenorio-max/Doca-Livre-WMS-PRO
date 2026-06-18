@@ -10208,6 +10208,37 @@ def _painel_sql_janela_params(inicio, fim_excl, conn):
     return inicio.strftime('%Y-%m-%d %H:%M:%S'), fim_excl.strftime('%Y-%m-%d %H:%M:%S')
 
 
+def _painel_request_janela_meta(conn):
+    """Lê data/hora início e fim do request e devolve janela + parâmetros SQL + resumo legível."""
+    data_inicio = (request.args.get('data_inicio') or request.args.get('data') or '').strip()[:10] or None
+    data_fim = (request.args.get('data_fim') or request.args.get('data') or '').strip()[:10] or None
+    hora_inicio = (request.args.get('hora_inicio') or '').strip()[:5] or None
+    hora_fim = (request.args.get('hora_fim') or '').strip()[:5] or None
+    meta = _parse_painel_janela(data_inicio, data_fim, hora_inicio, hora_fim)
+    ini_p, fim_p = _painel_sql_janela_params(meta['inicio'], meta['fim_excl'], conn)
+    filtros_resp = {
+        'data': meta['data'],
+        'data_iso': meta['data_iso'],
+        'data_inicio': meta['data_inicio_iso'],
+        'data_fim': meta['data_fim_iso'],
+        'hora_inicio': meta['hora_inicio'],
+        'hora_fim': meta['hora_fim'],
+        'legivel': meta['legivel'],
+    }
+    return meta, ini_p, fim_p, filtros_resp
+
+
+def _terceiros_sql_periodo_janela(alias, conn, data_inicio=None, data_fim=None, hora_inicio=None, hora_fim=None):
+    """Cláusulas SQL de período (data/hora) em criado_em, com suporte a turno noturno."""
+    data_inicio = (data_inicio or '').strip()[:10] or None
+    data_fim = (data_fim or '').strip()[:10] or None
+    hora_inicio = (hora_inicio or '').strip()[:5] or None
+    hora_fim = (hora_fim or '').strip()[:5] or None
+    meta = _parse_janela_datahora(data_inicio, data_fim, hora_inicio, hora_fim)
+    ini_p, fim_p = _painel_sql_janela_params(meta['inicio'], meta['fim_excl'], conn)
+    return [alias + '.criado_em >= ?', alias + '.criado_em < ?'], [ini_p, fim_p], meta
+
+
 def _coletar_placas_baixadas_dia(conn, data_ref=None, janela_inicio=None, janela_fim_excl=None):
     """
     Lista viagens/placas baixadas do Ravex no dia (America/Sao_Paulo) com status de carregamento,
@@ -11915,8 +11946,11 @@ def get_painel_devolucoes():
     if getattr(conn, 'kind', None) != 'pg':
         conn.row_factory = sqlite3.Row
     try:
+        _, ini_p, fim_p, filtros_resp = _painel_request_janela_meta(conn)
+        filtro_dt = ' AND data_hora >= ? AND data_hora < ?'
+        params_dt = (ini_p, fim_p)
         fluxo = 'devolucao'
-        row_stats = conn.execute('''
+        row_stats = conn.execute(f'''
         SELECT
             COUNT(*) AS total_bipados,
             COALESCE(SUM(quantidade), 0) AS soma_quantidades,
@@ -11925,10 +11959,10 @@ def get_painel_devolucoes():
             COUNT(DISTINCT CASE WHEN doca IS NOT NULL AND trim(COALESCE(doca,'')) != '' THEN doca END) AS total_docas,
             COUNT(DISTINCT CASE WHEN usuario_bipagem IS NOT NULL AND trim(COALESCE(usuario_bipagem,'')) != '' THEN usuario_bipagem END) AS total_usuarios
         FROM produtos_bipados
-        WHERE COALESCE(fluxo, 'carregamento') = ?
-        ''', (fluxo,)).fetchone()
+        WHERE COALESCE(fluxo, 'carregamento') = ?{filtro_dt}
+        ''', (fluxo,) + params_dt).fetchone()
 
-        viagens_rows = conn.execute('''
+        viagens_rows = conn.execute(f'''
         SELECT
             id_viagem,
             COUNT(*) AS registros,
@@ -11939,52 +11973,52 @@ def get_painel_devolucoes():
         FROM produtos_bipados
         WHERE COALESCE(fluxo, 'carregamento') = ?
           AND id_viagem IS NOT NULL
-          AND trim(COALESCE(id_viagem,'')) != ''
+          AND trim(COALESCE(id_viagem,'')) != ''{filtro_dt}
         GROUP BY id_viagem
         ORDER BY MAX(data_hora) DESC
         LIMIT 30
-        ''', (fluxo,)).fetchall()
+        ''', (fluxo,) + params_dt).fetchall()
 
-        itens_rows = conn.execute('''
+        itens_rows = conn.execute(f'''
         SELECT produto, codigo_barras, COALESCE(SUM(quantidade), 0) AS total
         FROM produtos_bipados
-        WHERE COALESCE(fluxo, 'carregamento') = ?
+        WHERE COALESCE(fluxo, 'carregamento') = ?{filtro_dt}
         GROUP BY codigo_barras, produto
         ORDER BY total DESC
         LIMIT 20
-        ''', (fluxo,)).fetchall()
+        ''', (fluxo,) + params_dt).fetchall()
 
-        veiculos_rows = conn.execute('''
+        veiculos_rows = conn.execute(f'''
         SELECT veiculo, COUNT(*) AS registros, COALESCE(SUM(quantidade), 0) AS total
         FROM produtos_bipados
         WHERE COALESCE(fluxo, 'carregamento') = ?
           AND veiculo IS NOT NULL
-          AND trim(COALESCE(veiculo,'')) != ''
+          AND trim(COALESCE(veiculo,'')) != ''{filtro_dt}
         GROUP BY veiculo
         ORDER BY total DESC, registros DESC
         LIMIT 20
-        ''', (fluxo,)).fetchall()
+        ''', (fluxo,) + params_dt).fetchall()
 
-        docas_rows = conn.execute('''
+        docas_rows = conn.execute(f'''
         SELECT doca, COUNT(*) AS registros, COALESCE(SUM(quantidade), 0) AS total
         FROM produtos_bipados
         WHERE COALESCE(fluxo, 'carregamento') = ?
           AND doca IS NOT NULL
-          AND trim(COALESCE(doca,'')) != ''
+          AND trim(COALESCE(doca,'')) != ''{filtro_dt}
         GROUP BY doca
         ORDER BY total DESC, registros DESC
-        ''', (fluxo,)).fetchall()
+        ''', (fluxo,) + params_dt).fetchall()
 
-        usuarios_rows = conn.execute('''
+        usuarios_rows = conn.execute(f'''
         SELECT usuario_bipagem, COUNT(*) AS registros, COALESCE(SUM(quantidade), 0) AS total
         FROM produtos_bipados
         WHERE COALESCE(fluxo, 'carregamento') = ?
           AND usuario_bipagem IS NOT NULL
-          AND trim(COALESCE(usuario_bipagem,'')) != ''
+          AND trim(COALESCE(usuario_bipagem,'')) != ''{filtro_dt}
         GROUP BY usuario_bipagem
         ORDER BY total DESC, registros DESC
         LIMIT 20
-        ''', (fluxo,)).fetchall()
+        ''', (fluxo,) + params_dt).fetchall()
 
         def _safe(r, key, default=0):
             try:
@@ -12009,6 +12043,7 @@ def get_painel_devolucoes():
 
         conn.close()
         return jsonify({
+            'filtros': filtros_resp,
             'estatisticas': {
                 'total_bipados': _safe(row_stats, 'total_bipados', 0),
                 'soma_quantidades': _safe(row_stats, 'soma_quantidades', 0),
@@ -14451,11 +14486,28 @@ def api_terceiros_painel():
     tbl_d = _tbl_terceiros_documentos(conn)
     tbl_i = _tbl_terceiros_documento_itens(conn)
     cols = _sql_cols_terceiros_documentos_listagem('d')
+    data_inicio = (request.args.get('data_inicio') or request.args.get('data') or '').strip()[:10] or None
+    data_fim = (request.args.get('data_fim') or request.args.get('data') or '').strip()[:10] or None
+    hora_inicio = (request.args.get('hora_inicio') or '').strip()[:5] or None
+    hora_fim = (request.args.get('hora_fim') or '').strip()[:5] or None
+    wp, pp, janela_meta = _terceiros_sql_periodo_janela('d', conn, data_inicio, data_fim, hora_inicio, hora_fim)
+    filtros_resp = {
+      'data': janela_meta['data'],
+      'data_iso': janela_meta['data_iso'],
+      'data_inicio': janela_meta['data_inicio_iso'],
+      'data_fim': janela_meta['data_fim_iso'],
+      'hora_inicio': janela_meta['hora_inicio'],
+      'hora_fim': janela_meta['hora_fim'],
+      'legivel': janela_meta['legivel'],
+    }
+    where_sql = ' WHERE ' + ' AND '.join(wp)
     doc_rows = conn.execute(
       'SELECT ' + _terceiros_cols_select_listagem(cols, com_resumo=True)
       + ' FROM ' + tbl_d + ' d'
       + _terceiros_sql_join_resumo_itens(conn, tbl_i, 'd')
+      + where_sql
       + ' ORDER BY d.criado_em DESC, d.id DESC',
+      tuple(pp),
     ).fetchall()
 
     def _row_dict(r):
@@ -14528,19 +14580,23 @@ def api_terceiros_painel():
          FROM ''' + tbl_i + ''' i
          INNER JOIN ''' + tbl_d + ''' d ON d.id = i.documento_id
          WHERE COALESCE(i.quantidade_bipada, 0) > 0
+           AND ''' + ' AND '.join(wp) + '''
          GROUP BY i.descricao_xml, i.codigo_ean
          ORDER BY total DESC
          LIMIT 20''',
+      tuple(pp),
     ).fetchall()
 
     motorista_rows = conn.execute(
-      '''SELECT COALESCE(NULLIF(TRIM(motorista_carreta), ''), 'Sem motorista') AS motorista,
+      '''SELECT COALESCE(NULLIF(TRIM(d.motorista_carreta), ''), 'Sem motorista') AS motorista,
                 COUNT(*) AS nfs
-         FROM ''' + tbl_d + '''
-         WHERE motorista_carreta IS NOT NULL AND TRIM(COALESCE(motorista_carreta, '')) != ''
-         GROUP BY motorista_carreta
+         FROM ''' + tbl_d + ''' d
+         WHERE d.motorista_carreta IS NOT NULL AND TRIM(COALESCE(d.motorista_carreta, '')) != ''
+           AND ''' + ' AND '.join(wp) + '''
+         GROUP BY d.motorista_carreta
          ORDER BY nfs DESC
          LIMIT 12''',
+      tuple(pp),
     ).fetchall()
 
     chegadas_rows = conn.execute(
@@ -14554,9 +14610,11 @@ def api_terceiros_painel():
          INNER JOIN ''' + tbl_i + ''' i ON i.documento_id = d.id
          WHERE LOWER(TRIM(COALESCE(d.area, ''))) = 'carreta'
            AND COALESCE(i.quantidade_bipada, 0) > 0
+           AND ''' + ' AND '.join(wp) + '''
          GROUP BY d.id, d.numero_nf, d.serie_nf, d.motorista_carreta, d.placa_carreta
          ORDER BY inicio_descarga DESC
          LIMIT 20''',
+      tuple(pp),
     ).fetchall()
 
     top_itens = []
@@ -14597,6 +14655,7 @@ def api_terceiros_painel():
     ]
 
     return jsonify({
+      'filtros': filtros_resp,
       'estatisticas': {
         'total_nf': len(docs),
         'pendencia_recebimento': etapa_counts.get('pendencia_recebimento', 0),

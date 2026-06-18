@@ -1,0 +1,169 @@
+/* Painéis de análise WMS (ocupação, estoque seg., shelf, cruzada) */
+.wms-analise-wrap {
+    background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+    color: #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 18px 22px;
+    border: 1px solid #1e3a5f;
+    margin-bottom: 8px;
+}
+.wms-analise-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+.wms-analise-toolbar .form-group label { color: #94a3b8; font-size: 12px; }
+.wms-analise-toolbar select {
+    background: #1e293b;
+    color: #f1f5f9;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+.wms-analise-fonte { margin: 0; font-size: 12px; color: #94a3b8; }
+.wms-analise-resumo-dia {
+    text-align: center;
+    margin-bottom: 18px;
+}
+.wms-analise-resumo-dia h2 {
+    margin: 0 0 4px;
+    font-size: 1.35rem;
+    color: #38bdf8;
+    letter-spacing: 0.04em;
+}
+.wms-analise-meta {
+    font-size: 11px;
+    color: #64748b;
+}
+.wms-analise-bloco {
+    border: 1px solid #1e40af;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    background: rgba(15, 23, 42, 0.6);
+}
+.wms-analise-bloco h3 {
+    margin: 0 0 10px;
+    font-size: 0.95rem;
+    letter-spacing: 0.06em;
+}
+.wms-analise-bloco--ocup h3 { color: #38bdf8; }
+.wms-analise-bloco--livre h3 { color: #4ade80; }
+.wms-analise-bloco--avaria h3 { color: #fbbf24; }
+.wms-analise-metricas {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.wms-analise-metrica-val {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1.1;
+}
+.wms-analise-metrica-lbl { font-size: 11px; color: #94a3b8; text-transform: uppercase; }
+.wms-analise-nota { font-size: 11px; color: #64748b; margin: 10px 0 0; }
+.wms-analise-camaras {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+.wms-analise-cam-card {
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 12px;
+    background: #0f172a;
+}
+.wms-analise-cam-card h4 { margin: 0 0 8px; color: #f8fafc; font-size: 14px; }
+.wms-analise-barra {
+    display: flex;
+    height: 28px;
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 11px;
+    font-weight: 700;
+}
+.wms-analise-barra-vaz { background: #166534; color: #dcfce7; display: flex; align-items: center; justify-content: center; min-width: 2em; }
+.wms-analise-barra-ocup { background: #1d4ed8; color: #dbeafe; display: flex; align-items: center; justify-content: center; min-width: 2em; }
+.wms-analise-cards-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.wms-analise-stat-card {
+    flex: 1;
+    min-width: 100px;
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: center;
+    border: 1px solid #334155;
+    background: #1e293b;
+    cursor: pointer;
+}
+.wms-analise-stat-card strong { display: block; font-size: 1.5rem; }
+.wms-analise-stat-card span { font-size: 11px; color: #94a3b8; }
+.wms-analise-stat-card.active { outline: 2px solid #38bdf8; }
+.wms-analise-stat-excedido strong { color: #a78bfa; }
+.wms-analise-stat-verde strong { color: #4ade80; }
+.wms-analise-stat-amarelo strong { color: #facc15; }
+.wms-analise-stat-vermelho strong { color: #f87171; }
+.wms-analise-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+    margin-bottom: 16px;
+}
+.wms-analise-chart-box {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 12px;
+}
+.wms-analise-chart-box h4 { margin: 0 0 8px; font-size: 13px; color: #cbd5e1; }
+.wms-analise-table-wrap { overflow-x: auto; margin-top: 12px; }
+.wms-analise-table-wrap table { width: 100%; font-size: 12px; }
+.wms-analise-table-wrap th {
+    background: #1e3a5f;
+    color: #e2e8f0;
+    padding: 8px 6px;
+    white-space: nowrap;
+}
+.wms-analise-table-wrap td {
+    padding: 6px;
+    border-bottom: 1px solid #1e293b;
+    color: #cbd5e1;
+}
+.wms-analise-table-wrap tr:hover td { background: rgba(56, 189, 248, 0.08); }
+.wms-analise-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+}
+.wms-analise-badge-verde { background: #14532d; color: #86efac; }
+.wms-analise-badge-amarelo { background: #713f12; color: #fde047; }
+.wms-analise-badge-laranja { background: #7c2d12; color: #fdba74; }
+.wms-analise-badge-vermelho { background: #7f1d1d; color: #fca5a5; }
+.wms-analise-badge-excedido { background: #4c1d95; color: #c4b5fd; }
+.wms-analise-matriz {
+    display: grid;
+    grid-template-columns: auto repeat(3, 1fr);
+    gap: 4px;
+    max-width: 420px;
+    margin: 12px 0;
+    font-size: 12px;
+}
+.wms-analise-matriz-cell {
+    padding: 8px;
+    text-align: center;
+    border-radius: 4px;
+    border: 1px solid #334155;
+    cursor: pointer;
+}
+.wms-analise-matriz-head { background: #1e293b; color: #94a3b8; font-weight: 600; }
+.wms-analise-matriz-cell.active { outline: 2px solid #38bdf8; }
