@@ -4,14 +4,12 @@
 (function (global) {
     'use strict';
 
-    var SLOT_W = 1.05;
-    var SLOT_H = 0.78;
-    var SLOT_D = 0.95;
-    var GAP_POS = 0.14;
-    var GAP_RUA = 3.2;
-    var GAP_CAM = 22;
-    var FRAME_COLOR = 0xff6f00;
-    var _slotGeo = null;
+    var SLOT_W = 0.92;
+    var SLOT_H = 0.68;
+    var SLOT_D = 0.92;
+    var GAP_POS = 0.16;
+    var GAP_RUA = 1.6;
+    var GAP_CAM = 18;
 
     var LEGENDA = [
         { key: 'vazia', label: 'Vazia (pulmão)', color: '#a5d6a7' },
@@ -114,120 +112,132 @@
         while (state.rackGroup.children.length) {
             var ch = state.rackGroup.children[0];
             state.rackGroup.remove(ch);
-            ch.traverse(function (o) {
-                if (o.geometry && o.geometry !== _slotGeo) o.geometry.dispose();
-                if (o.material) {
-                    if (Array.isArray(o.material)) o.material.forEach(function (m) { m.dispose(); });
-                    else o.material.dispose();
-                }
-            });
+            if (ch.geometry) ch.geometry.dispose();
+            if (ch.material) {
+                if (Array.isArray(ch.material)) ch.material.forEach(function (m) { m.dispose(); });
+                else ch.material.dispose();
+            }
         }
     }
 
-    function slotGeometry(THREE) {
-        if (!_slotGeo) _slotGeo = new THREE.BoxGeometry(SLOT_W * 0.9, SLOT_H * 0.86, SLOT_D * 0.9);
-        return _slotGeo;
+    function finalizeInstancedMesh(im) {
+        im.instanceMatrix.needsUpdate = true;
+        if (im.instanceColor) im.instanceColor.needsUpdate = true;
+        im.frustumCulled = false;
+        if (typeof im.computeBoundingSphere === 'function') {
+            im.computeBoundingSphere();
+        }
     }
 
-    function frameMaterial(THREE) {
-        return new THREE.MeshPhongMaterial({ color: FRAME_COLOR, shininess: 20, specular: 0x442200 });
-    }
-
-    function slotMaterial(THREE, slot) {
-        var c = slotColor(slot);
-        var mat = new THREE.MeshPhongMaterial({
-            color: c,
-            shininess: 45,
-            specular: 0x333333
+    function _slotInstanceMaterial(THREE) {
+        var vc = THREE.VertexColors !== undefined ? THREE.VertexColors : true;
+        return new THREE.MeshLambertMaterial({
+            color: 0xffffff,
+            vertexColors: vc
         });
-        if ((slot.status || '') === 'ocupada') {
-            mat.emissive = new THREE.Color(c);
-            mat.emissive.multiplyScalar(0.18);
-        }
-        return mat;
     }
 
-    function addRuaFrame(THREE, ruaGroup, rackW, rackH, maxNiv) {
-        var frameMat = frameMaterial(THREE);
-        var back = new THREE.Mesh(new THREE.BoxGeometry(rackW + 0.24, rackH + 0.18, 0.12), frameMat);
-        back.position.set(rackW / 2, rackH / 2, -0.08);
-        ruaGroup.add(back);
-        var top = new THREE.Mesh(new THREE.BoxGeometry(rackW + 0.28, 0.1, SLOT_D + 0.35), frameMat);
-        top.position.set(rackW / 2, maxNiv * SLOT_H + 0.04, SLOT_D / 2);
-        ruaGroup.add(top);
-        var bot = new THREE.Mesh(new THREE.BoxGeometry(rackW + 0.28, 0.1, SLOT_D + 0.35), frameMat);
-        bot.position.set(rackW / 2, -0.04, SLOT_D / 2);
-        ruaGroup.add(bot);
+    function _addRackFrame(THREE, parent, w, h, d, ox, oy, oz) {
+        var frameGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d));
+        var frameMat = new THREE.LineBasicMaterial({ color: 0xe65100, linewidth: 1 });
+        var frame = new THREE.LineSegments(frameGeo, frameMat);
+        frame.position.set(ox + w / 2, oy + h / 2, oz + d / 2);
+        parent.add(frame);
+        var beamMat = new THREE.MeshLambertMaterial({ color: 0xff6f00 });
+        var topBeam = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, 0.06, d + 0.08), beamMat);
+        topBeam.position.set(ox + w / 2, oy + h + 0.03, oz + d / 2);
+        parent.add(topBeam);
+        var botBeam = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, 0.05, d + 0.08), beamMat);
+        botBeam.position.set(ox + w / 2, oy - 0.025, oz + d / 2);
+        parent.add(botBeam);
     }
 
-    function buildOneCamara(THREE, cam, camOffsetX) {
-        var ruas = cam.ruas || [];
-        var ruaIndex = {};
-        ruas.forEach(function (r, i) { ruaIndex[r] = i; });
-        var slots = cam.slots || [];
-        if (!slots.length) return camOffsetX;
+    function _ruaSlots(cam, rua) {
+        return (cam.slots || []).filter(function (s) {
+            return String(s.rua || '').toUpperCase() === String(rua || '').toUpperCase();
+        });
+    }
 
+    function _camMaxPosNiv(slots) {
         var maxPos = 1;
         var maxNiv = 1;
-        slots.forEach(function (s) {
-            var p = parseInt(s.posicao, 10) || 0;
+        (slots || []).forEach(function (s) {
+            var p = parseInt(s.posicao, 10) || 1;
             var n = parseInt(s.nivel, 10) || 1;
             if (p > maxPos) maxPos = p;
             if (n > maxNiv) maxNiv = n;
         });
+        return { maxPos: maxPos, maxNiv: maxNiv };
+    }
 
+    function buildOneCamara(THREE, cam, camOffsetX, boxGeo, dummy, col) {
+        var ruas = cam.ruas || [];
+        var slots = cam.slots || [];
+        if (!slots.length) return camOffsetX;
+
+        var dims = _camMaxPosNiv(slots);
+        var maxPos = dims.maxPos;
+        var maxNiv = dims.maxNiv;
         var camGroup = new THREE.Group();
         camGroup.name = 'camara-' + cam.codigo;
-        var geo = slotGeometry(THREE);
 
-        slots.forEach(function (slot) {
-            var ri = ruaIndex[slot.rua] != null ? ruaIndex[slot.rua] : 0;
-            var pos = parseInt(slot.posicao, 10) || 1;
-            var niv = parseInt(slot.nivel, 10) || 1;
-            var x = (pos - 1) * (SLOT_W + GAP_POS);
-            var y = (niv - 1) * SLOT_H;
-            var z = ri * (SLOT_D + GAP_RUA);
-            var mesh = new THREE.Mesh(geo, slotMaterial(THREE, slot));
-            mesh.position.set(x + SLOT_W / 2, y + SLOT_H * 0.43, z + SLOT_D / 2);
-            mesh.userData = { isSlot: true, slot: slot, camara: cam.codigo };
-            camGroup.add(mesh);
-            state.pickables.push(mesh);
-            state.slotIndex.push({ mesh: mesh, slot: slot, camara: cam.codigo });
-        });
-
-        ruas.forEach(function (rua, ri) {
-            var ruaSlots = slots.filter(function (s) { return s.rua === rua; });
+        var ruaZ = 0;
+        var ruaCount = 0;
+        ruas.forEach(function (rua) {
+            var ruaSlots = _ruaSlots(cam, rua);
             if (!ruaSlots.length) return;
-            var rMaxPos = 1;
-            var rMaxNiv = 1;
-            ruaSlots.forEach(function (s) {
-                var p = parseInt(s.posicao, 10) || 0;
-                var n = parseInt(s.nivel, 10) || 1;
-                if (p > rMaxPos) rMaxPos = p;
-                if (n > rMaxNiv) rMaxNiv = n;
-            });
-            var rackW = rMaxPos * (SLOT_W + GAP_POS);
-            var rackH = rMaxNiv * SLOT_H;
+            ruaCount += 1;
+
             var ruaGroup = new THREE.Group();
-            ruaGroup.position.z = ri * (SLOT_D + GAP_RUA);
-            addRuaFrame(THREE, ruaGroup, rackW, rackH, rMaxNiv);
-            var floorGeo = new THREE.PlaneGeometry(rackW + 1.2, SLOT_D + 0.8);
-            var floorMat = new THREE.MeshPhongMaterial({ color: 0xcfd8dc, side: THREE.DoubleSide, shininess: 5 });
-            var floor = new THREE.Mesh(floorGeo, floorMat);
-            floor.rotation.x = -Math.PI / 2;
-            floor.position.set(rackW / 2, -0.03, SLOT_D / 2);
-            ruaGroup.add(floor);
+            ruaGroup.name = 'rua-' + rua;
+            var mat = _slotInstanceMaterial(THREE);
+            var im = new THREE.InstancedMesh(boxGeo, mat, ruaSlots.length);
+            if (THREE.DynamicDrawUsage) im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(ruaSlots.length * 3), 3);
+            im.userData = { isRack: true, camara: cam.codigo, rua: rua };
+
+            ruaSlots.forEach(function (slot, i) {
+                var pos = parseInt(slot.posicao, 10) || 1;
+                var niv = parseInt(slot.nivel, 10) || 1;
+                var x = (pos - 1) * (SLOT_W + GAP_POS);
+                var y = (niv - 1) * (SLOT_H + 0.05);
+                dummy.position.set(x + SLOT_W / 2, y + SLOT_H * 0.46, SLOT_D / 2);
+                dummy.rotation.set(0, 0, 0);
+                dummy.updateMatrix();
+                im.setMatrixAt(i, dummy.matrix);
+                col.setHex(slotColor(slot));
+                im.setColorAt(i, col);
+                state.slotIndex.push({
+                    mesh: im,
+                    instanceId: i,
+                    slot: slot,
+                    camara: cam.codigo
+                });
+            });
+            finalizeInstancedMesh(im);
+            ruaGroup.add(im);
+            state.pickables.push(im);
+
+            var rackW = maxPos * (SLOT_W + GAP_POS) - GAP_POS + 0.2;
+            var rackH = maxNiv * (SLOT_H + 0.05) - 0.05 + SLOT_H;
+            _addRackFrame(THREE, ruaGroup, rackW, rackH, SLOT_D + 0.14, -0.1, 0, -0.07);
+
+            ruaGroup.position.z = ruaZ;
+            ruaZ += SLOT_D + GAP_RUA;
             camGroup.add(ruaGroup);
         });
 
-        var floorW = maxPos * (SLOT_W + GAP_POS) + 2;
-        var floorD = ruas.length * (SLOT_D + GAP_RUA) + 1.5;
-        var baseGeo = new THREE.PlaneGeometry(floorW, floorD);
-        var baseMat = new THREE.MeshPhongMaterial({ color: 0xeceff1, side: THREE.DoubleSide });
-        var base = new THREE.Mesh(baseGeo, baseMat);
-        base.rotation.x = -Math.PI / 2;
-        base.position.set(floorW / 2 - 0.5, -0.05, floorD / 2 - 0.8);
-        camGroup.add(base);
+        if (!ruaCount) return camOffsetX;
+
+        var floorW = maxPos * (SLOT_W + GAP_POS) + 1.2;
+        var floorD = Math.max(ruaZ, SLOT_D) + 0.8;
+        var floorGeo = new THREE.PlaneGeometry(floorW, floorD);
+        var floorMat = new THREE.MeshLambertMaterial({ color: 0xcfd8dc, side: THREE.DoubleSide });
+        var floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.set(floorW / 2 - 0.6, -0.04, floorD / 2 - 0.4);
+        floor.receiveShadow = false;
+        camGroup.add(floor);
 
         camGroup.position.x = camOffsetX;
         state.rackGroup.add(camGroup);
@@ -245,6 +255,9 @@
             if (!data || !data.camaras || !data.camaras.length || !state.rackGroup) return;
 
             var camaras = data.camaras.slice();
+            var boxGeo = new THREE.BoxGeometry(SLOT_W * 0.94, SLOT_H * 0.9, SLOT_D * 0.94);
+            var dummy = new THREE.Object3D();
+            var col = new THREE.Color();
             var camOffsetX = 0;
             var idx = 0;
 
@@ -256,10 +269,9 @@
                         renderFrame();
                         return resolve();
                     }
-                    camOffsetX = buildOneCamara(THREE, camaras[idx], camOffsetX);
+                    camOffsetX = buildOneCamara(THREE, camaras[idx], camOffsetX, boxGeo, dummy, col);
                     idx += 1;
-                    if (idx % 2 === 0) requestAnimationFrame(next);
-                    else next();
+                    requestAnimationFrame(next);
                 }
                 next();
             });
@@ -273,9 +285,9 @@
         if (box.isEmpty()) return;
         var center = box.getCenter(new THREE.Vector3());
         var size = box.getSize(new THREE.Vector3());
-        var maxDim = Math.max(size.x, size.y, size.z, 8);
-        var dist = maxDim * 1.35;
-        state.camera.position.set(center.x + dist * 0.85, center.y + dist * 0.55, center.z + dist * 0.9);
+        var maxDim = Math.max(size.x, size.y, size.z, 6);
+        var dist = maxDim * 1.15;
+        state.camera.position.set(center.x + dist * 0.72, center.y + dist * 0.62, center.z + dist * 0.95);
         state.controls.target.copy(center);
         state.controls.update();
         state.defaultCamPos = state.camera.position.clone();
@@ -316,13 +328,14 @@
         state.raycaster.setFromCamera(state.mouse, state.camera);
         var hits = state.raycaster.intersectObjects(state.pickables, false);
         for (var h = 0; h < hits.length; h++) {
-            var mesh = hits[h].object;
-            if (mesh && mesh.userData && mesh.userData.isSlot && mesh.userData.slot) {
-                return {
-                    mesh: mesh,
-                    slot: mesh.userData.slot,
-                    camara: mesh.userData.camara
-                };
+            var hit = hits[h];
+            if (hit.instanceId == null || hit.instanceId < 0) continue;
+            var mesh = hit.object;
+            for (var i = 0; i < state.slotIndex.length; i++) {
+                var rec = state.slotIndex[i];
+                if (rec.mesh === mesh && rec.instanceId === hit.instanceId) {
+                    return rec;
+                }
             }
         }
         return null;
@@ -445,8 +458,8 @@
 
             return waitForLayout(wrap).then(function () {
                 state.scene = new THREE.Scene();
-                state.scene.background = new THREE.Color(0xeceff1);
-                state.scene.fog = new THREE.Fog(0xeceff1, 40, 160);
+                state.scene.background = new THREE.Color(0xe8eef2);
+                state.scene.fog = new THREE.Fog(0xe8eef2, 55, 180);
 
                 var rect = wrap.getBoundingClientRect();
                 var w = Math.max(rect.width || wrap.clientWidth, 320);
@@ -462,12 +475,13 @@
                 state.controls.dampingFactor = 0.08;
                 state.controls.maxPolarAngle = Math.PI / 2.05;
 
-                state.scene.add(new THREE.HemisphereLight(0xffffff, 0x90a4ae, 0.62));
-                state.scene.add(new THREE.AmbientLight(0xffffff, 0.28));
-                var dir = new THREE.DirectionalLight(0xffffff, 0.82);
+                state.scene.add(new THREE.AmbientLight(0xffffff, 0.58));
+                var hemi = new THREE.HemisphereLight(0xffffff, 0x90a4ae, 0.42);
+                state.scene.add(hemi);
+                var dir = new THREE.DirectionalLight(0xffffff, 0.72);
                 dir.position.set(18, 28, 14);
                 state.scene.add(dir);
-                var fill = new THREE.DirectionalLight(0xb3e5fc, 0.35);
+                var fill = new THREE.DirectionalLight(0xffffff, 0.28);
                 fill.position.set(-12, 14, -10);
                 state.scene.add(fill);
 
@@ -500,8 +514,9 @@
 
     function setWireframe(on) {
         state.wireframe = !!on;
-        state.pickables.forEach(function (mesh) {
-            if (mesh.material) mesh.material.wireframe = state.wireframe;
+        if (!state.rackGroup) return;
+        state.rackGroup.traverse(function (o) {
+            if (o.isInstancedMesh && o.material) o.material.wireframe = state.wireframe;
         });
         renderFrame();
     }
