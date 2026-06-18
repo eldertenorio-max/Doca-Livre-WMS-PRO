@@ -749,9 +749,9 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-cam {
-    flex: 1 1 200px;
-    max-width: 280px;
-    min-width: 180px;
+    flex: 1 1 220px;
+    max-width: 340px;
+    min-width: 200px;
     display: flex;
     flex-direction: column;
     border: 2px solid #ff9800;
@@ -759,6 +759,27 @@ body.hub-modulos-aberto .container {
     background: #fff;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.wms-planta-cam[data-camara="21"] {
+    flex: 0 1 148px;
+    max-width: 148px;
+    min-width: 132px;
+}
+
+.wms-planta-cam[data-camara="21"] .wms-planta-cell {
+    width: 10px;
+    height: 10px;
+    border-width: 1px;
+}
+
+.wms-planta-cam[data-camara="21"] .wms-planta-col {
+    gap: 1px;
+}
+
+.wms-planta-cam[data-camara="21"] .wms-planta-rack-side {
+    gap: 1px;
+    padding: 3px 1px 4px;
 }
 
 .wms-planta-cam--clickable {
@@ -777,12 +798,16 @@ body.hub-modulos-aberto .container {
 
 .wms-planta-cam-top {
     text-align: center;
-    padding: 6px 4px;
+    padding: 10px 6px;
     font-size: 11px;
     font-weight: 700;
     color: #1565c0;
     border-bottom: 1px solid #ffe0b2;
     background: #fff;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .wms-planta-cam-body {
@@ -822,8 +847,8 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-cell {
-    width: 14px;
-    height: 14px;
+    width: 17px;
+    height: 17px;
     border: 2px solid #ff9800;
     border-radius: 1px;
     box-sizing: border-box;
@@ -831,12 +856,12 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-corredor {
-    flex: 0 0 72px;
+    flex: 0 0 108px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 4px 6px;
+    padding: 10px 6px 8px;
     background: #fff;
     border-top: 3px solid #ff9800;
     border-bottom: 3px solid #ff9800;
@@ -852,37 +877,43 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-corredor-num {
-    font-size: 42px;
+    font-size: 56px;
     font-weight: 800;
     line-height: 1;
     color: #c62828;
-    margin: 4px 0;
+    margin: 8px 0;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .wms-planta-corredor-tipo {
     writing-mode: vertical-rl;
     text-orientation: mixed;
     transform: rotate(180deg);
-    font-size: 11px;
+    font-size: 14px;
     font-weight: 700;
     color: #1565c0;
     letter-spacing: 0.06em;
-    margin: 4px 0;
+    margin: 2px 0 4px;
 }
 
 .wms-planta-corredor-temp {
-    font-size: 16px;
+    font-size: 22px;
     font-weight: 800;
     color: #c62828;
+    margin-bottom: 6px;
 }
 
 .wms-planta-porta {
-    width: 36px;
-    height: 10px;
+    width: 44px;
+    height: 14px;
     background: linear-gradient(180deg, #ffeb3b 0%, #ffc107 100%);
     border: 1px solid #f9a825;
     border-radius: 1px;
-    margin-top: 4px;
+    margin-top: 2px;
+    flex-shrink: 0;
 }
 
 .wms-planta-cam-stats {
@@ -999,21 +1030,25 @@ body.hub-modulos-aberto .container {
 
 .wms-end-2d-legenda {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px 16px;
+    flex-wrap: nowrap;
+    gap: 6px 14px;
     margin-top: 10px;
     padding: 10px 12px;
     background: #fff;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
-    font-size: 12px;
+    font-size: 11px;
     color: #37474f;
+    overflow-x: auto;
+    align-items: center;
 }
 
 .wms-end-2d-legenda-item {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .wms-end-2d-legenda-swatch {

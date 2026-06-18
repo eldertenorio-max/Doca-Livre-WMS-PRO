@@ -68,3 +68,17 @@ Resultado esperado: dashboard WMS 2D profissional, limpo, vetorial, com grades d
 
 ---
 DICA: anexe também o arquivo static/wms-planta-2d-referencia.svg como imagem de referência visual (Upload → usar como base).
+
+---
+PROMPT DE CORREÇÃO (se a imagem estiver quase certa)
+
+Manter exatamente o layout atual. Não alterar o conceito de grade WMS 2D.
+Reduzir a largura da Câmara 21 para cerca de 40% da largura das câmaras 11, 12 e 13.
+Aumentar a largura do corredor central em todas as câmaras.
+Centralizar melhor os números gigantes 11, 12, 13 e 21.
+Aumentar o tamanho dos textos verticais "Congelado" e "Refrigerado".
+Destacar as temperaturas −20 e −18 em vermelho abaixo do texto vertical.
+Aumentar levemente os quadrados da grade dos racks.
+Aumentar a altura da faixa superior com os títulos.
+Integrar toda a legenda em uma única barra inferior contínua.
+Manter estilo dashboard WMS 2D flat, vetorial, sem perspectiva, sem rack 3D, sem montantes vazios, apenas grades de quadrados representando posições e níveis.
