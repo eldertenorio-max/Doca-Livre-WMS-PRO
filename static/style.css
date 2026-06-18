@@ -505,6 +505,10 @@ body.hub-modulos-aberto .container {
     border-bottom: none;
 }
 
+.wms-end-row--rack {
+    align-items: start;
+}
+
 .wms-end-row-titulo {
     font-weight: 700;
     font-size: 14px;
@@ -525,6 +529,56 @@ body.hub-modulos-aberto .container {
     flex-wrap: wrap;
     gap: 6px;
     align-items: flex-start;
+    flex: 1;
+    min-width: 0;
+}
+
+.wms-end-rack {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+}
+
+.wms-end-rack-rua-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #546e7a;
+    margin-bottom: 6px;
+    letter-spacing: 0.02em;
+}
+
+.wms-end-rack-cols {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: flex-end;
+}
+
+.wms-end-rack-col {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+}
+
+.wms-end-rack-col .wms-end-slot {
+    min-width: 30px;
+    padding: 3px 2px;
+    font-size: 9px;
+}
+
+.wms-end-rack-col .wms-end-slot strong {
+    font-size: 10px;
+}
+
+.wms-end-rack-col-pos {
+    font-size: 8px;
+    font-weight: 600;
+    color: #78909c;
+    text-align: center;
+    margin-top: 1px;
+    line-height: 1;
 }
 
 .wms-end-slot {
@@ -741,6 +795,90 @@ body.hub-modulos-aberto .container {
     outline: 2px solid #1565c0;
     outline-offset: -2px;
 }
+
+.wms-inv-intro {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: #546e7a;
+    line-height: 1.45;
+}
+
+.wms-inv-detalhe-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.wms-inv-detalhe-titulo {
+    margin: 0 0 4px;
+    font-size: 18px;
+    color: #1565c0;
+}
+
+.wms-inv-detalhe-resumo {
+    margin: 0;
+    font-size: 13px;
+    color: #546e7a;
+}
+
+.wms-inv-bip-panel {
+    padding: 14px;
+    margin-bottom: 14px;
+    border: 1px solid #90caf9;
+    border-radius: 10px;
+    background: #f5f9ff;
+}
+
+.wms-inv-bip-panel h4 {
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: #0d47a1;
+}
+
+.wms-inv-bip-erro {
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #ffebee;
+    color: #c62828;
+    font-size: 13px;
+}
+
+.wms-inv-acoes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.wms-inv-sec-titulo {
+    margin: 18px 0 8px;
+    font-size: 14px;
+    color: #37474f;
+}
+
+.wms-inv-sec-titulo--ok { color: #2e7d32; }
+.wms-inv-sec-titulo--warn { color: #e65100; }
+
+.wms-inv-tabela-wrap {
+    max-height: 280px;
+    overflow: auto;
+    margin-bottom: 8px;
+}
+
+.wms-inv-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.wms-inv-badge--pend { background: #eceff1; color: #455a64; }
+.wms-inv-badge--ok { background: #e8f5e9; color: #2e7d32; }
+.wms-inv-badge--warn { background: #fff3e0; color: #e65100; }
 
 /* Recebimento WMS — fases e tipos de código */
 .wms-rec-fase {

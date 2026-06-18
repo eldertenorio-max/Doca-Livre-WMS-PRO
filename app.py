@@ -1013,6 +1013,115 @@ def _estoque_sp_sql_apenas_disposicao_normal(prefix=''):
     )
 
 
+def _estoque_sp_parse_filtros_query():
+    """Filtros comuns das abas Estoque SP (query string)."""
+    return {
+        'data_inicio': (request.args.get('data_inicio') or '').strip(),
+        'data_fim': (request.args.get('data_fim') or '').strip(),
+        'hora_inicio': (request.args.get('hora_inicio') or '').strip(),
+        'hora_fim': (request.args.get('hora_fim') or '').strip(),
+        'codigo_produto': (request.args.get('codigo_produto') or '').strip(),
+        'codigo_barras': (request.args.get('codigo_barras') or '').strip(),
+        'produto': (request.args.get('produto') or '').strip(),
+    }
+
+
+def _estoque_sp_bounds_datahora(filtros, conn):
+    """Janela [início, fim) para filtro de data/hora em movimentações."""
+    tz = _ravex_tz_baixados()
+    di = (filtros or {}).get('data_inicio') or ''
+    df = (filtros or {}).get('data_fim') or ''
+    hi = (filtros or {}).get('hora_inicio') or ''
+    hf = (filtros or {}).get('hora_fim') or ''
+    if not di and not df and not hi and not hf:
+        return None, None
+    if di and df:
+        try:
+            inicio = datetime.strptime(di, '%Y-%m-%d').replace(tzinfo=tz)
+            fim_excl = datetime.strptime(df, '%Y-%m-%d').replace(tzinfo=tz) + timedelta(days=1)
+        except ValueError:
+            return None, None
+    elif di:
+        try:
+            inicio = datetime.strptime(di, '%Y-%m-%d').replace(tzinfo=tz)
+            fim_excl = inicio + timedelta(days=1)
+        except ValueError:
+            return None, None
+    elif df:
+        try:
+            fim_excl = datetime.strptime(df, '%Y-%m-%d').replace(tzinfo=tz) + timedelta(days=1)
+            inicio = fim_excl - timedelta(days=1)
+        except ValueError:
+            return None, None
+    else:
+        now = datetime.now(tz)
+        inicio = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        fim_excl = inicio + timedelta(days=1)
+    inicio, fim_excl = _ravex_aplicar_hora_janela(inicio, fim_excl, hi, hf)
+    if getattr(conn, 'kind', None) == 'pg':
+        return inicio, fim_excl
+    ini_s = inicio.astimezone(tz).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M:%S')
+    fim_s = fim_excl.astimezone(tz).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M:%S')
+    return ini_s, fim_s
+
+
+def _estoque_sp_sql_filtro_data_hora(col, dt_ini, dt_fim, conn):
+    """SQL extra + params para coluna de data/hora (fim exclusivo no PG)."""
+    if not dt_ini and not dt_fim:
+        return '', []
+    is_pg = getattr(conn, 'kind', None) == 'pg'
+    parts = []
+    params = []
+    if dt_ini is not None:
+        parts.append(f' AND {col} >= ?')
+        params.append(dt_ini)
+    if dt_fim is not None:
+        parts.append(f' AND {col} < ?' if is_pg else f' AND {col} <= ?')
+        if is_pg:
+            params.append(dt_fim)
+        else:
+            fim_txt = str(dt_fim).replace('T', ' ')[:19]
+            params.append(fim_txt)
+    return ''.join(parts), params
+
+
+def _estoque_sp_filtrar_itens_lista(itens, filtros):
+    """Filtro textual em listas já agregadas (código, barras, produto)."""
+    cp = ((filtros or {}).get('codigo_produto') or '').strip().lower()
+    cb = ((filtros or {}).get('codigo_barras') or '').strip().lower()
+    pr = ((filtros or {}).get('produto') or '').strip().lower()
+    if not cp and not cb and not pr:
+        return itens
+    out = []
+    for it in itens or []:
+        if cp and cp not in (it.get('codigo_produto') or '').lower():
+            continue
+        if cb and cb not in (it.get('codigo_barras') or '').lower():
+            continue
+        if pr and pr not in (it.get('produto') or '').lower():
+            continue
+        out.append(it)
+    return out
+
+
+def _estoque_sp_prepare_conn(conn):
+    """Garante schema necessário; recupera transação PG após falha parcial."""
+    for fn in (
+        _ensure_devolucao_nf_schema,
+        _ensure_pg_produtos_bipados_fluxo,
+        _ensure_produtos_bipados_disposicao,
+        _ensure_terceiros_schema,
+    ):
+        try:
+            fn(conn)
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            fn(conn)
+
+
 def _ensure_devolucao_nf_schema(conn):
     """Tabela de NF de devolução e vínculo em produtos_bipados."""
     is_pg = getattr(conn, 'kind', None) == 'pg'
@@ -1039,6 +1148,10 @@ def _ensure_devolucao_nf_schema(conn):
                 f'ALTER TABLE {tbl_pb} ADD COLUMN IF NOT EXISTS devolucao_nf_id BIGINT REFERENCES {tbl_nf}(id) ON DELETE SET NULL'
             )
         except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             conn.execute(f'ALTER TABLE {tbl_pb} ADD COLUMN IF NOT EXISTS devolucao_nf_id BIGINT')
         _ensure_devolucao_nf_status_cancelada_pg(conn)
     else:
@@ -5541,6 +5654,36 @@ def _ravex_filtro_periodo_datas(periodo, data_inicio, data_fim):
     return None, None
 
 
+def _ravex_aplicar_hora_janela(inicio, fim_excl, hora_inicio=None, hora_fim=None):
+    """Ajusta janela de datas com hora HH:MM (America/Sao_Paulo). fim_excl é exclusivo."""
+    if not inicio or not fim_excl:
+        return inicio, fim_excl
+    if not (hora_inicio and str(hora_inicio).strip()) and not (hora_fim and str(hora_fim).strip()):
+        return inicio, fim_excl
+    hi, mi = 0, 0
+    hf, mf = 23, 59
+    if hora_inicio and str(hora_inicio).strip():
+        m = re.match(r'^(\d{1,2}):(\d{2})', str(hora_inicio).strip())
+        if m:
+            hi, mi = int(m.group(1)), int(m.group(2))
+    if hora_fim and str(hora_fim).strip():
+        m = re.match(r'^(\d{1,2}):(\d{2})', str(hora_fim).strip())
+        if m:
+            hf, mf = int(m.group(1)), int(m.group(2))
+    span = (fim_excl - inicio).total_seconds()
+    if span > 86400:
+        new_inicio = inicio.replace(hour=hi, minute=mi, second=0, microsecond=0)
+        last_day = fim_excl - timedelta(days=1)
+        new_fim = last_day.replace(hour=hf, minute=mf, second=59, microsecond=999999) + timedelta(microseconds=1)
+        return new_inicio, new_fim
+    new_inicio = inicio.replace(hour=hi, minute=mi, second=0, microsecond=0)
+    if hora_fim and str(hora_fim).strip():
+        new_fim = inicio.replace(hour=hf, minute=mf, second=59, microsecond=999999) + timedelta(microseconds=1)
+    else:
+        new_fim = fim_excl
+    return new_inicio, new_fim
+
+
 def _ravex_listar_usuarios_distintos(conn):
     try:
         rows = conn.execute(
@@ -7465,6 +7608,8 @@ def api_ravex_listar_importacoes():
         periodo = (request.args.get('periodo') or '').strip().lower()
         data_inicio = (request.args.get('data_inicio') or '').strip()
         data_fim = (request.args.get('data_fim') or '').strip()
+        hora_inicio = (request.args.get('hora_inicio') or '').strip()[:5]
+        hora_fim = (request.args.get('hora_fim') or '').strip()[:5]
         usuario_filtro = (request.args.get('usuario') or '').strip()
         include_usuarios = request.args.get('usuarios', '1').strip().lower() not in ('0', 'false', 'no')
         try:
@@ -7472,7 +7617,9 @@ def api_ravex_listar_importacoes():
         except Exception:
             limit_i = 150
         inicio_dt, fim_dt = _ravex_filtro_periodo_datas(periodo, data_inicio, data_fim)
-        tem_filtros = bool(inicio_dt and fim_dt) or bool(usuario_filtro)
+        if inicio_dt and fim_dt and (hora_inicio or hora_fim):
+            inicio_dt, fim_dt = _ravex_aplicar_hora_janela(inicio_dt, fim_dt, hora_inicio, hora_fim)
+        tem_filtros = bool(inicio_dt and fim_dt) or bool(usuario_filtro) or bool(hora_inicio or hora_fim)
         where = []
         params = []
         if dataset_filtro:
@@ -9527,7 +9674,7 @@ def get_painel_graficos():
 UNIDADE_CD_FILTRO = 'Unidade CD Guarulhos Ultrapão (Distribuidora)'
 
 
-def _estatisticas_romaneio_por_item_banco(conn):
+def _estatisticas_romaneio_por_item_banco(conn, janela_inicio=None, janela_fim_excl=None):
     """
     Lê da tabela romaneio_por_item (dataset ativo) e retorna o mesmo formato de _estatisticas_romaneio_por_item:
     qtd_roteiros, qtd_veiculos, itens_total_por_codigo, itens_descricao_por_codigo, peso_por_carro, peso_total_geral, quantidade_total_itens, id_viagem_to_placa.
@@ -9549,43 +9696,49 @@ def _estatisticas_romaneio_por_item_banco(conn):
     if not ds:
         return out
     ds_s = str(ds)
+    filtro_janela = ''
+    params_janela = ()
+    if janela_inicio is not None and janela_fim_excl is not None:
+        ini_p, fim_p = _painel_sql_janela_params(janela_inicio, janela_fim_excl, conn)
+        filtro_janela = ' AND importado_em >= ? AND importado_em < ?'
+        params_janela = (ini_p, fim_p)
     try:
         row_totais = conn.execute(
-            """SELECT
+            f"""SELECT
                  COUNT(DISTINCT COALESCE(NULLIF(TRIM(id_viagem::text), ''), NULLIF(TRIM(id_roteiro::text), '')))::int AS qtd_roteiros,
                  COUNT(DISTINCT NULLIF(TRIM(placa), ''))::int AS qtd_veiculos,
                  COALESCE(SUM(quantidade), 0)::bigint AS quantidade_total
-               FROM romaneio_por_item WHERE dataset_id = ?""",
-            (ds_s,),
+               FROM romaneio_por_item WHERE dataset_id = ?{filtro_janela}""",
+            (ds_s,) + params_janela,
         ).fetchone()
         rows_cod = conn.execute(
-            """SELECT codigo_produto, MAX(descricao) AS descricao, SUM(quantidade)::bigint AS qtd
+            f"""SELECT codigo_produto, MAX(descricao) AS descricao, SUM(quantidade)::bigint AS qtd
                FROM romaneio_por_item
-               WHERE dataset_id = ? AND TRIM(COALESCE(codigo_produto::text, '')) != ''
+               WHERE dataset_id = ? AND TRIM(COALESCE(codigo_produto::text, '')) != ''{filtro_janela}
                GROUP BY codigo_produto""",
-            (ds_s,),
+            (ds_s,) + params_janela,
         ).fetchall()
         rows_placa = conn.execute(
-            """SELECT DISTINCT ON (COALESCE(NULLIF(TRIM(id_viagem::text), ''), TRIM(id_roteiro::text)))
+            f"""SELECT DISTINCT ON (COALESCE(NULLIF(TRIM(id_viagem::text), ''), TRIM(id_roteiro::text)))
                       COALESCE(NULLIF(TRIM(id_viagem::text), ''), TRIM(id_roteiro::text)) AS id_v,
                       placa
                FROM romaneio_por_item
                WHERE dataset_id = ?
                  AND TRIM(COALESCE(placa, '')) != ''
-                 AND COALESCE(NULLIF(TRIM(id_viagem::text), ''), TRIM(id_roteiro::text)) IS NOT NULL""",
-            (ds_s,),
+                 AND COALESCE(NULLIF(TRIM(id_viagem::text), ''), TRIM(id_roteiro::text)) IS NOT NULL{filtro_janela}""",
+            (ds_s,) + params_janela,
         ).fetchall()
         rows_peso = conn.execute(
-            """SELECT COALESCE(NULLIF(TRIM(placa), ''), 'Sem placa') AS placa_eff,
+            f"""SELECT COALESCE(NULLIF(TRIM(placa), ''), 'Sem placa') AS placa_eff,
                       SUM(
                         CASE WHEN peso_bruto IS NOT NULL AND TRIM(COALESCE(peso_bruto::text, '')) != ''
                         THEN (REPLACE(TRIM(peso_bruto::text), ',', '.')::numeric)
                              * GREATEST(1, COALESCE(quantidade, 1))
                         ELSE 0 END
                       ) AS peso_total
-               FROM romaneio_por_item WHERE dataset_id = ?
+               FROM romaneio_por_item WHERE dataset_id = ?{filtro_janela}
                GROUP BY COALESCE(NULLIF(TRIM(placa), ''), 'Sem placa')""",
-            (ds_s,),
+            (ds_s,) + params_janela,
         ).fetchall()
     except Exception:
         try:
@@ -9977,11 +10130,8 @@ def _build_mapas_peso_para_bipagem(conn):
     return mapa_peso, mapa_barras_codigo
 
 
-def _coletar_placas_baixadas_dia(conn, data_ref=None):
-    """
-    Lista viagens/placas baixadas do Ravex no dia (America/Sao_Paulo) com status de carregamento,
-    período, duração e peso.
-    """
+def _parse_painel_janela(data_ref=None, hora_inicio=None, hora_fim=None):
+    """Janela de filtro do painel (data + hora opcional) em America/Sao_Paulo. Retorna inicio, fim_exclusivo, metadados."""
     tz = _ravex_tz_baixados()
     if data_ref:
         try:
@@ -9990,7 +10140,73 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None):
             dia = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
     else:
         dia = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-    fim_dia = dia + timedelta(days=1)
+    hi, mi = 0, 0
+    hf, mf = 23, 59
+    hora_ini_out = ''
+    hora_fim_out = ''
+    if hora_inicio and str(hora_inicio).strip():
+        m = re.match(r'^(\d{1,2}):(\d{2})', str(hora_inicio).strip())
+        if m:
+            hi, mi = int(m.group(1)), int(m.group(2))
+            hora_ini_out = f'{hi:02d}:{mi:02d}'
+    if hora_fim and str(hora_fim).strip():
+        m = re.match(r'^(\d{1,2}):(\d{2})', str(hora_fim).strip())
+        if m:
+            hf, mf = int(m.group(1)), int(m.group(2))
+            hora_fim_out = f'{hf:02d}:{mf:02d}'
+    inicio = dia.replace(hour=hi, minute=mi, second=0, microsecond=0)
+    if hora_fim_out:
+        fim_excl = dia.replace(hour=hf, minute=mf, second=59, microsecond=999999) + timedelta(microseconds=1)
+    else:
+        fim_excl = dia + timedelta(days=1)
+    legivel = dia.strftime('%d/%m/%Y')
+    if hora_ini_out or hora_fim_out:
+        legivel += ' · ' + (hora_ini_out or '00:00') + ' – ' + (hora_fim_out or '23:59')
+    return {
+        'inicio': inicio,
+        'fim_excl': fim_excl,
+        'data': dia.strftime('%d/%m/%Y'),
+        'data_iso': dia.strftime('%Y-%m-%d'),
+        'hora_inicio': hora_ini_out,
+        'hora_fim': hora_fim_out,
+        'legivel': legivel,
+    }
+
+
+def _painel_sql_janela_params(inicio, fim_excl, conn):
+    """Parâmetros de data/hora para comparação no SQL (PG aware, SQLite como texto)."""
+    if getattr(conn, 'kind', None) == 'pg':
+        return inicio, fim_excl
+    tz = _ravex_tz_baixados()
+    if inicio.tzinfo:
+        inicio = inicio.astimezone(tz).replace(tzinfo=None)
+    if fim_excl.tzinfo:
+        fim_excl = fim_excl.astimezone(tz).replace(tzinfo=None)
+    return inicio.strftime('%Y-%m-%d %H:%M:%S'), fim_excl.strftime('%Y-%m-%d %H:%M:%S')
+
+
+def _coletar_placas_baixadas_dia(conn, data_ref=None, janela_inicio=None, janela_fim_excl=None):
+    """
+    Lista viagens/placas baixadas do Ravex no dia (America/Sao_Paulo) com status de carregamento,
+    período, duração e peso.
+    """
+    tz = _ravex_tz_baixados()
+    if janela_inicio is not None and janela_fim_excl is not None:
+        dia = janela_inicio.astimezone(tz) if janela_inicio.tzinfo else janela_inicio.replace(tzinfo=tz)
+        dia = dia.replace(hour=0, minute=0, second=0, microsecond=0)
+        fim_dia = janela_fim_excl
+        inicio_q, fim_q = _painel_sql_janela_params(janela_inicio, janela_fim_excl, conn)
+    elif data_ref:
+        try:
+            dia = datetime.strptime(str(data_ref).strip()[:10], '%Y-%m-%d').replace(tzinfo=tz)
+        except ValueError:
+            dia = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        fim_dia = dia + timedelta(days=1)
+        inicio_q, fim_q = _painel_sql_janela_params(dia, fim_dia, conn)
+    else:
+        dia = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        fim_dia = dia + timedelta(days=1)
+        inicio_q, fim_q = _painel_sql_janela_params(dia, fim_dia, conn)
     data_label = dia.strftime('%d/%m/%Y')
 
     viagens_base = []
@@ -10015,7 +10231,7 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None):
                          AND TRIM(COALESCE(id_viagem::text, '')) != ''
                        GROUP BY TRIM(COALESCE(id_viagem::text, ''))
                        ORDER BY MAX(importado_em) DESC""",
-                    (str(ds), dia, fim_dia),
+                    (str(ds), inicio_q, fim_q),
                 ).fetchall()
                 for r in rows or []:
                     vid = (r.get('id_viagem') if hasattr(r, 'get') else r[0]) or ''
@@ -10228,21 +10444,37 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None):
 def get_painel_completo():
     """Um único request: estatísticas + viagens + gráficos. Estatísticas em 1 query para carregar mais rápido."""
     data_painel = (request.args.get('data') or '').strip()[:10] or None
+    hora_inicio = (request.args.get('hora_inicio') or '').strip()[:5] or None
+    hora_fim = (request.args.get('hora_fim') or '').strip()[:5] or None
+    janela_meta = _parse_painel_janela(data_painel, hora_inicio, hora_fim)
+    inicio_j = janela_meta['inicio']
+    fim_excl = janela_meta['fim_excl']
+    filtros_resp = {
+        'data': janela_meta['data'],
+        'data_iso': janela_meta['data_iso'],
+        'hora_inicio': janela_meta['hora_inicio'],
+        'hora_fim': janela_meta['hora_fim'],
+        'legivel': janela_meta['legivel'],
+    }
     conn = get_db()
     if getattr(conn, 'kind', None) != 'pg':
         conn.row_factory = sqlite3.Row
     try:
+        ini_p, fim_p = _painel_sql_janela_params(inicio_j, fim_excl, conn)
+        filtro_dt = ' AND data_hora >= ? AND data_hora < ?'
+        params_dt = (ini_p, fim_p)
         # Estatísticas em uma única query (menos ida e volta ao DB)
-        row_stats = conn.execute('''
+        row_stats = conn.execute(f'''
         SELECT
-            (SELECT COUNT(*) FROM produtos_bipados) AS total_bipados,
-            (SELECT COUNT(*) FROM produtos_bipados WHERE status = 'CARREGADO') AS total_carregados,
-            (SELECT COUNT(DISTINCT codigo_barras) FROM produtos_bipados) AS total_unicos,
-            (SELECT COUNT(DISTINCT id_viagem) FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(COALESCE(id_viagem,'')) != '') AS total_viagens,
-            (SELECT COALESCE(SUM(quantidade), 0) FROM produtos_bipados) AS soma_quantidades
-    ''').fetchone()
+            (SELECT COUNT(*) FROM produtos_bipados WHERE 1=1{filtro_dt}) AS total_bipados,
+            (SELECT COUNT(*) FROM produtos_bipados WHERE status = 'CARREGADO'{filtro_dt}) AS total_carregados,
+            (SELECT COUNT(DISTINCT codigo_barras) FROM produtos_bipados WHERE 1=1{filtro_dt}) AS total_unicos,
+            (SELECT COUNT(DISTINCT id_viagem) FROM produtos_bipados WHERE id_viagem IS NOT NULL AND trim(COALESCE(id_viagem,'')) != ''{filtro_dt}) AS total_viagens,
+            (SELECT COALESCE(SUM(quantidade), 0) FROM produtos_bipados WHERE 1=1{filtro_dt}) AS soma_quantidades
+    ''', params_dt * 5).fetchone()
         veiculos_rows = conn.execute(
-            "SELECT veiculo, COUNT(*) as total FROM produtos_bipados WHERE status = ? AND trim(COALESCE(veiculo,'')) != '' GROUP BY veiculo", ('CARREGADO',)
+            f"SELECT veiculo, COUNT(*) as total FROM produtos_bipados WHERE status = ? AND trim(COALESCE(veiculo,'')) != ''{filtro_dt} GROUP BY veiculo",
+            ('CARREGADO',) + params_dt,
         ).fetchall()
         def _val(r, k):
             if r is None:
@@ -10262,14 +10494,14 @@ def get_painel_completo():
             'veiculos': [dict(r) for r in veiculos_rows]
         }
         # Viagens
-        rows = conn.execute('''
+        rows = conn.execute(f'''
         SELECT id_viagem, SUM(quantidade) as total_bipados, MIN(data_hora) as inicio, MAX(data_hora) as fim
         FROM produtos_bipados
-        WHERE id_viagem IS NOT NULL AND id_viagem != ''
+        WHERE id_viagem IS NOT NULL AND id_viagem != ''{filtro_dt}
         GROUP BY id_viagem
         ORDER BY MAX(data_hora) DESC
         LIMIT 25
-        ''').fetchall()
+        ''', params_dt).fetchall()
         viagens = []
         ids_viagem = []
         for r in rows:
@@ -10317,7 +10549,7 @@ def get_painel_completo():
         romaneio_stats = {}
         if _usa_banco_para_dados() and getattr(conn, 'kind', None) == 'pg':
             try:
-                romaneio_stats = _estatisticas_romaneio_por_item_banco(conn)
+                romaneio_stats = _estatisticas_romaneio_por_item_banco(conn, inicio_j, fim_excl)
                 id_viagem_placa = romaneio_stats.get('id_viagem_to_placa') or {}
             except Exception:
                 try:
@@ -10347,14 +10579,16 @@ def get_painel_completo():
         tempo_por_placa = [{'placa': p, 'total_minutos': m} for p, m in sorted(placa_to_minutos.items(), key=lambda x: -x[1])]
         # Top itens: GROUP BY codigo_barras, produto (PostgreSQL exige todas as colunas não agregadas no GROUP BY)
         rows_itens = conn.execute(
-            'SELECT produto, codigo_barras, SUM(quantidade) as total FROM produtos_bipados GROUP BY codigo_barras, produto ORDER BY total DESC LIMIT 15'
+            f'SELECT produto, codigo_barras, SUM(quantidade) as total FROM produtos_bipados WHERE 1=1{filtro_dt} GROUP BY codigo_barras, produto ORDER BY total DESC LIMIT 15',
+            params_dt,
         ).fetchall()
         top_itens = []
         for r in rows_itens:
             label = (r['produto'] or '').strip() or (r['codigo_barras'] or '') or '-'
             top_itens.append({'label': label[:50], 'total': r['total'] or 0})
         rows_carros = conn.execute(
-            "SELECT veiculo, SUM(quantidade) as total FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != '' GROUP BY veiculo ORDER BY total DESC LIMIT 15"
+            f"SELECT veiculo, SUM(quantidade) as total FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != ''{filtro_dt} GROUP BY veiculo ORDER BY total DESC LIMIT 15",
+            params_dt,
         ).fetchall()
         carros_itens = [{'veiculo': r['veiculo'] or '', 'total': r['total'] or 0} for r in rows_carros]
         carros_peso = []
@@ -10363,7 +10597,8 @@ def get_painel_completo():
                 mapa_peso = _build_mapa_peso_romaneio(wb)
                 mapa_barras_codigo = _build_mapa_barras_to_codigo_produto(wb)
                 rows_bipados = conn.execute(
-                    "SELECT veiculo, codigo_barras, quantidade FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != ''"
+                    f"SELECT veiculo, codigo_barras, quantidade FROM produtos_bipados WHERE veiculo IS NOT NULL AND trim(veiculo) != ''{filtro_dt}",
+                    params_dt,
                 ).fetchall()
                 peso_por_veiculo = {}
                 for r in rows_bipados:
@@ -10387,7 +10622,7 @@ def get_painel_completo():
                 pass
         placas_dia = {'data': '', 'data_iso': '', 'rows': [], 'resumo': {'total': 0, 'carregados': 0, 'nao_carregados': 0, 'em_andamento': 0, 'peso_total_kg': 0}}
         try:
-            placas_dia = _coletar_placas_baixadas_dia(conn, data_painel)
+            placas_dia = _coletar_placas_baixadas_dia(conn, data_painel, inicio_j, fim_excl)
         except Exception as ex_placas:
             try:
                 app.logger.warning('painel placas_baixadas_dia: %s', ex_placas)
@@ -10404,6 +10639,7 @@ def get_painel_completo():
             'carros_mais_peso': carros_peso,
             'romaneio': romaneio_resp,
             'placas_baixadas_dia': placas_dia,
+            'filtros': filtros_resp,
         })
     except Exception as e:
         try:
@@ -10440,9 +10676,61 @@ def _devolucao_item_codigo_produto(item):
     if not isinstance(item, dict):
         return ''
     prod = item.get('produto') or {}
-    return str(
-        item.get('codigo') or item.get('referenciaItem') or prod.get('codigo') or ''
-    ).strip()
+    if not isinstance(prod, dict):
+        prod = {}
+    ref = item.get('referenciaItem')
+    if isinstance(ref, dict):
+        ref = ref.get('codigo') or ref.get('referencia') or ''
+    raw = (
+        item.get('codigo') or item.get('codigoProduto') or ref
+        or prod.get('codigo') or prod.get('codigoInterno') or ''
+    )
+    return _normalizar_codigo_produto(raw) or str(raw or '').strip()
+
+
+def _devolucao_codigos_equivalentes(cod_a, cod_b):
+    a = _normalizar_codigo_produto(cod_a)
+    b = _normalizar_codigo_produto(cod_b)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    va = set(_variantes_codigo_produto(a))
+    vb = set(_variantes_codigo_produto(b))
+    return bool(va & vb)
+
+
+def _devolucao_buscar_em_mapa_codigo(cod, cod_map):
+    cod = (cod or '').strip()
+    if not cod or not cod_map:
+        return None
+    if cod in cod_map:
+        return cod_map[cod]
+    nc = _normalizar_codigo_produto(cod)
+    if nc and nc in cod_map:
+        return cod_map[nc]
+    for k, v in cod_map.items():
+        if _devolucao_codigos_equivalentes(k, cod):
+            return v
+    return None
+
+
+def _devolucao_qtd_bipada_mapa(cod, bipado_map):
+    cod = (cod or '').strip()
+    if not cod:
+        return 0
+    q = int(bipado_map.get(cod, 0) or 0)
+    if q > 0:
+        return q
+    nc = _normalizar_codigo_produto(cod)
+    if nc:
+        q = int(bipado_map.get(nc, 0) or 0)
+        if q > 0:
+            return q
+    for k, v in (bipado_map or {}).items():
+        if _devolucao_codigos_equivalentes(k, cod):
+            q = max(q, int(v or 0))
+    return q
 
 
 def _devolucao_inferir_motivo_nf(codigos_nf, diverg_map, bipado_map):
@@ -10451,23 +10739,10 @@ def _devolucao_inferir_motivo_nf(codigos_nf, diverg_map, bipado_map):
         return 'parcial'
 
     def _item_bipado(cod):
-        q = int(bipado_map.get(cod, 0) or 0)
-        if q > 0:
-            return True
-        nc = _normalizar_codigo_produto(cod)
-        for k, v in (bipado_map or {}).items():
-            if _normalizar_codigo_produto(k) == nc and int(v or 0) > 0:
-                return True
-        return False
+        return _devolucao_qtd_bipada_mapa(cod, bipado_map) > 0
 
     for cod in codigos_nf:
-        div = diverg_map.get(cod) or {}
-        if not div:
-            nc = _normalizar_codigo_produto(cod)
-            for k, v in (diverg_map or {}).items():
-                if _normalizar_codigo_produto(k) == nc:
-                    div = v
-                    break
+        div = _devolucao_buscar_em_mapa_codigo(cod, diverg_map) or {}
         mot_raw = (div.get('motivo_divergencia') or '').lower()
         if 'reentrega' in mot_raw:
             return 'reentrega'
@@ -10529,15 +10804,13 @@ def _devolucao_diverg_por_codigo(cod, diverg_map, divergent_codes):
     cod = (cod or '').strip()
     if not cod:
         return None, False
-    if cod in diverg_map:
-        return diverg_map[cod], True
+    div = _devolucao_buscar_em_mapa_codigo(cod, diverg_map)
+    if div:
+        return div, True
     nc = _normalizar_codigo_produto(cod)
-    for k, v in (diverg_map or {}).items():
-        if _normalizar_codigo_produto(k) == nc:
-            return v, True
     for dc in (divergent_codes or set()):
-        if _normalizar_codigo_produto(dc) == nc:
-            return diverg_map.get(dc), True
+        if _devolucao_codigos_equivalentes(dc, cod):
+            return diverg_map.get(dc) or _devolucao_buscar_em_mapa_codigo(dc, diverg_map), True
     return None, False
 
 
@@ -10548,11 +10821,7 @@ def _devolucao_pseudo_div_nf_item(item, cod, bipado_map):
         or prod.get('descricao') or prod.get('descrição') or ''
     ).strip()
     qtd_nf = int(item.get('quantidade') or item.get('qtd') or 0)
-    q_bip = int(bipado_map.get(cod, 0) or 0)
-    nc = _normalizar_codigo_produto(cod)
-    for k, v in (bipado_map or {}).items():
-        if _normalizar_codigo_produto(k) == nc:
-            q_bip = max(q_bip, int(v or 0))
+    q_bip = _devolucao_qtd_bipada_mapa(cod, bipado_map)
     return {
         'codigo_produto': cod,
         'produto': desc,
@@ -10639,19 +10908,27 @@ def _devolucao_mapa_bipado_carregamento(conn, id_viagem, id_norm=None):
     if not ids:
         return out
     ph = ','.join(['?'] * len(ids))
+    is_pg = getattr(conn, 'kind', None) == 'pg'
+    col_viagem = 'TRIM(COALESCE(id_viagem::text, \'\'))' if is_pg else 'TRIM(COALESCE(id_viagem, \'\'))'
     rows = conn.execute(
-        f'''SELECT codigo_interno, SUM(quantidade) AS qtd
+        f'''SELECT codigo_interno, codigo_barras, SUM(quantidade) AS qtd
            FROM produtos_bipados
-           WHERE TRIM(COALESCE(id_viagem, '')) IN ({ph})
+           WHERE {col_viagem} IN ({ph})
              AND COALESCE(fluxo, 'carregamento') = 'carregamento'
-           GROUP BY codigo_interno''',
+           GROUP BY codigo_interno, codigo_barras''',
         tuple(ids),
     ).fetchall()
     for r in rows or []:
-        cod = ((r.get('codigo_interno') if hasattr(r, 'get') else r[0]) or '').strip()
-        q = int((r.get('qtd') if hasattr(r, 'get') else (r[1] if len(r) > 1 else 0)) or 0)
-        if cod:
-            out[cod] = out.get(cod, 0) + q
+        ci = ((r.get('codigo_interno') if hasattr(r, 'get') else r[0]) or '').strip()
+        cb = ((r.get('codigo_barras') if hasattr(r, 'get') else (r[1] if len(r) > 1 else '')) or '').strip()
+        q = int((r.get('qtd') if hasattr(r, 'get') else (r[2] if len(r) > 2 else 0)) or 0)
+        for key in (ci, cb):
+            if not key:
+                continue
+            out[key] = out.get(key, 0) + q
+            nk = _normalizar_codigo_produto(key)
+            if nk:
+                out[nk] = out.get(nk, 0) + q
     return out
 
 
@@ -10905,6 +11182,40 @@ def _devolucao_notas_divergentes_ravex(id_viagem, conn=None, numero_nf_filtro=No
 
 def _devolucao_itens_esperados_nf(conn, id_viagem, numero_nf, motivo_nf=''):
     return _devolucao_montar_itens_nf(conn, id_viagem, numero_nf, motivo_nf)
+
+
+@app.route('/api/devolucoes/itens-nf', methods=['GET'])
+def api_devolucoes_itens_nf():
+    """Itens divergentes esperados para bipagem de retorno de uma NF (pré-visualização ou conferência)."""
+    id_viagem = (request.args.get('id_viagem') or '').strip()
+    numero_nf = (request.args.get('numero_nf') or '').strip()
+    motivo = (request.args.get('motivo') or '').strip()
+    if not id_viagem or not numero_nf:
+        return jsonify({'erro': 'Informe id_viagem e numero_nf'}), 400
+    conn = get_db()
+    try:
+        itens = _devolucao_itens_esperados_nf(conn, id_viagem, numero_nf, motivo)
+        motivo_ef = motivo
+        if not motivo_ef:
+            id_norm, diverg_map, _ = _devolucao_lista_divergencias_carregamento(conn, id_viagem)
+            bipado_map = _devolucao_mapa_bipado_carregamento(conn, id_viagem, id_norm)
+            codigos = [(it.get('codigo_produto') or '').strip() for it in itens if (it.get('codigo_produto') or '').strip()]
+            motivo_ef = _devolucao_inferir_motivo_nf(codigos, diverg_map, bipado_map)
+        conn.close()
+        return jsonify({
+            'ok': True,
+            'itens': itens,
+            'numero_nf': numero_nf,
+            'motivo_sugerido': motivo_ef,
+            'motivo_label': _motivo_devolucao_label(motivo_ef),
+            'qtd_itens': len(itens or []),
+        })
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e), 'itens': []}), 500
 
 
 @app.route('/api/devolucoes/notas-divergentes', methods=['GET'])
@@ -11357,23 +11668,13 @@ def _estoque_sp_calcular_atual(saida_l, dev_l, ter_l):
     }
 
 
-def _estoque_sp_coletar_movimentos(conn, data_inicio='', data_fim=''):
+def _estoque_sp_coletar_movimentos(conn, filtros=None):
     _ensure_produtos_bipados_disposicao(conn)
     filtro_disp = _estoque_sp_sql_apenas_disposicao_normal()
-    filtro_data_saida = ''
-    filtro_data_dev = ''
-    params_saida = []
-    params_dev = []
-    if data_inicio:
-        filtro_data_saida += ' AND data_hora >= ?'
-        filtro_data_dev += ' AND data_hora >= ?'
-        params_saida.append(data_inicio)
-        params_dev.append(data_inicio)
-    if data_fim:
-        filtro_data_saida += ' AND data_hora <= ?'
-        filtro_data_dev += ' AND data_hora <= ?'
-        params_saida.append(data_fim + 'T23:59:59')
-        params_dev.append(data_fim + 'T23:59:59')
+    dt_ini, dt_fim = _estoque_sp_bounds_datahora(filtros or {}, conn)
+    filtro_data_saida, params_saida = _estoque_sp_sql_filtro_data_hora('data_hora', dt_ini, dt_fim, conn)
+    filtro_data_dev = filtro_data_saida
+    params_dev = list(params_saida)
 
     saida = conn.execute(
         f'''SELECT COALESCE(codigo_interno, '') AS codigo_produto, COALESCE(MAX(produto), '') AS produto,
@@ -11403,6 +11704,7 @@ def _estoque_sp_coletar_movimentos(conn, data_inicio='', data_fim=''):
     tbl_i = _tbl_terceiros_documento_itens(conn)
     cod_prod_ter = "COALESCE(NULLIF(TRIM(i.codigo_produto_base), ''), NULLIF(TRIM(i.codigo_produto_xml), ''), '')"
     desc_prod_ter = "COALESCE(NULLIF(TRIM(i.descricao_base), ''), NULLIF(TRIM(i.descricao_xml), ''), '')"
+    filtro_data_ter, params_ter = _estoque_sp_sql_filtro_data_hora('d.recebimento_concluido_em', dt_ini, dt_fim, conn)
     entrada_ter = conn.execute(
         f'''SELECT COALESCE(i.codigo_ean, '') AS codigo_barras,
                    {cod_prod_ter} AS codigo_produto,
@@ -11418,42 +11720,39 @@ def _estoque_sp_coletar_movimentos(conn, data_inicio='', data_fim=''):
               AND LOWER(TRIM(COALESCE(d.consumivel_sp, ''))) NOT IN ('sim', 's', 'true', '1', 'yes')
               AND LOWER(TRIM(COALESCE(d.enviar_para_mg, ''))) NOT IN ('sim', 's', 'true', '1', 'yes')
               AND COALESCE(i.quantidade_bipada, 0) > 0
+              {filtro_data_ter}
             GROUP BY i.codigo_ean, {cod_prod_ter}
             ORDER BY quantidade DESC
             LIMIT 2000''',
+        tuple(params_ter),
     ).fetchall()
 
-    return (
-        _estoque_sp_rows_to_list(saida),
-        _estoque_sp_rows_to_list(entrada_dev),
-        _estoque_sp_rows_to_list(entrada_ter),
-    )
+    saida_l = _estoque_sp_filtrar_itens_lista(_estoque_sp_rows_to_list(saida), filtros)
+    dev_l = _estoque_sp_filtrar_itens_lista(_estoque_sp_rows_to_list(entrada_dev), filtros)
+    ter_l = _estoque_sp_filtrar_itens_lista(_estoque_sp_rows_to_list(entrada_ter), filtros)
+    return saida_l, dev_l, ter_l
 
 
-def _estoque_sp_coletar_por_disposicao(conn, disposicao, data_inicio='', data_fim=''):
+def _estoque_sp_coletar_por_disposicao(conn, disposicao, filtros=None):
     """Itens classificados (reentrega, avaria, descarte_perdas, palete_bloqueado)."""
     _ensure_produtos_bipados_disposicao(conn)
     _ensure_devolucao_nf_schema(conn)
-    filtro_data = ''
-    params = []
+    is_pg = getattr(conn, 'kind', None) == 'pg'
+    tbl_nf = 'public.devolucao_nota_fiscal' if is_pg else 'devolucao_nota_fiscal'
+    dt_ini, dt_fim = _estoque_sp_bounds_datahora(filtros or {}, conn)
+    filtro_data, params = _estoque_sp_sql_filtro_data_hora('pb.data_hora', dt_ini, dt_fim, conn)
     if disposicao == 'reentrega':
-        where = """(
+        where = f"""(
             COALESCE(pb.disposicao_estoque, '') = 'reentrega'
             OR EXISTS (
-                SELECT 1 FROM devolucao_nota_fiscal nf
+                SELECT 1 FROM {tbl_nf} nf
                 WHERE nf.id = pb.devolucao_nf_id
                   AND LOWER(COALESCE(nf.motivo, '')) = 'reentrega'
             )
         )"""
     else:
         where = "COALESCE(pb.disposicao_estoque, '') = ?"
-        params.append(disposicao)
-    if data_inicio:
-        filtro_data += ' AND pb.data_hora >= ?'
-        params.append(data_inicio)
-    if data_fim:
-        filtro_data += ' AND pb.data_hora <= ?'
-        params.append(data_fim + 'T23:59:59')
+        params.insert(0, disposicao)
 
     rows = conn.execute(
         f'''SELECT COALESCE(pb.codigo_interno, '') AS codigo_produto,
@@ -11494,7 +11793,7 @@ def _estoque_sp_coletar_por_disposicao(conn, disposicao, data_inicio='', data_fi
             'qtd_entrada': float(d.get('qtd_entrada') or 0),
             'qtd_saida': float(d.get('qtd_saida') or 0),
         })
-    return out
+    return _estoque_sp_filtrar_itens_lista(out, filtros)
 
 
 def _estoque_sp_secao_disposicao(titulo, itens):
@@ -11510,19 +11809,22 @@ def _estoque_sp_secao_disposicao(titulo, itens):
 def api_estoque_sp_tempo_real():
     """Estoque atual em tempo real: saldo por produto (todas as movimentações)."""
     conn = get_db()
-    _ensure_devolucao_nf_schema(conn)
-    _ensure_pg_produtos_bipados_fluxo(conn)
-    _ensure_produtos_bipados_disposicao(conn)
-    _ensure_terceiros_schema(conn)
+    filtros = _estoque_sp_parse_filtros_query()
     try:
-        saida_l, dev_l, ter_l = _estoque_sp_coletar_movimentos(conn)
+        _estoque_sp_prepare_conn(conn)
+        saida_l, dev_l, ter_l = _estoque_sp_coletar_movimentos(conn, filtros)
         atual = _estoque_sp_calcular_atual(saida_l, dev_l, ter_l)
         conn.close()
         return jsonify({
             'atualizado_em': _fmt_datahora_br(datetime.now(timezone.utc)),
             'estoque_atual': atual,
+            'filtros': filtros,
         })
     except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         try:
             conn.close()
         except Exception:
@@ -11534,20 +11836,17 @@ def api_estoque_sp_tempo_real():
 def api_estoque_sp_resumo():
     """Estoque SP: saída (carregamento), entrada devoluções, entrada terceiros (sem MG, sem consumível)."""
     conn = get_db()
-    _ensure_devolucao_nf_schema(conn)
-    _ensure_pg_produtos_bipados_fluxo(conn)
-    _ensure_produtos_bipados_disposicao(conn)
-    _ensure_terceiros_schema(conn)
-    data_inicio = (request.args.get('data_inicio') or '').strip()
-    data_fim = (request.args.get('data_fim') or '').strip()
+    filtros = _estoque_sp_parse_filtros_query()
     try:
-        saida_l, dev_l, ter_l = _estoque_sp_coletar_movimentos(conn, data_inicio, data_fim)
-        reent_l = _estoque_sp_coletar_por_disposicao(conn, 'reentrega', data_inicio, data_fim)
-        avar_l = _estoque_sp_coletar_por_disposicao(conn, 'avaria', data_inicio, data_fim)
-        desc_l = _estoque_sp_coletar_por_disposicao(conn, 'descarte_perdas', data_inicio, data_fim)
-        pal_l = _estoque_sp_coletar_por_disposicao(conn, 'palete_bloqueado', data_inicio, data_fim)
+        _estoque_sp_prepare_conn(conn)
+        saida_l, dev_l, ter_l = _estoque_sp_coletar_movimentos(conn, filtros)
+        reent_l = _estoque_sp_coletar_por_disposicao(conn, 'reentrega', filtros)
+        avar_l = _estoque_sp_coletar_por_disposicao(conn, 'avaria', filtros)
+        desc_l = _estoque_sp_coletar_por_disposicao(conn, 'descarte_perdas', filtros)
+        pal_l = _estoque_sp_coletar_por_disposicao(conn, 'palete_bloqueado', filtros)
         conn.close()
         return jsonify({
+            'filtros': filtros,
             'saida': {
                 'titulo': 'Saída (expedição bipada)',
                 'itens': saida_l,
@@ -11572,6 +11871,10 @@ def api_estoque_sp_resumo():
             'palete_bloqueado': _estoque_sp_secao_disposicao('Palete bloqueado', pal_l),
         })
     except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         try:
             conn.close()
         except Exception:
@@ -12548,6 +12851,85 @@ def _carregar_documento_terceiros(conn, documento_id, incluir_eventos=False):
         'itens_com_pendencia': sum(1 for i in itens if i.get('status_bipagem') != 'COMPLETO'),
     }
     doc.pop('xml_conteudo', None)
+    return doc
+
+
+_TERCEIROS_BIPAGEM_MSG_WMS = (
+    'A bipagem de entrada é feita somente no módulo Endereçamento WMS. '
+    'Use o WMS para registrar a recepção; o status será atualizado aqui automaticamente.'
+)
+
+
+def _terceiros_enriquecer_doc_wms(conn, doc, sincronizar=True, incluir_eventos=False):
+    """Sincroniza quantidades do WMS e anexa metadados de recebimento WMS ao documento."""
+    if not doc or not doc.get('id'):
+        return doc
+    try:
+        from wms_enderecamento import (
+            _sincronizar_terceiros_itens_desde_wms,
+            _enriquecer_documento_nf_wms,
+            _buscar_recebimento_wms_por_nf,
+        )
+    except ImportError:
+        return doc
+    doc_id = int(doc['id'])
+    if sincronizar:
+        _sincronizar_terceiros_itens_desde_wms(conn, doc_id)
+        doc = _carregar_documento_terceiros(conn, doc_id, incluir_eventos=incluir_eventos)
+        if not doc:
+            return doc
+    wms_itens = []
+    for it in doc.get('itens') or []:
+        wms_itens.append({
+            'n_item': it.get('n_item'),
+            'sku': (it.get('codigo_produto_base') or it.get('codigo_produto_xml') or '').strip(),
+            'descricao': (it.get('descricao_base') or it.get('descricao_xml') or '').strip(),
+            'quantidade_xml': it.get('quantidade_xml'),
+            'quantidade_bipada': it.get('quantidade_bipada'),
+            'codigo_ean': it.get('codigo_ean') or '',
+            'unidade': it.get('unidade_xml') or '',
+        })
+    wms_doc = {
+        'documento_id': doc_id,
+        'numero_nf': doc.get('numero_nf') or '',
+        'recebimento_concluido': doc.get('recebimento_concluido'),
+        'itens': wms_itens,
+    }
+    wms_doc = _enriquecer_documento_nf_wms(conn, wms_doc) or wms_doc
+    doc['recebimento_wms_id'] = wms_doc.get('recebimento_wms_id')
+    doc['recebimento_wms_status'] = wms_doc.get('recebimento_wms_status')
+    doc['wms_bloqueado'] = wms_doc.get('wms_bloqueado')
+    doc['descarga_reabrivel'] = wms_doc.get('descarga_reabrivel')
+    por_n = {}
+    for wit in wms_doc.get('itens') or []:
+        if wit.get('n_item') is not None:
+            por_n[str(wit.get('n_item'))] = wit
+    total_wms = 0.0
+    pend_wms = 0
+    for it in doc.get('itens') or []:
+        w = por_n.get(str(it.get('n_item'))) or {}
+        q_wms = float(w.get('quantidade_wms') or it.get('quantidade_bipada') or 0)
+        q_xml = float(it.get('quantidade_xml') or 0)
+        it['quantidade_wms'] = q_wms
+        it['quantidade_armazenada'] = float(w.get('quantidade_armazenada') or 0)
+        it['pendente_wms'] = float(w.get('pendente_wms') if w.get('pendente_wms') is not None else max(q_xml - q_wms, 0))
+        it['status_wms'] = w.get('status_wms') or 'pendente'
+        total_wms += q_wms
+        if q_xml > 0 and abs(q_xml - q_wms) > 1e-6:
+            pend_wms += 1
+    doc['quantidade_total_wms'] = round(total_wms, 3)
+    doc['itens_pendentes_wms'] = pend_wms
+    rec = _buscar_recebimento_wms_por_nf(
+        conn, documento_id=doc_id, numero_nf=doc.get('numero_nf'), somente_ativo=True,
+    )
+    if not rec:
+        rec = _buscar_recebimento_wms_por_nf(
+            conn, documento_id=doc_id, numero_nf=doc.get('numero_nf'), somente_ativo=False,
+        )
+    if rec:
+        doc['recebimento_wms_id'] = rec.get('id')
+        if not doc.get('recebimento_wms_status'):
+            doc['recebimento_wms_status'] = rec.get('status')
     return doc
 
 
@@ -14425,6 +14807,7 @@ def api_terceiros_documento_detalhe(documento_id):
         doc = _carregar_documento_terceiros(conn, documento_id, incluir_eventos=incluir_eventos)
         if not doc:
             return jsonify({'erro': 'Documento não encontrado.'}), 404
+        doc = _terceiros_enriquecer_doc_wms(conn, doc, sincronizar=True, incluir_eventos=incluir_eventos)
         doc['motorista_obrigatorio'] = _motorista_obrigatorio_terceiros(doc)
         doc['previsao_chegada'] = _fmt_datahora_br(doc.get('previsao_chegada') or '')
         for campo in ('recebimento_concluido_em', 'nota_lancada_em', 'enviar_para_mg_em', 'motorista_carreta_em', 'motorista_saida_mg_em', 'carga_recebida_mg_em', 'consumivel_sp_historico_em', 'criado_em', 'atualizado_em'):
@@ -14664,44 +15047,7 @@ def api_terceiros_excluir_documento(documento_id):
 
 @app.route('/api/terceiros/documentos/<int:documento_id>/bipar', methods=['POST'])
 def api_terceiros_bipar_item(documento_id):
-    data = request.get_json() or {}
-    item_id = int(data.get('item_id') or 0)
-    codigo_ean = (data.get('codigo_ean') or '').strip()
-    quantidade = _parse_decimal(data.get('quantidade') or 1)
-    if not item_id or not codigo_ean:
-        return jsonify({'ok': False, 'erro': 'Item e EAN são obrigatórios.'}), 400
-    if quantidade <= 0:
-        quantidade = 1
-    conn = get_db()
-    usuario = session.get('usuario', '')
-    try:
-        _ensure_terceiros_schema(conn)
-        item = conn.execute('SELECT * FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE id = ? AND documento_id = ?', (item_id, documento_id)).fetchone()
-        if not item:
-            return jsonify({'ok': False, 'erro': 'Item não encontrado.'}), 404
-        item_d = dict(item) if hasattr(item, 'keys') else {}
-        ean_esperado = (item_d.get('codigo_ean') or '').strip()
-        if ean_esperado and codigo_ean != ean_esperado:
-            return jsonify({'ok': False, 'erro': 'EAN diferente do item do XML.'}), 400
-        base = _base_terceiros_para_bipagem(item_d, codigo_ean)
-        qtd_bipada = float(item_d.get('quantidade_bipada') or 0) + quantidade
-        status = _status_bipagem_terceiros(item_d.get('quantidade_xml') or 0, qtd_bipada)
-        conn.execute(
-            '''UPDATE ''' + _tbl_terceiros_documento_itens(conn) + '''
-               SET quantidade_bipada = ?, status_bipagem = ?, codigo_produto_base = ?, codigo_barras_base = ?,
-                   descricao_base = ?, ultimo_ean_bipado = ?, atualizado_em = ?, atualizado_por = ?
-               WHERE id = ?''',
-            (qtd_bipada, status, base.get('codigo_produto_base') or '', base.get('codigo_barras_base') or '', base.get('descricao_base') or '', codigo_ean, _agora_iso(), usuario, item_id)
-        )
-        _registrar_evento_terceiros(conn, documento_id, 'bipagem_item', str(item_d.get('quantidade_bipada') or 0), str(qtd_bipada), usuario, 'item_id=%s' % item_id)
-        conn.execute('UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET atualizado_em = ?, atualizado_por = ? WHERE id = ?', (_agora_iso(), usuario, documento_id))
-        conn.commit()
-        return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
-    except Exception as e:
-        conn.rollback()
-        return jsonify({'ok': False, 'erro': str(e)}), 500
-    finally:
-        conn.close()
+    return jsonify({'ok': False, 'erro': _TERCEIROS_BIPAGEM_MSG_WMS}), 403
 
 
 @app.route('/api/terceiros/documentos/<int:documento_id>/item-motivo', methods=['POST'])
@@ -14746,97 +15092,12 @@ def api_terceiros_item_motivo(documento_id):
 
 @app.route('/api/terceiros/documentos/<int:documento_id>/desbipar', methods=['POST'])
 def api_terceiros_desbipar_item(documento_id):
-    """Remove unidades bipadas (1, N ou tudo) — espelha a dinâmica Tirar 1 / Tirar tudo da conferência."""
-    data = request.get_json() or {}
-    item_id = int(data.get('item_id') or 0)
-    raw_q = data.get('quantidade')
-    conn = get_db()
-    usuario = session.get('usuario', '')
-    try:
-        _ensure_terceiros_schema(conn)
-        if not item_id:
-            return jsonify({'ok': False, 'erro': 'Item obrigatório.'}), 400
-        item = conn.execute(
-            'SELECT * FROM ' + _tbl_terceiros_documento_itens(conn) + ' WHERE id = ? AND documento_id = ?',
-            (item_id, documento_id),
-        ).fetchone()
-        if not item:
-            return jsonify({'ok': False, 'erro': 'Item não encontrado.'}), 404
-        item_d = dict(item) if hasattr(item, 'keys') else {}
-        qtd_atual = float(item_d.get('quantidade_bipada') or 0)
-        if raw_q == 'tudo' or raw_q == 'all':
-            remover = qtd_atual
-        else:
-            remover = float(_parse_decimal(raw_q or 1))
-        remover = max(0.0, min(remover, qtd_atual))
-        if remover <= 0:
-            return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
-        qtd_nova = round(qtd_atual - remover, 3)
-        if qtd_nova < 0:
-            qtd_nova = 0.0
-        status = _status_bipagem_terceiros(item_d.get('quantidade_xml') or 0, qtd_nova)
-        if qtd_nova <= 0:
-            conn.execute(
-                '''UPDATE ''' + _tbl_terceiros_documento_itens(conn) + '''
-                   SET quantidade_bipada = ?, status_bipagem = ?,
-                       codigo_produto_base = '', codigo_barras_base = '', descricao_base = '',
-                       ultimo_ean_bipado = '', atualizado_em = ?, atualizado_por = ?
-                   WHERE id = ?''',
-                (qtd_nova, status, _agora_iso(), usuario, item_id),
-            )
-        else:
-            conn.execute(
-                '''UPDATE ''' + _tbl_terceiros_documento_itens(conn) + '''
-                   SET quantidade_bipada = ?, status_bipagem = ?, atualizado_em = ?, atualizado_por = ?
-                   WHERE id = ?''',
-                (qtd_nova, status, _agora_iso(), usuario, item_id),
-            )
-        _registrar_evento_terceiros(
-            conn, documento_id, 'desbipagem_item', str(qtd_atual), str(qtd_nova), usuario, 'item_id=%s' % item_id
-        )
-        conn.execute(
-            'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET atualizado_em = ?, atualizado_por = ? WHERE id = ?',
-            (_agora_iso(), usuario, documento_id),
-        )
-        conn.commit()
-        return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
-    except Exception as e:
-        conn.rollback()
-        return jsonify({'ok': False, 'erro': str(e)}), 500
-    finally:
-        conn.close()
+    return jsonify({'ok': False, 'erro': _TERCEIROS_BIPAGEM_MSG_WMS}), 403
 
 
 @app.route('/api/terceiros/documentos/<int:documento_id>/zerar-bipagem', methods=['POST'])
 def api_terceiros_zerar_bipagem(documento_id):
-    """Zera toda a bipagem dos itens da NF (como Zerar todos na conferência)."""
-    conn = get_db()
-    usuario = session.get('usuario', '')
-    try:
-        _ensure_terceiros_schema(conn)
-        row = conn.execute('SELECT id FROM ' + _tbl_terceiros_documentos(conn) + ' WHERE id = ?', (documento_id,)).fetchone()
-        if not row:
-            return jsonify({'ok': False, 'erro': 'Documento não encontrado.'}), 404
-        conn.execute(
-            '''UPDATE ''' + _tbl_terceiros_documento_itens(conn) + '''
-               SET quantidade_bipada = 0, status_bipagem = 'PENDENTE',
-                   codigo_produto_base = '', codigo_barras_base = '', descricao_base = '',
-                   ultimo_ean_bipado = '', atualizado_em = ?, atualizado_por = ?
-               WHERE documento_id = ?''',
-            (_agora_iso(), usuario, documento_id),
-        )
-        _registrar_evento_terceiros(conn, documento_id, 'zerar_bipagem', '', '', usuario, '')
-        conn.execute(
-            'UPDATE ' + _tbl_terceiros_documentos(conn) + ' SET atualizado_em = ?, atualizado_por = ? WHERE id = ?',
-            (_agora_iso(), usuario, documento_id),
-        )
-        conn.commit()
-        return jsonify({'ok': True, 'documento': _carregar_documento_terceiros(conn, documento_id)})
-    except Exception as e:
-        conn.rollback()
-        return jsonify({'ok': False, 'erro': str(e)}), 500
-    finally:
-        conn.close()
+    return jsonify({'ok': False, 'erro': _TERCEIROS_BIPAGEM_MSG_WMS}), 403
 
 
 @app.route('/api/terceiros/documentos/<int:documento_id>/status', methods=['POST'])

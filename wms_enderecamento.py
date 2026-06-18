@@ -634,6 +634,85 @@ def _ensure_wms_palete_controle_table(conn):
             pass
 
 
+def _rotulo_disposicao_entrada(disposicao):
+    d = (disposicao or '').strip().lower()
+    if not d or d in ('bom', 'normal', 'ok'):
+        return 'Estoque normal'
+    if d == 'avaria':
+        return 'Avaria'
+    if d == 'descarte_perdas':
+        return 'Descarte/perdas'
+    if d == 'palete_bloqueado':
+        return 'Palete bloqueado'
+    return disposicao or 'Estoque normal'
+
+
+def _normalizar_disposicao_item(disposicao):
+    d = (disposicao or '').strip().lower()
+    if not d or d in ('bom', 'normal', 'ok'):
+        return 'normal'
+    return d
+
+
+def _destinos_linha_vazio():
+    return {}
+
+
+def _destinos_linha_add(destinos, disposicao, qtd, armazenado=False):
+    key = _normalizar_disposicao_item(disposicao)
+    if key not in destinos:
+        destinos[key] = {'bip': 0.0, 'arm': 0.0}
+    destinos[key]['bip'] += float(qtd or 0)
+    if armazenado:
+        destinos[key]['arm'] += float(qtd or 0)
+
+
+def _montar_resumo_andamento_item_nf(destinos, q_pendente=0):
+    """Texto legível do que já foi bipado/classificado na linha da NF."""
+    partes = []
+    for disp in sorted((destinos or {}).keys(), key=lambda x: (x != 'normal', x)):
+        info = destinos.get(disp) or {}
+        q_bip = float(info.get('bip') or 0)
+        if q_bip <= 0:
+            continue
+        q_arm = float(info.get('arm') or 0)
+        q_aguard = max(q_bip - q_arm, 0)
+        lbl = _rotulo_disposicao_entrada(disp)
+        q_fmt = int(q_bip) if q_bip == int(q_bip) else q_bip
+        if q_arm >= q_bip:
+            partes.append(f'{q_fmt} cx {lbl} (guardado)')
+        elif q_arm > 0:
+            partes.append(
+                f'{int(q_arm) if q_arm == int(q_arm) else q_arm} cx {lbl} (guardado)'
+                f' + {int(q_aguard) if q_aguard == int(q_aguard) else q_aguard} aguard. guardar'
+            )
+        else:
+            partes.append(f'{q_fmt} cx {lbl} (aguard. guardar)')
+    if q_pendente and float(q_pendente) > 0:
+        qp = float(q_pendente)
+        qp_fmt = int(qp) if qp == int(qp) else qp
+        partes.append(f'{qp_fmt} cx pendente bipagem')
+    return ' · '.join(partes) if partes else '—'
+
+
+def _destinos_linha_para_api(destinos):
+    out = []
+    for disp in sorted((destinos or {}).keys(), key=lambda x: (x != 'normal', x)):
+        info = destinos.get(disp) or {}
+        q_bip = float(info.get('bip') or 0)
+        if q_bip <= 0:
+            continue
+        q_arm = float(info.get('arm') or 0)
+        out.append({
+            'disposicao': disp,
+            'rotulo': _rotulo_disposicao_entrada(disp),
+            'quantidade': q_bip,
+            'armazenada': q_arm,
+            'aguardando_guardar': max(q_bip - q_arm, 0),
+        })
+    return out
+
+
 WMS_DISPOSICOES_ENTRADA = frozenset({'avaria', 'descarte_perdas', 'palete_bloqueado'})
 
 
@@ -1051,12 +1130,14 @@ def _quantidades_por_linha_nf(conn, recebimento_id, doc_itens):
     if not recebimento_id:
         return {}
     _ensure_wms_palete_item_nf_columns(conn)
+    _ensure_wms_palete_item_disposicao(conn)
     t_rp = _tbl(conn, 'wms_recebimento_palete')
     t_pal = _tbl(conn, 'wms_palete')
     t_item = _tbl(conn, 'wms_palete_item')
     rows = conn.execute(
         f'''SELECT i.n_item_nf, i.sku, COALESCE(i.quantidade_caixas, 0) AS qtd,
-                   LOWER(COALESCE(p.status, '')) AS palete_status
+                   LOWER(COALESCE(p.status, '')) AS palete_status,
+                   i.disposicao_estoque
             FROM {t_rp} rp
             JOIN {t_pal} p ON p.id = rp.palete_id
             JOIN {t_item} i ON i.palete_id = rp.palete_id
@@ -1065,26 +1146,31 @@ def _quantidades_por_linha_nf(conn, recebimento_id, doc_itens):
         (int(recebimento_id),),
     ).fetchall()
 
+    def _linha_vazia():
+        return {'bip': 0.0, 'arm': 0.0, 'destinos': _destinos_linha_vazio()}
+
     linhas_doc = sorted(doc_itens or [], key=lambda x: int(x.get('n_item') or 0))
-    out = {str(it.get('n_item')): {'bip': 0.0, 'arm': 0.0} for it in linhas_doc if it.get('n_item') is not None}
+    out = {str(it.get('n_item')): _linha_vazia() for it in linhas_doc if it.get('n_item') is not None}
     legacy = []
 
     for r in rows or []:
         rd = _row_dict(r) or {}
         q = float(rd.get('qtd') or 0)
         is_arm = (rd.get('palete_status') or '') == 'armazenado'
+        disp = rd.get('disposicao_estoque')
         n_raw = rd.get('n_item_nf')
         if n_raw is not None and str(n_raw).strip() != '':
             key = str(n_raw).strip()
             if key not in out:
-                out[key] = {'bip': 0.0, 'arm': 0.0}
+                out[key] = _linha_vazia()
             out[key]['bip'] += q
             if is_arm:
                 out[key]['arm'] += q
+            _destinos_linha_add(out[key]['destinos'], disp, q, armazenado=is_arm)
         else:
             sku = (rd.get('sku') or '').strip().upper()
             if sku and q > 0:
-                legacy.append({'sku': sku, 'q': q, 'arm': is_arm})
+                legacy.append({'sku': sku, 'q': q, 'arm': is_arm, 'disp': disp})
 
     for it in linhas_doc:
         n_key = str(it.get('n_item'))
@@ -1093,7 +1179,7 @@ def _quantidades_por_linha_nf(conn, recebimento_id, doc_itens):
         if not n_key or not sku_u or cap <= 0:
             continue
         if n_key not in out:
-            out[n_key] = {'bip': 0.0, 'arm': 0.0}
+            out[n_key] = _linha_vazia()
         for leg in legacy:
             if leg.get('used') or leg.get('sku') != sku_u:
                 continue
@@ -1106,6 +1192,7 @@ def _quantidades_por_linha_nf(conn, recebimento_id, doc_itens):
             out[n_key]['bip'] += take
             if leg.get('arm'):
                 out[n_key]['arm'] += take
+            _destinos_linha_add(out[n_key]['destinos'], leg.get('disp'), take, armazenado=leg.get('arm'))
             leg['q'] -= take
             if leg['q'] <= 0:
                 leg['used'] = True
@@ -1223,19 +1310,94 @@ def _quantidades_wms_armazenadas_recebimento(conn, recebimento_id):
     return out
 
 
+def _rotulo_status_recebimento_wms(status):
+    st = (status or '').strip().lower()
+    mapa = {
+        'aguardando': 'Aguardando bipagem',
+        'em_conferencia': 'Em conferência (bipagem)',
+        'aguardando_armazenagem': 'Aguardando guardar paletes',
+        'finalizado': 'Finalizado',
+        'cancelado': 'Cancelado',
+        'concluido': 'Concluído',
+    }
+    return mapa.get(st, status or '—')
+
+
+def _montar_situacao_recebimento_nf(conn, doc, rec_ativo, rec_ultimo):
+    """Resumo legível da situação WMS da NF (para busca no recebimento)."""
+    st_wms = ((rec_ativo or rec_ultimo or {}).get('status') or '').lower()
+    rid_ativo = (rec_ativo or {}).get('id')
+    rid_ultimo = (rec_ultimo or {}).get('id')
+    rid_ref = rid_ativo or rid_ultimo
+
+    if rid_ativo:
+        situacao = 'em_andamento'
+        rotulo = 'Recebimento em andamento'
+        cor = '#e65100'
+    elif rid_ultimo and st_wms == 'finalizado':
+        situacao = 'finalizado'
+        rotulo = 'Recebimento finalizado'
+        cor = '#1565c0'
+    elif rid_ultimo:
+        situacao = 'encerrado'
+        rotulo = 'Recebimento encerrado'
+        cor = '#616161'
+    else:
+        situacao = 'sem_recebimento'
+        rotulo = 'Sem recebimento WMS'
+        cor = '#2e7d32'
+
+    resumo = _resumo_finalizacao_recebimento(conn, rid_ref) if rid_ref else None
+    detalhes = []
+    if rid_ref:
+        detalhes.append(f'Recebimento WMS #{rid_ref}')
+        detalhes.append(_rotulo_status_recebimento_wms(st_wms))
+    if resumo:
+        if resumo.get('paletes_total'):
+            detalhes.append(
+                f'{resumo.get("paletes_armazenados", 0)}/{resumo.get("paletes_total")} palete(s) guardado(s)'
+            )
+        if resumo.get('mov_pendentes'):
+            detalhes.append(f'{resumo["mov_pendentes"]} movimentação(ões) pendente(s)')
+        if not resumo.get('itens_nf_ok') and resumo.get('itens_nf_pendentes'):
+            detalhes.append(f'{resumo["itens_nf_pendentes"]} item(ns) da NF pendente(s)')
+        if situacao == 'finalizado':
+            detalhes.append('NF encerrada no WMS')
+        elif resumo.get('motivo') and not resumo.get('pode_finalizar'):
+            detalhes.append(resumo.get('motivo'))
+    elif situacao == 'sem_recebimento':
+        detalhes.append('Clique em Montar paletes para iniciar a bipagem')
+
+    return {
+        'situacao': situacao,
+        'rotulo': rotulo,
+        'cor': cor,
+        'detalhe': ' · '.join(detalhes),
+        'recebimento_id': rid_ref,
+        'recebimento_id_ativo': rid_ativo,
+        'recebimento_id_ultimo': rid_ultimo,
+        'status_wms': st_wms or None,
+        'resumo': resumo,
+    }
+
+
 def _enriquecer_documento_nf_wms(conn, doc):
     if not doc:
         return doc
     doc_id = doc.get('documento_id')
     numero_nf = doc.get('numero_nf')
     rec_ativo = _buscar_recebimento_wms_por_nf(conn, doc_id, numero_nf, somente_ativo=True)
-    rec_ultimo = rec_ativo or _buscar_recebimento_wms_por_nf(conn, doc_id, numero_nf, somente_ativo=False)
+    rec_ultimo = _buscar_recebimento_wms_por_nf(conn, doc_id, numero_nf, somente_ativo=False)
+    if rec_ativo and rec_ultimo and int(rec_ativo.get('id') or 0) == int(rec_ultimo.get('id') or 0):
+        rec_ultimo = rec_ativo
     doc = dict(doc)
     doc['recebimento_wms_id'] = rec_ativo.get('id') if rec_ativo else None
+    doc['recebimento_wms_id_ultimo'] = (rec_ultimo or {}).get('id')
     doc['recebimento_wms_status'] = (rec_ativo or rec_ultimo or {}).get('status')
     st_wms = (doc.get('recebimento_wms_status') or '').lower()
     doc['wms_bloqueado'] = st_wms == 'finalizado'
     doc['descarga_reabrivel'] = bool(doc.get('recebimento_concluido') and not doc['wms_bloqueado'])
+    doc['situacao_recebimento'] = _montar_situacao_recebimento_nf(conn, doc, rec_ativo, rec_ultimo)
     # Descarga concluída com WMS ainda não finalizado — reabre pendência (ex.: após excluir WMS).
     if doc.get('recebimento_concluido') and not doc['wms_bloqueado'] and doc.get('documento_id'):
         ok_ter, _err_ter = _reabrir_terceiros_recebimento_wms(
@@ -1245,9 +1407,10 @@ def _enriquecer_documento_nf_wms(conn, doc):
             doc['recebimento_concluido'] = False
             doc['descarga_reabrivel'] = False
             doc['_wms_descarga_reaberta'] = True
-    qtd_wms = _quantidades_wms_recebimento(conn, doc.get('recebimento_wms_id'))
-    qtd_arm = _quantidades_wms_armazenadas_recebimento(conn, doc.get('recebimento_wms_id'))
-    por_linha = _quantidades_por_linha_nf(conn, doc.get('recebimento_wms_id'), doc.get('itens') or [])
+    rid_qtd = doc.get('recebimento_wms_id') or doc.get('recebimento_wms_id_ultimo')
+    qtd_wms = _quantidades_wms_recebimento(conn, rid_qtd)
+    qtd_arm = _quantidades_wms_armazenadas_recebimento(conn, rid_qtd)
+    por_linha = _quantidades_por_linha_nf(conn, rid_qtd, doc.get('itens') or [])
     itens = []
     for it in doc.get('itens') or []:
         rd = dict(it)
@@ -1263,6 +1426,9 @@ def _enriquecer_documento_nf_wms(conn, doc):
         rd['quantidade_wms'] = q_wms
         rd['quantidade_armazenada'] = q_arm
         rd['pendente_wms'] = max(q_xml - q_wms, 0)
+        destinos = lin.get('destinos') or {}
+        rd['destinos_wms'] = _destinos_linha_para_api(destinos)
+        rd['resumo_andamento'] = _montar_resumo_andamento_item_nf(destinos, rd['pendente_wms'])
         if q_xml > 0 and q_arm >= q_xml:
             rd['status_wms'] = 'concluido'
         elif q_xml > 0 and q_wms >= q_xml:
@@ -1319,6 +1485,76 @@ def _html_etiquetas_produto_nf(doc, auto_print=False, sku_filtro=None, n_item_fi
         total=len(itens),
         auto_print=auto_print,
     )
+
+
+def _status_bipagem_terceiros_wms(qtd_xml, qtd_bipada):
+    qtd_xml = float(qtd_xml or 0)
+    qtd_bipada = float(qtd_bipada or 0)
+    if qtd_bipada <= 0:
+        return 'PENDENTE'
+    if qtd_bipada < qtd_xml:
+        return 'PARCIAL'
+    if qtd_bipada == qtd_xml:
+        return 'COMPLETO'
+    return 'EXCEDENTE'
+
+
+def _sincronizar_terceiros_itens_desde_wms(conn, documento_id, recebimento_id=None, usuario=None):
+    """Espelha quantidades bipadas no WMS para terceiros_documento_itens (descarga somente leitura)."""
+    if not documento_id or not _terceiros_tabelas_existem(conn):
+        return False, None
+    t_doc = _tbl_terceiros_doc(conn)
+    row = conn.execute(
+        f'SELECT id, numero_nf FROM {t_doc} WHERE id = ?', (int(documento_id),)
+    ).fetchone()
+    if not row:
+        return False, None
+    rd = _row_dict(row) or {}
+    rid = recebimento_id
+    if not rid:
+        rec = _buscar_recebimento_wms_por_nf(
+            conn, documento_id=int(documento_id), numero_nf=rd.get('numero_nf'), somente_ativo=True,
+        )
+        if not rec:
+            rec = _buscar_recebimento_wms_por_nf(
+                conn, documento_id=int(documento_id), numero_nf=rd.get('numero_nf'), somente_ativo=False,
+            )
+        rid = (rec or {}).get('id')
+    if not rid:
+        return True, None
+    t_it = _tbl_terceiros_itens(conn)
+    itens_rows = conn.execute(
+        f'''SELECT id, n_item, codigo_produto_xml, codigo_produto_base, descricao_xml, descricao_base,
+                   quantidade_xml, quantidade_bipada, codigo_ean, unidade_xml
+            FROM {t_it} WHERE documento_id = ? ORDER BY n_item, id''',
+        (int(documento_id),),
+    ).fetchall()
+    doc_itens = []
+    for r in itens_rows or []:
+        it = _row_dict(r) or {}
+        doc_itens.append({
+            'n_item': it.get('n_item'),
+            'sku': _sku_terceiros_item(it),
+            'quantidade_xml': it.get('quantidade_xml'),
+        })
+    por_linha = _quantidades_por_linha_nf(conn, int(rid), doc_itens)
+    user = (usuario or _usuario() or 'wms').strip()
+    now = _now_iso()
+    for r in itens_rows or []:
+        it = _row_dict(r) or {}
+        n_key = str(it.get('n_item')) if it.get('n_item') is not None else ''
+        q_wms = float((por_linha.get(n_key) or {}).get('bip') or 0)
+        q_atual = float(it.get('quantidade_bipada') or 0)
+        if abs(q_wms - q_atual) <= 1e-6:
+            continue
+        q_xml = float(it.get('quantidade_xml') or 0)
+        status = _status_bipagem_terceiros_wms(q_xml, q_wms)
+        conn.execute(
+            f'''UPDATE {t_it} SET quantidade_bipada = ?, status_bipagem = ?,
+                    atualizado_em = ?, atualizado_por = ? WHERE id = ?''',
+            (q_wms, status, now, user, int(it['id'])),
+        )
+    return True, int(rid)
 
 
 def _concluir_terceiros_recebimento_wms(conn, documento_id, usuario=None):
@@ -2304,6 +2540,7 @@ def ensure_wms_schema(conn):
     _ensure_categoria_zona_column(conn)
     _ensure_produto_planejamento_columns(conn)
     _ensure_wms_palete_controle_table(conn)
+    _ensure_wms_inventario_linha_produto_columns(conn)
     _WMS_SCHEMA_READY = True
 
 
@@ -3807,8 +4044,8 @@ def _liberar_palete_para_exclusao(conn, palete_id):
             conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = ? WHERE id = ?", (now, loc_id))
 
 
-def _excluir_recebimento_wms(conn, recebimento_id):
-    """Remove recebimento e paletes vinculados. Libera endereços de paletes armazenados (exceto NF finalizada)."""
+def _excluir_recebimento_wms(conn, recebimento_id, permitir_finalizado=False):
+    """Remove recebimento e paletes vinculados. Libera endereços de paletes armazenados."""
     t_rec = _tbl(conn, 'wms_recebimento')
     t_rp = _tbl(conn, 'wms_recebimento_palete')
     t_pal = _tbl(conn, 'wms_palete')
@@ -3827,8 +4064,8 @@ def _excluir_recebimento_wms(conn, recebimento_id):
     rec_rd = _row_dict(rec) or {}
     doc_ter = rec_rd.get('terceiros_documento_id')
     st_rec = (rec_rd.get('status') or '').lower()
-    if st_rec == 'finalizado':
-        return None, 'Recebimento já finalizado — não pode ser excluído. Consulte o Histórico NF.'
+    if st_rec == 'finalizado' and not permitir_finalizado:
+        return None, 'Recebimento já finalizado — use Reiniciar ou Excluir na busca da NF para recomeçar.'
 
     pals = conn.execute(
         f'''SELECT DISTINCT p.id, p.etiqueta, p.status
@@ -3901,6 +4138,164 @@ def _mov_pendente_putaway(conn, palete_id):
         (int(palete_id),),
     ).fetchone()
     return _row_dict(row)
+
+
+def _mov_row_para_api(rd):
+    if not rd:
+        return {}
+    d = dict(rd) if hasattr(rd, 'keys') else {}
+    for k in ('criado_em', 'concluida_em'):
+        if d.get(k) is not None:
+            d[k] = str(d[k])
+    return d
+
+
+def _listar_movimentacoes_historico(conn, limite=100):
+    t_mov = _tbl(conn, 'wms_movimentacao')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    limite = max(1, min(int(limite or 100), 500))
+    rows = conn.execute(
+        f'''SELECT m.id, m.tipo, m.status, m.prioridade, m.observacao,
+                   m.criado_em, m.concluida_em, m.criado_por, m.concluida_por,
+                   p.etiqueta, p.id AS palete_id,
+                   lo.codigo_endereco AS origem,
+                   ld.codigo_endereco AS destino
+            FROM {t_mov} m
+            JOIN {t_pal} p ON p.id = m.palete_id
+            LEFT JOIN {t_loc} lo ON lo.id = m.origem_localizacao_id
+            LEFT JOIN {t_loc} ld ON ld.id = m.destino_localizacao_id
+            ORDER BY COALESCE(m.concluida_em, m.criado_em) DESC, m.id DESC
+            LIMIT ?''',
+        (limite,),
+    ).fetchall()
+    return [_mov_row_para_api(_row_dict(r)) for r in (rows or [])]
+
+
+def _transferir_palete_armazem(conn, codigo_palete, codigo_destino, observacao=None):
+    """Move palete armazenado para outro endereço (transferência manual no armazém)."""
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    t_mov = _tbl(conn, 'wms_movimentacao')
+    now = _now_iso()
+
+    pal, err = _resolver_palete_separacao_bip(conn, codigo_palete)
+    if err:
+        return None, err
+    pid = int(pal['id'])
+    st = (pal.get('status') or '').lower()
+    if st not in ('armazenado', 'bloqueado'):
+        return None, (
+            f'Palete não está no armazém para transferência (status: {st or "—"}). '
+            'Bipe a etiqueta de um palete já guardado em endereço.'
+        )
+    orig_id = pal.get('localizacao_id')
+    if not orig_id:
+        return None, 'Palete sem endereço de origem — não é possível transferir.'
+
+    cod_resolvido = _resolver_codigo_endereco_bip(codigo_destino, conn=conn) or (codigo_destino or '').strip().upper()
+    if not cod_resolvido:
+        return None, 'Endereço de destino inválido. Bipe a etiqueta da longarina (ex.: 12.14.1).'
+    loc = conn.execute(
+        f'''SELECT * FROM {t_loc}
+            WHERE codigo_endereco = ? OR UPPER(codigo_endereco) = ?''',
+        (cod_resolvido, cod_resolvido),
+    ).fetchone()
+    if not loc:
+        return None, 'Endereço de destino não encontrado.'
+    ld = _row_dict(loc) or {}
+    if (ld.get('area') or '').lower() == 'stage':
+        return None, 'Destino não pode ser área stage — use endereço de pulmão.'
+    if (ld.get('status') or '').lower() != 'vazia':
+        return None, 'Endereço de destino não está vazio.'
+    dest_id = int(ld['id'])
+    if int(orig_id) == dest_id:
+        return None, 'O palete já está neste endereço.'
+
+    orig_row = conn.execute(f'SELECT codigo_endereco FROM {t_loc} WHERE id = ?', (orig_id,)).fetchone()
+    orig_cod = (_row_dict(orig_row) or {}).get('codigo_endereco') or ''
+    dest_cod = ld.get('codigo_endereco') or cod_resolvido
+    obs_user = (observacao or '').strip()
+    obs = obs_user or f'Transferência manual {orig_cod} → {dest_cod}'
+
+    mov_pend = _mov_pendente_putaway(conn, pid)
+    if mov_pend:
+        mid_p = mov_pend.get('id')
+        if _is_pg(conn):
+            conn.execute(
+                f"""UPDATE {t_mov} SET status = 'cancelada',
+                    observacao = COALESCE(observacao, '') || ' | cancelada: transferência manual'
+                    WHERE id = ?""",
+                (mid_p,),
+            )
+        else:
+            conn.execute(
+                f"""UPDATE {t_mov} SET status = 'cancelada',
+                    observacao = COALESCE(observacao, '') || ' | cancelada: transferência manual'
+                    WHERE id = ?""",
+                (mid_p,),
+            )
+
+    if _is_pg(conn):
+        cur = conn.execute(
+            f'''INSERT INTO {t_mov}
+                (tipo, palete_id, origem_localizacao_id, destino_localizacao_id,
+                 status, prioridade, observacao, criado_em, criado_por, concluida_em, concluida_por)
+                VALUES ('transferencia', ?, ?, ?, 'concluida', 1, ?, NOW(), ?, NOW(), ?)
+                RETURNING id''',
+            (pid, orig_id, dest_id, obs, _usuario(), _usuario()),
+        )
+        mov_id = (_row_dict(cur.fetchone()) or {}).get('id')
+        conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = NOW() WHERE id = ?", (orig_id,))
+        conn.execute(f"UPDATE {t_loc} SET status = 'ocupada', atualizado_em = NOW() WHERE id = ?", (dest_id,))
+        conn.execute(
+            f'''UPDATE {t_pal} SET localizacao_id = ?,
+                status = CASE WHEN bloqueio_tipo IS NOT NULL AND TRIM(COALESCE(bloqueio_tipo, '')) != ''
+                              THEN 'bloqueado' ELSE 'armazenado' END,
+                atualizado_em = NOW() WHERE id = ?''',
+            (dest_id, pid),
+        )
+    else:
+        conn.execute(
+            f'''INSERT INTO {t_mov}
+                (tipo, palete_id, origem_localizacao_id, destino_localizacao_id,
+                 status, prioridade, observacao, criado_em, criado_por, concluida_em, concluida_por)
+                VALUES ('transferencia', ?, ?, ?, 'concluida', 1, ?, ?, ?, ?, ?)''',
+            (pid, orig_id, dest_id, obs, now, _usuario(), now, _usuario()),
+        )
+        mov_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        conn.execute(f"UPDATE {t_loc} SET status = 'vazia', atualizado_em = ? WHERE id = ?", (now, orig_id))
+        conn.execute(f"UPDATE {t_loc} SET status = 'ocupada', atualizado_em = ? WHERE id = ?", (now, dest_id))
+        pal_st = conn.execute(f'SELECT bloqueio_tipo FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
+        pst = (_row_dict(pal_st) or {}).get('bloqueio_tipo')
+        novo_st = 'bloqueado' if pst and str(pst).strip() else 'armazenado'
+        conn.execute(
+            f'UPDATE {t_pal} SET localizacao_id = ?, status = ?, atualizado_em = ? WHERE id = ?',
+            (dest_id, novo_st, now, pid),
+        )
+
+    _ensure_wms_palete_controle_table(conn)
+    _registrar_controle_palete(
+        conn, pid, 'saida', subtipo='transferencia',
+        localizacao_id=orig_id, codigo_endereco=orig_cod,
+        observacao=f'Saída para transferência → {dest_cod}',
+    )
+    _registrar_controle_palete(
+        conn, pid, 'entrada', subtipo='transferencia',
+        localizacao_id=dest_id, codigo_endereco=dest_cod,
+        observacao=f'Entrada por transferência (origem {orig_cod})',
+    )
+    for sku in _skus_do_palete(conn, pid):
+        _sync_produto_estoque_cache(conn, sku)
+
+    return {
+        'movimentacao_id': mov_id,
+        'palete_id': pid,
+        'etiqueta': pal.get('etiqueta'),
+        'origem': orig_cod,
+        'destino': dest_cod,
+        'status': 'concluida',
+    }, None
 
 
 def _criar_mov_pendente_putaway(conn, palete_id, sug, obs_extra=None):
@@ -4266,7 +4661,128 @@ def _resolver_recebimento_wms(conn, recebimento_id=None, numero_nf=None):
     return None
 
 
-def _historico_recebimento_nf(conn, recebimento_id=None, numero_nf=None):
+def _mapa_destino_paletes_historico(pals, movs):
+    """Etiqueta do palete → endereço onde foi/será guardado."""
+    by_etq = {}
+    for p in pals or []:
+        rd = _row_dict(p) or {}
+        etq = rd.get('etiqueta')
+        if not etq:
+            continue
+        loc = (rd.get('codigo_endereco') or '').strip()
+        if not loc and rd.get('loc_camara'):
+            loc = _codigo_endereco(
+                rd.get('loc_camara'), rd.get('loc_rua'),
+                rd.get('loc_posicao'), rd.get('loc_nivel'),
+            )
+        if loc:
+            by_etq[etq] = {
+                'endereco': loc,
+                'status': (rd.get('status') or '').lower() or '—',
+            }
+    for m in movs or []:
+        rd = _row_dict(m) or {}
+        etq = rd.get('palete_etiqueta')
+        dest = (rd.get('destino_codigo') or '').strip()
+        if not etq or not dest:
+            continue
+        cur = by_etq.get(etq)
+        st_mov = (rd.get('status') or '').lower()
+        if not cur:
+            by_etq[etq] = {'endereco': dest, 'status': st_mov or 'pendente'}
+        elif cur.get('status') != 'armazenado' and st_mov == 'concluida':
+            by_etq[etq] = {'endereco': dest, 'status': 'armazenado'}
+    return by_etq
+
+
+def _filtrar_lista_historico_por_data(lista, campo_data, data_inicio=None, data_fim=None):
+    if not data_inicio and not data_fim:
+        return lista
+    di = _parse_dt_iso(data_inicio)
+    df = _parse_dt_iso(data_fim)
+    if df and len(str(data_fim or '')) <= 10:
+        df = df.replace(hour=23, minute=59, second=59)
+    out = []
+    for it in lista or []:
+        dt = _parse_dt_iso((it or {}).get(campo_data))
+        if not dt:
+            continue
+        if di and dt < di:
+            continue
+        if df and dt > df:
+            continue
+        out.append(it)
+    return out
+
+
+def _aplicar_filtros_historico_nf(data, filtros=None):
+    filtros = filtros or {}
+    sku_f = (filtros.get('sku') or '').strip().upper()
+    prod_f = (filtros.get('produto') or filtros.get('descricao') or '').strip().lower()
+    pal_f = (filtros.get('palete') or '').strip().upper()
+    dest_f = (filtros.get('destino') or '').strip().upper()
+    st_f = (filtros.get('status') or '').strip().lower()
+    di = (filtros.get('data_inicio') or '').strip() or None
+    df = (filtros.get('data_fim') or '').strip() or None
+
+    if st_f and st_f not in ('', 'todos', 'all'):
+        st_rec = ((data.get('recebimento') or {}).get('status') or '').lower()
+        if st_f == 'finalizado' and st_rec != 'finalizado':
+            data['filtro_sem_resultado'] = 'Nenhum recebimento finalizado para os critérios informados.'
+            data['itens_bipados'] = []
+            data['itens_nf'] = []
+            data['movimentacoes'] = []
+            data['paletes'] = []
+            return data
+        if st_f == 'andamento' and st_rec in ('finalizado', 'cancelado', 'concluido'):
+            data['filtro_sem_resultado'] = 'Recebimento já encerrado — não está em andamento.'
+            data['itens_bipados'] = []
+            data['itens_nf'] = []
+            data['movimentacoes'] = []
+            data['paletes'] = []
+            return data
+
+    def _match_bip(it):
+        if not it:
+            return False
+        if sku_f and sku_f not in (it.get('sku') or '').upper():
+            return False
+        if prod_f and prod_f not in (it.get('descricao') or '').lower():
+            return False
+        if pal_f and pal_f not in (it.get('palete_etiqueta') or '').upper():
+            return False
+        if dest_f:
+            blob = ' '.join([
+                str(it.get('endereco_destino') or ''),
+                str(it.get('disposicao_rotulo') or ''),
+                str(it.get('destino_resumo') or ''),
+            ]).upper()
+            if dest_f not in blob:
+                return False
+        return True
+
+    tem_item_filtro = bool(sku_f or prod_f or pal_f or dest_f or di or df)
+    if tem_item_filtro:
+        bip = _filtrar_lista_historico_por_data(data.get('itens_bipados') or [], 'bipado_em', di, df)
+        bip = [it for it in bip if _match_bip(it)]
+        data['itens_bipados'] = bip
+        etqs = {it.get('palete_etiqueta') for it in bip if it.get('palete_etiqueta')}
+        if etqs:
+            data['paletes'] = [p for p in (data.get('paletes') or []) if p.get('etiqueta') in etqs]
+            data['movimentacoes'] = [
+                m for m in (data.get('movimentacoes') or [])
+                if m.get('palete_etiqueta') in etqs
+            ]
+        if sku_f:
+            data['itens_nf'] = [
+                it for it in (data.get('itens_nf') or [])
+                if sku_f in (it.get('sku') or '').upper()
+            ]
+    data['filtros_aplicados'] = {k: v for k, v in filtros.items() if v}
+    return data
+
+
+def _historico_recebimento_nf(conn, recebimento_id=None, numero_nf=None, filtros=None):
     rec = _resolver_recebimento_wms(conn, recebimento_id=recebimento_id, numero_nf=numero_nf)
     if not rec:
         return None, 'Recebimento WMS não encontrado para esta NF.'
@@ -4313,6 +4829,9 @@ def _historico_recebimento_nf(conn, recebimento_id=None, numero_nf=None):
             ORDER BY m.criado_em, m.id''',
         (rid,),
     ).fetchall()
+
+    _ensure_wms_palete_item_disposicao(conn)
+    pal_dest_map = _mapa_destino_paletes_historico(pals, movs)
 
     paletes_out = []
     eventos = []
@@ -4365,8 +4884,23 @@ def _historico_recebimento_nf(conn, recebimento_id=None, numero_nf=None):
             ts_fim.append(rd['criado_em'])
         if rd.get('palete_criado_por'):
             operadores.add(str(rd['palete_criado_por']))
+        etq = rd.get('palete_etiqueta')
+        dest_info = pal_dest_map.get(etq) or {}
+        endereco = dest_info.get('endereco')
+        disp = rd.get('disposicao_estoque')
+        disp_rot = _rotulo_disposicao_entrada(disp)
+        dest_st = dest_info.get('status') or ''
+        if endereco:
+            dest_resumo = endereco
+            if dest_st and dest_st not in ('armazenado', '—'):
+                dest_resumo += f' ({dest_st})'
+        elif disp and disp not in ('', 'normal', 'bom'):
+            dest_resumo = disp_rot
+        else:
+            dest_resumo = '—'
         itens_out.append({
             'id': rd.get('id'),
+            'n_item_nf': rd.get('n_item_nf'),
             'sku': sku,
             'descricao': rd.get('descricao'),
             'lote': rd.get('lote'),
@@ -4374,9 +4908,14 @@ def _historico_recebimento_nf(conn, recebimento_id=None, numero_nf=None):
             'data_validade': rd.get('data_validade'),
             'quantidade_caixas': q,
             'rg_caixa': rd.get('rg_caixa'),
-            'palete_etiqueta': rd.get('palete_etiqueta'),
+            'palete_etiqueta': etq,
             'palete_status': rd.get('palete_status'),
             'bipado_em': rd.get('criado_em'),
+            'endereco_destino': endereco,
+            'destino_status': dest_st or None,
+            'disposicao': disp,
+            'disposicao_rotulo': disp_rot,
+            'destino_resumo': dest_resumo,
         })
         eventos.append({
             'quando': rd.get('criado_em'),
@@ -4475,9 +5014,11 @@ def _historico_recebimento_nf(conn, recebimento_id=None, numero_nf=None):
     eventos.sort(key=lambda e: str(e.get('quando') or ''))
 
     resumo_nf = []
+    situacao = None
     if terceiros and doc_id:
         doc_enr = _enriquecer_documento_nf_wms(conn, doc_nf) if doc_nf else None
         if doc_enr:
+            situacao = doc_enr.get('situacao_recebimento')
             for it in doc_enr.get('itens') or []:
                 resumo_nf.append({
                     'n_item': it.get('n_item'),
@@ -4485,14 +5026,18 @@ def _historico_recebimento_nf(conn, recebimento_id=None, numero_nf=None):
                     'descricao': it.get('descricao'),
                     'quantidade_xml': it.get('quantidade_xml'),
                     'quantidade_wms': it.get('quantidade_wms'),
+                    'quantidade_armazenada': it.get('quantidade_armazenada'),
                     'pendente_wms': it.get('pendente_wms'),
                     'status_wms': it.get('status_wms'),
                     'codigo_ean': it.get('codigo_ean'),
+                    'resumo_andamento': it.get('resumo_andamento'),
+                    'destinos_wms': it.get('destinos_wms') or [],
                 })
 
-    return {
+    out = {
         'recebimento': rec,
         'terceiros': terceiros,
+        'situacao_recebimento': situacao,
         'periodo': {
             'inicio_bipagem': inicio_bip,
             'fim_bipagem': fim_bip,
@@ -4515,7 +5060,9 @@ def _historico_recebimento_nf(conn, recebimento_id=None, numero_nf=None):
         'movimentacoes': movs_out,
         'controle_paletes': controle_out,
         'linha_do_tempo': eventos,
-    }, None
+    }
+    out = _aplicar_filtros_historico_nf(out, filtros)
+    return out, None
 
 
 def _relatorio_wms(conn, tipo, data_inicio=None, data_fim=None, extra=None):
@@ -4742,7 +5289,7 @@ def api_wms_painel():
             f"SELECT COUNT(*) AS c FROM {t_rec} WHERE status NOT IN ('finalizado', 'cancelado')"
         ).fetchone()
         inv_ativos = conn.execute(
-            f"SELECT COUNT(*) AS c FROM {t_inv} WHERE status = 'ativo'"
+            f"SELECT COUNT(*) AS c FROM {t_inv} WHERE status IN ('ativo', 'em_andamento')"
         ).fetchone()
         paletes_fora = _contar_paletes_fora(conn)
         _ensure_produto_planejamento_columns(conn)
@@ -5053,8 +5600,14 @@ def api_wms_movimentacoes():
     t_loc = _tbl(conn, 'wms_localizacao')
 
     if request.method == 'GET':
-        status = (request.args.get('status') or 'pendente').strip()
+        historico = (request.args.get('historico') or '').strip().lower() in ('1', 'sim', 'true', 'yes')
         try:
+            if historico:
+                limite = request.args.get('limite') or 100
+                rows = _listar_movimentacoes_historico(conn, limite)
+                conn.close()
+                return jsonify({'historico': rows})
+            status = (request.args.get('status') or 'pendente').strip()
             rows = conn.execute(
                 f'''SELECT m.*, p.etiqueta,
                            lo.codigo_endereco AS origem,
@@ -5068,9 +5621,10 @@ def api_wms_movimentacoes():
                 (status,),
             ).fetchall()
             conn.close()
-            return jsonify({'movimentacoes': [dict(r) for r in rows]})
+            return jsonify({'movimentacoes': [_mov_row_para_api(_row_dict(r)) for r in (rows or [])]})
         except Exception as e:
             try:
+                conn.rollback()
                 conn.close()
             except Exception:
                 pass
@@ -5081,6 +5635,22 @@ def api_wms_movimentacoes():
     now = _now_iso()
 
     try:
+        if acao == 'transferir':
+            cod_pal = (data.get('codigo_palete') or data.get('etiqueta') or data.get('palete') or '').strip()
+            cod_dest = (data.get('destino') or data.get('codigo_destino') or data.get('endereco_destino') or '').strip()
+            obs = (data.get('observacao') or '').strip() or None
+            if not cod_pal or not cod_dest:
+                conn.close()
+                return jsonify({'erro': 'Informe o palete (etiqueta ou endereço atual) e o novo endereço.'}), 400
+            res, err = _transferir_palete_armazem(conn, cod_pal, cod_dest, observacao=obs)
+            if err:
+                conn.rollback()
+                conn.close()
+                return jsonify({'erro': err}), 400
+            conn.commit()
+            conn.close()
+            return jsonify({'ok': True, 'transferencia': res})
+
         if acao == 'concluir':
             mov_id = data.get('id')
             if _is_pg(conn):
@@ -5774,7 +6344,8 @@ def api_wms_recebimentos():
             if not rid:
                 conn.close()
                 return jsonify({'erro': 'Informe recebimento_id.'}), 400
-            result, err = _excluir_recebimento_wms(conn, int(rid))
+            forcar = bool(data.get('forcar') or data.get('permitir_finalizado'))
+            result, err = _excluir_recebimento_wms(conn, int(rid), permitir_finalizado=forcar)
             if err:
                 try:
                     conn.rollback()
@@ -5784,6 +6355,25 @@ def api_wms_recebimentos():
                 return jsonify({'erro': err}), 400
             conn.commit()
             conn.close()
+            return jsonify(result)
+
+        if acao == 'reiniciar':
+            rid = data.get('recebimento_id')
+            if not rid:
+                conn.close()
+                return jsonify({'erro': 'Informe recebimento_id.'}), 400
+            result, err = _excluir_recebimento_wms(conn, int(rid), permitir_finalizado=True)
+            if err:
+                try:
+                    conn.rollback()
+                    conn.close()
+                except Exception:
+                    pass
+                return jsonify({'erro': err}), 400
+            conn.commit()
+            conn.close()
+            result = dict(result or {})
+            result['reiniciado'] = True
             return jsonify(result)
 
         if acao == 'finalizar':
@@ -5818,6 +6408,7 @@ def api_wms_recebimentos():
             terceiros_sync = None
             doc_ter = (_row_dict(rec_vinc) or {}).get('terceiros_documento_id')
             if doc_ter:
+                _sincronizar_terceiros_itens_desde_wms(conn, int(doc_ter), recebimento_id=rid)
                 ok_t, err_t = _concluir_terceiros_recebimento_wms(conn, doc_ter)
                 if ok_t:
                     terceiros_sync = {
@@ -5890,10 +6481,296 @@ def api_wms_recebimentos():
         return jsonify({'erro': str(e)}), 500
 
 
+def _ensure_wms_inventario_linha_produto_columns(conn):
+    cols = [
+        ('palete_item_id', 'INTEGER'),
+        ('descricao', 'TEXT'),
+        ('lote', 'TEXT'),
+        ('data_producao', 'TEXT'),
+        ('data_validade', 'TEXT'),
+        ('quantidade_esperada', 'INTEGER'),
+        ('rg_caixa', 'TEXT'),
+        ('codigo_endereco', 'TEXT'),
+        ('status_linha', "TEXT DEFAULT 'pendente'"),
+        ('bip_lote', 'TEXT'),
+        ('bip_data_producao', 'TEXT'),
+        ('bip_data_validade', 'TEXT'),
+        ('bip_quantidade', 'INTEGER'),
+        ('bip_rg_caixa', 'TEXT'),
+        ('bip_sku', 'TEXT'),
+    ]
+    t = _tbl(conn, 'wms_inventario_linha')
+    if _is_pg(conn):
+        for name, typ in cols:
+            try:
+                conn.execute(f'ALTER TABLE {t} ADD COLUMN IF NOT EXISTS {name} {typ}')
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    else:
+        try:
+            existing = conn.execute('PRAGMA table_info(wms_inventario_linha)').fetchall()
+            names = {c[1] if not isinstance(c, dict) else c.get('name') for c in (existing or [])}
+            for name, typ in cols:
+                if name not in names:
+                    conn.execute(f'ALTER TABLE wms_inventario_linha ADD COLUMN {name} {typ}')
+            conn.commit()
+        except Exception:
+            pass
+
+
+def _norm_data_cmp_inv(val):
+    if val is None or val == '':
+        return ''
+    raw = str(val).strip()[:10]
+    if len(raw) == 10 and raw[4] == '-':
+        return raw
+    if len(raw) == 10 and raw[2] == '/':
+        return f'{raw[6:10]}-{raw[3:5]}-{raw[0:2]}'
+    return raw.upper()
+
+
+def _norm_txt_inv(val):
+    return (str(val or '').strip().upper())
+
+
+def _inventario_dados_iguais(linha, bip):
+    sku_ok = _norm_txt_inv(linha.get('sku')) == _norm_txt_inv(bip.get('sku'))
+    lote_ok = _norm_txt_inv(linha.get('lote')) == _norm_txt_inv(bip.get('lote'))
+    dp_ok = _norm_data_cmp_inv(linha.get('data_producao')) == _norm_data_cmp_inv(bip.get('data_producao'))
+    dv_ok = _norm_data_cmp_inv(linha.get('data_validade')) == _norm_data_cmp_inv(bip.get('data_validade'))
+    qtd_ok = int(linha.get('quantidade_esperada') or 0) == int(bip.get('quantidade_caixas') or 0)
+    up_bip = (bip.get('up') or bip.get('rg_caixa') or '').strip()
+    up_ok = _norm_txt_inv(linha.get('rg_caixa')) == _norm_txt_inv(up_bip)
+    if up_bip and linha.get('rg_caixa'):
+        return sku_ok and lote_ok and dp_ok and dv_ok and qtd_ok and up_ok
+    return sku_ok and lote_ok and dp_ok and dv_ok and qtd_ok
+
+
+def _inventario_linha_dict(row):
+    d = _row_dict(row) or {}
+    st = (d.get('status_linha') or '').strip().lower()
+    if not st:
+        st = 'pendente'
+    d['status_linha'] = st
+    d['quantidade'] = d.get('quantidade_esperada')
+    d['up'] = d.get('rg_caixa')
+    return d
+
+
+def _inventario_snapshot_estoque(conn, camara=None):
+    _ensure_wms_inventario_linha_produto_columns(conn)
+    t_item = _tbl(conn, 'wms_palete_item')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    sql = f'''SELECT i.id AS palete_item_id, i.sku, i.descricao, i.lote, i.data_producao, i.data_validade,
+                     i.quantidade_caixas, i.rg_caixa, p.etiqueta AS palete_etiqueta, p.id AS palete_id,
+                     l.id AS localizacao_id, l.codigo_endereco, l.camara
+              FROM {t_item} i
+              JOIN {t_pal} p ON p.id = i.palete_id
+              LEFT JOIN {t_loc} l ON l.id = p.localizacao_id
+              WHERE p.status IN ('armazenado', 'bloqueado', 'em_stage', 'separado')'''
+    params = []
+    if camara:
+        sql += ' AND l.camara = ?'
+        params.append(int(camara))
+    sql += ' ORDER BY COALESCE(l.camara, 0), l.rua, l.posicao, i.sku, i.lote'
+    return [_row_dict(r) or {} for r in conn.execute(sql, tuple(params)).fetchall()]
+
+
+def _inventario_buscar_linha_pendente(conn, t_lin, inventario_id, bip):
+    up = (bip.get('up') or bip.get('rg_caixa') or '').strip()
+    sku = (bip.get('sku') or '').strip()
+    if up:
+        row = conn.execute(
+            f'''SELECT * FROM {t_lin}
+                WHERE inventario_id = ? AND COALESCE(status_linha, 'pendente') = 'pendente' AND rg_caixa = ?
+                LIMIT 1''',
+            (inventario_id, up),
+        ).fetchone()
+        if row:
+            return _row_dict(row)
+    rows = conn.execute(
+        f'''SELECT * FROM {t_lin}
+            WHERE inventario_id = ? AND COALESCE(status_linha, 'pendente') = 'pendente'
+            ORDER BY id''',
+        (inventario_id,),
+    ).fetchall()
+    for r in rows or []:
+        ld = _row_dict(r) or {}
+        if _inventario_dados_iguais(ld, bip):
+            return ld
+    if sku:
+        for r in rows or []:
+            ld = _row_dict(r) or {}
+            if (ld.get('sku') or '').strip().upper() == sku.upper():
+                return ld
+    return None
+
+
+def _inventario_registrar_bip(conn, inventario_id, bip):
+    _ensure_wms_inventario_linha_produto_columns(conn)
+    t_lin = _tbl(conn, 'wms_inventario_linha')
+    t_inv = _tbl(conn, 'wms_inventario')
+    inv = conn.execute(f'SELECT id, status FROM {t_inv} WHERE id = ?', (inventario_id,)).fetchone()
+    if not inv:
+        return None, 'Inventário não encontrado.'
+    inv_d = _row_dict(inv) or {}
+    if (inv_d.get('status') or '').lower() not in ('ativo', 'em_andamento'):
+        return None, 'Inventário não está ativo.'
+    sku = (bip.get('sku') or '').strip()
+    if not sku:
+        return None, 'Informe o código (EAN/SKU) do produto.'
+    dv = (bip.get('data_validade') or '').strip()
+    if not dv:
+        return None, 'Informe a data de validade.'
+    dp = (bip.get('data_producao') or '').strip() or None
+    if dp:
+        err_dp = _validar_data_producao_fifo(dp)
+        if err_dp:
+            return None, err_dp
+    qtd = int(bip.get('quantidade_caixas') or 0)
+    if qtd < 1:
+        return None, 'Informe a quantidade de caixas (mínimo 1).'
+    lote = (bip.get('lote') or '').strip() or None
+    up = (bip.get('up') or bip.get('rg_caixa') or '').strip() or None
+    now = _now_iso()
+    candidato = _inventario_buscar_linha_pendente(conn, t_lin, inventario_id, bip)
+    status_linha = 'conferido' if candidato and _inventario_dados_iguais(candidato, bip) else 'divergente'
+    if candidato:
+        conn.execute(
+            f'''UPDATE {t_lin}
+                SET status_linha = ?, bip_sku = ?, bip_lote = ?, bip_data_producao = ?, bip_data_validade = ?,
+                    bip_quantidade = ?, bip_rg_caixa = ?, quantidade_contada = ?, divergencia = ?,
+                    contado_em = ?, contado_por = ?
+                WHERE id = ?''',
+            (
+                status_linha, sku, lote, dp, dv, qtd, up, qtd,
+                1 if status_linha == 'divergente' else 0,
+                now, _usuario(), candidato.get('id'),
+            ),
+        )
+        linha_id = candidato.get('id')
+    else:
+        if _is_pg(conn):
+            cur = conn.execute(
+                f'''INSERT INTO {t_lin}
+                    (inventario_id, sku, descricao, status_linha, bip_sku, bip_lote, bip_data_producao,
+                     bip_data_validade, bip_quantidade, bip_rg_caixa, quantidade_contada, divergencia,
+                     contado_em, contado_por)
+                    VALUES (?, ?, ?, 'extra', ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) RETURNING id''',
+                (
+                    inventario_id, sku, bip.get('descricao'), sku, lote, dp, dv, qtd, up, qtd,
+                    now, _usuario(),
+                ),
+            )
+            linha_id = (_row_dict(cur.fetchone()) or {}).get('id')
+        else:
+            conn.execute(
+                f'''INSERT INTO {t_lin}
+                    (inventario_id, sku, descricao, status_linha, bip_sku, bip_lote, bip_data_producao,
+                     bip_data_validade, bip_quantidade, bip_rg_caixa, quantidade_contada, divergencia,
+                     contado_em, contado_por)
+                    VALUES (?, ?, ?, 'extra', ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)''',
+                (
+                    inventario_id, sku, bip.get('descricao'), sku, lote, dp, dv, qtd, up, qtd,
+                    now, _usuario(),
+                ),
+            )
+            linha_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    if (inv_d.get('status') or '').lower() == 'ativo':
+        conn.execute(
+            f"UPDATE {t_inv} SET status = 'em_andamento' WHERE id = ?",
+            (inventario_id,),
+        )
+    row = conn.execute(f'SELECT * FROM {t_lin} WHERE id = ?', (linha_id,)).fetchone()
+    return _inventario_linha_dict(row), None
+
+
+def _inventario_aplicar_base(conn, inventario_id):
+    _ensure_wms_inventario_linha_produto_columns(conn)
+    t_lin = _tbl(conn, 'wms_inventario_linha')
+    t_item = _tbl(conn, 'wms_palete_item')
+    t_inv = _tbl(conn, 'wms_inventario')
+    inv = conn.execute(f'SELECT id, status FROM {t_inv} WHERE id = ?', (inventario_id,)).fetchone()
+    if not inv:
+        return None, 'Inventário não encontrado.'
+    linhas = conn.execute(
+        f'''SELECT * FROM {t_lin}
+            WHERE inventario_id = ? AND status_linha IN ('divergente', 'extra')
+              AND palete_item_id IS NOT NULL''',
+        (inventario_id,),
+    ).fetchall()
+    atualizados = 0
+    for r in linhas or []:
+        ld = _row_dict(r) or {}
+        pid_item = ld.get('palete_item_id')
+        if not pid_item:
+            continue
+        conn.execute(
+            f'''UPDATE {t_item}
+                SET sku = COALESCE(?, sku),
+                    lote = COALESCE(?, lote),
+                    data_producao = COALESCE(?, data_producao),
+                    data_validade = COALESCE(?, data_validade),
+                    quantidade_caixas = COALESCE(?, quantidade_caixas),
+                    rg_caixa = COALESCE(?, rg_caixa)
+                WHERE id = ?''',
+            (
+                ld.get('bip_sku') or ld.get('sku'),
+                ld.get('bip_lote'),
+                ld.get('bip_data_producao'),
+                ld.get('bip_data_validade'),
+                ld.get('bip_quantidade'),
+                ld.get('bip_rg_caixa'),
+                pid_item,
+            ),
+        )
+        atualizados += 1
+    _sync_all_produtos_estoque_cache(conn)
+    now = _now_iso()
+    if _is_pg(conn):
+        conn.execute(
+            f"UPDATE {t_inv} SET status = 'finalizado', finalizado_em = NOW() WHERE id = ?",
+            (inventario_id,),
+        )
+    else:
+        conn.execute(
+            f"UPDATE {t_inv} SET status = 'finalizado', finalizado_em = ? WHERE id = ?",
+            (now, inventario_id),
+        )
+    return {'atualizados': atualizados, 'inventario_id': inventario_id}, None
+
+
+def _inventario_resumo_linhas(conn, inventario_id):
+    t_lin = _tbl(conn, 'wms_inventario_linha')
+    rows = conn.execute(
+        f'''SELECT COALESCE(status_linha, 'pendente') AS st, COUNT(*) AS n
+            FROM {t_lin} WHERE inventario_id = ? GROUP BY COALESCE(status_linha, 'pendente')''',
+        (inventario_id,),
+    ).fetchall()
+    out = {'total': 0, 'pendente': 0, 'conferido': 0, 'divergente': 0, 'extra': 0}
+    for r in rows or []:
+        d = _row_dict(r) or {}
+        st = (d.get('st') or 'pendente').lower()
+        n = int(d.get('n') or 0)
+        out['total'] += n
+        if st in out:
+            out[st] = n
+    return out
+
+
 @bp.route('/inventarios', methods=['GET', 'POST'])
 def api_wms_inventarios():
     conn = _db()
     ensure_wms_schema(conn)
+    _ensure_wms_inventario_linha_produto_columns(conn)
     t_inv = _tbl(conn, 'wms_inventario')
     t_lin = _tbl(conn, 'wms_inventario_linha')
     t_loc = _tbl(conn, 'wms_localizacao')
@@ -5903,18 +6780,44 @@ def api_wms_inventarios():
         try:
             if iid:
                 inv = conn.execute(f'SELECT * FROM {t_inv} WHERE id = ?', (iid,)).fetchone()
+                if not inv:
+                    conn.close()
+                    return jsonify({'erro': 'Inventário não encontrado.'}), 404
                 linhas = conn.execute(
-                    f'''SELECT il.*, l.codigo_endereco
+                    f'''SELECT il.*, l.codigo_endereco AS loc_codigo
                         FROM {t_lin} il
                         LEFT JOIN {t_loc} l ON l.id = il.localizacao_id
-                        WHERE il.inventario_id = ?''',
+                        WHERE il.inventario_id = ?
+                        ORDER BY COALESCE(il.status_linha, 'pendente'), il.id''',
                     (iid,),
                 ).fetchall()
+                resumo = _inventario_resumo_linhas(conn, iid)
                 conn.close()
-                return jsonify({'inventario': dict(inv) if inv else None, 'linhas': [dict(x) for x in linhas]})
-            rows = conn.execute(f'SELECT * FROM {t_inv} ORDER BY id DESC LIMIT 50').fetchall()
+                linhas_out = [_inventario_linha_dict(x) for x in linhas]
+                pendentes = [x for x in linhas_out if x.get('status_linha') == 'pendente']
+                conferidos = [x for x in linhas_out if x.get('status_linha') == 'conferido']
+                divergentes = [x for x in linhas_out if x.get('status_linha') in ('divergente', 'extra')]
+                return jsonify({
+                    'inventario': dict(inv) if inv else None,
+                    'linhas': linhas_out,
+                    'pendentes': pendentes,
+                    'conferidos': conferidos,
+                    'divergentes': divergentes,
+                    'resumo': resumo,
+                })
+            rows = conn.execute(
+                f'''SELECT i.*,
+                           (SELECT COUNT(*) FROM {t_lin} il WHERE il.inventario_id = i.id) AS total_linhas,
+                           (SELECT COUNT(*) FROM {t_lin} il WHERE il.inventario_id = i.id AND COALESCE(il.status_linha, 'pendente') = 'conferido') AS conferidas,
+                           (SELECT COUNT(*) FROM {t_lin} il WHERE il.inventario_id = i.id AND COALESCE(il.status_linha, 'pendente') = 'pendente') AS pendentes
+                    FROM {t_inv} i ORDER BY i.id DESC LIMIT 50'''
+            ).fetchall()
             conn.close()
-            return jsonify({'inventarios': [dict(r) for r in rows]})
+            invs = []
+            for r in rows:
+                d = _row_dict(r) or {}
+                invs.append(d)
+            return jsonify({'inventarios': invs})
         except Exception as e:
             try:
                 conn.close()
@@ -5926,6 +6829,64 @@ def api_wms_inventarios():
     acao = (data.get('acao') or 'criar').strip()
     now = _now_iso()
     try:
+        if acao == 'bip':
+            iid = data.get('inventario_id')
+            if not iid:
+                conn.close()
+                return jsonify({'erro': 'Informe inventario_id.'}), 400
+            linha, err = _inventario_registrar_bip(conn, int(iid), data.get('item') or data)
+            if err:
+                conn.close()
+                return jsonify({'erro': err}), 400
+            conn.commit()
+            resumo = _inventario_resumo_linhas(conn, int(iid))
+            conn.close()
+            return jsonify({
+                'ok': True,
+                'linha': linha,
+                'status_linha': linha.get('status_linha'),
+                'resumo': resumo,
+                'mensagem': 'Conferido com sucesso.' if linha.get('status_linha') == 'conferido'
+                else ('Divergência registrada — item separado na lista de divergências.'
+                      if linha.get('status_linha') == 'divergente' else 'Item não estava na lista — registrado como extra.'),
+            })
+
+        if acao == 'aplicar_base':
+            iid = data.get('inventario_id')
+            if not iid:
+                conn.close()
+                return jsonify({'erro': 'Informe inventario_id.'}), 400
+            result, err = _inventario_aplicar_base(conn, int(iid))
+            if err:
+                conn.close()
+                return jsonify({'erro': err}), 400
+            conn.commit()
+            conn.close()
+            return jsonify({
+                'ok': True,
+                'atualizados': result.get('atualizados', 0),
+                'mensagem': f'Base atualizada com {result.get("atualizados", 0)} item(ns) divergente(s). Inventário finalizado.',
+            })
+
+        if acao == 'finalizar':
+            iid = data.get('inventario_id')
+            if not iid:
+                conn.close()
+                return jsonify({'erro': 'Informe inventario_id.'}), 400
+            if _is_pg(conn):
+                conn.execute(
+                    f"UPDATE {t_inv} SET status = 'finalizado', finalizado_em = NOW() WHERE id = ?",
+                    (int(iid),),
+                )
+            else:
+                conn.execute(
+                    f"UPDATE {t_inv} SET status = 'finalizado', finalizado_em = ? WHERE id = ?",
+                    (now, int(iid)),
+                )
+            conn.commit()
+            conn.close()
+            return jsonify({'ok': True})
+
         if acao == 'contar':
             conn.execute(
                 f'''INSERT INTO {t_lin}
@@ -5943,8 +6904,14 @@ def api_wms_inventarios():
             conn.close()
             return jsonify({'ok': True})
 
-        tipo = data.get('tipo') or 'localizacao'
-        desc = data.get('descricao') or f'Inventário {tipo}'
+        tipo = data.get('tipo') or 'produto'
+        desc = (data.get('descricao') or '').strip() or f'Inventário {now[:10]}'
+        filtro_cam = data.get('camara')
+        if filtro_cam in ('', None):
+            filtro_cam = None
+        else:
+            filtro_cam = int(filtro_cam)
+
         if _is_pg(conn):
             cur = conn.execute(
                 f"INSERT INTO {t_inv} (tipo, descricao, status, criado_em, criado_por) VALUES (?, ?, 'ativo', NOW(), ?) RETURNING id",
@@ -5957,27 +6924,55 @@ def api_wms_inventarios():
                 (tipo, desc, now, _usuario()),
             )
             iid = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
-        filtro_cam = data.get('camara')
-        sql_loc = f"SELECT id, status FROM {t_loc} WHERE 1=1"
-        params = []
-        if filtro_cam:
-            sql_loc += ' AND camara = ?'
-            params.append(filtro_cam)
-        if tipo == 'vazio_ocupado_vazio':
-            sql_loc += " AND status = 'vazia'"
-        elif tipo == 'vazio_ocupado_ocupado':
-            sql_loc += " AND status = 'ocupada'"
-        locs = conn.execute(sql_loc, tuple(params)).fetchall()
-        for loc in locs:
-            ld = _row_dict(loc) or {}
-            conn.execute(
-                f'''INSERT INTO {t_lin} (inventario_id, localizacao_id, status_esperado)
-                    VALUES (?, ?, ?)''',
-                (iid, ld.get('id'), ld.get('status')),
-            )
+
+        if tipo == 'produto':
+            estoque = _inventario_snapshot_estoque(conn, filtro_cam)
+            for row in estoque:
+                conn.execute(
+                    f'''INSERT INTO {t_lin}
+                        (inventario_id, localizacao_id, palete_item_id, palete_etiqueta, sku, descricao,
+                         lote, data_producao, data_validade, quantidade_esperada, rg_caixa, codigo_endereco,
+                         status_linha, status_esperado)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente', 'ocupada')''',
+                    (
+                        iid,
+                        row.get('localizacao_id'),
+                        row.get('palete_item_id'),
+                        row.get('palete_etiqueta'),
+                        row.get('sku'),
+                        row.get('descricao'),
+                        row.get('lote'),
+                        row.get('data_producao'),
+                        row.get('data_validade'),
+                        int(row.get('quantidade_caixas') or 0),
+                        row.get('rg_caixa'),
+                        row.get('codigo_endereco'),
+                    ),
+                )
+            n_linhas = len(estoque)
+        else:
+            sql_loc = f"SELECT id, status FROM {t_loc} WHERE 1=1"
+            params = []
+            if filtro_cam:
+                sql_loc += ' AND camara = ?'
+                params.append(filtro_cam)
+            if tipo == 'vazio_ocupado_vazio':
+                sql_loc += " AND status = 'vazia'"
+            elif tipo == 'vazio_ocupado_ocupado':
+                sql_loc += " AND status = 'ocupada'"
+            locs = conn.execute(sql_loc, tuple(params)).fetchall()
+            for loc in locs:
+                ld = _row_dict(loc) or {}
+                conn.execute(
+                    f'''INSERT INTO {t_lin} (inventario_id, localizacao_id, status_esperado, status_linha)
+                        VALUES (?, ?, ?, 'pendente')''',
+                    (iid, ld.get('id'), ld.get('status')),
+                )
+            n_linhas = len(locs)
+
         conn.commit()
         conn.close()
-        return jsonify({'ok': True, 'id': iid, 'linhas': len(locs)})
+        return jsonify({'ok': True, 'id': iid, 'linhas': n_linhas})
     except Exception as e:
         try:
             conn.rollback()
@@ -7270,7 +8265,18 @@ def api_wms_historico_nf():
     ensure_wms_schema(conn)
     _ensure_wms_recebimento_terceiros_columns(conn)
     try:
-        data, err = _historico_recebimento_nf(conn, recebimento_id=recebimento_id, numero_nf=numero_nf)
+        filtros = {
+            'sku': (request.args.get('sku') or '').strip(),
+            'produto': (request.args.get('produto') or request.args.get('descricao') or '').strip(),
+            'palete': (request.args.get('palete') or '').strip(),
+            'destino': (request.args.get('destino') or '').strip(),
+            'data_inicio': (request.args.get('data_inicio') or '').strip(),
+            'data_fim': (request.args.get('data_fim') or '').strip(),
+            'status': (request.args.get('status') or '').strip(),
+        }
+        data, err = _historico_recebimento_nf(
+            conn, recebimento_id=recebimento_id, numero_nf=numero_nf, filtros=filtros,
+        )
         conn.close()
         if err:
             return jsonify({'erro': err}), 404

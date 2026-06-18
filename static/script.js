@@ -3274,6 +3274,32 @@ function _devolucaoAplicarMotivoSugeridoNf(motivo) {
     motSel.value = motivo;
 }
 
+function _devolucaoNotaPorNumero(numeroNf) {
+    numeroNf = String(numeroNf || '').trim();
+    if (!numeroNf) return null;
+    return (window._devolucaoNfsDivergentes || []).find(function(n) {
+        var num = String(n.numero_nf || '').trim();
+        return num === numeroNf || num.replace(/^0+/, '') === numeroNf.replace(/^0+/, '');
+    }) || null;
+}
+
+function _devolucaoAtualizarInfoNfSelecionada() {
+    var sel = document.getElementById('dev-numero-nf');
+    var info = document.getElementById('dev-nf-motivo-info');
+    if (!info) return;
+    var nota = sel ? _devolucaoNotaPorNumero(sel.value) : null;
+    if (!nota) {
+        info.style.display = 'none';
+        info.textContent = '';
+        return;
+    }
+    var motLabel = nota.motivo_label || '';
+    var qtd = nota.qtd_itens_divergentes != null ? nota.qtd_itens_divergentes : ((nota.itens || []).length);
+    info.textContent = 'Motivo sugerido para esta NF: ' + (motLabel || nota.motivo_sugerido || '—')
+        + ' · ' + qtd + ' item(ns) divergente(s) para bipar no retorno.';
+    info.style.display = '';
+}
+
 function _devolucaoPreencherSelectNfs(notas, aviso) {
     var sel = document.getElementById('dev-numero-nf');
     if (!sel) return;
@@ -3283,10 +3309,14 @@ function _devolucaoPreencherSelectNfs(notas, aviso) {
         var num = String(n.numero_nf || '').trim();
         if (!num) return;
         var mot = String(n.motivo_sugerido || 'parcial').trim();
-        var label = num + ' — ' + (n.qtd_itens_divergentes || 0) + ' item(ns) divergente(s)';
-        html += '<option value="' + escapeHtml(num) + '" data-motivo="' + escapeHtml(mot) + '">' + escapeHtml(label) + '</option>';
+        var motLabel = String(n.motivo_label || '').trim();
+        var qtd = n.qtd_itens_divergentes != null ? n.qtd_itens_divergentes : ((n.itens || []).length);
+        var label = num + ' — ' + qtd + ' item(ns) divergente(s)';
+        if (motLabel) label += ' · ' + motLabel;
+        html += '<option value="' + escapeHtml(num) + '" data-motivo="' + escapeHtml(mot) + '" data-motivo-label="' + escapeHtml(motLabel) + '">' + escapeHtml(label) + '</option>';
     });
     sel.innerHTML = html;
+    _devolucaoAtualizarInfoNfSelecionada();
     if (aviso && !window._devolucaoNfsDivergentes.length) {
         showMessage(aviso, 'warning');
     }
@@ -3312,6 +3342,72 @@ async function carregarNfsDivergentesDevolucao(idViagem) {
             _devolucaoAplicarMotivoSugeridoNf(unica.motivo_sugerido || 'parcial');
         }
     }
+    if (!window._devolucaoNfAtiva || window._devolucaoNfAtiva.status !== 'em_andamento') {
+        var nfSel = sel && sel.value ? sel.value : '';
+        await exibirItensPreviewNfDevolucao(nfSel);
+    }
+}
+
+async function exibirItensPreviewNfDevolucao(numeroNf) {
+    if (window._devolucaoNfAtiva && window._devolucaoNfAtiva.status === 'em_andamento') {
+        return;
+    }
+    var idViagem = _devolucaoGetIdViagemAtivo();
+    var tbody = document.getElementById('dev-tbody-conferencia');
+    if (!idViagem) return;
+    numeroNf = String(numeroNf || '').trim();
+    _devolucaoAtualizarInfoNfSelecionada();
+    if (!numeroNf) {
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="12" class="loading">Selecione a NF com divergência para ver os itens que serão bipados no retorno.</td></tr>';
+        }
+        if (typeof atualizarTotaisConferenciaFromData === 'function') {
+            atualizarTotaisConferenciaFromData([], 'devolucao');
+        }
+        return;
+    }
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando itens divergentes da NF...</td></tr>';
+    }
+    var nota = _devolucaoNotaPorNumero(numeroNf);
+    var motivo = (document.getElementById('dev-motivo-devolucao') && document.getElementById('dev-motivo-devolucao').value) || '';
+    if (!motivo && nota && nota.motivo_sugerido) {
+        _devolucaoAplicarMotivoSugeridoNf(nota.motivo_sugerido);
+        motivo = nota.motivo_sugerido;
+    }
+    var resp = await fetchAPI(
+        '/devolucoes/itens-nf?id_viagem=' + encodeURIComponent(idViagem)
+        + '&numero_nf=' + encodeURIComponent(numeroNf)
+        + (motivo ? '&motivo=' + encodeURIComponent(motivo) : '')
+    );
+    var itens = (resp && !resp.erro && Array.isArray(resp.itens)) ? resp.itens : [];
+    if (!itens.length && nota && Array.isArray(nota.itens) && nota.itens.length) {
+        itens = nota.itens;
+    }
+    if (resp && resp.motivo_sugerido && (!motivo || motivo === String((nota && nota.motivo_sugerido) || '').trim())) {
+        _devolucaoAplicarMotivoSugeridoNf(resp.motivo_sugerido);
+        if (nota) {
+            nota.motivo_sugerido = resp.motivo_sugerido;
+            nota.motivo_label = resp.motivo_label || nota.motivo_label;
+            nota.qtd_itens_divergentes = resp.qtd_itens != null ? resp.qtd_itens : itens.length;
+        }
+        _devolucaoAtualizarInfoNfSelecionada();
+    }
+    if (!itens.length) {
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhum item divergente nesta NF para bipar no retorno.</td></tr>';
+        }
+        if (typeof atualizarTotaisConferenciaFromData === 'function') {
+            atualizarTotaisConferenciaFromData([], 'devolucao');
+        }
+        return;
+    }
+    await loadConferencia(idViagem, {
+        fluxo: 'devolucao',
+        forcar: true,
+        _listaOverride: itens,
+        _modoDevolucaoNf: true,
+    });
 }
 
 function initDevolucaoNfSelectMotivo() {
@@ -3322,7 +3418,17 @@ function initDevolucaoNfSelectMotivo() {
         var opt = sel.options[sel.selectedIndex];
         var mot = opt ? (opt.getAttribute('data-motivo') || '') : '';
         if (mot) _devolucaoAplicarMotivoSugeridoNf(mot);
+        _devolucaoAtualizarInfoNfSelecionada();
+        void exibirItensPreviewNfDevolucao(sel.value);
     });
+    var motSel = document.getElementById('dev-motivo-devolucao');
+    if (motSel && !motSel._devMotivoPreviewBound) {
+        motSel._devMotivoPreviewBound = true;
+        motSel.addEventListener('change', function() {
+            var nf = sel.value || '';
+            if (nf) void exibirItensPreviewNfDevolucao(nf);
+        });
+    }
 }
 
 function _devolucaoAtualizarUiNfAtiva() {
@@ -3601,6 +3707,68 @@ function _estoqueSpIniciarTempoReal() {
     }, 30000);
 }
 
+function _estoqueSpQueryParams() {
+    var q = [];
+    var di = document.getElementById('estoque-sp-data-inicio');
+    var df = document.getElementById('estoque-sp-data-fim');
+    var hi = document.getElementById('estoque-sp-hora-inicio');
+    var hf = document.getElementById('estoque-sp-hora-fim');
+    var cp = document.getElementById('estoque-sp-filtro-codigo');
+    var cb = document.getElementById('estoque-sp-filtro-barras');
+    var pr = document.getElementById('estoque-sp-filtro-produto');
+    if (di && di.value) q.push('data_inicio=' + encodeURIComponent(di.value));
+    if (df && df.value) q.push('data_fim=' + encodeURIComponent(df.value));
+    if (hi && hi.value) q.push('hora_inicio=' + encodeURIComponent(hi.value));
+    if (hf && hf.value) q.push('hora_fim=' + encodeURIComponent(hf.value));
+    if (cp && cp.value.trim()) q.push('codigo_produto=' + encodeURIComponent(cp.value.trim()));
+    if (cb && cb.value.trim()) q.push('codigo_barras=' + encodeURIComponent(cb.value.trim()));
+    if (pr && pr.value.trim()) q.push('produto=' + encodeURIComponent(pr.value.trim()));
+    return q;
+}
+
+function _estoqueSpTemFiltrosAtivos() {
+    return _estoqueSpQueryParams().length > 0;
+}
+
+function _estoqueSpAtualizarResumoFiltros() {
+    var el = document.getElementById('estoque-sp-filtro-resumo');
+    if (!el) return;
+    var partes = [];
+    var di = document.getElementById('estoque-sp-data-inicio');
+    var df = document.getElementById('estoque-sp-data-fim');
+    var hi = document.getElementById('estoque-sp-hora-inicio');
+    var hf = document.getElementById('estoque-sp-hora-fim');
+    var cp = document.getElementById('estoque-sp-filtro-codigo');
+    var cb = document.getElementById('estoque-sp-filtro-barras');
+    var pr = document.getElementById('estoque-sp-filtro-produto');
+    if (di && di.value) partes.push('de ' + di.value);
+    if (df && df.value) partes.push('até ' + df.value);
+    if (hi && hi.value) partes.push('hora ≥ ' + hi.value);
+    if (hf && hf.value) partes.push('hora ≤ ' + hf.value);
+    if (cp && cp.value.trim()) partes.push('cód. ' + cp.value.trim());
+    if (cb && cb.value.trim()) partes.push('barras ' + cb.value.trim());
+    if (pr && pr.value.trim()) partes.push('produto “' + pr.value.trim() + '”');
+    el.textContent = partes.length ? ('Filtros: ' + partes.join(' · ')) : 'Sem filtros — exibindo todos os registros.';
+}
+
+function _estoqueSpCarregarAbaAtual() {
+    if (window._estoqueSpAbaAtiva === 'estoque-atual') {
+        void loadEstoqueSpTempoReal();
+    } else {
+        void loadEstoqueSpResumo();
+    }
+}
+
+function _estoqueSpLimparFiltros() {
+    ['estoque-sp-data-inicio', 'estoque-sp-data-fim', 'estoque-sp-hora-inicio', 'estoque-sp-hora-fim',
+        'estoque-sp-filtro-codigo', 'estoque-sp-filtro-barras', 'estoque-sp-filtro-produto'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    _estoqueSpAtualizarResumoFiltros();
+    _estoqueSpCarregarAbaAtual();
+}
+
 function initEstoqueSp() {
     var botoes = document.querySelectorAll('.estoque-sp-subtab[data-estoque-tab]');
     var pAtual = document.getElementById('estoque-sp-panel-estoque-atual');
@@ -3611,7 +3779,6 @@ function initEstoqueSp() {
     var pAvaria = document.getElementById('estoque-sp-panel-avaria');
     var pDesc = document.getElementById('estoque-sp-panel-descarte-perdas');
     var pPal = document.getElementById('estoque-sp-panel-palete-bloqueado');
-    var filtrosData = document.getElementById('estoque-sp-filtros-data');
     var lblAtualizado = document.getElementById('estoque-sp-atualizado-em');
     if (!botoes.length) return;
 
@@ -3628,13 +3795,8 @@ function initEstoqueSp() {
         if (pDesc) pDesc.classList.toggle('devolucoes-panel-active', tab === 'descarte-perdas');
         if (pPal) pPal.classList.toggle('devolucoes-panel-active', tab === 'palete-bloqueado');
         var ehAtual = tab === 'estoque-atual';
-        if (filtrosData) filtrosData.style.display = ehAtual ? 'none' : 'flex';
         if (lblAtualizado) lblAtualizado.style.display = ehAtual ? 'block' : 'none';
-        if (ehAtual) {
-            loadEstoqueSpTempoReal();
-        } else {
-            loadEstoqueSpResumo();
-        }
+        _estoqueSpCarregarAbaAtual();
     }
     window._estoqueSpMostrarAba = mostrar;
 
@@ -3644,7 +3806,13 @@ function initEstoqueSp() {
         });
     });
     var btnAt = document.getElementById('btn-estoque-sp-atualizar');
-    if (btnAt) btnAt.addEventListener('click', function() { loadEstoqueSpResumo(); });
+    if (btnAt) btnAt.addEventListener('click', function() {
+        _estoqueSpAtualizarResumoFiltros();
+        _estoqueSpCarregarAbaAtual();
+    });
+    var btnLimpar = document.getElementById('btn-estoque-sp-limpar-filtros');
+    if (btnLimpar) btnLimpar.addEventListener('click', _estoqueSpLimparFiltros);
+    _estoqueSpAtualizarResumoFiltros();
     var params = new URLSearchParams(window.location.search);
     var abaInicial = params.get('aba') || '';
     var abasValidas = ['estoque-atual', 'saida', 'entrada-devolucao', 'entrada-terceiros', 'reentregas', 'avaria', 'descarte-perdas', 'palete-bloqueado'];
@@ -3667,7 +3835,9 @@ async function loadEstoqueSpTempoReal(silencioso) {
         tbody.innerHTML = '<tr><td colspan="7" class="loading">Carregando estoque atual...</td></tr>';
     }
     try {
-        var data = await _modFetchGet('/estoque-sp/tempo-real', 60000);
+        var q = _estoqueSpQueryParams();
+        var url = '/estoque-sp/tempo-real' + (q.length ? '?' + q.join('&') : '');
+        var data = await _modFetchGet(url, 60000);
         if (!data || data.erro) {
             if (!silencioso) {
                 showMessage(_modErroMsg(data, 'Erro ao carregar estoque em tempo real.'), 'error');
@@ -3687,7 +3857,8 @@ async function loadEstoqueSpTempoReal(silencioso) {
     var ent = (ea.total_entrada_devolucao || 0) + (ea.total_entrada_terceiros || 0);
     if (elE) elE.textContent = _estoqueSpFmtNum(ent);
     if (lbl) {
-        lbl.textContent = 'Atualizado em: ' + (data.atualizado_em || '—') + ' · próxima atualização em ~30s';
+        var sufixo = _estoqueSpTemFiltrosAtivos() ? ' · filtros ativos' : ' · próxima atualização em ~30s';
+        lbl.textContent = 'Atualizado em: ' + (data.atualizado_em || '—') + sufixo;
         lbl.style.display = 'block';
     }
     if (!tbody) return;
@@ -3715,12 +3886,9 @@ async function loadEstoqueSpResumo() {
         var tb = document.getElementById(id);
         if (tb) tb.innerHTML = '<tr><td colspan="5" class="loading">Carregando...</td></tr>';
     });
-    var di = document.getElementById('estoque-sp-data-inicio');
-    var df = document.getElementById('estoque-sp-data-fim');
-    var q = [];
-    if (di && di.value) q.push('data_inicio=' + encodeURIComponent(di.value));
-    if (df && df.value) q.push('data_fim=' + encodeURIComponent(df.value));
+    var q = _estoqueSpQueryParams();
     var url = '/estoque-sp/resumo' + (q.length ? '?' + q.join('&') : '');
+    _estoqueSpAtualizarResumoFiltros();
     try {
         var data = await _modFetchGet(url, 60000);
         if (!data || data.erro) {
@@ -3738,7 +3906,7 @@ async function loadEstoqueSpResumo() {
         var elL = document.getElementById(linhasId);
         var elQ = document.getElementById(qtdId);
         if (elL) elL.textContent = String(secData.total_linhas || 0);
-        if (elQ) elQ.textContent = String(secData.total_quantidade || 0);
+        if (elQ) elQ.textContent = _estoqueSpFmtNum(secData.total_quantidade || 0);
         var tbody = document.getElementById(tbodyId);
         if (!tbody) return;
         var itens = secData.itens || [];
@@ -4031,19 +4199,109 @@ function loadWmsControlePaletesAba() {
 }
 
 function wmsInitHistoricoNfAba() {
+    var ids = ['wms-hist-nf', 'wms-hist-rec-id', 'wms-hist-sku', 'wms-hist-produto', 'wms-hist-palete', 'wms-hist-destino'];
+    ids.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el && !el.dataset.bound) {
+            el.dataset.bound = '1';
+            el.addEventListener('keydown', function(ev) {
+                if (ev.key === 'Enter') { ev.preventDefault(); loadWmsHistoricoNf(); }
+            });
+        }
+    });
     var nfIn = document.getElementById('wms-hist-nf');
-    if (nfIn && !nfIn.dataset.bound) {
-        nfIn.dataset.bound = '1';
-        nfIn.addEventListener('keydown', function(ev) {
-            if (ev.key === 'Enter') { ev.preventDefault(); loadWmsHistoricoNf(); }
-        });
-    }
     var recNf = document.getElementById('wms-rec-nf');
     if (nfIn && recNf && String(recNf.value || '').trim() && !String(nfIn.value || '').trim()) {
         nfIn.value = recNf.value.trim();
     }
+    var bLimpar = document.getElementById('btn-wms-historico-limpar');
+    if (bLimpar && !bLimpar.dataset.bound) {
+        bLimpar.dataset.bound = '1';
+        bLimpar.addEventListener('click', wmsLimparFiltrosHistoricoNf);
+    }
 }
 
+function wmsLimparFiltrosHistoricoNf() {
+    ['wms-hist-sku', 'wms-hist-produto', 'wms-hist-palete', 'wms-hist-destino', 'wms-hist-data-ini', 'wms-hist-data-fim'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    var st = document.getElementById('wms-hist-status');
+    if (st) st.value = '';
+    var res = document.getElementById('wms-hist-filtro-resumo');
+    if (res) { res.style.display = 'none'; res.textContent = ''; }
+    var nf = (document.getElementById('wms-hist-nf') || {}).value || '';
+    var rid = (document.getElementById('wms-hist-rec-id') || {}).value || '';
+    if (String(nf).trim() || String(rid).trim()) loadWmsHistoricoNf();
+}
+
+function _wmsHistFiltrosQuery() {
+    var q = [];
+    var nf = (document.getElementById('wms-hist-nf') || {}).value || '';
+    var rid = (document.getElementById('wms-hist-rec-id') || {}).value || '';
+    var sku = (document.getElementById('wms-hist-sku') || {}).value || '';
+    var prod = (document.getElementById('wms-hist-produto') || {}).value || '';
+    var pal = (document.getElementById('wms-hist-palete') || {}).value || '';
+    var dest = (document.getElementById('wms-hist-destino') || {}).value || '';
+    var st = (document.getElementById('wms-hist-status') || {}).value || '';
+    var di = (document.getElementById('wms-hist-data-ini') || {}).value || '';
+    var df = (document.getElementById('wms-hist-data-fim') || {}).value || '';
+    if (String(nf).trim()) q.push('numero_nf=' + encodeURIComponent(String(nf).trim()));
+    if (String(rid).trim()) q.push('recebimento_id=' + encodeURIComponent(String(rid).trim()));
+    if (String(sku).trim()) q.push('sku=' + encodeURIComponent(String(sku).trim()));
+    if (String(prod).trim()) q.push('produto=' + encodeURIComponent(String(prod).trim()));
+    if (String(pal).trim()) q.push('palete=' + encodeURIComponent(String(pal).trim()));
+    if (String(dest).trim()) q.push('destino=' + encodeURIComponent(String(dest).trim()));
+    if (String(st).trim()) q.push('status=' + encodeURIComponent(String(st).trim()));
+    if (String(di).trim()) q.push('data_inicio=' + encodeURIComponent(String(di).trim()));
+    if (String(df).trim()) q.push('data_fim=' + encodeURIComponent(String(df).trim()));
+    return q;
+}
+
+function _wmsAtualizarResumoFiltrosHistoricoNf(data) {
+    var res = document.getElementById('wms-hist-filtro-resumo');
+    if (!res) return;
+    var parts = [];
+    var fa = (data && data.filtros_aplicados) || {};
+    if (fa.sku) parts.push('SKU: ' + fa.sku);
+    if (fa.produto) parts.push('Produto: ' + fa.produto);
+    if (fa.palete) parts.push('Palete: ' + fa.palete);
+    if (fa.destino) parts.push('Destino: ' + fa.destino);
+    if (fa.status) parts.push('Status: ' + fa.status);
+    if (fa.data_inicio || fa.data_fim) parts.push('Período bipagem: ' + (fa.data_inicio || '…') + ' → ' + (fa.data_fim || '…'));
+    if (parts.length) {
+        res.textContent = 'Filtros ativos: ' + parts.join(' · ');
+        res.style.display = '';
+    } else {
+        res.style.display = 'none';
+        res.textContent = '';
+    }
+}
+
+async function loadWmsHistoricoNf() {
+    var box = document.getElementById('wms-historico-conteudo');
+    if (!box) return;
+    var nf = (document.getElementById('wms-hist-nf') || {}).value || '';
+    var rid = (document.getElementById('wms-hist-rec-id') || {}).value || '';
+    if (!String(nf).trim() && !String(rid).trim()) {
+        showMessage('Informe o número da NF ou o ID do recebimento WMS.', 'warning');
+        return;
+    }
+    box.innerHTML = '<p class="loading">Carregando histórico...</p>';
+    var q = _wmsHistFiltrosQuery();
+    try {
+        var data = await _wmsFetchGet('/wms/historico-nf?' + q.join('&'), 60000);
+        if (!data || data.erro) {
+            box.innerHTML = '<p class="loading" style="color:#c62828;">' + escHtml(_modErroMsg(data, 'Histórico não encontrado.')) + '</p>';
+            _wmsAtualizarResumoFiltrosHistoricoNf(null);
+            return;
+        }
+        _wmsAtualizarResumoFiltrosHistoricoNf(data);
+        _wmsPaintHistoricoNf(box, data);
+    } catch (e) {
+        box.innerHTML = '<p class="loading" style="color:#c62828;">' + escHtml((e && e.message) || 'Erro ao carregar histórico.') + '</p>';
+    }
+}
 function wmsInitRelatoriosAba() {
     var di = document.getElementById('wms-rel-data-inicio');
     var df = document.getElementById('wms-rel-data-fim');
@@ -4059,37 +4317,27 @@ function wmsInitRelatoriosAba() {
     if (!df.value) df.value = fmt(hoje);
 }
 
-async function loadWmsHistoricoNf() {
-    var box = document.getElementById('wms-historico-conteudo');
-    if (!box) return;
-    var nf = (document.getElementById('wms-hist-nf') || {}).value || '';
-    var rid = (document.getElementById('wms-hist-rec-id') || {}).value || '';
-    if (!String(nf).trim() && !String(rid).trim()) {
-        showMessage('Informe o número da NF ou o ID do recebimento WMS.', 'warning');
-        return;
-    }
-    box.innerHTML = '<p class="loading">Carregando histórico...</p>';
-    var q = [];
-    if (String(nf).trim()) q.push('numero_nf=' + encodeURIComponent(String(nf).trim()));
-    if (String(rid).trim()) q.push('recebimento_id=' + encodeURIComponent(String(rid).trim()));
-    try {
-        var data = await _wmsFetchGet('/wms/historico-nf?' + q.join('&'), 60000);
-        if (!data || data.erro) {
-            box.innerHTML = '<p class="loading" style="color:#c62828;">' + escHtml(_modErroMsg(data, 'Histórico não encontrado.')) + '</p>';
-            return;
-        }
-        _wmsPaintHistoricoNf(box, data);
-    } catch (e) {
-        box.innerHTML = '<p class="loading" style="color:#c62828;">' + escHtml((e && e.message) || 'Erro ao carregar histórico.') + '</p>';
-    }
-}
-
 function _wmsPaintHistoricoNf(box, data) {
     var rec = data.recebimento || {};
     var per = data.periodo || {};
     var tot = data.totais || {};
     var ter = data.terceiros || {};
+    var sit = data.situacao_recebimento || {};
     var html = '';
+
+    if (data.filtro_sem_resultado) {
+        html += '<p class="info-text" style="color:#e65100;margin-bottom:12px;">' + escHtml(data.filtro_sem_resultado) + '</p>';
+    }
+
+    if (sit.rotulo) {
+        var sitBg = sit.situacao === 'finalizado' ? '#e3f2fd' : (sit.situacao === 'em_andamento' ? '#fff8e1' : '#f1f8e9');
+        var sitBd = sit.situacao === 'finalizado' ? '#90caf9' : (sit.situacao === 'em_andamento' ? '#ffcc80' : '#c5e1a5');
+        html += '<div class="info-text" style="margin-bottom:14px;padding:12px 14px;border-radius:8px;background:' + sitBg + ';border:1px solid ' + sitBd + ';">';
+        html += '<strong style="color:' + escHtml(sit.cor || '#1565c0') + ';">' + escHtml(sit.rotulo) + '</strong>';
+        if (sit.detalhe) html += '<br><span style="font-size:13px;">' + escHtml(sit.detalhe) + '</span>';
+        html += '</div>';
+    }
+
     html += '<div class="extrato-resumo-box" style="margin-bottom:14px;">';
     html += '<h4 style="margin:0 0 10px 0;color:#1976D2;">NF ' + escHtml(rec.numero_nf || '—') + ' · Recebimento WMS #' + escHtml(rec.id || '—') + '</h4>';
     html += '<div class="extrato-resumo-grid">';
@@ -4124,31 +4372,45 @@ function _wmsPaintHistoricoNf(box, data) {
     var itensNf = data.itens_nf || [];
     if (itensNf.length) {
         html += '<h4 style="margin:14px 0 8px 0;">Conferência NF × WMS</h4>';
-        html += '<div class="table-container"><table class="data-table"><thead><tr><th>Item</th><th>SKU</th><th>Descrição</th><th>Qtd NF</th><th>Qtd WMS</th><th>Pendente</th><th>Status</th><th>EAN</th></tr></thead><tbody>';
+        html += '<div class="table-container"><table class="data-table"><thead><tr><th>Item</th><th>SKU</th><th>Descrição</th><th>Qtd NF</th><th>Qtd bipada</th><th>Guardada</th><th>Pendente</th><th>Status</th><th>Andamento / destino</th></tr></thead><tbody>';
         html += itensNf.map(function(it) {
-            var st = String(it.status_wms || '').toLowerCase();
-            var stLbl = (st === 'concluido' || st === 'ok') ? '✓ Concluído' : 'Pendente';
-            var stColor = (st === 'concluido' || st === 'ok') ? '#2e7d32' : '#e65100';
-            return '<tr><td>' + escHtml(it.n_item) + '</td><td><strong>' + escHtml(it.sku) + '</strong></td><td>' + escHtml(it.descricao) + '</td>'
-                + '<td>' + escHtml(it.quantidade_xml) + '</td><td><strong>' + escHtml(it.quantidade_wms) + '</strong></td>'
-                + '<td>' + escHtml(it.pendente_wms) + '</td><td><strong style="color:' + stColor + ';">' + escHtml(stLbl) + '</strong></td><td>' + escHtml(it.codigo_ean || '') + '</td></tr>';
+            var stLbl = _wmsStatusItemNfLabel(it.status_wms);
+            var andamento = it.resumo_andamento && it.resumo_andamento !== '—'
+                ? it.resumo_andamento
+                : _wmsResumoAndamentoItemNf(it);
+            return '<tr><td>' + escHtml(it.n_item) + '</td><td><strong>' + escHtml(it.sku) + '</strong></td>'
+                + '<td>' + escHtml(it.descricao || '—') + '</td>'
+                + '<td>' + escHtml(it.quantidade_xml) + '</td>'
+                + '<td><strong>' + escHtml(it.quantidade_wms != null ? it.quantidade_wms : '0') + '</strong></td>'
+                + '<td>' + escHtml(it.quantidade_armazenada != null ? it.quantidade_armazenada : '0') + '</td>'
+                + '<td>' + escHtml(it.pendente_wms != null ? it.pendente_wms : '0') + '</td>'
+                + '<td>' + stLbl + '</td>'
+                + '<td style="font-size:12px;">' + escHtml(andamento) + '</td></tr>';
         }).join('');
         html += '</tbody></table></div>';
     }
 
     var bipados = data.itens_bipados || [];
-    html += '<h4 style="margin:14px 0 8px 0;">Tudo que foi bipado</h4>';
+    html += '<h4 style="margin:14px 0 8px 0;">Detalhe do que foi bipado</h4>';
     if (!bipados.length) {
-        html += '<p class="info-text">Nenhum item bipado neste recebimento.</p>';
+        html += '<p class="info-text">Nenhum item bipado' + (data.filtro_sem_resultado ? '' : ' neste recebimento') + '.</p>';
     } else {
-        html += '<div class="table-container"><table class="data-table"><thead><tr><th>Data/hora</th><th>SKU</th><th>Descrição</th><th>Lote</th><th>Produção</th><th>Validade</th><th>UP</th><th>Cx</th><th>Palete (22)</th><th>Status palete</th></tr></thead><tbody>';
+        html += '<div class="table-container"><table class="data-table"><thead><tr><th>Data/hora</th><th>Item NF</th><th>SKU</th><th>Descrição</th><th>Cx bipadas</th><th>Classificação</th><th>Destino</th><th>Palete</th><th>Status palete</th><th>Lote</th><th>UP</th></tr></thead><tbody>';
         html += bipados.map(function(it) {
-            return '<tr><td>' + escHtml(formatarDataHoraPtBR(it.bipado_em)) + '</td><td><strong>' + escHtml(it.sku) + '</strong></td>'
-                + '<td>' + escHtml(it.descricao) + '</td><td>' + escHtml(it.lote || '—') + '</td>'
-                + '<td>' + escHtml(formatarDataPtBR(it.data_producao)) + '</td><td>' + escHtml(formatarDataPtBR(it.data_validade)) + '</td>'
-                + '<td>' + escHtml(it.rg_caixa || '—') + '</td>'
+            var dest = it.destino_resumo || it.endereco_destino || '—';
+            var disp = it.disposicao_rotulo || 'Estoque normal';
+            var dispStyle = (it.disposicao === 'avaria') ? 'color:#6a1b9a;font-weight:600;' : '';
+            return '<tr><td>' + escHtml(formatarDataHoraPtBR(it.bipado_em)) + '</td>'
+                + '<td>' + escHtml(it.n_item_nf || '—') + '</td>'
+                + '<td><strong>' + escHtml(it.sku) + '</strong></td>'
+                + '<td>' + escHtml(it.descricao || '—') + '</td>'
                 + '<td><strong>' + escHtml(it.quantidade_caixas) + '</strong></td>'
-                + '<td>' + escHtml(it.palete_etiqueta || '—') + '</td><td>' + escHtml(it.palete_status || '—') + '</td></tr>';
+                + '<td style="' + dispStyle + '">' + escHtml(disp) + '</td>'
+                + '<td><strong>' + escHtml(dest) + '</strong></td>'
+                + '<td>' + escHtml(it.palete_etiqueta || '—') + '</td>'
+                + '<td>' + escHtml(it.palete_status || '—') + '</td>'
+                + '<td>' + escHtml(it.lote || '—') + '</td>'
+                + '<td>' + escHtml(it.rg_caixa || '—') + '</td></tr>';
         }).join('');
         html += '</tbody></table></div>';
     }
@@ -4452,6 +4714,76 @@ async function loadWmsMapa3d() {
     }
 }
 
+function _wmsEndSlotHtml(p) {
+    var st = (p.status || '').toLowerCase();
+    var cls = st === 'ocupada' ? 'wms-end-slot--ocup' : (st === 'nao_criada' ? 'wms-end-slot--nao' : 'wms-end-slot--livre');
+    var lbl = st === 'ocupada' ? 'ocup.' : (st === 'nao_criada' ? '—' : 'livre');
+    var tit = p.codigo_endereco || ('Pos ' + (p.coluna != null ? p.coluna : p.posicao));
+    if (st === 'ocupada') {
+        tit += ' · Palete ' + (p.etiqueta || p.palete_id || '?');
+        if (p.qtd_caixas) tit += ' · ' + p.qtd_caixas + ' cx';
+    } else if (p.barcode_longarina) {
+        tit += ' · ' + p.barcode_longarina;
+    } else if (p.coluna != null && p.nivel != null) {
+        tit += ' · col ' + p.coluna + ' nív ' + p.nivel;
+    }
+    if (p.categoria_zona) tit += ' · cat ' + p.categoria_zona;
+    var num = p.nivel != null ? String(p.nivel) : String(p.posicao);
+    return '<div class="wms-end-slot ' + cls + '" title="' + escHtml(tit) + '"><strong>' + escHtml(num) + '</strong>' + escHtml(lbl) + '</div>';
+}
+
+function _wmsEndSlotPlaceholder(rua, coluna, nivel) {
+    return '<div class="wms-end-slot wms-end-slot--nao" title="Rua ' + escHtml(rua) + ' · pos ' + coluna + ' · nív ' + nivel + '"><strong>' + escHtml(String(nivel)) + '</strong>—</div>';
+}
+
+function _wmsEndPosicoesTemNiveis(posicoes) {
+    if (!posicoes || !posicoes.length) return false;
+    return posicoes.some(function(p) { return p.nivel != null && p.coluna != null; });
+}
+
+function _wmsEndRenderPosicoesPorNiveis(posicoes, maxNiveis) {
+    maxNiveis = maxNiveis || 5;
+    var porRua = {};
+    var ruaOrder = [];
+    (posicoes || []).forEach(function(p) {
+        var rua = String(p.rua || '').toUpperCase() || '—';
+        var col = parseInt(p.coluna, 10);
+        if (!col) col = parseInt(p.posicao, 10) || 0;
+        if (!porRua[rua]) {
+            porRua[rua] = {};
+            ruaOrder.push(rua);
+        }
+        if (!porRua[rua][col]) porRua[rua][col] = {};
+        var n = parseInt(p.nivel, 10) || 1;
+        porRua[rua][col][n] = p;
+    });
+    ruaOrder.sort();
+
+    var html = '<div class="wms-end-rack">';
+    ruaOrder.forEach(function(rua) {
+        var cols = porRua[rua];
+        var colNums = Object.keys(cols).map(function(k) { return parseInt(k, 10); }).sort(function(a, b) { return a - b; });
+        html += '<div class="wms-end-rack-rua">';
+        if (ruaOrder.length > 1) {
+            html += '<div class="wms-end-rack-rua-label">Rua ' + escHtml(rua) + '</div>';
+        }
+        html += '<div class="wms-end-rack-cols">';
+        colNums.forEach(function(colNum) {
+            var niveisMap = cols[colNum];
+            html += '<div class="wms-end-rack-col">';
+            for (var n = maxNiveis; n >= 1; n--) {
+                var slot = niveisMap[n];
+                html += slot ? _wmsEndSlotHtml(slot) : _wmsEndSlotPlaceholder(rua, colNum, n);
+            }
+            html += '<div class="wms-end-rack-col-pos">' + escHtml(String(colNum)) + '</div>';
+            html += '</div>';
+        });
+        html += '</div></div>';
+    });
+    html += '</div>';
+    return html;
+}
+
 function _wmsRenderEnderecoRow(grupo) {
     var slots = grupo.slots || grupo.total_slots || grupo.total || 0;
     var ocup = grupo.ocupadas || 0;
@@ -4471,22 +4803,15 @@ function _wmsRenderEnderecoRow(grupo) {
         rowCls += ' wms-end-row--clickable';
         dataAttr = ' data-camara="' + escHtml(String(grupo.camara)) + '" data-label="' + escHtml(grupo.label || '') + '" role="button" tabindex="0" title="Clique para ver em 3D"';
     }
-    var posHtml = (grupo.posicoes || []).map(function(p) {
-        var st = (p.status || '').toLowerCase();
-        var cls = st === 'ocupada' ? 'wms-end-slot--ocup' : (st === 'nao_criada' ? 'wms-end-slot--nao' : 'wms-end-slot--livre');
-        var lbl = st === 'ocupada' ? 'ocup.' : (st === 'nao_criada' ? '—' : 'livre');
-        var tit = p.codigo_endereco || ('Pos ' + p.posicao);
-        if (st === 'ocupada') {
-            tit += ' · Palete ' + (p.etiqueta || p.palete_id || '?');
-            if (p.qtd_caixas) tit += ' · ' + p.qtd_caixas + ' cx';
-        } else if (p.barcode_longarina) {
-            tit += ' · ' + p.barcode_longarina;
-        } else if (p.coluna != null && p.nivel != null) {
-            tit += ' · col ' + p.coluna + ' nív ' + p.nivel;
-        }
-        if (p.categoria_zona) tit += ' · cat ' + p.categoria_zona;
-        return '<div class="wms-end-slot ' + cls + '" title="' + escHtml(tit) + '"><strong>' + escHtml(String(p.posicao)) + '</strong>' + escHtml(lbl) + '</div>';
-    }).join('');
+    if (_wmsEndPosicoesTemNiveis(grupo.posicoes)) {
+        rowCls += ' wms-end-row--rack';
+    }
+    var posHtml;
+    if (_wmsEndPosicoesTemNiveis(grupo.posicoes)) {
+        posHtml = _wmsEndRenderPosicoesPorNiveis(grupo.posicoes, grupo.niveis || 5);
+    } else {
+        posHtml = (grupo.posicoes || []).map(_wmsEndSlotHtml).join('');
+    }
     return '<div class="' + rowCls + '"' + dataAttr + '>'
         + '<div class="wms-end-row-titulo">' + escHtml(grupo.label || grupo.descricao || '—')
         + (sub ? '<span class="wms-end-row-sub">' + escHtml(sub) + '</span>' : '')
@@ -4507,7 +4832,8 @@ var _WMS_END2D_LEGENDA = [
     { cls: '', color: '#8d6e63', border: '#f57c00', label: 'DESCARTE' },
     { cls: '', color: '#ab47bc', border: '#f57c00', label: 'AVARIA' },
     { cls: '', color: '#7e57c2', border: '#f57c00', label: 'REENTREGAS' },
-    { cls: '', color: '#ffc107', border: '#f9a825', label: 'Entrada da câmara' }
+    { cls: '', color: '#ffc107', border: '#f9a825', label: 'Entrada da câmara' },
+    { cls: '', color: '#eceff1', border: '#90a4ae', label: 'Cada coluna = posição · quadrados 1–5 = níveis (1 embaixo, 5 em cima)' }
 ];
 
 function _wmsEndRenderLegenda2d() {
@@ -4540,17 +4866,22 @@ function _wmsEndSlotsPorRua(slots, rua) {
     (slots || []).forEach(function(s) {
         if ((s.rua || '') !== rua) return;
         var p = parseInt(s.posicao, 10) || 0;
-        if (!map[p]) map[p] = [];
-        map[p].push(s);
+        var n = parseInt(s.nivel, 10) || 1;
+        if (!p) return;
+        if (!map[p]) map[p] = {};
+        map[p][n] = s;
     });
     return map;
 }
 
-function _wmsEndPickSlot(arr) {
-    if (!arr || !arr.length) return null;
-    return arr.find(function(s) { return (s.status || '') === 'ocupada'; })
-        || arr.find(function(s) { return s.destino_acao; })
-        || arr[0];
+function _wmsEndMaxNiveisCamara(cam, slots, ruas) {
+    var max = parseInt(cam && cam.niveis, 10) || 5;
+    (slots || []).forEach(function(s) {
+        if (ruas && ruas.indexOf(s.rua) < 0) return;
+        var n = parseInt(s.nivel, 10) || 0;
+        if (n > max) max = n;
+    });
+    return Math.max(1, Math.min(max, 8));
 }
 
 function _wmsEndMaxPosicao(slots, ruas) {
@@ -4645,7 +4976,8 @@ function _wmsEndDrawSlotCell(ctx, sx, sy, sw, sh, st) {
     }
 }
 
-function _wmsEndDrawRackColuna(ctx, x, y, w, h, rua, posMap, maxPos) {
+function _wmsEndDrawRackColuna(ctx, x, y, w, h, rua, posMap, maxPos, maxNiveis) {
+    maxNiveis = maxNiveis || 5;
     ctx.save();
     var beamG = ctx.createLinearGradient(x, y, x + w, y);
     beamG.addColorStop(0, '#bf360c');
@@ -4664,21 +4996,32 @@ function _wmsEndDrawRackColuna(ctx, x, y, w, h, rua, posMap, maxPos) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText('RUA ' + rua, x + w / 2, y - 7);
-    var cellH = h / Math.max(maxPos, 1);
+
+    var colW = w / Math.max(maxPos, 1);
+    var padX = 1.5;
+    var padY = 2;
+    var cellH = (h - padY * 2) / maxNiveis;
+
     for (var p = 1; p <= maxPos; p++) {
-        var cy = y + (p - 1) * cellH;
-        var slot = posMap[p] ? _wmsEndPickSlot(posMap[p]) : null;
-        var st = _wmsEndCellStyle(slot);
-        var pad = 2.5;
-        var cw = w - pad * 2;
-        var ch = Math.max(cellH - pad * 2, 3);
-        _wmsEndDrawSlotCell(ctx, x + pad, cy + pad, cw, ch, st);
-        if (parseInt(slot && slot.nivel, 10) === 1 && ch > 6) {
-            ctx.fillStyle = 'rgba(21,101,192,0.85)';
-            ctx.font = 'bold 6px Segoe UI, sans-serif';
-            ctx.textAlign = 'right';
-            ctx.textBaseline = 'bottom';
-            ctx.fillText('P', x + w - 4, cy + cellH - 3);
+        var cx = x + (p - 1) * colW + padX;
+        var cw = Math.max(colW - padX * 2, 2);
+        var niveisMap = posMap[p] || {};
+        for (var n = 1; n <= maxNiveis; n++) {
+            var rowFromTop = maxNiveis - n;
+            var cy = y + padY + rowFromTop * cellH;
+            var ch = Math.max(cellH - 1.5, 2);
+            var slot = niveisMap[n] || null;
+            var st = _wmsEndCellStyle(slot);
+            _wmsEndDrawSlotCell(ctx, cx, cy, cw, ch, st);
+            if (cw >= 7 && ch >= 5) {
+                ctx.save();
+                ctx.fillStyle = (st.fill === '#c62828') ? 'rgba(255,255,255,0.92)' : 'rgba(55,71,79,0.75)';
+                ctx.font = (ch >= 8 ? 'bold 7px' : 'bold 6px') + ' Segoe UI, system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(String(n), cx + cw / 2, cy + ch / 2);
+                ctx.restore();
+            }
         }
     }
     ctx.restore();
@@ -4827,8 +5170,9 @@ function _wmsEndDrawCamaraFria(ctx, cam, x, y, bw, bh, regions) {
 
     var mapL = _wmsEndSlotsPorRua(slots, ruaL);
     var mapR = _wmsEndSlotsPorRua(slots, ruaR);
-    _wmsEndDrawRackColuna(ctx, rackX_L, innerY, rackW, innerH, ruaL, mapL, maxPos);
-    _wmsEndDrawRackColuna(ctx, rackX_R, innerY, rackW, innerH, ruaR, mapR, maxPos);
+    var maxNiv = _wmsEndMaxNiveisCamara(cam, slots, ruas);
+    _wmsEndDrawRackColuna(ctx, rackX_L, innerY, rackW, innerH, ruaL, mapL, maxPos, maxNiv);
+    _wmsEndDrawRackColuna(ctx, rackX_R, innerY, rackW, innerH, ruaR, mapR, maxPos, maxNiv);
     _wmsEndDrawAisle(ctx, aisleX, innerY, aisleW, innerH, { refrigerado: isRefrig });
 
     ctx.textAlign = 'center';
@@ -5205,6 +5549,7 @@ async function loadWmsEnderecamento() {
                 ocupadas: g.ocupadas,
                 livres: g.livres,
                 percentual_ocupacao: g.percentual_ocupacao,
+                niveis: g.niveis || 5,
                 posicoes: g.posicoes || []
             };
         });
@@ -5221,6 +5566,7 @@ async function loadWmsEnderecamento() {
                 ocupadas: c.ocupadas,
                 livres: c.livres,
                 percentual_ocupacao: c.percentual_ocupacao,
+                niveis: c.niveis || 5,
                 posicoes: c.posicoes || []
             };
         });
@@ -5358,6 +5704,8 @@ function initWmsEnderecamento() {
     });
     var bExclRecNf = document.getElementById('btn-wms-excluir-recebimento-nf');
     if (bExclRecNf) bExclRecNf.addEventListener('click', wmsExcluirRecebimentoAtualNf);
+    var bReinRecNf = document.getElementById('btn-wms-reiniciar-recebimento-nf');
+    if (bReinRecNf) bReinRecNf.addEventListener('click', wmsReiniciarRecebimentoAtualNf);
     var bConf = document.getElementById('btn-wms-conferir-palete');
     if (bConf) bConf.addEventListener('click', wmsConferirPalete);
     var bBipPal = document.getElementById('btn-wms-bip-palete');
@@ -5395,6 +5743,7 @@ function initWmsEnderecamento() {
     if (bFin) bFin.addEventListener('click', wmsFinalizarRecebimento);
     var bInv = document.getElementById('btn-wms-novo-inventario');
     if (bInv) bInv.addEventListener('click', wmsCriarInventario);
+    wmsInitInventarioUi();
     var bEnd = document.getElementById('btn-wms-enderecamento-atualizar');
     if (bEnd) bEnd.addEventListener('click', loadWmsEnderecamento);
     var bEndVoltar = document.getElementById('btn-wms-end-voltar-2d');
@@ -5425,6 +5774,20 @@ function initWmsEnderecamento() {
     if (bRel) bRel.addEventListener('click', loadWmsRelatorio);
     var bRelCsv = document.getElementById('btn-wms-relatorio-csv');
     if (bRelCsv) bRelCsv.addEventListener('click', wmsExportarRelatorioCsv);
+    var bTransf = document.getElementById('btn-wms-transferir-palete');
+    if (bTransf && !bTransf.dataset.bound) {
+        bTransf.dataset.bound = '1';
+        bTransf.addEventListener('click', function() { void wmsTransferirPalete(); });
+    }
+    ['wms-mov-palete', 'wms-mov-destino'].forEach(function(id) {
+        var inp = document.getElementById(id);
+        if (inp && !inp.dataset.movEnter) {
+            inp.dataset.movEnter = '1';
+            inp.addEventListener('keydown', function(ev) {
+                if (ev.key === 'Enter') { ev.preventDefault(); void wmsTransferirPalete(); }
+            });
+        }
+    });
 
     window._wmsIniciarModulo = function(tab) {
         var abasWms = ['painel', 'localizacoes', 'etiquetas-longarina', 'produtos', 'movimentacoes', 'recebimento', 'controle-paletes', 'historico-nf', 'relatorios', 'separacao', 'enderecamento', 'inventario', 'pesquisa'];
@@ -5914,24 +6277,122 @@ async function loadWmsProdutos() {
 }
 
 async function loadWmsMovimentacoes() {
-    _wmsSetTbody('wms-tbody-movimentacoes', 6, '<span class="loading">Carregando...</span>');
+    _wmsSetTbody('wms-tbody-movimentacoes', 7, '<span class="loading">Carregando...</span>');
+    _wmsSetTbody('wms-tbody-movimentacoes-historico', 8, '<span class="loading">Carregando...</span>');
     var tb = document.getElementById('wms-tbody-movimentacoes');
+    var tbHist = document.getElementById('wms-tbody-movimentacoes-historico');
     try {
-        var data = await _wmsFetchGet('/wms/movimentacoes?status=pendente', 45000);
-        if (!tb) return;
-        if (!data || data.erro) {
-            tb.innerHTML = '<tr><td colspan="6">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar movimentações.')) + '</td></tr>';
-            return;
+        var dataPend = await _wmsFetchGet('/wms/movimentacoes?status=pendente', 45000);
+        var dataHist = await _wmsFetchGet('/wms/movimentacoes?historico=1&limite=120', 45000);
+        if (tb) {
+            if (!dataPend || dataPend.erro) {
+                tb.innerHTML = '<tr><td colspan="7">' + escHtml(_wmsErroMsg(dataPend, 'Erro ao carregar pendências.')) + '</td></tr>';
+            } else {
+                var rows = dataPend.movimentacoes || [];
+                tb.innerHTML = rows.length ? rows.map(function(m) {
+                    return '<tr><td>' + escHtml(m.id) + '</td><td>' + escHtml(_wmsLabelTipoMovimentacao(m.tipo)) + '</td>'
+                        + '<td><strong>' + escHtml(m.etiqueta || '—') + '</strong></td>'
+                        + '<td>' + escHtml(m.origem || '—') + '</td>'
+                        + '<td>' + escHtml(m.destino || '—') + '</td>'
+                        + '<td>' + escHtml(m.prioridade) + '</td>'
+                        + '<td><button type="button" class="btn btn-sm btn-success" onclick="wmsConcluirMovimentacao(' + m.id + ')">Concluir</button></td></tr>';
+                }).join('') : '<tr><td colspan="7">Nenhuma movimentação pendente.</td></tr>';
+            }
         }
-        var rows = data.movimentacoes || [];
-        tb.innerHTML = rows.length ? rows.map(function(m) {
-            return '<tr><td>' + escHtml(m.id) + '</td><td>' + escHtml(m.tipo) + '</td><td>' + escHtml(m.etiqueta) + '</td><td>' + escHtml(m.destino || '') + '</td><td>' + escHtml(m.prioridade) + '</td><td><button type="button" class="btn btn-sm btn-success" onclick="wmsConcluirMovimentacao(' + m.id + ')">Concluir</button></td></tr>';
-        }).join('') : '<tr><td colspan="6">Nenhuma movimentação pendente.</td></tr>';
+        if (tbHist) {
+            if (!dataHist || dataHist.erro) {
+                tbHist.innerHTML = '<tr><td colspan="8">' + escHtml(_wmsErroMsg(dataHist, 'Erro ao carregar histórico.')) + '</td></tr>';
+            } else {
+                var hist = dataHist.historico || [];
+                tbHist.innerHTML = hist.length ? hist.map(function(m) {
+                    var quando = m.concluida_em || m.criado_em || '—';
+                    var user = m.concluida_por || m.criado_por || '—';
+                    return '<tr><td>' + escHtml(m.id) + '</td><td>' + escHtml(_wmsLabelTipoMovimentacao(m.tipo)) + '</td>'
+                        + '<td>' + escHtml(_wmsLabelStatusMovimentacao(m.status)) + '</td>'
+                        + '<td><strong>' + escHtml(m.etiqueta || '—') + '</strong></td>'
+                        + '<td>' + escHtml(m.origem || '—') + '</td>'
+                        + '<td>' + escHtml(m.destino || '—') + '</td>'
+                        + '<td>' + escHtml(quando) + '</td>'
+                        + '<td>' + escHtml(user) + '</td></tr>';
+                }).join('') : '<tr><td colspan="8">Nenhum registro de movimentação ainda.</td></tr>';
+            }
+        }
     } catch (e) {
-        if (tb) tb.innerHTML = '<tr><td colspan="6">' + escHtml((e && e.message) || 'Erro ao carregar movimentações.') + '</td></tr>';
+        if (tb) tb.innerHTML = '<tr><td colspan="7">' + escHtml((e && e.message) || 'Erro ao carregar movimentações.') + '</td></tr>';
+        if (tbHist) tbHist.innerHTML = '<tr><td colspan="8">' + escHtml((e && e.message) || 'Erro ao carregar histórico.') + '</td></tr>';
         showMessage('Erro ao carregar movimentações WMS.', 'error');
     }
 }
+
+function _wmsLabelTipoMovimentacao(tipo) {
+    var t = String(tipo || '').toLowerCase();
+    if (t === 'putaway') return 'Putaway';
+    if (t === 'transferencia') return 'Transferência';
+    if (t === 'separacao_stage') return 'Separação → stage';
+    return tipo || '—';
+}
+
+function _wmsLabelStatusMovimentacao(st) {
+    var s = String(st || '').toLowerCase();
+    if (s === 'pendente') return 'Pendente';
+    if (s === 'concluida') return 'Concluída';
+    if (s === 'cancelada') return 'Cancelada';
+    if (s === 'aguardando_validacao') return 'Aguard. validação';
+    return st || '—';
+}
+
+window.wmsTransferirPalete = async function() {
+    var palEl = document.getElementById('wms-mov-palete');
+    var destEl = document.getElementById('wms-mov-destino');
+    var obsEl = document.getElementById('wms-mov-obs');
+    var codPal = palEl ? String(palEl.value || '').trim() : '';
+    var codDest = destEl ? String(destEl.value || '').trim() : '';
+    var obs = obsEl ? String(obsEl.value || '').trim() : '';
+    if (!codPal || !codDest) {
+        showMessage('Informe o palete e o novo endereço.', 'warning');
+        return;
+    }
+    var btn = document.getElementById('btn-wms-transferir-palete');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Transferindo…';
+    }
+    try {
+        var data = await fetchAPI('/wms/movimentacoes', {
+            method: 'POST',
+            body: JSON.stringify({
+                acao: 'transferir',
+                codigo_palete: codPal,
+                destino: codDest,
+                observacao: obs || undefined
+            })
+        });
+        if (data && data.ok) {
+            var tr = data.transferencia || {};
+            showMessage(
+                'Palete ' + (tr.etiqueta || codPal) + ' transferido: '
+                + (tr.origem || '—') + ' → ' + (tr.destino || codDest) + '.',
+                'success'
+            );
+            if (palEl) palEl.value = '';
+            if (destEl) destEl.value = '';
+            if (obsEl) obsEl.value = '';
+            loadWmsMovimentacoes();
+            loadWmsPainel();
+            loadWmsLocalizacoes();
+        } else {
+            showMessage((data && data.erro) || 'Erro ao transferir palete.', 'error');
+        }
+    } catch (e) {
+        console.error(e);
+        showMessage('Erro ao transferir palete.', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '↔️ Transferir palete';
+        }
+    }
+};
 
 window.wmsConcluirMovimentacao = async function(id) {
     var data = await fetchAPI('/wms/movimentacoes', { method: 'POST', body: JSON.stringify({ acao: 'concluir', id: id }) });
@@ -5973,23 +6434,99 @@ async function loadWmsRecebimentos() {
 function wmsLimparPainelNfDescarga() {
     window._wmsNfDoc = null;
     var info = document.getElementById('wms-rec-nf-info');
+    var sit = document.getElementById('wms-rec-nf-situacao');
     var wrap = document.getElementById('wms-rec-nf-itens-wrap');
     var tb = document.getElementById('wms-tbody-rec-nf-itens');
     var hid = document.getElementById('wms-rec-terceiros-doc-id');
     var hidA = document.getElementById('wms-rec-terceiros-area');
     if (info) { info.style.display = 'none'; info.innerHTML = ''; }
+    if (sit) { sit.style.display = 'none'; sit.innerHTML = ''; }
     if (wrap) wrap.style.display = 'none';
     if (tb) tb.innerHTML = '';
     if (hid) hid.value = '';
     if (hidA) hidA.value = '';
-    wmsAtualizarBotaoExcluirRecebimentoNf();
+    wmsAtualizarBotoesRecebimentoNf();
 }
 
 function _wmsStatusItemNfLabel(st) {
     st = (st || 'pendente').toLowerCase();
-    if (st === 'concluido' || st === 'ok') return '<span style="color:#2e7d32;font-weight:bold;">Concluído</span>';
-    if (st === 'bipado') return '<span style="color:#1565c0;font-weight:bold;">Bipado</span>';
-    return '<span style="color:#e65100;font-weight:bold;">Pendente</span>';
+    if (st === 'concluido' || st === 'ok') {
+        return '<span style="color:#2e7d32;font-weight:bold;">Concluído · no armazém</span>';
+    }
+    if (st === 'bipado') {
+        return '<span style="color:#1565c0;font-weight:bold;">Bipado · aguard. guardar</span>';
+    }
+    return '<span style="color:#e65100;font-weight:bold;">Pendente bipagem</span>';
+}
+
+function _wmsRotuloStatusRecebimentoWms(st) {
+    var mapa = {
+        aguardando: 'Aguardando bipagem',
+        em_conferencia: 'Em conferência (bipagem)',
+        aguardando_armazenagem: 'Aguardando guardar paletes',
+        finalizado: 'Finalizado',
+        cancelado: 'Cancelado',
+        concluido: 'Concluído'
+    };
+    return mapa[String(st || '').toLowerCase()] || st || '—';
+}
+
+function _wmsPaintSituacaoRecebimentoNf(doc) {
+    var sit = document.getElementById('wms-rec-nf-situacao');
+    if (!sit) return;
+    var s = doc && doc.situacao_recebimento;
+    if (!s) {
+        sit.style.display = 'none';
+        sit.innerHTML = '';
+        return;
+    }
+    var cor = s.cor || '#1565c0';
+    var bg = s.situacao === 'finalizado' ? '#e3f2fd' : (s.situacao === 'em_andamento' ? '#fff8e1' : '#f1f8e9');
+    var borda = s.situacao === 'finalizado' ? '#90caf9' : (s.situacao === 'em_andamento' ? '#ffcc80' : '#c5e1a5');
+    sit.style.display = 'block';
+    sit.style.background = bg;
+    sit.style.borderColor = borda;
+    sit.innerHTML = '<div style="font-size:15px;font-weight:bold;color:' + escHtml(cor) + ';margin-bottom:6px;">'
+        + escHtml(s.rotulo || 'Situação do recebimento') + '</div>'
+        + '<div style="font-size:13px;color:#333;">' + escHtml(s.detalhe || '') + '</div>';
+}
+
+function _wmsResumoAndamentoItemNf(it) {
+    if (!it) return '—';
+    if (it.resumo_andamento && String(it.resumo_andamento).trim() && it.resumo_andamento !== '—') {
+        return String(it.resumo_andamento);
+    }
+    var destinos = it.destinos_wms || [];
+    if (!destinos.length) {
+        var pend = _wmsPendenteItemNf(it);
+        if (pend > 0) return pend + ' cx pendente bipagem';
+        return '—';
+    }
+    return destinos.map(function(d) {
+        var q = d.quantidade != null ? d.quantidade : 0;
+        var lbl = d.rotulo || d.disposicao || 'Destino';
+        if ((d.armazenada || 0) >= q) return q + ' cx ' + lbl + ' (guardado)';
+        if ((d.aguardando_guardar || 0) > 0) return q + ' cx ' + lbl + ' (aguard. guardar)';
+        return q + ' cx ' + lbl;
+    }).join(' · ');
+}
+
+function _wmsHtmlAndamentoItemNf(it) {
+    var txt = _wmsResumoAndamentoItemNf(it);
+    if (!txt || txt === '—') return '<span style="color:#9e9e9e;">—</span>';
+    var destinos = it.destinos_wms || [];
+    var html = '<span style="font-size:12px;line-height:1.45;">' + escHtml(txt) + '</span>';
+    destinos.forEach(function(d) {
+        var disp = String(d.disposicao || '').toLowerCase();
+        if (disp === 'avaria') {
+            html = '<span style="font-size:12px;line-height:1.45;color:#6a1b9a;font-weight:600;">' + escHtml(txt) + '</span>';
+        } else if (disp === 'descarte_perdas') {
+            html = '<span style="font-size:12px;line-height:1.45;color:#c62828;font-weight:600;">' + escHtml(txt) + '</span>';
+        } else if (disp === 'palete_bloqueado') {
+            html = '<span style="font-size:12px;line-height:1.45;color:#e65100;font-weight:600;">' + escHtml(txt) + '</span>';
+        }
+    });
+    return html;
 }
 
 function _wmsPendenteItemNf(it) {
@@ -6027,20 +6564,24 @@ function wmsPreencherPainelNfDescarga(doc) {
     if (forn) forn.value = doc.fornecedor || '';
     if (placa) placa.value = doc.placa || '';
     var info = document.getElementById('wms-rec-nf-info');
+    _wmsPaintSituacaoRecebimentoNf(doc);
     if (info) {
         var areaLbl = doc.area === 'carreta' ? 'Carreta' : (doc.area || 'Recebimento');
-        var stWmsFin = String(doc.recebimento_wms_status || '').toLowerCase() === 'finalizado';
+        var sit = doc.situacao_recebimento || {};
+        var stWmsFin = sit.situacao === 'finalizado' || String(doc.recebimento_wms_status || '').toLowerCase() === 'finalizado';
         var st;
         if (stWmsFin) {
-            st = '<span style="color:#1565c0;">NF finalizada no WMS — consulte o Histórico NF.</span>';
+            st = '<span style="color:#1565c0;">Todos os paletes foram guardados e a NF foi encerrada no WMS.</span>';
+        } else if (sit.situacao === 'em_andamento') {
+            st = '<span style="color:#e65100;">Recebimento aberto — use <strong>Montar paletes</strong> para continuar a bipagem ou guardar paletes pendentes.</span>';
         } else if (wmsDocDescargaReabrivel(doc)) {
             st = '<span style="color:#e65100;">Descarga marcada como concluída — clique em <strong>Montar paletes</strong> para reabrir e continuar no WMS.</span>';
         } else if (doc.recebimento_concluido) {
             st = '<span style="color:#e65100;">Recebimento concluído no módulo descarga (sem reinício WMS).</span>';
         } else {
-            st = '<span style="color:#2e7d32;">Pendência — clique em <strong>Montar paletes</strong> para iniciar a bipagem.</span>';
+            st = '<span style="color:#2e7d32;">Nenhum recebimento WMS iniciado — clique em <strong>Montar paletes</strong> para começar.</span>';
         }
-        var recWms = doc.recebimento_wms_id ? (' · Recebimento WMS #' + escHtml(doc.recebimento_wms_id)) : '';
+        var recWms = doc.recebimento_wms_id_ultimo ? (' · Recebimento WMS #' + escHtml(doc.recebimento_wms_id_ultimo)) : '';
         info.innerHTML = '<strong>NF ' + escHtml(doc.numero_nf || '') + '</strong>'
             + (doc.serie_nf ? ' · Série ' + escHtml(doc.serie_nf) : '')
             + ' · ' + escHtml(areaLbl)
@@ -6052,7 +6593,16 @@ function wmsPreencherPainelNfDescarga(doc) {
     }
     var wrap = document.getElementById('wms-rec-nf-itens-wrap');
     var tb = document.getElementById('wms-tbody-rec-nf-itens');
+    var btnMontar = document.getElementById('btn-wms-iniciar-bipagem');
     var itens = doc.itens || [];
+    var stWmsFinPainel = (doc.situacao_recebimento || {}).situacao === 'finalizado'
+        || String(doc.recebimento_wms_status || '').toLowerCase() === 'finalizado';
+    if (btnMontar) {
+        btnMontar.disabled = !!stWmsFinPainel;
+        btnMontar.title = stWmsFinPainel
+            ? 'NF finalizada — reinicie ou exclua o recebimento para bipar novamente'
+            : 'Abrir passo a passo de montagem de paletes';
+    }
     if (wrap && tb) {
         wrap.style.display = itens.length ? 'block' : 'none';
         tb.innerHTML = itens.length ? itens.map(function(it) {
@@ -6066,13 +6616,19 @@ function wmsPreencherPainelNfDescarga(doc) {
                 + '<td>' + escHtml(it.descricao || '') + '</td><td>' + escHtml(it.quantidade_xml) + '</td>'
                 + '<td>' + escHtml(qWms) + (qPend > 0 ? ' <span style="color:#e65100;font-size:11px;">(faltam ' + escHtml(qPend) + ')</span>' : '') + '</td>'
                 + '<td>' + _wmsStatusItemNfLabel(it.status_wms) + '</td>'
-                + '<td>' + escHtml(it.codigo_ean || '—') + '</td></tr>';
+                + '<td>' + escHtml(it.codigo_ean || '—') + '</td>'
+                + '<td>' + _wmsHtmlAndamentoItemNf(it) + '</td></tr>';
         }).join('') : '';
     }
-    if (doc.recebimento_wms_id) {
+    if (doc.recebimento_wms_id && !stWmsFinPainel) {
         wmsSincronizarRecebimentoAberto(doc.recebimento_wms_id, { resetarPalete: false });
+    } else {
+        var det = document.getElementById('wms-recebimento-detalhe');
+        var hidDet = document.getElementById('wms-rec-detalhe-id');
+        if (stWmsFinPainel && det) det.style.display = 'none';
+        if (stWmsFinPainel && hidDet) hidDet.value = '';
     }
-    wmsAtualizarBotaoExcluirRecebimentoNf();
+    wmsAtualizarBotoesRecebimentoNf();
 }
 
 function wmsImprimirEtiquetasNfTodos() {
@@ -6387,12 +6943,6 @@ function wmsInitRecebimentoIntegracaoNf() {
             wmsBuscarNfDescarga();
         }
     });
-    nfEl.addEventListener('blur', function() {
-        var v = String(nfEl.value || '').trim();
-        if (v && (!window._wmsNfDoc || String(window._wmsNfDoc.numero_nf || '') !== v)) {
-            wmsBuscarNfDescarga();
-        }
-    });
     var skuEl = document.getElementById('wms-pal-sku');
     if (skuEl && !skuEl.dataset.wmsSkuBind) {
         skuEl.dataset.wmsSkuBind = '1';
@@ -6438,9 +6988,11 @@ window.wmsBuscarNfDescarga = async function() {
     }
     wmsPreencherPainelNfDescarga(data.documento);
     var doc = data.documento;
-    var stWmsFin = String(doc.recebimento_wms_status || '').toLowerCase() === 'finalizado';
-    if (stWmsFin) {
-        showMessage('NF encontrada — já finalizada no WMS. Consulte o Histórico NF.', 'warning');
+    var sit = doc.situacao_recebimento || {};
+    if (sit.situacao === 'finalizado') {
+        showMessage('NF encontrada — recebimento já finalizado no WMS. Use Reiniciar ou Excluir se precisar recomeçar.', 'warning');
+    } else if (sit.situacao === 'em_andamento') {
+        showMessage('NF carregada — recebimento em andamento. ' + (sit.detalhe || ''), 'success');
     } else if (wmsDocDescargaReabrivel(doc)) {
         showMessage('NF carregada — descarga estava concluída; clique em Montar paletes para reabrir o WMS.', 'success');
     } else if (doc.recebimento_concluido) {
@@ -6450,14 +7002,33 @@ window.wmsBuscarNfDescarga = async function() {
     }
 };
 
+function _wmsRecebimentoIdPainelNf(doc) {
+    doc = doc || window._wmsNfDoc || {};
+    return (document.getElementById('wms-rec-detalhe-id') || {}).value
+        || doc.recebimento_wms_id
+        || doc.recebimento_wms_id_ultimo
+        || null;
+}
+
 window.wmsExcluirRecebimento = async function(btn) {
     var id = btn && btn.getAttribute ? btn.getAttribute('data-wms-rec-id') : btn;
     var nf = (btn && btn.getAttribute ? btn.getAttribute('data-wms-rec-nf') : '') || '—';
+    var forcar = btn && btn.getAttribute && btn.getAttribute('data-wms-forcar') === '1';
     var label = nf && nf !== '—' ? ('NF ' + nf) : ('recebimento #' + id);
-    if (!confirm('Excluir ' + label + '?\n\nTodos os paletes serão removidos e os endereços liberados. Você poderá buscar a NF de novo e começar do zero. Recebimentos finalizados não podem ser excluídos.')) return;
+    var msgConfirm = forcar
+        ? ('Excluir o recebimento WMS #' + id + ' da ' + label + '?\n\n'
+            + 'Todos os paletes serão removidos, endereços liberados e o histórico deste recebimento será apagado. '
+            + 'Esta ação não pode ser desfeita.')
+        : ('Excluir ' + label + ' (recebimento #' + id + ')?\n\n'
+            + 'Todos os paletes serão removidos e os endereços liberados. Você poderá buscar a NF de novo e começar do zero.');
+    if (!confirm(msgConfirm)) return;
     var data = await fetchAPI('/wms/recebimentos', {
         method: 'POST',
-        body: JSON.stringify({ acao: 'excluir', recebimento_id: parseInt(id, 10) })
+        body: JSON.stringify({
+            acao: 'excluir',
+            recebimento_id: parseInt(id, 10),
+            forcar: forcar || undefined
+        })
     });
     if (data && data.ok) {
         var msg = 'Recebimento excluído — pode buscar a NF e começar do zero.';
@@ -6476,9 +7047,17 @@ window.wmsExcluirRecebimento = async function(btn) {
         }
         if (window._wmsNfDoc && window._wmsNfDoc.recebimento_wms_id && String(window._wmsNfDoc.recebimento_wms_id) === String(id)) {
             window._wmsNfDoc.recebimento_wms_id = null;
+            window._wmsNfDoc.recebimento_wms_id_ultimo = null;
             window._wmsNfDoc.recebimento_wms_status = null;
+            if (window._wmsNfDoc.situacao_recebimento) {
+                window._wmsNfDoc.situacao_recebimento = { situacao: 'sem_recebimento', rotulo: 'Sem recebimento WMS' };
+            }
+        } else if (window._wmsNfDoc && window._wmsNfDoc.recebimento_wms_id_ultimo && String(window._wmsNfDoc.recebimento_wms_id_ultimo) === String(id)) {
+            window._wmsNfDoc.recebimento_wms_id_ultimo = null;
+            window._wmsNfDoc.recebimento_wms_status = null;
+            window._wmsNfDoc.wms_bloqueado = false;
         }
-        wmsAtualizarBotaoExcluirRecebimentoNf();
+        wmsAtualizarBotoesRecebimentoNf();
         loadWmsRecebimentos();
         loadWmsPainel();
         loadWmsMovimentacoes();
@@ -6489,27 +7068,80 @@ window.wmsExcluirRecebimento = async function(btn) {
     }
 };
 
-function wmsAtualizarBotaoExcluirRecebimentoNf() {
-    var btn = document.getElementById('btn-wms-excluir-recebimento-nf');
-    if (!btn) return;
-    var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value
-        || (window._wmsNfDoc && window._wmsNfDoc.recebimento_wms_id);
-    var st = String((window._wmsNfDoc && window._wmsNfDoc.recebimento_wms_status) || '').toLowerCase();
-    btn.style.display = (rid && st !== 'finalizado') ? '' : 'none';
+function wmsAtualizarBotoesRecebimentoNf() {
+    var btnExcl = document.getElementById('btn-wms-excluir-recebimento-nf');
+    var btnRein = document.getElementById('btn-wms-reiniciar-recebimento-nf');
+    var doc = window._wmsNfDoc || {};
+    var sit = doc.situacao_recebimento || {};
+    var rid = _wmsRecebimentoIdPainelNf(doc);
+    var situacao = sit.situacao || (rid ? 'em_andamento' : 'sem_recebimento');
+    if (String(doc.recebimento_wms_status || '').toLowerCase() === 'finalizado') situacao = 'finalizado';
+
+    if (btnRein) {
+        btnRein.style.display = (situacao === 'finalizado' && rid) ? '' : 'none';
+    }
+    if (btnExcl) {
+        if (situacao === 'finalizado' && rid) {
+            btnExcl.style.display = '';
+        } else if (situacao === 'em_andamento' && rid) {
+            btnExcl.style.display = '';
+        } else {
+            btnExcl.style.display = 'none';
+        }
+    }
 }
 
-window.wmsExcluirRecebimentoAtualNf = async function() {
-    var rid = (document.getElementById('wms-rec-detalhe-id') || {}).value
-        || (window._wmsNfDoc && window._wmsNfDoc.recebimento_wms_id);
+window.wmsReiniciarRecebimentoAtualNf = async function() {
+    var rid = _wmsRecebimentoIdPainelNf();
     if (!rid) {
-        showMessage('Nenhum recebimento WMS vinculado a esta NF. Busque a NF na lista abaixo e use Excluir.', 'warning');
+        showMessage('Nenhum recebimento WMS vinculado a esta NF.', 'warning');
         return;
     }
     var nf = (document.getElementById('wms-rec-nf') || {}).value || '';
+    var label = nf.trim() ? ('NF ' + nf.trim()) : ('recebimento #' + rid);
+    if (!confirm(
+        'Reiniciar o recebimento da ' + label + '?\n\n'
+        + 'Todos os paletes serão removidos, endereços liberados e a pendência de descarga será reaberta. '
+        + 'Depois disso você poderá bipar novamente do zero.'
+    )) return;
+    var data = await fetchAPI('/wms/recebimentos', {
+        method: 'POST',
+        body: JSON.stringify({ acao: 'reiniciar', recebimento_id: parseInt(rid, 10) })
+    });
+    if (data && data.ok) {
+        var msg = 'Recebimento reiniciado — busque a NF e clique em Montar paletes para começar de novo.';
+        if (data.enderecos_liberados) msg += ' ' + data.enderecos_liberados + ' endereço(s) liberado(s).';
+        if (data.terceiros_reaberto) msg += ' Pendência de descarga reaberta.';
+        showMessage(msg, 'success');
+        var det = document.getElementById('wms-recebimento-detalhe');
+        var hidDet = document.getElementById('wms-rec-detalhe-id');
+        if (det) det.style.display = 'none';
+        if (hidDet) hidDet.value = '';
+        loadWmsRecebimentos();
+        loadWmsPainel();
+        loadWmsMovimentacoes();
+        loadWmsProdutos();
+        wmsAtualizarPainelNfDescarga();
+    } else {
+        showMessage((data && data.erro) || 'Erro ao reiniciar recebimento.', 'error');
+    }
+};
+
+window.wmsExcluirRecebimentoAtualNf = async function() {
+    var rid = _wmsRecebimentoIdPainelNf();
+    if (!rid) {
+        showMessage('Nenhum recebimento WMS vinculado a esta NF.', 'warning');
+        return;
+    }
+    var nf = (document.getElementById('wms-rec-nf') || {}).value || '';
+    var doc = window._wmsNfDoc || {};
+    var forcar = String(doc.recebimento_wms_status || '').toLowerCase() === 'finalizado'
+        || (doc.situacao_recebimento || {}).situacao === 'finalizado';
     await wmsExcluirRecebimento({
         getAttribute: function(k) {
             if (k === 'data-wms-rec-id') return String(rid);
             if (k === 'data-wms-rec-nf') return nf;
+            if (k === 'data-wms-forcar') return forcar ? '1' : '0';
             return '';
         }
     });
@@ -6526,11 +7158,21 @@ var _WMS_BIP_ACOES = {
     2: 'Leve o palete ao endereço da etiqueta e bipe a longarina/coluna — a entrada confirma sozinha.'
 };
 
+function wmsCompactCodigoEnderecoBip(codigo) {
+    return String(codigo || '').trim().replace(/\s+/g, '').toUpperCase();
+}
+
 function wmsEnderecoBipPareceCompleto(codigo) {
-    var c = wmsNormalizarCodigoBip(codigo);
+    var c = wmsCompactCodigoEnderecoBip(codigo);
     if (!c) return false;
-    if (/^\d+\.\d+\.\d+\.\d+$/.test(c)) return true;
-    if (/^\d{2}-[A-Z]-\d{2}-\d+$/i.test(c)) return true;
+    // Código WMS: 11-A-04-4
+    if (/^\d{1,2}-[A-Z]{1,3}-\d{1,2}-\d{1,2}$/.test(c)) return true;
+    // Bip longarina: 11.4.4
+    if (/^\d{1,2}\.\d{1,2}\.\d{1,2}$/.test(c)) return true;
+    // Exibição com rua: 13.E.14.4
+    if (/^\d{1,2}\.[A-Z]{1,3}\.\d{1,2}\.\d{1,2}$/.test(c)) return true;
+    // Legado 4 partes numéricas: 12.14.1.1
+    if (/^\d{1,2}\.\d{1,2}\.\d{1,2}\.\d{1,2}$/.test(c)) return true;
     return false;
 }
 
@@ -6542,9 +7184,9 @@ function wmsAgendarConfirmarDestinoAuto() {
     clearTimeout(_wmsDestinoBipTimer);
     _wmsDestinoBipTimer = setTimeout(function() {
         var dest = document.getElementById('wms-bip-destino');
-        var cod = dest ? wmsNormalizarCodigoBip(dest.value) : '';
+        var cod = dest ? wmsCompactCodigoEnderecoBip(dest.value) : '';
         if (wmsEnderecoBipPareceCompleto(cod)) wmsConfirmarDestino();
-    }, 150);
+    }, 120);
 }
 
 function wmsInitBipDestinoAutoConfirm() {
@@ -6559,23 +7201,53 @@ function wmsInitBipDestinoAutoConfirm() {
         }
     });
     destBip.addEventListener('input', wmsAgendarConfirmarDestinoAuto);
+    destBip.addEventListener('change', wmsAgendarConfirmarDestinoAuto);
+    destBip.addEventListener('blur', function() {
+        if (window._wmsBipEtapa === 2) wmsAgendarConfirmarDestinoAuto();
+    });
     destBip.addEventListener('paste', function() {
         setTimeout(wmsAgendarConfirmarDestinoAuto, 50);
     });
 }
 
+function wmsBarcodeLongarinaExibir(sug) {
+    if (!sug) return '';
+    var bc = String(sug.barcode_longarina || '').trim();
+    var rua = String(sug.rua_letra || sug.rua || '').trim().toUpperCase();
+    var codWms = String(sug.codigo_wms || sug.codigo_endereco || '').trim().toUpperCase();
+    if (!bc && codWms) {
+        var m = codWms.match(/^(\d{1,2})-([A-Z]{1,3})-(\d{1,2})-(\d{1,2})$/);
+        if (m) {
+            rua = rua || m[2];
+            bc = parseInt(m[1], 10) + '.' + parseInt(m[3], 10) + '.' + parseInt(m[4], 10);
+        }
+    }
+    if (rua && bc) {
+        var parts = bc.replace(/\s/g, '').split('.');
+        if (parts.length === 3) {
+            return parts[0] + '.' + rua + '.' + parts[1] + '.' + parts[2];
+        }
+        return 'Rua ' + rua + ' · ' + bc;
+    }
+    return bc || codWms || '';
+}
+
 function wmsFormatarDestinoEtiqueta(sug) {
     if (!sug || !sug.codigo_endereco) return null;
     var bc = sug.barcode_longarina || '';
+    var bcExibir = wmsBarcodeLongarinaExibir(sug);
     var codWms = (sug.codigo_wms || sug.codigo_endereco || '').toUpperCase();
+    var rua = String(sug.rua_letra || sug.rua || '').trim().toUpperCase();
     var txt = sug.texto || '';
     var zona = sug.zona_label || '';
     return {
         barcode: bc || codWms,
+        barcode_exibir: bcExibir || bc || codWms,
+        rua: rua,
         codigo_wms: codWms,
         texto: txt,
         zona: zona,
-        destino: (bc || codWms) + (txt ? ' — ' + txt : (zona ? ' (' + zona + ')' : ''))
+        destino: (bcExibir || bc || codWms) + (txt ? ' — ' + txt : (zona ? ' (' + zona + ')' : ''))
     };
 }
 
@@ -6599,9 +7271,13 @@ function wmsBipAtualizarEnderecoEtapa2() {
     if (!box || !val) return;
     if (fmt) {
         box.style.display = '';
-        val.textContent = fmt.barcode;
-        if (det) det.textContent = (fmt.texto || '') + (fmt.zona ? ' · ' + fmt.zona : '');
-        if (window._wmsBipResumo) window._wmsBipResumo.endereco = fmt.barcode;
+        val.textContent = fmt.barcode_exibir || fmt.barcode;
+        if (det) {
+            var detTxt = (fmt.texto || '') + (fmt.zona ? ' · ' + fmt.zona : '');
+            if (fmt.rua && fmt.codigo_wms) detTxt = (detTxt ? detTxt + ' · ' : '') + fmt.codigo_wms;
+            det.textContent = detTxt;
+        }
+        if (window._wmsBipResumo) window._wmsBipResumo.endereco = fmt.barcode_exibir || fmt.barcode;
     } else if (showAddr) {
         box.style.display = '';
         val.textContent = '—';
@@ -6949,7 +7625,7 @@ function _wmsMostrarSugestao(sug) {
         zoneamento: 'FIFO + cluster + categoria'
     };
     var priTxt = priLbl[sug.prioridade] || 'putaway inteligente';
-    var bcLong = sug.barcode_longarina || sug.codigo_endereco;
+    var bcLong = wmsBarcodeLongarinaExibir(sug) || sug.barcode_longarina || sug.codigo_endereco;
     var movSt = (window._wmsMovArmazenagem && window._wmsMovArmazenagem.status) || sug.movimentacao_status || 'pendente';
     var stBadge = movSt === 'concluida'
         ? '<span style="font-size:11px;background:#c8e6c9;padding:2px 8px;border-radius:4px;color:#1b5e20;font-weight:bold;">Status: concluído</span>'
@@ -7511,38 +8187,294 @@ async function wmsFinalizarRecebimento() {
     }
 }
 
-async function wmsCriarInventario() {
-    var body = {
-        tipo: (document.getElementById('wms-inv-tipo') || {}).value || 'localizacao',
-        camara: (document.getElementById('wms-inv-camara') || {}).value || null,
-        descricao: (document.getElementById('wms-inv-desc') || {}).value || ''
+var _wmsInvState = { id: null, inventario: null };
+
+function wmsInvFormatarData(val) {
+    if (!val) return '—';
+    var s = String(val).trim().slice(0, 10);
+    if (s.length === 10 && s[4] === '-') return formatarDataPtBR(s);
+    return s;
+}
+
+function wmsInvStatusLabel(st) {
+    var m = {
+        ativo: 'Ativo',
+        em_andamento: 'Em conferência',
+        finalizado: 'Finalizado'
     };
-    var data = await fetchAPI('/wms/inventarios', { method: 'POST', body: JSON.stringify(body) });
-    if (data && data.ok) {
-        showMessage('Inventário #' + data.id + ' com ' + data.linhas + ' posições.', 'success');
-        loadWmsInventarios();
-    } else {
-        showMessage((data && data.erro) || 'Erro ao criar inventário.', 'error');
+    return m[(st || '').toLowerCase()] || (st || '—');
+}
+
+function wmsInvLinhaStatusLabel(st) {
+    var m = {
+        pendente: 'Pendente',
+        conferido: 'Conferido',
+        divergente: 'Divergente',
+        extra: 'Extra (não listado)'
+    };
+    return m[(st || '').toLowerCase()] || (st || '—');
+}
+
+function wmsInvRenderLinhaPendente(p) {
+    return '<tr><td>' + escHtml(p.sku || '—') + '</td><td>' + escHtml(p.descricao || '—') + '</td><td>' + escHtml(p.quantidade_esperada != null ? p.quantidade_esperada : '—')
+        + '</td><td>' + escHtml(p.up || p.rg_caixa || '—') + '</td><td>' + escHtml(p.lote || '—') + '</td><td>' + escHtml(wmsInvFormatarData(p.data_producao))
+        + '</td><td>' + escHtml(wmsInvFormatarData(p.data_validade)) + '</td><td>' + escHtml(p.codigo_endereco || '—')
+        + '</td><td><span class="wms-inv-badge wms-inv-badge--pend">' + escHtml(wmsInvLinhaStatusLabel(p.status_linha)) + '</span></td></tr>';
+}
+
+function wmsInvRenderLinhaConferido(p) {
+    return '<tr><td>' + escHtml(p.sku || p.bip_sku || '—') + '</td><td>' + escHtml(p.descricao || '—') + '</td><td>' + escHtml(p.quantidade_esperada != null ? p.quantidade_esperada : p.bip_quantidade || '—')
+        + '</td><td>' + escHtml(p.up || p.rg_caixa || p.bip_rg_caixa || '—') + '</td><td>' + escHtml(p.lote || p.bip_lote || '—') + '</td><td>' + escHtml(wmsInvFormatarData(p.data_producao || p.bip_data_producao))
+        + '</td><td>' + escHtml(wmsInvFormatarData(p.data_validade || p.bip_data_validade)) + '</td><td>' + escHtml(p.codigo_endereco || '—')
+        + '</td><td><span class="wms-inv-badge wms-inv-badge--ok">' + escHtml(wmsInvLinhaStatusLabel(p.status_linha)) + '</span></td></tr>';
+}
+
+function wmsInvRenderLinhaDivergente(p) {
+    return '<tr><td>' + escHtml(p.sku || p.bip_sku || '—') + '</td><td>' + escHtml(p.descricao || '—') + '</td><td>' + escHtml(p.quantidade_esperada != null ? p.quantidade_esperada : '—')
+        + '</td><td>' + escHtml(p.bip_quantidade != null ? p.bip_quantidade : '—') + '</td><td>' + escHtml((p.rg_caixa || '—') + ' / ' + (p.bip_rg_caixa || '—'))
+        + '</td><td>' + escHtml(p.lote || '—') + '</td><td>' + escHtml(p.bip_lote || '—') + '</td><td>' + escHtml(wmsInvFormatarData(p.data_validade))
+        + '</td><td>' + escHtml(wmsInvFormatarData(p.bip_data_validade)) + '</td><td><span class="wms-inv-badge wms-inv-badge--warn">' + escHtml(wmsInvLinhaStatusLabel(p.status_linha)) + '</span></td></tr>';
+}
+
+function wmsInvMostrarLista() {
+    var lista = document.getElementById('wms-inv-lista-view');
+    var det = document.getElementById('wms-inv-detalhe-view');
+    if (lista) lista.hidden = false;
+    if (det) det.hidden = true;
+    _wmsInvState.id = null;
+    _wmsInvState.inventario = null;
+}
+
+function wmsInvMostrarDetalhe() {
+    var lista = document.getElementById('wms-inv-lista-view');
+    var det = document.getElementById('wms-inv-detalhe-view');
+    if (lista) lista.hidden = true;
+    if (det) det.hidden = false;
+}
+
+function wmsInvAtualizarDetalhe(data) {
+    var inv = data.inventario || {};
+    _wmsInvState.inventario = inv;
+    var tit = document.getElementById('wms-inv-detalhe-titulo');
+    var res = document.getElementById('wms-inv-detalhe-resumo');
+    if (tit) tit.textContent = (inv.descricao || 'Inventário') + ' #' + (inv.id || _wmsInvState.id);
+    var sm = data.resumo || {};
+    if (res) {
+        res.textContent = (sm.conferido || 0) + ' conferidos · ' + (sm.pendente || 0) + ' pendentes · '
+            + ((sm.divergente || 0) + (sm.extra || 0)) + ' divergências/extras · ' + (sm.total || 0) + ' itens no total';
+    }
+    var tbP = document.getElementById('wms-tbody-inv-pendentes');
+    var tbC = document.getElementById('wms-tbody-inv-conferidos');
+    var tbD = document.getElementById('wms-tbody-inv-divergentes');
+    var pends = data.pendentes || [];
+    var confs = data.conferidos || [];
+    var divs = data.divergentes || [];
+    if (tbP) tbP.innerHTML = pends.length ? pends.map(wmsInvRenderLinhaPendente).join('') : '<tr><td colspan="9">Todos os itens foram conferidos.</td></tr>';
+    if (tbC) tbC.innerHTML = confs.length ? confs.map(wmsInvRenderLinhaConferido).join('') : '<tr><td colspan="9">Nenhum item conferido ainda.</td></tr>';
+    if (tbD) tbD.innerHTML = divs.length ? divs.map(wmsInvRenderLinhaDivergente).join('') : '<tr><td colspan="10">Nenhuma divergência.</td></tr>';
+    var st = (inv.status || '').toLowerCase();
+    var ativo = st === 'ativo' || st === 'em_andamento';
+    ['btn-wms-inv-bip', 'btn-wms-inv-aplicar', 'btn-wms-inv-finalizar'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.disabled = !ativo;
+    });
+}
+
+function wmsInvMostrarErro(msg) {
+    var el = document.getElementById('wms-inv-bip-erro');
+    if (!el) return;
+    if (!msg) { el.hidden = true; el.textContent = ''; return; }
+    el.hidden = false;
+    el.textContent = msg;
+}
+
+function wmsInvLimparBipForm() {
+    ['wms-inv-bip-sku', 'wms-inv-bip-up', 'wms-inv-bip-lote', 'wms-inv-bip-producao', 'wms-inv-bip-validade'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    var q = document.getElementById('wms-inv-bip-qtd');
+    if (q) q.value = '1';
+    wmsInvMostrarErro('');
+}
+
+async function wmsAbrirInventario(id) {
+    if (!id) return;
+    _wmsInvState.id = id;
+    wmsInvMostrarDetalhe();
+    var tbP = document.getElementById('wms-tbody-inv-pendentes');
+    if (tbP) tbP.innerHTML = '<tr><td colspan="9" class="loading">Carregando itens do estoque…</td></tr>';
+    try {
+        var data = await _wmsFetchGet('/wms/inventarios?id=' + encodeURIComponent(id), 90000);
+        if (!data || data.erro) {
+            showMessage(_wmsErroMsg(data, 'Erro ao abrir inventário.'), 'error');
+            wmsInvMostrarLista();
+            return;
+        }
+        wmsInvAtualizarDetalhe(data);
+    } catch (e) {
+        showMessage((e && e.message) || 'Erro ao abrir inventário.', 'error');
+        wmsInvMostrarLista();
+    }
+}
+
+async function wmsCriarInventario() {
+    var desc = (document.getElementById('wms-inv-desc') || {}).value || '';
+    var cam = (document.getElementById('wms-inv-camara') || {}).value || '';
+    var btn = document.getElementById('btn-wms-novo-inventario');
+    var body = {
+        tipo: 'produto',
+        descricao: desc.trim() || ('Inventário ' + wmsDataHojeIsoLocal()),
+        camara: cam || null
+    };
+    if (btn) { btn.disabled = true; btn.textContent = 'Gerando lista…'; }
+    try {
+        var data = await fetchAPI('/wms/inventarios', { method: 'POST', body: JSON.stringify(body) });
+        if (data && data.ok) {
+            showMessage('Inventário #' + data.id + ' criado com ' + data.linhas + ' itens do estoque.', 'success');
+            await loadWmsInventarios();
+            await wmsAbrirInventario(data.id);
+        } else {
+            showMessage((data && data.erro) || 'Erro ao criar inventário.', 'error');
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Iniciar inventário'; }
     }
 }
 
 async function loadWmsInventarios() {
-    _wmsSetTbody('wms-tbody-inventarios', 4, '<span class="loading">Carregando...</span>');
+    wmsInvMostrarLista();
+    _wmsSetTbody('wms-tbody-inventarios', 6, '<span class="loading">Carregando...</span>');
     var tb = document.getElementById('wms-tbody-inventarios');
     try {
         var data = await _wmsFetchGet('/wms/inventarios', 45000);
         if (!tb) return;
         if (!data || data.erro) {
-            tb.innerHTML = '<tr><td colspan="4">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar inventários.')) + '</td></tr>';
+            tb.innerHTML = '<tr><td colspan="6">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar inventários.')) + '</td></tr>';
             return;
         }
         var rows = data.inventarios || [];
         tb.innerHTML = rows.length ? rows.map(function(i) {
-            return '<tr><td>' + escHtml(i.id) + '</td><td>' + escHtml(i.tipo) + '</td><td>' + escHtml(i.descricao) + '</td><td>' + escHtml(i.status) + '</td></tr>';
-        }).join('') : '<tr><td colspan="4">Nenhum inventário.</td></tr>';
+            var total = parseInt(i.total_linhas, 10) || 0;
+            var conf = parseInt(i.conferidas, 10) || 0;
+            var prog = total ? (conf + '/' + total) : '—';
+            var abrir = ((i.status || '').toLowerCase() !== 'finalizado')
+                ? '<button type="button" class="btn btn-secondary btn-sm wms-inv-abrir" data-id="' + escHtml(String(i.id)) + '">Abrir</button>'
+                : '<button type="button" class="btn btn-secondary btn-sm wms-inv-abrir" data-id="' + escHtml(String(i.id)) + '">Ver</button>';
+            return '<tr><td>' + escHtml(i.id) + '</td><td>' + escHtml(i.descricao || '—') + '</td><td>' + escHtml(wmsInvFormatarData(i.criado_em))
+                + '</td><td>' + escHtml(prog) + '</td><td>' + escHtml(wmsInvStatusLabel(i.status)) + '</td><td>' + abrir + '</td></tr>';
+        }).join('') : '<tr><td colspan="6">Nenhum inventário. Clique em «Iniciar inventário» para registrar o estoque atual.</td></tr>';
     } catch (e) {
-        if (tb) tb.innerHTML = '<tr><td colspan="4">' + escHtml((e && e.message) || 'Erro ao carregar inventários.') + '</td></tr>';
+        if (tb) tb.innerHTML = '<tr><td colspan="6">' + escHtml((e && e.message) || 'Erro ao carregar inventários.') + '</td></tr>';
         showMessage('Erro ao carregar inventários WMS.', 'error');
+    }
+}
+
+async function wmsInvBipProduto() {
+    if (!_wmsInvState.id) return;
+    wmsInvMostrarErro('');
+    var sku = wmsNormalizarCodigoBip((document.getElementById('wms-inv-bip-sku') || {}).value);
+    if (!sku) { wmsInvMostrarErro('Bipe ou digite o EAN/SKU do produto.'); return; }
+    var dp = (document.getElementById('wms-inv-bip-producao') || {}).value || '';
+    var dv = (document.getElementById('wms-inv-bip-validade') || {}).value || '';
+    var errDp = wmsValidarDataProducao(dp);
+    if (errDp) { wmsInvMostrarErro(errDp); return; }
+    if (!dv) { wmsInvMostrarErro('Informe a data de validade.'); return; }
+    var qtd = parseInt((document.getElementById('wms-inv-bip-qtd') || {}).value || '1', 10);
+    if (isNaN(qtd) || qtd < 1) { wmsInvMostrarErro('Informe a quantidade de caixas (mínimo 1).'); return; }
+    var btn = document.getElementById('btn-wms-inv-bip');
+    var body = {
+        acao: 'bip',
+        inventario_id: _wmsInvState.id,
+        item: {
+            sku: sku,
+            up: ((document.getElementById('wms-inv-bip-up') || {}).value || '').trim(),
+            lote: ((document.getElementById('wms-inv-bip-lote') || {}).value || '').trim(),
+            data_producao: dp || null,
+            data_validade: dv,
+            quantidade_caixas: qtd
+        }
+    };
+    if (btn) { btn.disabled = true; btn.textContent = 'Conferindo…'; }
+    try {
+        var data = await fetchAPI('/wms/inventarios', { method: 'POST', body: JSON.stringify(body) });
+        if (data && data.ok) {
+            showMessage(data.mensagem || 'Bipagem registrada.', data.status_linha === 'conferido' ? 'success' : 'warning');
+            wmsInvLimparBipForm();
+            var elSku = document.getElementById('wms-inv-bip-sku');
+            if (elSku) elSku.focus();
+            await wmsAbrirInventario(_wmsInvState.id);
+        } else {
+            wmsInvMostrarErro((data && data.erro) || 'Erro ao registrar bipagem.');
+        }
+    } catch (e) {
+        wmsInvMostrarErro((e && e.message) || 'Erro ao registrar bipagem.');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Confirmar bipagem'; }
+    }
+}
+
+async function wmsInvAplicarBase() {
+    if (!_wmsInvState.id) return;
+    if (!confirm('Aplicar as bipagens divergentes na base de produtos e finalizar este inventário?')) return;
+    var btn = document.getElementById('btn-wms-inv-aplicar');
+    if (btn) { btn.disabled = true; btn.textContent = 'Atualizando…'; }
+    try {
+        var data = await fetchAPI('/wms/inventarios', {
+            method: 'POST',
+            body: JSON.stringify({ acao: 'aplicar_base', inventario_id: _wmsInvState.id })
+        });
+        if (data && data.ok) {
+            showMessage(data.mensagem || 'Base atualizada.', 'success');
+            await loadWmsInventarios();
+        } else {
+            showMessage((data && data.erro) || 'Erro ao atualizar base.', 'error');
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Aplicar bipagens na base de produtos'; }
+    }
+}
+
+async function wmsInvFinalizar() {
+    if (!_wmsInvState.id) return;
+    if (!confirm('Finalizar inventário sem alterar a base de produtos?')) return;
+    var data = await fetchAPI('/wms/inventarios', {
+        method: 'POST',
+        body: JSON.stringify({ acao: 'finalizar', inventario_id: _wmsInvState.id })
+    });
+    if (data && data.ok) {
+        showMessage('Inventário finalizado.', 'success');
+        await loadWmsInventarios();
+    } else {
+        showMessage((data && data.erro) || 'Erro ao finalizar.', 'error');
+    }
+}
+
+function wmsInitInventarioUi() {
+    if (window._wmsInvUiBound) return;
+    window._wmsInvUiBound = true;
+    var tb = document.getElementById('wms-tbody-inventarios');
+    if (tb) {
+        tb.addEventListener('click', function(ev) {
+            var btn = ev.target.closest('.wms-inv-abrir');
+            if (!btn) return;
+            var id = parseInt(btn.getAttribute('data-id'), 10);
+            if (id) wmsAbrirInventario(id);
+        });
+    }
+    var bVoltar = document.getElementById('btn-wms-inv-voltar');
+    if (bVoltar) bVoltar.addEventListener('click', function() { loadWmsInventarios(); });
+    var bBip = document.getElementById('btn-wms-inv-bip');
+    if (bBip) bBip.addEventListener('click', wmsInvBipProduto);
+    var bApl = document.getElementById('btn-wms-inv-aplicar');
+    if (bApl) bApl.addEventListener('click', wmsInvAplicarBase);
+    var bFin = document.getElementById('btn-wms-inv-finalizar');
+    if (bFin) bFin.addEventListener('click', wmsInvFinalizar);
+    var inpSku = document.getElementById('wms-inv-bip-sku');
+    if (inpSku) {
+        inpSku.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); wmsInvBipProduto(); }
+        });
     }
 }
 
@@ -7723,7 +8655,7 @@ function initTabs() {
 function loadTabData(tab) {
     switch(tab) {
         case 'painel':
-            initPainelPlacasFiltroData();
+            initPainelFiltros();
             return loadPainelCompleto();
         case 'base':
             return loadBasePlanilha();
@@ -7780,7 +8712,7 @@ function _baixadosRavexFiltroState(scope) {
         window._baixadosRavexFiltrosPorScope = {};
     }
     if (!window._baixadosRavexFiltrosPorScope[scope]) {
-        window._baixadosRavexFiltrosPorScope[scope] = { periodo: 'todos', data_inicio: '', data_fim: '', usuario: '' };
+        window._baixadosRavexFiltrosPorScope[scope] = { periodo: 'todos', data_inicio: '', data_fim: '', hora_inicio: '', hora_fim: '', usuario: '' };
     }
     return window._baixadosRavexFiltrosPorScope[scope];
 }
@@ -8083,6 +9015,29 @@ function initBaixadosRavexExcluir(scope) {
     });
 }
 
+function limparBaixadosRavexFiltros(scope) {
+    scope = _baixadosRavexScope(scope);
+    var f = _baixadosRavexFiltroState(scope);
+    f.periodo = 'todos';
+    f.data_inicio = '';
+    f.data_fim = '';
+    f.hora_inicio = '';
+    f.hora_fim = '';
+    f.usuario = '';
+    var di = _baixadosRavexEl('baixa-ravex-filtro-data-inicio', scope);
+    var df = _baixadosRavexEl('baixa-ravex-filtro-data-fim', scope);
+    var hi = _baixadosRavexEl('baixa-ravex-filtro-hora-inicio', scope);
+    var hf = _baixadosRavexEl('baixa-ravex-filtro-hora-fim', scope);
+    var selUser = _baixadosRavexEl('baixa-ravex-filtro-usuario', scope);
+    if (di) di.value = '';
+    if (df) df.value = '';
+    if (hi) hi.value = '';
+    if (hf) hf.value = '';
+    if (selUser) selUser.value = '';
+    _baixadosRavexAtualizarBtnsData(scope);
+    loadBaixadosRavex(scope, { forcar: true });
+}
+
 function initBaixadosRavexFiltros(scope) {
     scope = _baixadosRavexScope(scope);
     if (!window._baixadosRavexFiltrosInitFlags) window._baixadosRavexFiltrosInitFlags = {};
@@ -8099,26 +9054,55 @@ function initBaixadosRavexFiltros(scope) {
             f.periodo = p;
             var di = _baixadosRavexEl('baixa-ravex-filtro-data-inicio', scope);
             var df = _baixadosRavexEl('baixa-ravex-filtro-data-fim', scope);
-            if (di) di.value = '';
-            if (df) df.value = '';
-            f.data_inicio = '';
-            f.data_fim = '';
+            var hi = _baixadosRavexEl('baixa-ravex-filtro-hora-inicio', scope);
+            var hf = _baixadosRavexEl('baixa-ravex-filtro-hora-fim', scope);
+            if (p === 'todos') {
+                if (di) di.value = '';
+                if (df) df.value = '';
+                if (hi) hi.value = '';
+                if (hf) hf.value = '';
+                f.data_inicio = '';
+                f.data_fim = '';
+                f.hora_inicio = '';
+                f.hora_fim = '';
+            } else {
+                if (di) di.value = '';
+                if (df) df.value = '';
+                f.data_inicio = '';
+                f.data_fim = '';
+                f.hora_inicio = hi ? hi.value.slice(0, 5) : '';
+                f.hora_fim = hf ? hf.value.slice(0, 5) : '';
+            }
             _baixadosRavexAtualizarBtnsData(scope);
             loadBaixadosRavex(scope);
         });
     });
     var di = _baixadosRavexEl('baixa-ravex-filtro-data-inicio', scope);
     var df = _baixadosRavexEl('baixa-ravex-filtro-data-fim', scope);
+    var hi = _baixadosRavexEl('baixa-ravex-filtro-hora-inicio', scope);
+    var hf = _baixadosRavexEl('baixa-ravex-filtro-hora-fim', scope);
     function onDataLivreChange() {
         var f = _baixadosRavexFiltroState(scope);
         f.periodo = 'todos';
         f.data_inicio = di ? di.value : '';
         f.data_fim = df ? df.value : '';
+        f.hora_inicio = hi ? hi.value.slice(0, 5) : '';
+        f.hora_fim = hf ? hf.value.slice(0, 5) : '';
         _baixadosRavexAtualizarBtnsData(scope);
+        loadBaixadosRavex(scope);
+    }
+    function onHoraChange() {
+        var f = _baixadosRavexFiltroState(scope);
+        f.hora_inicio = hi ? hi.value.slice(0, 5) : '';
+        f.hora_fim = hf ? hf.value.slice(0, 5) : '';
         loadBaixadosRavex(scope);
     }
     if (di) di.addEventListener('change', onDataLivreChange);
     if (df) df.addEventListener('change', onDataLivreChange);
+    if (hi) hi.addEventListener('change', onHoraChange);
+    if (hf) hf.addEventListener('change', onHoraChange);
+    var btnLimpar = _baixadosRavexEl('btn-baixa-ravex-limpar-filtros', scope);
+    if (btnLimpar) btnLimpar.addEventListener('click', function() { limparBaixadosRavexFiltros(scope); });
     var selUser = _baixadosRavexEl('baixa-ravex-filtro-usuario', scope);
     if (selUser) {
         selUser.addEventListener('change', function() {
@@ -8145,6 +9129,8 @@ function _baixadosRavexQueryFiltros(scope) {
     var q = ['limit=150'];
     if (f.data_inicio) q.push('data_inicio=' + encodeURIComponent(f.data_inicio));
     if (f.data_fim) q.push('data_fim=' + encodeURIComponent(f.data_fim));
+    if (f.hora_inicio) q.push('hora_inicio=' + encodeURIComponent(f.hora_inicio));
+    if (f.hora_fim) q.push('hora_fim=' + encodeURIComponent(f.hora_fim));
     if (!f.data_inicio && !f.data_fim && f.periodo && f.periodo !== 'todos') {
         q.push('periodo=' + encodeURIComponent(f.periodo));
     }
@@ -8154,7 +9140,7 @@ function _baixadosRavexQueryFiltros(scope) {
 
 function _baixadosRavexTemFiltroAtivo(scope) {
     var f = _baixadosRavexFiltroState(scope);
-    return !!(f.data_inicio || f.data_fim || (f.periodo && f.periodo !== 'todos') || f.usuario);
+    return !!(f.data_inicio || f.data_fim || f.hora_inicio || f.hora_fim || (f.periodo && f.periodo !== 'todos') || f.usuario);
 }
 
 function _baixadosRavexPreencherUsuarios(usuarios, scope) {
@@ -8185,11 +9171,15 @@ function _baixadosRavexAtualizarResumoFiltro(total, scope) {
     var f = _baixadosRavexFiltroState(scope);
     var partes = [];
     if (f.data_inicio || f.data_fim) {
-        partes.push('período ' + (f.data_inicio || '…') + ' a ' + (f.data_fim || '…'));
+        var horaTxt = '';
+        if (f.hora_inicio || f.hora_fim) {
+            horaTxt = ' · ' + (f.hora_inicio || '00:00') + '–' + (f.hora_fim || '23:59');
+        }
+        partes.push('período ' + (f.data_inicio || '…') + ' a ' + (f.data_fim || '…') + horaTxt);
     } else if (f.periodo === 'hoje') {
-        partes.push('hoje');
+        partes.push('hoje' + (f.hora_inicio || f.hora_fim ? (' · ' + (f.hora_inicio || '00:00') + '–' + (f.hora_fim || '23:59')) : ''));
     } else if (f.periodo === 'ontem') {
-        partes.push('ontem');
+        partes.push('ontem' + (f.hora_inicio || f.hora_fim ? (' · ' + (f.hora_inicio || '00:00') + '–' + (f.hora_fim || '23:59')) : ''));
     }
     if (f.usuario) partes.push('usuário ' + f.usuario);
     el.textContent = total + ' registro(s) — filtro: ' + partes.join(', ');
@@ -8634,7 +9624,7 @@ function renderPainelTerceirosCharts(data) {
         terChartBipagemXml = new Chart(ctxB, {
             type: 'bar',
             data: {
-                labels: ['XML', 'Bipado'],
+                labels: ['XML', 'Recebido WMS'],
                 datasets: [{
                     label: 'Quantidade',
                     data: [stats.quantidade_total_xml || 0, stats.quantidade_total_bipada || 0],
@@ -11668,11 +12658,98 @@ function renderTerceirosPendenciaRecebimentoAcoes(row) {
     var area = escapeHtml(row.area || 'recebimento');
     var id = escapeHtml(String(row.id));
     return '<span class="ter-lista-acoes ter-pendencia-acoes">'
-        + '<button type="button" class="btn btn-primary btn-sm" data-ter-descarregar-pend="' + id + '" data-ter-area="' + area + '">Começar descarga</button>'
+        + '<button type="button" class="btn btn-primary btn-sm" data-ter-descarregar-pend="' + id + '" data-ter-area="' + area + '">Ver status</button>'
+        + '<button type="button" class="btn btn-secondary btn-sm" data-ter-abrir-wms-pend="' + id + '" data-ter-area="' + area + '" data-ter-nf="' + escapeHtml(String(row.numero_nf || '')) + '">Receber no WMS</button>'
         + '<button type="button" class="btn btn-secondary btn-sm" data-ter-ver-detalhe-pend="' + id + '" data-ter-area="' + area + '">Ver detalhe</button>'
         + renderTerceirosBotoesPdfXmlNf(row)
         + renderTerceirosExcluirButton(row, 'data-ter-excluir-doc')
         + '</span>';
+}
+
+function terceirosIrParaWmsEnderecamento(doc) {
+    doc = doc || window._terceirosDocAtual || {};
+    var nf = String(doc.numero_nf || '').trim();
+    if (!nf) {
+        showMessage('NF não identificada.', 'warning');
+        return;
+    }
+    if (typeof window.controleMostrarModulo === 'function') {
+        window.controleMostrarModulo('enderecamento-wms', { wmsTab: 'recebimento' });
+    }
+    window.setTimeout(function() {
+        var nfEl = document.getElementById('wms-rec-nf');
+        if (nfEl) nfEl.value = nf;
+        var areaEl = document.getElementById('wms-rec-terceiros-area');
+        if (areaEl && doc.area) areaEl.value = doc.area;
+        if (typeof window.wmsBuscarNfDescarga === 'function') {
+            void window.wmsBuscarNfDescarga();
+        }
+    }, 350);
+}
+
+function _terceirosLabelStatusWms(doc) {
+    if (!doc) return '—';
+    if (isTerceirosFlagSim(doc.recebimento_concluido)) return 'Recebimento concluído';
+    var st = String(doc.recebimento_wms_status || '').toLowerCase();
+    if (st === 'finalizado') return 'Finalizado no WMS';
+    if (doc.recebimento_wms_id) {
+        if (st) return 'Em andamento (' + st + ')';
+        return 'Em andamento no WMS';
+    }
+    return 'Aguardando início no WMS';
+}
+
+function atualizarUIStatusWmsTerceiros(doc) {
+    var label = document.getElementById('ter-wms-status-label');
+    var qRec = document.getElementById('ter-wms-stat-qtd-recebida');
+    var qPend = document.getElementById('ter-wms-stat-pendencias');
+    var msg = document.getElementById('ter-wms-msg-concluido');
+    var btnWms = document.getElementById('btn-ter-abrir-wms');
+    var btnAtualizar = document.getElementById('btn-ter-atualizar-status-wms');
+    if (!doc) {
+        if (label) label.textContent = '—';
+        if (qRec) qRec.textContent = '0';
+        if (qPend) qPend.textContent = '0';
+        if (msg) msg.style.display = 'none';
+        if (btnWms) btnWms.disabled = true;
+        if (btnAtualizar) btnAtualizar.disabled = true;
+        return;
+    }
+    var tot = _terceirosCalcularTotaisConferencia(doc, doc.itens || window._terceirosBipagemItens);
+    if (label) label.textContent = _terceirosLabelStatusWms(doc);
+    if (qRec) qRec.textContent = _formatTerQtdDisplay(doc.quantidade_total_wms != null ? doc.quantidade_total_wms : tot.totalBip);
+    if (qPend) qPend.textContent = String(doc.itens_pendentes_wms != null ? doc.itens_pendentes_wms : tot.divergentes);
+    var concluido = isTerceirosFlagSim(doc.recebimento_concluido);
+    if (msg) msg.style.display = concluido ? 'block' : 'none';
+    if (btnWms) btnWms.disabled = false;
+    if (btnAtualizar) btnAtualizar.disabled = false;
+}
+
+function initTerceirosWmsStatusPanel() {
+    var btnWms = document.getElementById('btn-ter-abrir-wms');
+    if (btnWms && !btnWms.dataset.terWmsBound) {
+        btnWms.dataset.terWmsBound = '1';
+        btnWms.addEventListener('click', function() {
+            terceirosIrParaWmsEnderecamento(window._terceirosDocAtual);
+        });
+    }
+    var btnAtualizar = document.getElementById('btn-ter-atualizar-status-wms');
+    if (btnAtualizar && !btnAtualizar.dataset.terWmsBound) {
+        btnAtualizar.dataset.terWmsBound = '1';
+        btnAtualizar.addEventListener('click', function() {
+            var id = _terceirosDocumentoIdAtualParaApi();
+            if (id == null) {
+                showMessage('Selecione uma nota.', 'warning');
+                return;
+            }
+            btnAtualizar.disabled = true;
+            void loadTerceirosDocumentoDetalhe(window._terceirosDocAtual.area || 'recebimento', id, { acaoLoad: true })
+                .then(function() { showMessage('Status atualizado com o WMS.', 'success'); })
+                .catch(function(e) { console.error(e); showMessage('Erro ao atualizar status.', 'error'); })
+                .finally(function() { btnAtualizar.disabled = false; });
+        });
+    }
+    atualizarUIStatusWmsTerceiros(null);
 }
 
 function renderTerceirosUsuarioMeta(usuario, datahora, fallback) {
@@ -11761,7 +12838,7 @@ function renderTerceirosCelulaConfFluxo(row, etapa) {
             return '<td>' + renderTerceirosConferenciaResumoHtml(row) + '</td>';
         }
         return '<td><div class="ter-status-meta">Itens: ' + escapeHtml(String(row.total_itens || 0))
-            + '</div><strong>Bipado: ' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>';
+            + '</div><strong>WMS: ' + escapeHtml(String(row.quantidade_total_bipada || 0)) + '</strong></td>';
     }
     return '<td>' + renderTerceirosConferenciaResumoHtml(row) + '</td>';
 }
@@ -11909,7 +12986,7 @@ function _terceirosCalcularTotaisConferencia(row, itens) {
     if (Array.isArray(itens) && itens.length) {
         itens.forEach(function(item) {
             var xml = parseFloat(item.quantidade_xml) || 0;
-            var bip = parseFloat(item.quantidade_bipada) || 0;
+            var bip = item.quantidade_wms != null ? parseFloat(item.quantidade_wms) : (parseFloat(item.quantidade_bipada) || 0);
             totalXml += xml;
             totalBip += bip;
             if (Math.abs(xml - bip) > 1e-6) divergentes += 1;
@@ -11917,8 +12994,15 @@ function _terceirosCalcularTotaisConferencia(row, itens) {
     } else if (row) {
         var resumo = row.resumo || {};
         totalXml = parseFloat(row.quantidade_total_xml != null ? row.quantidade_total_xml : resumo.quantidade_total_xml) || 0;
-        totalBip = parseFloat(row.quantidade_total_bipada != null ? row.quantidade_total_bipada : resumo.quantidade_total_bipada) || 0;
-        divergentes = parseInt(row.itens_divergentes != null ? row.itens_divergentes : resumo.itens_com_pendencia, 10) || 0;
+        totalBip = parseFloat(
+            row.quantidade_total_wms != null ? row.quantidade_total_wms
+                : (row.quantidade_total_bipada != null ? row.quantidade_total_bipada : resumo.quantidade_total_bipada)
+        ) || 0;
+        divergentes = parseInt(
+            row.itens_pendentes_wms != null ? row.itens_pendentes_wms
+                : (row.itens_divergentes != null ? row.itens_divergentes : resumo.itens_com_pendencia),
+            10
+        ) || 0;
     }
     return { totalXml: totalXml, totalBip: totalBip, divergentes: divergentes };
 }
@@ -11974,7 +13058,7 @@ function renderTerceirosConferenciaResumoHtml(row) {
         ? '<span class="status-badge status-OK">✅ Completo</span>'
         : '<span class="status-badge status-FALTA">⚠️ Divergente</span>';
     conferenciaHtml += '<div class="ter-status-meta">XML: ' + escapeHtml(_formatTerQtdDisplay(totalXml))
-        + ' / Bipado: ' + escapeHtml(_formatTerQtdDisplay(totalBip))
+        + ' / WMS: ' + escapeHtml(_formatTerQtdDisplay(totalBip))
         + (divergentes ? (' / Itens: ' + escapeHtml(String(divergentes))) : '')
         + '</div>';
     return conferenciaHtml;
@@ -11987,7 +13071,7 @@ function scrollTerceirosRecebimentoDetalheSecao(secao) {
             blocoDetalhe.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
         var id = 'ter-descarga-conferencia-modelo';
-        if (secao === 'bipagem') id = 'ter-bipagem-bloco';
+        if (secao === 'bipagem' || secao === 'wms') id = 'ter-wms-status-bloco';
         else if (secao === 'resumo') id = 'ter-resumo-descarga-bloco';
         window.setTimeout(function() {
             var el = document.getElementById(id);
@@ -12204,6 +13288,19 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
     tbody.addEventListener('click', function(ev) {
         var el = ev.target;
         if (!el || typeof el.closest !== 'function') return;
+        var wmsBtn = el.closest('[data-ter-abrir-wms-pend]');
+        if (wmsBtn && tbody.contains(wmsBtn)) {
+            ev.preventDefault();
+            var idW = terceirosIdDocumentoDeAtributo(wmsBtn.getAttribute('data-ter-abrir-wms-pend'));
+            var areaW = wmsBtn.getAttribute('data-ter-area') || 'recebimento';
+            var nfW = wmsBtn.getAttribute('data-ter-nf') || '';
+            if (!Number.isFinite(idW)) {
+                showMessage('Não foi possível identificar a nota. Recarregue a lista.', 'warning');
+                return;
+            }
+            terceirosIrParaWmsEnderecamento({ id: idW, area: areaW, numero_nf: nfW });
+            return;
+        }
         var desc = el.closest('[data-ter-descarregar-pend]');
         if (desc && tbody.contains(desc)) {
             ev.preventDefault();
@@ -12216,9 +13313,10 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
             window._terceirosDetalheOrigemTab = 'pendencia-recebimento';
             var btnDesc = desc;
             btnDesc.disabled = true;
-            void abrirPendenciaTerceirosComScroll(areaD, idD, 'bipagem', {
-                modalLoading: true,
-                mensagemLoading: 'Abrindo descarga e conferência…'
+            void abrirPendenciaTerceirosComScroll(areaD, idD, 'resumo', {
+                modalLoading: false,
+                loadingAcao: true,
+                mensagemLoading: 'Carregando status da NF…'
             }).then(function() {
                 btnDesc.disabled = false;
             }).catch(function(err) {
@@ -12227,7 +13325,7 @@ function initTerceirosPendenciaRecebimentoDelegacao() {
                     return;
                 }
                 console.error(err);
-                showMessage('Erro ao abrir a descarga.', 'error');
+                showMessage('Erro ao abrir o status da NF.', 'error');
                 btnDesc.disabled = false;
             });
             return;
@@ -13338,10 +14436,9 @@ function resetTerceirosDetalhe() {
     if (hidDoc) hidDoc.value = '';
     _limparPendenciasBipagemTerceiros();
     var tbody = document.getElementById('ter-tbody-recebimento-itens');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="12" class="loading">Selecione uma nota.</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="loading">Selecione uma nota.</td></tr>';
     window._terceirosBipagemItens = [];
-    limparCamposBipagemTerceiros(false);
-    atualizarUIBipagemTerceiros(null);
+    atualizarUIStatusWmsTerceiros(null);
 }
 
 function preencherMetaTerceiros(prefixo, campoBase, valor, usuario, datahora) {
@@ -13359,9 +14456,15 @@ function atualizarBotaoConclusaoTerceiros(prefixo, concluidoRaw) {
     if (!btn) return;
     var concluido = isTerceirosFlagSim(concluidoRaw);
     btn.classList.toggle('btn-ter-concluido', concluido);
-    btn.textContent = concluido ? 'Recebimento concluído ✓' : 'Recebimento concluído';
-    btn.disabled = concluido;
-    btn.setAttribute('aria-label', concluido ? 'Recebimento já concluído' : 'Registrar recebimento como concluído');
+    if (concluido) {
+        btn.textContent = 'Recebimento concluído ✓';
+        btn.disabled = true;
+        btn.setAttribute('aria-label', 'Recebimento já concluído via WMS');
+    } else {
+        btn.textContent = 'Aguardando WMS';
+        btn.disabled = true;
+        btn.setAttribute('aria-label', 'Conclusão automática ao finalizar no WMS');
+    }
 }
 
 function animarConclusaoTerceiros(prefixo) {
@@ -13690,7 +14793,7 @@ function atualizarResumoTotaisBipagemTerceiros() {
     var tb = document.getElementById('ter-bipagem-total-bipado');
     var rs = document.getElementById('ter-bipagem-resumo-status');
     if (tx) tx.textContent = 'Total: ' + _formatTerQtdDisplay(totalXml);
-    if (tb) tb.textContent = 'Bipado: ' + _formatTerQtdDisplay(totalBip);
+    if (tb) tb.textContent = 'Recebido WMS: ' + _formatTerQtdDisplay(totalBip);
     if (rs) {
         if (!itens.length) {
             rs.textContent = 'Sem itens';
@@ -14289,14 +15392,14 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
         var idAntNum = docAnterior != null && docAnterior !== '' ? Number(docAnterior) : NaN;
         var vaiFlush = Number.isFinite(idAntNum) && idAntNum > 0 && _terceirosTemBipagemPendenteLocal();
         if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="12" class="loading">' + (vaiFlush
-                ? 'Salvando bipagens pendentes…'
+            tbody.innerHTML = '<tr><td colspan="11" class="loading">' + (vaiFlush
+                ? 'Sincronizando com o WMS…'
                 : 'Carregando itens da NF…') + '</td></tr>';
         }
     } else if (tbody && (opcoes.acaoLoad || opcoes.descargaLoad)) {
         if (rowCache) _terceirosAplicarCabecalhoDetalheUi(rowCache, area);
         if (opcoes.descargaLoad) fecharModalCarregandoDescargaTerceiros();
-        tbody.innerHTML = '<tr><td colspan="12" class="loading">Carregando itens da NF…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Carregando itens da NF…</td></tr>';
     }
 
     if (terceirosDescargaFoiCancelado() || window._terAcaoLoadCancelado) return;
@@ -14340,7 +15443,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
         var msgErro = (doc && doc.erro) ? String(doc.erro) : 'Erro ao carregar.';
         if (tbody) {
             if (mudouDocumento) {
-                tbody.innerHTML = '<tr><td colspan="12" class="loading">' + escapeHtml(msgErro) + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" class="loading">' + escapeHtml(msgErro) + '</td></tr>';
             }
         }
         if (!mudouDocumento) {
@@ -14369,6 +15472,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
         });
     }
     window._terceirosBipagemItens = itens.map(function(item) {
+        var qWms = item.quantidade_wms != null ? item.quantidade_wms : item.quantidade_bipada;
         return {
             id: item.id,
             n_item: item.n_item,
@@ -14377,12 +15481,13 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
             descricao_xml: item.descricao_xml,
             unidade_xml: item.unidade_xml,
             quantidade_xml: item.quantidade_xml,
-            quantidade_bipada: item.quantidade_bipada,
+            quantidade_bipada: qWms,
+            quantidade_wms: qWms,
             motivo: item.motivo || ''
         };
     });
     atualizarResumoTotaisBipagemTerceiros();
-    atualizarUIBipagemTerceiros(doc);
+    atualizarUIStatusWmsTerceiros(doc);
     _terceirosSincronizarCampoEnviarMgDetalhe();
     _terceirosSincronizarCampoRecebidaMgDetalhe();
     _persistirTerceirosDocumentoNaSessao(doc.id, _terceirosDocAtual.area);
@@ -14390,7 +15495,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
         _terceirosFecharDescargaSeForaDaPendencia(doc.id);
     }
     if (!itens.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="loading">Nenhum item encontrado no XML.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Nenhum item encontrado no XML.</td></tr>';
         return;
     }
     var bloqueado = !!doc.recebimento_concluido;
@@ -14401,22 +15506,7 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
             ? '<span style="color:#2e7d32;font-weight:600;">Cadastro local</span>'
             : '<span style="color:#c62828;font-weight:600;">Sem cadastro</span>';
         var qXml = parseFloat(item.quantidade_xml) || 0;
-        var qBip = parseFloat(item.quantidade_bipada) || 0;
-        var falta = Math.max(0, qXml - qBip);
-        var qtdFaltaParaBipar = Math.max(1, falta);
-        var codigoBarras = item.codigo_ean || '-';
-        var codigoBarrasEscapado = (codigoBarras !== '-' ? codigoBarras.replace(/'/g, "\\'").replace(/"/g, '&quot;') : '');
-        var produtoEscapado = (item.descricao_xml || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        var podeAcoes = !bloqueado && codigoBarras !== '-';
-        var semBip = qBip <= 1e-9;
-        var botoesTirar = podeAcoes
-            ? ('<button type="button" class="btn btn-secondary" ' + (semBip ? 'disabled ' : '') + 'data-ter-acao="tirar-1" data-ter-item-id="' + item.id + '" style="padding: 4px 8px; font-size: 11px;" title="Remover 1 unidade bipada">➖ Tirar 1</button>'
-                + '<button type="button" class="btn btn-secondary" ' + (semBip ? 'disabled ' : '') + 'data-ter-acao="tirar-tudo" data-ter-item-id="' + item.id + '" style="padding: 4px 8px; font-size: 11px;" title="Remover todas as unidades bipadas deste item">🗑️ Tirar tudo</button>')
-            : '';
-        var btnBipar = (!bloqueado && codigoBarras !== '-')
-            ? ('<button type="button" class="btn btn-primary" onclick="biparItemTerceirosConferencia(this, ' + item.id + ', \'' + codigoBarrasEscapado + '\', \'' + produtoEscapado + '\', ' + qtdFaltaParaBipar + ')" style="padding: 6px 12px; font-size: 12px;">📱 Bipar</button>')
-            : (falta > 1e-9 ? '<span style="color: #ff9800;" title="Sem EAN no XML para este item.">⚠️ Sem código de barras</span>' : '');
-        var acoesWrap = '<div class="ter-conf-acoes-celula">' + btnBipar + botoesTirar + '</div>';
+        var qBip = item.quantidade_wms != null ? parseFloat(item.quantidade_wms) : (parseFloat(item.quantidade_bipada) || 0);
         var st = item.status_bipagem || _statusBipagemTerLocais(qXml, qBip);
         var pack = _terConferenciaBadgeEClasseLinha(st);
         var motTexto = (item.motivo != null && String(item.motivo) !== '') ? String(item.motivo) : (Object.prototype.hasOwnProperty.call(motivosAntes, String(item.id)) ? motivosAntes[String(item.id)] : '');
@@ -14431,9 +15521,8 @@ async function loadTerceirosDocumentoDetalhe(area, documentoId, opcoes) {
             + '<td>' + escapeHtml(item.unidade_xml || '-') + '</td>'
             + '<td>—</td>'
             + '<td>' + avisoHtml + '</td>'
-            + '<td><strong style="color: ' + (qBip > 1e-9 ? '#4caf50' : '#666') + ';">' + escapeHtml(_formatTerQtdDisplay(item.quantidade_bipada || 0)) + '</strong></td>'
+            + '<td><strong style="color: ' + (qBip > 1e-9 ? '#4caf50' : '#666') + ';">' + escapeHtml(_formatTerQtdDisplay(qBip)) + '</strong></td>'
             + '<td>' + _terHtmlCelulaFalta(qXml, qBip) + '</td>'
-            + '<td style="max-width: 280px;">' + acoesWrap + '</td>'
             + '</tr>';
     }).join('');
     tbody.querySelectorAll('tr').forEach(function(r, index) {
@@ -14689,7 +15778,7 @@ function initTerceirosBipagemForm() {
             }
         });
     }
-    atualizarUIBipagemTerceiros(null);
+    atualizarUIStatusWmsTerceiros(null);
 }
 
 function _resolverIdDocumentoTerceirosParaStatus() {
@@ -14909,16 +15998,7 @@ async function concluirRecebimentoTerceirosPelaDescarga(fin, opcoes) {
 }
 
 async function acionarRecebimentoConcluidoTerceirosDireto(btn) {
-    if (_terceirosRecebimentoConcluindo) {
-        showMessage('Conclusão de recebimento em curso. Aguarde.', 'warning');
-        return;
-    }
-    try {
-        await concluirRecebimentoTerceirosPelaDescarga(btn);
-    } catch (e) {
-        console.error(e);
-        showMessage('Não foi possível concluir o recebimento.', 'error');
-    }
+    showMessage('O recebimento é concluído automaticamente ao finalizar a NF no Endereçamento WMS.', 'info');
 }
 
 async function atualizarStatusTerceiros(area, campo, valor, opcoes) {
@@ -15855,7 +16935,7 @@ function initForms() {
             });
         });
     }
-    initTerceirosBipagemForm();
+    initTerceirosWmsStatusPanel();
     initTerceirosFiltroPrevisaoPendencia();
     initTerceirosFiltrosHistorico();
 
@@ -16516,14 +17596,16 @@ function paintPlacasBaixadasDia(placasDia) {
     set('stat-placas-andamento', resumo.em_andamento);
     set('stat-placas-nao-carregadas', resumo.nao_carregados);
     set('stat-placas-peso-total', resumo.peso_total_kg != null ? Number(resumo.peso_total_kg).toLocaleString('pt-BR') : '0');
-    var labelEl = document.getElementById('painel-placas-data-label');
-    if (labelEl) labelEl.textContent = placasDia.data ? ('Referência: ' + placasDia.data) : '';
-    var dataInput = document.getElementById('painel-placas-data');
-    if (dataInput && placasDia.data_iso && !dataInput.value) dataInput.value = placasDia.data_iso;
+    var labelEl = document.getElementById('painel-filtro-resumo');
+    if (labelEl) {
+        var leg = (placasDia.filtros && placasDia.filtros.legivel) || placasDia.data || '';
+        labelEl.textContent = leg ? ('Exibindo: ' + leg) : '';
+        labelEl.style.display = leg ? '' : 'none';
+    }
     var tbody = document.getElementById('tbody-painel-placas-dia');
     if (tbody) {
         if (rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="loading">Nenhuma placa baixada nesta data.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="loading">Nenhuma placa baixada no período filtrado.</td></tr>';
         } else {
             tbody.innerHTML = rows.map(function(r) {
                 var stCls = _painelPlacasStatusClass(r.status);
@@ -16643,36 +17725,52 @@ function paintPlacasBaixadasCharts(placasDia) {
     }
 }
 
-function initPainelPlacasFiltroData() {
-    if (window._painelPlacasFiltroInit) return;
-    window._painelPlacasFiltroInit = true;
-    var dataInput = document.getElementById('painel-placas-data');
-    var btn = document.getElementById('btn-painel-placas-atualizar');
-    if (dataInput && !dataInput.value) {
-        var hoje = new Date();
-        var pad = function(n) { return (n < 10 ? '0' : '') + n; };
-        dataInput.value = hoje.getFullYear() + '-' + pad(hoje.getMonth() + 1) + '-' + pad(hoje.getDate());
-    }
-    if (btn) {
-        btn.addEventListener('click', function() { loadPainelCompleto(); });
-    }
-    if (dataInput) {
-        dataInput.addEventListener('change', function() { loadPainelCompleto(); });
-    }
+function _painelHojeIso() {
+    var hoje = new Date();
+    var pad = function(n) { return (n < 10 ? '0' : '') + n; };
+    return hoje.getFullYear() + '-' + pad(hoje.getMonth() + 1) + '-' + pad(hoje.getDate());
+}
+
+function _painelBuildQueryString() {
+    var parts = [];
+    var dataInput = document.getElementById('painel-filtro-data');
+    var horaIni = document.getElementById('painel-filtro-hora-inicio');
+    var horaFim = document.getElementById('painel-filtro-hora-fim');
+    if (dataInput && dataInput.value) parts.push('data=' + encodeURIComponent(dataInput.value));
+    if (horaIni && horaIni.value) parts.push('hora_inicio=' + encodeURIComponent(horaIni.value.slice(0, 5)));
+    if (horaFim && horaFim.value) parts.push('hora_fim=' + encodeURIComponent(horaFim.value.slice(0, 5)));
+    return parts.length ? '?' + parts.join('&') : '';
+}
+
+function limparPainelFiltros() {
+    var dataInput = document.getElementById('painel-filtro-data');
+    var horaIni = document.getElementById('painel-filtro-hora-inicio');
+    var horaFim = document.getElementById('painel-filtro-hora-fim');
+    if (dataInput) dataInput.value = _painelHojeIso();
+    if (horaIni) horaIni.value = '';
+    if (horaFim) horaFim.value = '';
+    loadPainelCompleto();
+}
+
+function initPainelFiltros() {
+    if (window._painelFiltrosInit) return;
+    window._painelFiltrosInit = true;
+    var dataInput = document.getElementById('painel-filtro-data');
+    var btnFiltrar = document.getElementById('btn-painel-filtrar');
+    var btnLimpar = document.getElementById('btn-painel-limpar-filtros');
+    if (dataInput && !dataInput.value) dataInput.value = _painelHojeIso();
+    if (btnFiltrar) btnFiltrar.addEventListener('click', function() { loadPainelCompleto(); });
+    if (btnLimpar) btnLimpar.addEventListener('click', function() { limparPainelFiltros(); });
 }
 
 // Um único request: painel inteiro (estatísticas + viagens + gráficos) = carregamento instantâneo na rede
 async function loadPainelCompleto() {
-    initPainelPlacasFiltroData();
+    initPainelFiltros();
     var tbodyPlacas = document.getElementById('tbody-painel-placas-dia');
     var tbodyViagens = document.getElementById('tbody-painel-viagens');
     if (tbodyPlacas) tbodyPlacas.innerHTML = '<tr><td colspan="8" class="loading">Carregando placas do dia...</td></tr>';
     if (tbodyViagens) tbodyViagens.innerHTML = '<tr><td colspan="6" class="loading">Carregando viagens...</td></tr>';
-    var dataInput = document.getElementById('painel-placas-data');
-    var qs = '';
-    if (dataInput && dataInput.value) {
-        qs = '?data=' + encodeURIComponent(dataInput.value);
-    }
+    var qs = _painelBuildQueryString();
     try {
     const data = await _carregFetchGet('/painel-completo' + qs, 90000);
     if (!data) {
@@ -16684,7 +17782,14 @@ async function loadPainelCompleto() {
     }
     if (data.estatisticas) paintEstatisticas(data.estatisticas);
     if (data.erro) showMessage('Painel: ' + data.erro, 'error');
-    paintPlacasBaixadasDia(data.placas_baixadas_dia || {});
+    var placasPayload = data.placas_baixadas_dia || {};
+    if (data.filtros) placasPayload.filtros = data.filtros;
+    var resumoEl = document.getElementById('painel-filtro-resumo');
+    if (resumoEl && data.filtros && data.filtros.legivel) {
+        resumoEl.textContent = 'Exibindo: ' + data.filtros.legivel;
+        resumoEl.style.display = '';
+    }
+    paintPlacasBaixadasDia(placasPayload);
     paintRomaneioStats(data.romaneio || {});
     const viagens = data.viagens || [];
     const tbody = document.getElementById('tbody-painel-viagens');
@@ -19421,7 +20526,9 @@ async function loadConferencia(idViagem = null, opts) {
                     return loadConferencia(conferencia.id_viagem, Object.assign({}, opts, { _retriedViagem: true }));
                 }
                 var msgVazio = (isDev && (!window._devolucaoNfAtiva || !window._devolucaoNfAtiva.id))
-                    ? 'Inicie uma NF e bip os itens do retorno.'
+                    ? ((document.getElementById('dev-numero-nf') && document.getElementById('dev-numero-nf').value)
+                        ? 'Nenhum item divergente nesta NF para bipar no retorno.'
+                        : 'Selecione a NF com divergência para ver os itens do retorno.')
                     : (isDev ? 'Nenhum item encontrado nesta NF para bipar. Verifique se o romaneio foi baixado da Ravex.' : 'Nenhum item encontrado para esta viagem no romaneio.');
                 if (!isDev && conferencia.aviso_romaneio_vazio) {
                     msgVazio = conferencia.aviso_romaneio_vazio;
