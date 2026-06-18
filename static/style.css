@@ -3433,6 +3433,16 @@ body.conferencia-lista-maximizada-aberta {
     opacity: 0.7;
     user-select: none;
     pointer-events: auto;
+    z-index: 2;
+    border: none;
+    background: transparent;
+    padding: 0;
+    line-height: 1;
+    color: inherit;
+}
+.input-lupa:disabled {
+    cursor: wait;
+    opacity: 0.45;
 }
 .input-lupa:hover {
     opacity: 1;

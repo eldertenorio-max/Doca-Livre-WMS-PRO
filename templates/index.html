@@ -6,7 +6,7 @@
     <title>{{ system_name }} — WMS</title>
     {% from '_app_head_icons.html' import app_head_icons %}
     {{ app_head_icons() }}
-    <link rel="stylesheet" href="../static/style.css?v=20260618g">
+    <link rel="stylesheet" href="../static/style.css?v=20260618h">
     <link rel="stylesheet" href="{{ url_for('static', filename='wms-analise.css') }}?v=20260604">
     <link rel="stylesheet" href="../static/stock-system.css">
     <link rel="stylesheet" href="../static/entrada-modulos.css">
@@ -2903,7 +2903,7 @@
                                         <label for="wms-rec-nf">Nº da NF</label>
                                         <div class="input-com-lupa">
                                             <input type="text" id="wms-rec-nf" placeholder="Ex.: 123456" autofocus>
-                                            <span class="input-lupa" onclick="wmsBuscarNfDescarga()" title="Buscar NF na descarga">🔍</span>
+                                            <button type="button" class="input-lupa" id="btn-wms-rec-nf-buscar" title="Buscar NF na descarga" aria-label="Buscar NF na descarga">🔍</button>
                                         </div>
                                     </div>
                                     <div class="form-group"><label>Fornecedor</label><input type="text" id="wms-rec-fornecedor" placeholder="Preenchido pela NF" readonly></div>
@@ -3849,6 +3849,6 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
     <script src="{{ url_for('static', filename='wms-mapa-3d.js') }}?v=20260618e"></script>
     <script src="{{ url_for('static', filename='wms-analise.js') }}?v=20260604"></script>
-    <script src="../static/script.js?v=20260618g"></script>
+    <script src="../static/script.js?v=20260618h"></script>
 </body>
 </html>

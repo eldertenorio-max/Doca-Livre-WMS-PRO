@@ -7241,9 +7241,18 @@ function wmsInitRecebimentoIntegracaoNf() {
     nfEl.addEventListener('keydown', function(ev) {
         if (ev.key === 'Enter') {
             ev.preventDefault();
-            wmsBuscarNfDescarga();
+            void wmsBuscarNfDescarga();
         }
     });
+    var lupaRec = document.getElementById('btn-wms-rec-nf-buscar');
+    if (lupaRec && !lupaRec.dataset.wmsNfLupaBind) {
+        lupaRec.dataset.wmsNfLupaBind = '1';
+        lupaRec.addEventListener('click', function(ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            void wmsBuscarNfDescarga();
+        });
+    }
     var skuEl = document.getElementById('wms-pal-sku');
     if (skuEl && !skuEl.dataset.wmsSkuBind) {
         skuEl.dataset.wmsSkuBind = '1';
@@ -7276,30 +7285,41 @@ function wmsInitRecebimentoIntegracaoNf() {
 }
 
 window.wmsBuscarNfDescarga = async function() {
-    var nf = (document.getElementById('wms-rec-nf') || {}).value || '';
+    var nfEl = document.getElementById('wms-rec-nf');
+    var nf = (nfEl && nfEl.value) || '';
     if (!String(nf).trim()) {
         showMessage('Informe o número da NF.', 'warning');
+        if (nfEl) nfEl.focus();
         return;
     }
-    var data = await fetchAPI('/wms/recebimentos/buscar-nf?numero_nf=' + encodeURIComponent(nf.trim()));
-    if (!data || data.erro || !data.documento) {
-        wmsLimparPainelNfDescarga();
-        showMessage((data && data.erro) || 'NF não encontrada no módulo de descarga.', 'error');
-        return;
-    }
-    wmsPreencherPainelNfDescarga(data.documento);
-    var doc = data.documento;
-    var sit = doc.situacao_recebimento || {};
-    if (sit.situacao === 'finalizado') {
-        showMessage('NF encontrada — recebimento já finalizado no WMS. Use Reiniciar ou Excluir se precisar recomeçar.', 'warning');
-    } else if (sit.situacao === 'em_andamento') {
-        showMessage('NF carregada — recebimento em andamento. ' + (sit.detalhe || ''), 'success');
-    } else if (wmsDocDescargaReabrivel(doc)) {
-        showMessage('NF carregada — descarga estava concluída; clique em Montar paletes para reabrir o WMS.', 'success');
-    } else if (doc.recebimento_concluido) {
-        showMessage('NF encontrada, mas o recebimento já foi concluído no módulo de descarga.', 'warning');
-    } else {
-        showMessage('NF carregada — clique em Montar paletes para iniciar.', 'success');
+    var lupa = document.getElementById('btn-wms-rec-nf-buscar');
+    if (lupa) lupa.disabled = true;
+    try {
+        var data = await fetchAPI('/wms/recebimentos/buscar-nf?numero_nf=' + encodeURIComponent(nf.trim()));
+        if (!data || data.erro || !data.documento) {
+            wmsLimparPainelNfDescarga();
+            showMessage((data && data.erro) || 'NF não encontrada no módulo de descarga.', 'error');
+            return;
+        }
+        wmsPreencherPainelNfDescarga(data.documento);
+        var doc = data.documento;
+        var sit = doc.situacao_recebimento || {};
+        if (sit.situacao === 'finalizado') {
+            showMessage('NF encontrada — recebimento já finalizado no WMS. Use Reiniciar ou Excluir se precisar recomeçar.', 'warning');
+        } else if (sit.situacao === 'em_andamento') {
+            showMessage('NF carregada — recebimento em andamento. ' + (sit.detalhe || ''), 'success');
+        } else if (wmsDocDescargaReabrivel(doc)) {
+            showMessage('NF carregada — descarga estava concluída; clique em Montar paletes para reabrir o WMS.', 'success');
+        } else if (doc.recebimento_concluido) {
+            showMessage('NF encontrada, mas o recebimento já foi concluído no módulo de descarga.', 'warning');
+        } else {
+            showMessage('NF carregada — clique em Montar paletes para iniciar.', 'success');
+        }
+    } catch (e) {
+        console.error('wmsBuscarNfDescarga', e);
+        showMessage('Erro ao buscar NF: ' + ((e && e.message) || 'falha inesperada'), 'error');
+    } finally {
+        if (lupa) lupa.disabled = false;
     }
 };
 
