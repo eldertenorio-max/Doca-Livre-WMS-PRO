@@ -8,7 +8,7 @@
     var SLOT_H = 0.68;
     var SLOT_D = 0.90;
     var GAP_POS = 0.10;
-    var GAP_CAM = 14;
+    var GAP_CAM = 6;
     var MAX_NIV = 5;
     var AISLE_W = 2.8;
     var LEVEL_H = 0.72;
@@ -51,11 +51,15 @@
         wireframe: false,
         resizeObs: null,
         slotIndex: [],
+        camGroups: {},
+        camFilter: null,
         _canvas: null,
         _onPointerMove: null,
         _onClick: null,
         _onWindowResize: null
     };
+
+    var CAM_ORDER = [11, 12, 13, 21];
 
     function T() {
         if (!global.THREE) throw new Error('Three.js não carregou');
@@ -88,6 +92,89 @@
         return parseInt(String(c).replace('#', ''), 16);
     }
 
+    function _maxNivCam(cod) {
+        return parseInt(cod, 10) === 21 ? 2 : MAX_NIV;
+    }
+
+    function _camMeta(cod) {
+        cod = parseInt(cod, 10);
+        if (cod === 21) return { tipo: 'Refrigerado', temp: '-18' };
+        return { tipo: 'Congelado', temp: '-20' };
+    }
+
+    function _sortCamaras(camaras) {
+        return (camaras || []).slice().sort(function (a, b) {
+            var ia = CAM_ORDER.indexOf(parseInt(a.codigo, 10));
+            var ib = CAM_ORDER.indexOf(parseInt(b.codigo, 10));
+            return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+        });
+    }
+
+    function _textPlane(THREE, text, planeW, planeH, fontPx, color, bg) {
+        var canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 256;
+        var ctx = canvas.getContext('2d');
+        if (bg) {
+            ctx.fillStyle = bg;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        ctx.fillStyle = color || '#212121';
+        ctx.font = 'bold ' + fontPx + 'px Arial,sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(text), canvas.width / 2, canvas.height / 2);
+        var tex = new THREE.CanvasTexture(canvas);
+        tex.needsUpdate = true;
+        var mat = new THREE.MeshBasicMaterial({
+            map: tex,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        var mesh = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeH), mat);
+        return mesh;
+    }
+
+    function _addCorridorSignage(THREE, camGroup, aisleLen, cod) {
+        var meta = _camMeta(cod);
+        var midZ = aisleLen * 0.42;
+        var lblMeta = _textPlane(THREE, 'CÂMARA FRIA', 2.2, 0.35, 52, '#212121');
+        lblMeta.position.set(0, 3.8, midZ - 1.2);
+        camGroup.add(lblMeta);
+        var num = _textPlane(THREE, String(cod), 1.8, 1.4, 160, '#c62828');
+        num.position.set(0, 2.5, midZ);
+        camGroup.add(num);
+        var tipo = _textPlane(THREE, meta.tipo, 0.35, 1.6, 48, '#1565c0');
+        tipo.position.set(-0.55, 1.5, midZ + 0.5);
+        tipo.rotation.y = Math.PI / 2;
+        camGroup.add(tipo);
+        if (meta.temp) {
+            var temp = _textPlane(THREE, meta.temp, 0.9, 0.45, 72, '#c62828');
+            temp.position.set(0, 0.55, midZ + 1.1);
+            camGroup.add(temp);
+        }
+        _addBox(THREE, camGroup, AISLE_W * 0.42, 0.06, 0.28, 0, 0.03, 0.18, new THREE.MeshPhongMaterial({ color: 0xffeb3b }));
+    }
+
+    function _applyCamFilter() {
+        var filter = state.camFilter;
+        Object.keys(state.camGroups).forEach(function (cod) {
+            var g = state.camGroups[cod];
+            if (g) g.visible = !filter || parseInt(cod, 10) === filter;
+        });
+        centerCameraOnRack();
+        renderFrame();
+    }
+
+    function setCamaraFilter(cod) {
+        state.camFilter = cod ? parseInt(cod, 10) : null;
+        if (!state.rackGroup || !Object.keys(state.camGroups).length) return;
+        _applyCamFilter();
+    }
+
     function slotColor(slot) {
         var dest = (slot.destino_acao || '').toLowerCase();
         if (dest === 'envio_mg') return hex('#42a5f5');
@@ -104,8 +191,8 @@
             if (cat === 'D') return hex('#8e24aa');
             return hex('#ef5350');
         }
-        if (parseInt(slot.nivel, 10) === 1) return hex('#e3f2fd');
-        return hex('#ffffff');
+        if (parseInt(slot.nivel, 10) === 1) return hex('#90caf9');
+        return hex('#0d47a1');
     }
 
     function renderLegenda() {
@@ -120,6 +207,7 @@
     function clearRack() {
         state.pickables = [];
         state.slotIndex = [];
+        state.camGroups = {};
         if (!state.rackGroup) return;
         state.rackGroup.traverse(function (ch) {
             if (ch.geometry) ch.geometry.dispose();
@@ -208,14 +296,14 @@
         return Object.keys(set).map(function (k) { return parseInt(k, 10); }).sort(function (a, b) { return a - b; });
     }
 
-    function _buildIndustrialRackSide(THREE, parent, xBase, towardAisle, rua, ruaSlots, camCod, shelfGeo, dummy, col) {
+    function _buildIndustrialRackSide(THREE, parent, xBase, towardAisle, rua, ruaSlots, camCod, shelfGeo, dummy, col, maxNiv) {
         if (!ruaSlots.length) return 0;
+        maxNiv = maxNiv || MAX_NIV;
         var mats = _rackMaterials(THREE);
         var xs = _rackXs(xBase, towardAisle);
         var xF = xs.front;
         var xB = xs.back;
         var colunas = _colunasRua(ruaSlots);
-        var maxNiv = MAX_NIV;
         var rackH = maxNiv * LEVEL_H + 0.35;
         var bayStep = SLOT_D + GAP_POS;
         var zMarks = [0];
@@ -283,11 +371,16 @@
         return { maxPos: maxPos, maxNiv: maxNiv };
     }
 
-    function _filterSlots15(slots) {
+    function _filterSlotsNiv(slots, maxNiv) {
+        maxNiv = maxNiv || MAX_NIV;
         return (slots || []).filter(function (s) {
             var n = parseInt(s.nivel, 10) || 1;
-            return n >= 1 && n <= MAX_NIV;
+            return n >= 1 && n <= maxNiv;
         });
+    }
+
+    function _filterSlots15(slots) {
+        return _filterSlotsNiv(slots, MAX_NIV);
     }
 
     function _rackXBase(ruaIndex, totalRuas) {
@@ -299,17 +392,19 @@
 
     function buildOneCamara(THREE, cam, camOffsetX, shelfGeo, dummy, col) {
         var ruas = cam.ruas || [];
-        var slots = _filterSlots15(cam.slots);
+        var cod = parseInt(cam.codigo, 10);
+        var maxNiv = _maxNivCam(cod);
+        var slots = _filterSlotsNiv(cam.slots, maxNiv);
         if (!slots.length) return camOffsetX;
 
         var camGroup = new THREE.Group();
-        camGroup.name = 'camara-' + cam.codigo;
+        camGroup.name = 'camara-' + cod;
         var aisleLen = 0;
 
         ruas.forEach(function (rua, ri) {
             var ruaSlots = _ruaSlots(cam, rua).filter(function (s) {
                 var n = parseInt(s.nivel, 10) || 1;
-                return n >= 1 && n <= MAX_NIV;
+                return n >= 1 && n <= maxNiv;
             });
             if (!ruaSlots.length) return;
             var xBase = _rackXBase(ri, ruas.length);
@@ -317,7 +412,7 @@
             if (ruas.length <= 1) towardAisle = 1;
             var ruaGroup = new THREE.Group();
             ruaGroup.name = 'rua-' + rua;
-            var len = _buildIndustrialRackSide(THREE, ruaGroup, xBase, towardAisle, rua, ruaSlots, cam.codigo, shelfGeo, dummy, col);
+            var len = _buildIndustrialRackSide(THREE, ruaGroup, xBase, towardAisle, rua, ruaSlots, cod, shelfGeo, dummy, col, maxNiv);
             if (len > aisleLen) aisleLen = len;
             camGroup.add(ruaGroup);
         });
@@ -332,7 +427,7 @@
         aisle.position.set(0, -0.02, aisleLen / 2);
         camGroup.add(aisle);
 
-        _addBox(THREE, camGroup, AISLE_W * 0.5, 0.07, 0.32, 0, 0.035, 0.16, _rackMaterials(THREE).orange);
+        _addCorridorSignage(THREE, camGroup, aisleLen, cod);
 
         var floorW = AISLE_W + BEAM_FACE * 2.8;
         var floorGeo = new THREE.PlaneGeometry(floorW, aisleLen + 0.8);
@@ -345,6 +440,7 @@
         var totalW = floorW + 1.4;
         camGroup.position.set(camOffsetX + totalW / 2, 0, 0);
         state.rackGroup.add(camGroup);
+        state.camGroups[String(cod)] = camGroup;
         return camOffsetX + totalW + GAP_CAM;
     }
 
@@ -358,7 +454,8 @@
             clearRack();
             if (!data || !data.camaras || !data.camaras.length || !state.rackGroup) return;
 
-            var camaras = data.camaras.slice();
+            var pendingFilter = state.camFilter;
+            var camaras = _sortCamaras(data.camaras);
             var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 0.92, SHELF_TH, SLOT_D * 0.88);
             var dummy = new THREE.Object3D();
             var col = new THREE.Color();
@@ -369,7 +466,8 @@
                 function next() {
                     if (idx >= camaras.length) {
                         onResize();
-                        centerCameraOnRack();
+                        state.camFilter = pendingFilter;
+                        _applyCamFilter();
                         renderFrame();
                         return resolve();
                     }
@@ -385,13 +483,20 @@
     function centerCameraOnRack() {
         if (!state.rackGroup || !state.camera || !state.controls) return;
         var THREE = T();
-        var box = new THREE.Box3().setFromObject(state.rackGroup);
+        var box = new THREE.Box3();
+        var hasVisible = false;
+        state.rackGroup.children.forEach(function (ch) {
+            if (ch.visible) {
+                box.expandByObject(ch);
+                hasVisible = true;
+            }
+        });
+        if (!hasVisible) box.setFromObject(state.rackGroup);
         if (box.isEmpty()) return;
         var center = box.getCenter(new THREE.Vector3());
         var size = box.getSize(new THREE.Vector3());
-        var maxDim = Math.max(size.x, size.y, size.z, 10);
-        var dist = maxDim * 0.95;
-        state.camera.position.set(center.x + dist * 0.62, center.y + dist * 0.52, center.z + dist * 0.72);
+        var maxDim = Math.max(size.x, size.y, size.z, 8);
+        state.camera.position.set(center.x, center.y + size.y * 0.65 + 2, center.z - maxDim * 1.15);
         state.controls.target.copy(center);
         state.controls.update();
         state.defaultCamPos = state.camera.position.clone();
@@ -524,6 +629,8 @@
         state.scene = null;
         state.camera = null;
         state.rackGroup = null;
+        state.camGroups = {};
+        state.camFilter = null;
         state._rackMats = null;
         state._canvas = null;
         state.inited = false;
@@ -646,6 +753,7 @@
         setWireframe: setWireframe,
         resetView: resetView,
         build: buildRack,
+        setCamaraFilter: setCamaraFilter,
         setLoading: setLoading,
         onResize: onResize,
         renderFrame: renderFrame,
