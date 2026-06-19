@@ -7,7 +7,7 @@
     var SLOT_W = 0.92;
     var SLOT_H = 0.68;
     var SLOT_D = 0.90;
-    var GAP_POS = 0.10;
+    var GAP_POS = 0.28;
     var GAP_CAM = 6;
     var MAX_NIV = 5;
     var AISLE_W = 2.8;
@@ -295,10 +295,11 @@
     }
 
     function _rackXs(xBase, towardAisle) {
+        var halfDepth = SLOT_D * 0.46;
         if (towardAisle > 0) {
-            return { front: xBase + BEAM_FACE * 0.55, back: xBase - BEAM_FACE * 0.55 };
+            return { front: xBase + halfDepth, back: xBase - halfDepth };
         }
-        return { front: xBase - BEAM_FACE * 0.55, back: xBase + BEAM_FACE * 0.55 };
+        return { front: xBase - halfDepth, back: xBase + halfDepth };
     }
 
     function _addBox(THREE, parent, w, h, d, x, y, z, mat) {
@@ -384,7 +385,7 @@
             zMarks.push((p - 1) * bayStep + SLOT_D);
         });
         if (zMarks[zMarks.length - 1] < colunas.length * bayStep) {
-            zMarks.push(colunas.length * bayStep + 0.15);
+            zMarks.push(colunas.length * bayStep + GAP_POS * 0.5);
         }
         zMarks.forEach(function (z) {
             _addUprightPair(THREE, parent, xF, xB, z, rackH, mats, towardAisle);
@@ -465,10 +466,9 @@
     }
 
     function _rackXBase(ruaIndex, totalRuas) {
-        if (totalRuas <= 1) return -(AISLE_W / 2 + BEAM_FACE * 0.65);
-        return ruaIndex === 0
-            ? -(AISLE_W / 2 + BEAM_FACE * 0.65)
-            : (AISLE_W / 2 + BEAM_FACE * 0.65);
+        var off = AISLE_W / 2 + SLOT_D * 0.52;
+        if (totalRuas <= 1) return -(off);
+        return ruaIndex === 0 ? -(off) : off;
     }
 
     function buildOneCamara(THREE, cam, camOffsetX, shelfGeo, dummy, col) {
@@ -510,7 +510,7 @@
 
         _addCorridorSignage(THREE, camGroup, aisleLen, cod);
 
-        var floorW = AISLE_W + BEAM_FACE * 2.8;
+        var floorW = AISLE_W + SLOT_D * 1.12;
         var floorGeo = new THREE.PlaneGeometry(floorW, aisleLen + 0.8);
         var floorMat = new THREE.MeshPhongMaterial({ color: COL_FLOOR, shininess: 5, side: THREE.DoubleSide });
         var floor = new THREE.Mesh(floorGeo, floorMat);
@@ -542,7 +542,7 @@
 
             var pendingFilter = state.camFilter;
             var camaras = _sortCamaras(data.camaras);
-            var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 0.88, SHELF_TH * 0.92, SLOT_D * 0.84);
+            var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 0.88, SHELF_TH * 0.92, SLOT_D * 0.76);
             var dummy = new THREE.Object3D();
             var col = new THREE.Color();
             var camOffsetX = 0;
