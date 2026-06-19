@@ -11,6 +11,7 @@
     var GAP_CAM_ADJ = 0.58;
     var CAM_FLOOR_PAD = 0.22;
     var WALL_RACK_GAP = 0.12;
+    var WALL_OUTSET = 0.08;
     var RACK_HALF_DEPTH = SLOT_D * 0.54;
     var MAIN_AISLE_W = 10;
     var MAX_NIV = 5;
@@ -762,6 +763,38 @@
         return base;
     }
 
+    /** Limites reais dos racks no mundo (para paredes rente por fora). */
+    function _computeRackBounds(camarasByCode, positions, camCodes) {
+        var minX = Infinity;
+        var maxX = -Infinity;
+        var minZ = Infinity;
+        var maxZ = -Infinity;
+        (camCodes || []).forEach(function (cod) {
+            var cam = camarasByCode[cod];
+            var pos = positions[cod];
+            if (!cam || !pos) return;
+            var ruas = _ruasCamara(cam);
+            var maxNivCap = _maxNivCam(cod);
+            var layoutNiv = parseInt(cam.niveis, 10);
+            var maxNiv = layoutNiv > 0 ? Math.min(layoutNiv, maxNivCap) : maxNivCap;
+            var slots = _filterSlotsNiv(cam.slots, maxNiv);
+            var maxPos = slots.length ? _camMaxPosicao(slots, ruas) : 1;
+            var aisleLen = _aisleLenForMaxPos(maxPos) + 0.5;
+            ruas.forEach(function (rua, ri) {
+                var xBase = _rackXBaseForCam(cod, ri, ruas.length);
+                var toward = ri === 0 ? 1 : -1;
+                if (ruas.length <= 1) toward = 1;
+                var xs = _rackXs(xBase, toward);
+                minX = Math.min(minX, pos.x + xs.front, pos.x + xs.back);
+                maxX = Math.max(maxX, pos.x + xs.front, pos.x + xs.back);
+            });
+            minZ = Math.min(minZ, pos.z);
+            maxZ = Math.max(maxZ, pos.z + aisleLen + 0.8);
+        });
+        if (!isFinite(minX)) return null;
+        return { minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ };
+    }
+
     function _camMaxPosicao(slots, ruas) {
         var max = 1;
         var ruasUp = (ruas || []).map(function (r) { return String(r || '').trim().toUpperCase(); });
@@ -920,8 +953,8 @@
     }
 
     /** Paredes divisórias verticais entre câmaras 11|12 e 12|13 (vãos laterais). */
-    function _addChamberDividerWalls(THREE, parent, leftCodes, fps, positions, maxDepth, wallH) {
-        if (!leftCodes || leftCodes.length < 2 || !maxDepth || !wallH) return;
+    function _addChamberDividerWalls(THREE, parent, leftCodes, fps, positions, rackBounds, wallH) {
+        if (!leftCodes || leftCodes.length < 2 || !rackBounds || !wallH) return;
         var group = new THREE.Group();
         group.name = 'paredes-divisorias';
         var panelMat = new THREE.MeshPhongMaterial({
@@ -935,7 +968,8 @@
             shininess: 6,
             specular: 0x111111
         });
-        var depth = maxDepth * 0.992;
+        var depth = rackBounds.maxZ - rackBounds.minZ;
+        var cz = rackBounds.minZ + depth / 2;
         var frameTh = 0.07;
         for (var i = 0; i < leftCodes.length - 1; i++) {
             var cA = leftCodes[i];
@@ -944,7 +978,6 @@
             var xA = positions[cA].x + fps[cA].width / 2;
             var xB = positions[cB].x - fps[cB].width / 2;
             var cx = (xA + xB) / 2;
-            var cz = depth / 2;
             var wall = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH, wallH, depth), panelMat);
             wall.position.set(cx, wallH / 2, cz);
             wall.castShadow = true;
@@ -960,10 +993,10 @@
             group.add(base);
             [-1, 1].forEach(function (signX) {
                 var post = new THREE.Mesh(new THREE.BoxGeometry(frameTh, wallH, frameTh), frameMat);
-                post.position.set(cx + signX * (WALL_DIV_TH / 2 + frameTh * 0.45), wallH / 2, frameTh * 0.5);
+                post.position.set(cx + signX * (WALL_DIV_TH / 2 + frameTh * 0.45), wallH / 2, rackBounds.minZ + frameTh * 0.5);
                 group.add(post);
                 var postBack = post.clone();
-                postBack.position.z = depth - frameTh * 0.5;
+                postBack.position.z = rackBounds.maxZ - frameTh * 0.5;
                 group.add(postBack);
             });
             var lblA = _textPlane(THREE, 'CÂM. ' + String(cA), 0.72, 0.42, 56, '#263238', 'rgba(255,255,255,0.9)');
@@ -1039,37 +1072,56 @@
         group.add(base);
     }
 
-    /** Paredes externas rente ao bloco 11–13 e envoltório da câm. 21 (linhas perimetrais). */
-    function _addPerimeterWalls(THREE, parent, leftSpan, maxDepth, wallH, positions, fp21) {
-        if (!leftSpan || !maxDepth || !wallH) return;
+    /** Paredes externas rente ao bloco 11–13 e envoltório da câm. 21 (por fora dos racks). */
+    function _addPerimeterWalls(THREE, parent, wallH, positions, camarasByCode) {
+        if (!wallH || !positions || !camarasByCode) return;
+        var b113 = _computeRackBounds(camarasByCode, positions, [11, 12, 13]);
+        if (!b113) return;
+        var bAll = _computeRackBounds(camarasByCode, positions, [11, 12, 13, 21]) || b113;
+        var b21 = positions[21] ? _computeRackBounds(camarasByCode, positions, [21]) : null;
+
         var group = new THREE.Group();
         group.name = 'paredes-perimetro';
         var mats = _wallMats(THREE);
-        var leftX = -leftSpan / 2;
-        var rightX = leftSpan / 2;
-        var rackD = maxDepth * 0.992;
+        var out = WALL_OUTSET;
         var halfTh = WALL_DIV_TH / 2;
+        var leftX = bAll.minX - halfTh - out;
+        var rightX = bAll.maxX + halfTh + out;
+        var backZ = bAll.minZ - halfTh - out;
+        var backW = (bAll.maxX - bAll.minX) + WALL_DIV_TH + out * 2;
+        var d113 = b113.maxZ - b113.minZ;
+        var dAll = bAll.maxZ - bAll.minZ;
 
-        _addWallRunX(group, mats, wallH, leftSpan, 0, halfTh, 'parede-fundo');
-        _addWallRunZ(group, mats, wallH, leftX, rackD / 2, rackD, 'parede-esq-bloco');
-        _addWallRunZ(group, mats, wallH, rightX, rackD / 2, rackD, 'parede-dir-bloco');
+        _addWallRunX(group, mats, wallH, backW, (bAll.minX + bAll.maxX) / 2, backZ, 'parede-fundo');
+        _addWallRunZ(group, mats, wallH, leftX, b113.minZ + d113 / 2, d113, 'parede-esq-bloco');
+        _addWallRunZ(group, mats, wallH, rightX, b113.minZ + d113 / 2, d113, 'parede-dir-bloco');
 
-        if (fp21 && positions && positions[21]) {
-            var p21 = positions[21];
-            var w21 = fp21.width;
-            var d21 = fp21.depth;
-            var z21End = p21.z + d21;
-            var zFront = z21End + MAIN_AISLE_W;
-            var x21L = p21.x - w21 / 2;
-            var x21R = p21.x + w21 / 2;
-            var innerLen = zFront - maxDepth;
-            var midInnerZ = maxDepth + innerLen / 2;
-
-            _addWallRunZ(group, mats, wallH, leftX, zFront / 2, zFront, 'parede-esq-total');
-            _addWallRunZ(group, mats, wallH, rightX, zFront / 2, zFront, 'parede-dir-total');
-            _addWallRunZ(group, mats, wallH, x21L, midInnerZ, innerLen, 'parede-div-21-esq');
-            if (x21R < rightX - 0.15) {
-                _addWallRunZ(group, mats, wallH, x21R, p21.z + d21 / 2, d21, 'parede-21-dir');
+        if (b21 && dAll > d113 + 0.2) {
+            _addWallRunZ(group, mats, wallH, leftX, bAll.minZ + dAll / 2, dAll, 'parede-esq-total');
+            _addWallRunZ(group, mats, wallH, rightX, bAll.minZ + dAll / 2, dAll, 'parede-dir-total');
+            var divDepth = bAll.maxZ - b113.maxZ;
+            if (divDepth > 0.4) {
+                _addWallRunZ(
+                    group,
+                    mats,
+                    wallH,
+                    b21.minX - halfTh - out,
+                    b113.maxZ + divDepth / 2,
+                    divDepth,
+                    'parede-div-21-esq'
+                );
+            }
+            if (b21.maxX + halfTh + out < rightX - 0.12) {
+                var d21 = b21.maxZ - b21.minZ;
+                _addWallRunZ(
+                    group,
+                    mats,
+                    wallH,
+                    b21.maxX + halfTh + out,
+                    b21.minZ + d21 / 2,
+                    d21,
+                    'parede-21-dir'
+                );
             }
         }
 
@@ -1221,23 +1273,22 @@
                 var n = layoutNiv > 0 ? Math.min(layoutNiv, cap) : cap;
                 if (n > maxNivWall) maxNivWall = n;
             });
+            var rackBounds113 = _computeRackBounds(camarasByCode, layout.positions, [11, 12, 13]);
             _addChamberDividerWalls(
                 THREE,
                 state.rackGroup,
                 leftCodes,
                 fpsLayout,
                 layout.positions,
-                maxDepthLeft,
+                rackBounds113,
                 maxNivWall * LEVEL_H + 0.65
             );
             _addPerimeterWalls(
                 THREE,
                 state.rackGroup,
-                leftSpan,
-                maxDepthLeft,
                 maxNivWall * LEVEL_H + 0.65,
                 layout.positions,
-                fp21
+                camarasByCode
             );
 
             return new Promise(function (resolve, reject) {
