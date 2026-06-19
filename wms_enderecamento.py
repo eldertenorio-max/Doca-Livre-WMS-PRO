@@ -6308,7 +6308,11 @@ def api_wms_recebimentos_buscar_nf():
         doc, err = _buscar_documento_terceiros_por_nf(conn, numero_nf)
         if err:
             conn.close()
-            return jsonify({'erro': err}), 404
+            return jsonify({
+                'erro': err,
+                'nf_nao_encontrada': True,
+                'numero_nf': numero_nf,
+            }), 404
         doc = _enriquecer_documento_nf_wms(conn, doc)
         if doc.pop('_wms_descarga_reaberta', None):
             conn.commit()

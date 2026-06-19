@@ -3410,6 +3410,22 @@
         </div>
     </div>
 
+    <div id="modal-wms-nf-sem-xml" class="modal modal-flex" style="display: none;" role="alertdialog" aria-modal="true" aria-labelledby="modal-wms-nf-sem-xml-titulo">
+        <div class="modal-content" style="max-width: 480px; border-top: 4px solid #f57c00;">
+            <h3 id="modal-wms-nf-sem-xml-titulo" style="margin-top: 0; color: #e65100;">NF não encontrada</h3>
+            <p style="margin: 12px 0 8px; font-size: 14px; line-height: 1.5;">
+                A NF <strong id="modal-wms-nf-sem-xml-nf">—</strong> ainda não está no sistema de descarga/recebimento.
+                Envie o <strong>XML da nota</strong> no módulo Descarga/Terceiros antes de iniciar o recebimento WMS.
+            </p>
+            <p id="modal-wms-nf-sem-xml-msg" class="info-text" style="margin: 0 0 16px; font-size: 13px; color: #616161;"></p>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary" id="btn-wms-nf-sem-xml-fechar">Fechar</button>
+                <button type="button" class="btn btn-secondary" id="btn-wms-nf-sem-xml-outra">Pesquisar outra NF</button>
+                <button type="button" class="btn btn-primary" id="btn-wms-nf-sem-xml-upload">📤 Subir XML</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modal-comprovante-terceiros-divergente" class="modal" style="display: none;">
         <div class="modal-content" style="max-width: 440px;">
             <h3 style="margin-top: 0; color: #e65100;">Comprovante divergente (descarga)</h3>
@@ -3849,6 +3865,6 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
     <script src="{{ url_for('static', filename='wms-mapa-3d.js') }}?v=20260618j"></script>
     <script src="{{ url_for('static', filename='wms-analise.js') }}?v=20260604"></script>
-    <script src="../static/script.js?v=20260618i"></script>
+    <script src="../static/script.js?v=20260618k"></script>
 </body>
 </html>

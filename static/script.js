@@ -7235,7 +7235,69 @@ async function wmsIniciarBipagemNf() {
 }
 window.wmsIniciarBipagemNf = wmsIniciarBipagemNf;
 
+function wmsInitModalNfSemXml() {
+    if (window._wmsModalNfSemXmlBound) return;
+    window._wmsModalNfSemXmlBound = true;
+    var modal = document.getElementById('modal-wms-nf-sem-xml');
+    var btnUpload = document.getElementById('btn-wms-nf-sem-xml-upload');
+    var btnOutra = document.getElementById('btn-wms-nf-sem-xml-outra');
+    var btnFechar = document.getElementById('btn-wms-nf-sem-xml-fechar');
+    if (btnUpload) {
+        btnUpload.addEventListener('click', function() {
+            wmsFecharModalNfSemXml();
+            if (typeof window.controleMostrarModulo === 'function') {
+                window.controleMostrarModulo('terceiros');
+            }
+            if (typeof abrirAbaTerceirosSeDiferente === 'function') {
+                abrirAbaTerceirosSeDiferente('enviar-xml');
+            }
+        });
+    }
+    if (btnOutra) {
+        btnOutra.addEventListener('click', function() {
+            wmsFecharModalNfSemXml();
+            wmsLimparPainelNfDescarga();
+            var nfEl = document.getElementById('wms-rec-nf');
+            if (nfEl) {
+                nfEl.value = '';
+                nfEl.focus();
+            }
+        });
+    }
+    if (btnFechar) btnFechar.addEventListener('click', wmsFecharModalNfSemXml);
+    if (modal) {
+        modal.addEventListener('click', function(ev) {
+            if (ev.target === modal) wmsFecharModalNfSemXml();
+        });
+    }
+}
+
+function wmsFecharModalNfSemXml() {
+    var modal = document.getElementById('modal-wms-nf-sem-xml');
+    if (modal) modal.style.display = 'none';
+}
+window.wmsFecharModalNfSemXml = wmsFecharModalNfSemXml;
+
+function wmsMostrarModalNfSemXml(nf, msg) {
+    wmsInitModalNfSemXml();
+    var modal = document.getElementById('modal-wms-nf-sem-xml');
+    var elNf = document.getElementById('modal-wms-nf-sem-xml-nf');
+    var elMsg = document.getElementById('modal-wms-nf-sem-xml-msg');
+    if (elNf) elNf.textContent = nf || '—';
+    if (elMsg) {
+        elMsg.textContent = msg || 'NF não encontrada no módulo de descarga/recebimento (carreta/recebimento).';
+    }
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        modal.style.zIndex = '10150';
+    }
+}
+window.wmsMostrarModalNfSemXml = wmsMostrarModalNfSemXml;
+
 function wmsInitRecebimentoIntegracaoNf() {
+    wmsInitModalNfSemXml();
     var nfEl = document.getElementById('wms-rec-nf');
     if (!nfEl || nfEl.dataset.wmsNfBind) return;
     nfEl.dataset.wmsNfBind = '1';
@@ -7299,7 +7361,12 @@ window.wmsBuscarNfDescarga = async function() {
         var data = await fetchAPI('/wms/recebimentos/buscar-nf?numero_nf=' + encodeURIComponent(nf.trim()));
         if (!data || data.erro || !data.documento) {
             wmsLimparPainelNfDescarga();
-            showMessage((data && data.erro) || 'NF não encontrada no módulo de descarga.', 'error');
+            var semNf = data && (data.nf_nao_encontrada || data.erro);
+            if (semNf && !data._falhaGateway && !data._timeout) {
+                wmsMostrarModalNfSemXml(nf.trim(), data.erro);
+            } else {
+                showMessage((data && data.erro) || 'NF não encontrada no módulo de descarga.', 'error');
+            }
             return;
         }
         wmsPreencherPainelNfDescarga(data.documento);
