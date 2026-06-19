@@ -4585,7 +4585,14 @@ function _wmsMostrarSubtab(tab) {
 
 var _wmsMapa3dScriptPromise = null;
 var _WMS_THREE_LEGACY_CDN = 'https://cdn.jsdelivr.net/npm/three@0.128.0';
-var _WMS_MAPA3D_VER = '20260618e';
+var _WMS_MAPA3D_VER = '20260619q';
+
+function _wmsScriptJaPronto(key) {
+    if (key.indexOf('three.min.js') >= 0) return !!window.THREE;
+    if (key.indexOf('OrbitControls') >= 0) return !!(window.THREE && window.THREE.OrbitControls);
+    if (key.indexOf('wms-mapa-3d.js') >= 0) return !!(window.WmsMapa3d && WmsMapa3d.renderFrame);
+    return false;
+}
 
 function _wmsAguardarThreePronto() {
     return new Promise(function(resolve, reject) {
@@ -4608,8 +4615,22 @@ function _wmsAguardarThreePronto() {
         (function tick() {
             done();
             if (settled) return;
-            if (Date.now() > deadline) fail('Three.js ou OrbitControls não carregou. Verifique a conexão e recarregue a página.');
+            if (Date.now() > deadline) fail('Three.js ou OrbitControls não carregou. Verifique a conexão e recarregue a página (Ctrl+F5).');
             else setTimeout(tick, 50);
+        })();
+    });
+}
+
+function _wmsAguardarMapa3dPronto() {
+    return new Promise(function(resolve, reject) {
+        if (window.WmsMapa3d && WmsMapa3d.renderFrame) return resolve();
+        var deadline = Date.now() + 12000;
+        (function tick() {
+            if (window.WmsMapa3d && WmsMapa3d.renderFrame) return resolve();
+            if (Date.now() > deadline) {
+                return reject(new Error('Módulo do mapa 3D não inicializou. Recarregue a página (Ctrl+F5).'));
+            }
+            setTimeout(tick, 50);
         })();
     });
 }
@@ -4626,37 +4647,61 @@ function _wmsGarantirThreeLegacy() {
             if (!window.THREE || !window.THREE.OrbitControls) {
                 throw new Error('OrbitControls não carregou');
             }
+            try { window.dispatchEvent(new Event('wms-three-ready')); } catch (e) { /* ignore */ }
         });
 }
 
 function _wmsLoadScriptOnce(src) {
     return new Promise(function(resolve, reject) {
         var key = (src.split('/').pop() || '').split('?')[0];
-        if (key.indexOf('wms-mapa-3d.js') >= 0 && window.WmsMapa3d) return resolve();
+        if (_wmsScriptJaPronto(key)) return resolve();
 
         var existing = null;
         document.querySelectorAll('script[src]').forEach(function(s) {
             if (!existing && (s.getAttribute('src') || '').indexOf(key.split('?')[0]) >= 0) existing = s;
         });
         if (existing) {
-            if (existing.dataset.loaded === '1') return resolve();
-            if (key.indexOf('wms-mapa-3d.js') >= 0 && window.WmsMapa3d) {
+            if (existing.dataset.loaded === '1' || _wmsScriptJaPronto(key)) {
                 existing.dataset.loaded = '1';
                 return resolve();
             }
+            var settled = false;
+            function finish(ok, err) {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                if (ok) {
+                    existing.dataset.loaded = '1';
+                    resolve();
+                } else {
+                    reject(err || new Error('Falha ao carregar ' + src));
+                }
+            }
+            var timer = setTimeout(function() {
+                if (_wmsScriptJaPronto(key)) finish(true);
+                else finish(false, new Error('Tempo esgotado ao carregar ' + key + '. Verifique a conexão e recarregue a página.'));
+            }, 22000);
             if (existing.readyState === 'complete' || existing.readyState === 'loaded') {
-                existing.dataset.loaded = '1';
-                return resolve();
+                if (_wmsScriptJaPronto(key)) return finish(true);
             }
-            existing.addEventListener('load', function() { existing.dataset.loaded = '1'; resolve(); }, { once: true });
-            existing.addEventListener('error', function() { reject(new Error('Falha ao carregar ' + src)); }, { once: true });
+            existing.addEventListener('load', function() {
+                if (_wmsScriptJaPronto(key)) finish(true);
+                else finish(false, new Error(key + ' carregou, mas o módulo não inicializou.'));
+            }, { once: true });
+            existing.addEventListener('error', function() {
+                finish(false, new Error('Falha ao carregar ' + src));
+            }, { once: true });
             return;
         }
 
         var s = document.createElement('script');
         s.src = src;
         s.crossOrigin = 'anonymous';
-        s.onload = function() { s.dataset.loaded = '1'; resolve(); };
+        s.onload = function() {
+            s.dataset.loaded = '1';
+            if (_wmsScriptJaPronto(key)) resolve();
+            else reject(new Error(key + ' carregou, mas o módulo não inicializou.'));
+        };
         s.onerror = function() { reject(new Error('Falha ao carregar ' + src)); };
         document.body.appendChild(s);
     });
@@ -4688,18 +4733,22 @@ function _wmsCarregarScriptMapa3d() {
     if (window.WmsMapa3d && WmsMapa3d.renderFrame && window.THREE && window.THREE.OrbitControls) return Promise.resolve();
     if (_wmsMapa3dScriptPromise) return _wmsMapa3dScriptPromise;
     _wmsMapa3dScriptPromise = _wmsWithTimeout(
-        _wmsGarantirThreeLegacy()
-            .then(_wmsAguardarThreePronto)
+        _wmsAguardarThreePronto()
+            .catch(function() {
+                return _wmsGarantirThreeLegacy().then(_wmsAguardarThreePronto);
+            })
             .then(function() {
                 if (window.WmsMapa3d && WmsMapa3d.renderFrame) return;
-                return _wmsLoadScriptOnce('/static/wms-mapa-3d.js?v=' + _WMS_MAPA3D_VER);
+                return _wmsAguardarMapa3dPronto().catch(function() {
+                    return _wmsLoadScriptOnce('/static/wms-mapa-3d.js?v=' + _WMS_MAPA3D_VER);
+                });
             })
             .then(function() {
                 if (!window.WmsMapa3d || !WmsMapa3d.renderFrame) {
                     throw new Error('Módulo do mapa 3D não inicializou');
                 }
             }),
-        30000,
+        35000,
         'Tempo esgotado ao carregar visualização 3D'
     ).catch(function(err) {
         _wmsMapa3dScriptPromise = null;
@@ -4717,6 +4766,7 @@ async function loadWmsMapa3d() {
         if (el) {
             el.hidden = !on;
             el.style.display = on ? 'flex' : 'none';
+            if (on) el.style.color = '#37474f';
             if (on && msg) el.textContent = msg;
             else if (!on) el.textContent = 'Carregando mapa 3D…';
         }
@@ -4726,14 +4776,12 @@ async function loadWmsMapa3d() {
         await new Promise(function(r) { requestAnimationFrame(r); });
         var sel = document.getElementById('wms-mapa3d-camara');
         var camFiltro = sel && sel.value ? sel.value : '';
-        var data = await _wmsFetchGet('/wms/mapa-3d', 90000);
+        var data = await _wmsFetchGet('/wms/mapa-3d', 45000);
         if (!data || data.erro) {
-            showMessage(_wmsErroMsg(data, 'Erro ao carregar mapa 3D.'), 'error');
-            return;
+            throw new Error(_wmsErroMsg(data, 'Erro ao carregar mapa 3D.'));
         }
         if (!data.camaras || !data.camaras.length) {
-            showMessage('Nenhuma câmara no layout. Verifique data/wms_layout_camaras.json.', 'warning');
-            return;
+            throw new Error('Nenhuma câmara no layout. Verifique data/wms_layout_camaras.json.');
         }
         setLoad(true, 'Iniciando visualização 3D…');
         await _wmsCarregarScriptMapa3d();
@@ -4750,7 +4798,11 @@ async function loadWmsMapa3d() {
         setLoad(true, 'Montando posições…');
         await new Promise(function(r) { requestAnimationFrame(r); });
         if (window.WmsMapa3d.setCamaraFilter) WmsMapa3d.setCamaraFilter(camFiltro || null);
-        await Promise.resolve(WmsMapa3d.build(data));
+        await _wmsWithTimeout(
+            Promise.resolve(WmsMapa3d.build(data)),
+            45000,
+            'Tempo esgotado ao montar o mapa 3D'
+        );
         await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
         if (WmsMapa3d.onResize) WmsMapa3d.onResize();
         if (WmsMapa3d.renderFrame) WmsMapa3d.renderFrame();
@@ -4758,10 +4810,17 @@ async function loadWmsMapa3d() {
             if (WmsMapa3d.onResize) WmsMapa3d.onResize();
             if (WmsMapa3d.renderFrame) WmsMapa3d.renderFrame();
         }, 120);
-    } catch (e) {
-        showMessage((e && e.message) || 'Erro ao abrir mapa 3D.', 'error');
-    } finally {
         setLoad(false);
+    } catch (e) {
+        var errMsg = (e && e.message) || 'Erro ao abrir mapa 3D.';
+        showMessage(errMsg, 'error');
+        var errEl = document.getElementById('wms-mapa3d-loading');
+        if (errEl) {
+            errEl.hidden = false;
+            errEl.style.display = 'flex';
+            errEl.textContent = errMsg;
+            errEl.style.color = '#c62828';
+        }
     }
 }
 
