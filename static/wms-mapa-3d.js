@@ -145,8 +145,47 @@
         var niv = parseInt(slotInfo.nivel, 10) || 1;
         return {
             titulo: _pad2(cam) + '-' + rua + '-' + _pad2(pos) + '-' + niv,
-            subtitulo: 'Câmara ' + cam + ' · Rua ' + rua + ' · Col ' + _pad2(pos) + ' · Nív ' + niv
+            subtitulo: 'Câmara ' + cam + '  ·  Rua ' + rua + '  ·  Col ' + _pad2(pos) + '  ·  Nív ' + niv
         };
+    }
+
+    function _makeNavAddrLabel(THREE, slotInfo) {
+        var lbl = _formatEnderecoNav(slotInfo);
+        if (!lbl.titulo) return null;
+        var canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 320;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'rgba(183,28,28,0.92)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(3, 3, canvas.width - 6, canvas.height - 6);
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 72px Arial,sans-serif';
+        ctx.fillText(lbl.titulo, canvas.width / 2, canvas.height * 0.36);
+        ctx.font = '500 40px Arial,sans-serif';
+        ctx.fillText(lbl.subtitulo, canvas.width / 2, canvas.height * 0.72);
+        var tex = new THREE.CanvasTexture(canvas);
+        tex.needsUpdate = true;
+        var mat = new THREE.MeshBasicMaterial({
+            map: tex,
+            transparent: true,
+            side: THREE.FrontSide,
+            depthWrite: false
+        });
+        var mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.65, 0.92), mat);
+        mesh.renderOrder = 5;
+        mesh.visible = false;
+        return mesh;
+    }
+
+    function _navLabelFaceCamera(label, labelPos, camPos) {
+        if (!label || !labelPos || !camPos) return;
+        label.position.copy(labelPos);
+        label.lookAt(camPos.x, camPos.y, camPos.z);
     }
 
     function _makeNavArrowMesh(THREE) {
@@ -1883,22 +1922,13 @@
         ring.position.set(dest.x, 0.028, dest.z);
         ring.visible = false;
 
-        var endLbl = _formatEnderecoNav(slotInfo);
-        var addrLabel = _textPlaneMultiline(
-            THREE,
-            endLbl.titulo ? [endLbl.titulo, endLbl.subtitulo] : [],
-            2.8,
-            0.82,
-            46,
-            '#ffffff',
-            'rgba(183,28,28,0.9)'
-        );
-        addrLabel.position.set(dest.x, dest.y + 1.25, dest.z + 0.35);
-        addrLabel.visible = false;
+        var addrLabel = _makeNavAddrLabel(THREE, slotInfo);
+        var labelPos = new THREE.Vector3();
 
         state._navGroup = new THREE.Group();
         state._navGroup.name = 'nav-path';
-        state._navGroup.add(leader, marker, ring, addrLabel);
+        if (addrLabel) state._navGroup.add(addrLabel);
+        state._navGroup.add(leader, marker, ring);
         state.rackGroup.add(state._navGroup);
 
         var aisleX = waypoints[waypoints.length - 1].x;
@@ -1911,13 +1941,18 @@
         function _finishNav() {
             var fromPos = state.camera.position.clone();
             var fromTgt = state.controls.target.clone();
-            var toPos = new THREE.Vector3(aisleX, dest.y + 1.75, dest.z - 1.55);
-            var toTgt = new THREE.Vector3(dest.x, dest.y + 0.42, dest.z);
-            _orientNavArrow(leader, aisleX, dest.z + 0.45, dest.x - aisleX, dest.z - (dest.z + 0.45));
-            _animateCameraTo(fromPos, fromTgt, toPos, toTgt, 950, function () {
+            var labelY = dest.y + 1.02;
+            labelPos.set(aisleX, labelY, dest.z - 0.22);
+            var toPos = new THREE.Vector3(aisleX, labelY + 0.12, dest.z - 2.55);
+            var toTgt = new THREE.Vector3(dest.x, dest.y + 0.5, dest.z);
+            _orientNavArrow(leader, aisleX, dest.z + 0.35, dest.x - aisleX, dest.z - (dest.z + 0.35));
+            _animateCameraTo(fromPos, fromTgt, toPos, toTgt, 1100, function () {
+                if (addrLabel) {
+                    _navLabelFaceCamera(addrLabel, labelPos, state.camera.position);
+                    addrLabel.visible = true;
+                }
                 marker.visible = true;
                 ring.visible = true;
-                addrLabel.visible = !!endLbl.titulo;
                 if (slotInfo) {
                     _highlightSlot(slotInfo.camCod, slotInfo.rua, slotInfo.posicao, slotInfo.nivel);
                 }
