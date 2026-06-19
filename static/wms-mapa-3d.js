@@ -579,7 +579,7 @@
         };
     }
 
-    /** Planta CD: 11/12/13 em fila; corredor cinza na frente; cam 21 alinhada à 13. */
+    /** Planta CD: 11/12/13 em fila; corredor cinza na frente do bloco e na frente da cam 21. */
     function _layoutCdPlanta(camarasByCode) {
         var leftCodes = [11, 12, 13];
         var fps = {};
@@ -599,6 +599,7 @@
 
         var startX = leftSpan ? -leftSpan / 2 : 0;
         var positions = {};
+        var corridors = [];
         var xCursor = startX;
 
         leftCodes.forEach(function (c) {
@@ -607,25 +608,35 @@
             xCursor += fps[c].width + GAP_CAM;
         });
 
-        var corridor = {
-            show: false,
-            width: leftSpan || MAIN_AISLE_W,
-            depth: MAIN_AISLE_W,
-            x: 0,
-            z: maxDepthLeft + MAIN_AISLE_W / 2
-        };
-
-        if (leftSpan && fp21) {
-            corridor.show = true;
-            corridor.width = leftSpan;
-            corridor.z = maxDepthLeft + MAIN_AISLE_W / 2;
-            var x13 = positions[13] ? positions[13].x : 0;
-            positions[21] = { x: x13, z: maxDepthLeft + MAIN_AISLE_W };
-        } else if (fp21) {
-            positions[21] = { x: 0, z: 0 };
+        if (leftSpan) {
+            corridors.push({
+                width: leftSpan,
+                depth: MAIN_AISLE_W,
+                x: 0,
+                z: maxDepthLeft + MAIN_AISLE_W / 2
+            });
         }
 
-        return { positions: positions, corridor: corridor };
+        if (leftSpan && fp21) {
+            var x13 = positions[13] ? positions[13].x : 0;
+            positions[21] = { x: x13, z: maxDepthLeft + MAIN_AISLE_W };
+            corridors.push({
+                width: fp21.width,
+                depth: MAIN_AISLE_W,
+                x: x13,
+                z: positions[21].z + fp21.depth + MAIN_AISLE_W / 2
+            });
+        } else if (fp21) {
+            positions[21] = { x: 0, z: 0 };
+            corridors.push({
+                width: fp21.width,
+                depth: MAIN_AISLE_W,
+                x: 0,
+                z: fp21.depth + MAIN_AISLE_W / 2
+            });
+        }
+
+        return { positions: positions, corridors: corridors };
     }
 
     function _addCorridorPlane(THREE, parent, w, d, cx, cz, name) {
@@ -725,17 +736,17 @@
             });
             var idx = 0;
 
-            if (layout.corridor && layout.corridor.show) {
+            (layout.corridors || []).forEach(function (cor, i) {
                 _addCorridorPlane(
                     THREE,
                     state.rackGroup,
-                    layout.corridor.width,
-                    layout.corridor.depth,
-                    layout.corridor.x,
-                    layout.corridor.z,
-                    'corredor-principal'
+                    cor.width,
+                    cor.depth,
+                    cor.x,
+                    cor.z,
+                    'corredor-' + (i + 1)
                 );
-            }
+            });
 
             return new Promise(function (resolve, reject) {
                 function next() {
