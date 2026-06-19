@@ -8,18 +8,19 @@
     var SLOT_H = 0.76;
     var SLOT_D = 1.00;
     var GAP_POS = 0.40;
-    var GAP_CAM_ADJ = 0.52;
+    var GAP_CAM_ADJ = 0.58;
     var CAM_FLOOR_PAD = 0.22;
-    var RACK_WALL_HUG = 0.58;
+    var WALL_RACK_GAP = 0.12;
+    var RACK_HALF_DEPTH = SLOT_D * 0.54;
     var MAIN_AISLE_W = 10;
     var MAX_NIV = 5;
     var AISLE_W = 5.2;
     var LEVEL_H = 0.82;
-    var UPR_W = 0.078;
-    var UPR_D = 0.078;
-    var BEAM_H = 0.062;
-    var BEAM_FACE = 0.095;
-    var SHELF_TH = 0.034;
+    var UPR_W = 0.092;
+    var UPR_D = 0.092;
+    var BEAM_H = 0.075;
+    var BEAM_FACE = 0.11;
+    var SHELF_TH = 0.052;
 
     var COL_BLUE = 0x1a56a5;
     var COL_BLUE_DARK = 0x0c3563;
@@ -388,7 +389,7 @@
     }
 
     function _rackXs(xBase, towardAisle) {
-        var halfDepth = SLOT_D * 0.46;
+        var halfDepth = RACK_HALF_DEPTH;
         if (towardAisle > 0) {
             return { front: xBase + halfDepth, back: xBase - halfDepth };
         }
@@ -451,7 +452,7 @@
         var w = Math.abs(xF - xB) - UPR_W * 0.35;
         var d = Math.abs(z1 - z0) - 0.06;
         if (w < 0.12 || d < 0.12) return;
-        _addBox(THREE, parent, w, SHELF_TH * 0.55, d, cx, y, cz, mat);
+        _addBox(THREE, parent, w, SHELF_TH * 0.88, d, cx, y, cz, mat);
     }
 
     function _zMarksUniformes(maxPos, bayStep) {
@@ -569,14 +570,35 @@
         return ruaIndex === 0 ? -(off) : off;
     }
 
-    /** Desloca racks para encostar nas paredes divisórias entre câmaras 11|12|13. */
+    /** Mantém racks próximos da parede divisória sem invadir o painel. */
     function _rackXBaseForCam(camCod, ruaIndex, totalRuas) {
         var base = _rackXBase(ruaIndex, totalRuas);
         var c = parseInt(camCod, 10);
-        if (c === 11) return base + RACK_WALL_HUG;
-        if (c === 13) return base - RACK_WALL_HUG;
+        if (c !== 11 && c !== 12 && c !== 13) return base;
+
+        var fpsW = AISLE_W + SLOT_D * 1.28 + CAM_FLOOR_PAD;
+        var wallLine = fpsW / 2 + GAP_CAM_ADJ / 2 - WALL_DIV_TH / 2;
+        var half = RACK_HALF_DEPTH;
+        var gap = WALL_RACK_GAP;
+
         if (c === 12 && totalRuas >= 2) {
-            return ruaIndex === 0 ? base - RACK_WALL_HUG : base + RACK_WALL_HUG;
+            if (ruaIndex === 0) {
+                var minBack = -wallLine + gap;
+                if (base - half < minBack) base = minBack + half;
+            } else {
+                var maxBack = wallLine - gap;
+                if (base + half > maxBack) base = maxBack - half;
+            }
+            return base;
+        }
+        if (c === 13) {
+            var minOuter = -wallLine + gap;
+            if (base - half < minOuter) base = minOuter + half;
+            return base;
+        }
+        if (c === 11) {
+            var maxOuter11 = wallLine - gap;
+            if (base + half > maxOuter11) base = maxOuter11 - half;
         }
         return base;
     }
@@ -912,7 +934,7 @@
             camaras.forEach(function (c) {
                 state.layoutMeta.camRuas[parseInt(c.codigo, 10)] = _ruasCamara(c);
             });
-            var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 0.92, SHELF_TH * 0.96, SLOT_D * 0.80);
+            var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 1.02, SHELF_TH, SLOT_D * 0.92);
             var dummy = new THREE.Object3D();
             var col = new THREE.Color();
             var buildOrder = [11, 12, 13, 21].filter(function (cod) {
