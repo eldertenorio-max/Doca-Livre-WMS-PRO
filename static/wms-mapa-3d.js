@@ -8,8 +8,7 @@
     var SLOT_H = 0.76;
     var SLOT_D = 1.00;
     var GAP_POS = 0.40;
-    var GAP_CAM = 6;
-    var GAP_CAM_ADJ = 1.8;
+    var GAP_CAM_ADJ = 0.6;
     var MAIN_AISLE_W = 10;
     var MAX_NIV = 5;
     var AISLE_W = 3.6;
@@ -592,10 +591,10 @@
         var maxDepthLeft = 0;
         leftCodes.forEach(function (c) {
             if (!fps[c]) return;
-            leftSpan += fps[c].width + GAP_CAM;
+            leftSpan += fps[c].width + GAP_CAM_ADJ;
             if (fps[c].depth > maxDepthLeft) maxDepthLeft = fps[c].depth;
         });
-        if (leftSpan > 0) leftSpan -= GAP_CAM;
+        if (leftSpan > 0) leftSpan -= GAP_CAM_ADJ;
 
         var startX = leftSpan ? -leftSpan / 2 : 0;
         var positions = {};
@@ -605,7 +604,7 @@
         leftCodes.forEach(function (c) {
             if (!fps[c]) return;
             positions[c] = { x: xCursor + fps[c].width / 2, z: 0 };
-            xCursor += fps[c].width + GAP_CAM;
+            xCursor += fps[c].width + GAP_CAM_ADJ;
         });
 
         if (leftSpan) {
