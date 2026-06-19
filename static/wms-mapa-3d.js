@@ -8,10 +8,10 @@
     var SLOT_H = 0.76;
     var SLOT_D = 1.00;
     var GAP_POS = 0.40;
-    var GAP_CAM_ADJ = 0.6;
+    var GAP_CAM_ADJ = 2.5;
     var MAIN_AISLE_W = 10;
     var MAX_NIV = 5;
-    var AISLE_W = 3.6;
+    var AISLE_W = 5.2;
     var LEVEL_H = 0.82;
     var UPR_W = 0.078;
     var UPR_D = 0.078;
