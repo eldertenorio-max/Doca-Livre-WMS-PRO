@@ -201,6 +201,8 @@
         shape.lineTo(-0.36, -0.02);
         shape.closePath();
         var geo = new THREE.ExtrudeGeometry(shape, { depth: 0.08, bevelEnabled: false });
+        geo.rotateX(-Math.PI / 2);
+        geo.translate(0, 0.04, 0.12);
         var mat = new THREE.MeshPhongMaterial({
             color: 0xff1744,
             emissive: 0x660000,
@@ -208,14 +210,27 @@
             side: THREE.DoubleSide
         });
         var mesh = new THREE.Mesh(geo, mat);
-        mesh.scale.set(1.35, 1.35, 1.35);
+        mesh.scale.set(1.15, 1.15, 1.15);
         return mesh;
     }
 
-    function _orientNavArrow(arrow, x, z, dx, dz) {
-        arrow.position.set(x, 0.22, z);
-        if (Math.abs(dx) + Math.abs(dz) < 0.0005) return;
-        arrow.rotation.set(-Math.PI / 2, Math.atan2(dx, dz), 0);
+    function _orientNavArrow(arrow, x, z, dirX, dirZ) {
+        arrow.position.set(x, 0.26, z);
+        var len = Math.hypot(dirX, dirZ);
+        if (len < 0.0005) return;
+        arrow.rotation.set(0, Math.atan2(dirX, dirZ), 0);
+    }
+
+    function _orientNavArrowToward(arrow, x, y, z, tx, ty, tz) {
+        arrow.position.set(x, y, z);
+        var dx = tx - x;
+        var dz = tz - z;
+        var len = Math.hypot(dx, dz);
+        if (len < 0.0005) {
+            dx = 0;
+            dz = -1;
+        }
+        arrow.rotation.set(0, Math.atan2(dx, dz), 0);
     }
 
     function _smoothNavStep(u) {
@@ -2133,7 +2148,9 @@
             labelPos.set(aisleX, labelY, dest.z - 0.22);
             var toPos = new THREE.Vector3(aisleX, labelY + 0.12, dest.z - 2.55);
             var toTgt = new THREE.Vector3(dest.x, dest.y + 0.5, dest.z);
-            _orientNavArrow(leader, aisleX, dest.z + 0.35, dest.x - aisleX, dest.z - (dest.z + 0.35));
+            var arrowY = 0.26;
+            var arrowZ = dest.z - 0.72;
+            _orientNavArrowToward(leader, aisleX, arrowY, arrowZ, dest.x, dest.y * 0.22, dest.z);
             _animateCameraTo(fromPos, fromTgt, toPos, toTgt, 1100, function () {
                 if (addrLabel) {
                     _navLabelFaceCamera(addrLabel, labelPos, state.camera.position);
@@ -2155,21 +2172,20 @@
             var u = Math.min((ts - t0) / duration, 1);
             u = _smoothNavStep(u);
             var pt = curve.getPoint(u);
-            var aheadU = Math.min(u + 0.028, 1);
-            var ahead = curve.getPoint(aheadU);
             var tangent = curve.getTangent(u).normalize();
 
-            _orientNavArrow(leader, pt.x, pt.z, ahead.x - pt.x, ahead.z - pt.z);
+            _orientNavArrow(leader, pt.x, pt.z, tangent.x, tangent.z);
 
             var back = tangent.clone().multiplyScalar(-1);
             var camX = pt.x + back.x * 3.4 - tangent.z * 0.8;
             var camY = Math.max(pt.y, 0.28) + 2.55;
             var camZ = pt.z + back.z * 3.4 + tangent.x * 0.8;
             state.camera.position.set(camX, camY, camZ);
+            var lookAhead = curve.getPoint(Math.min(u + 0.04, 1));
             state.controls.target.set(
-                ahead.x,
-                Math.max(ahead.y, 0.32) + 0.45,
-                ahead.z
+                lookAhead.x,
+                Math.max(lookAhead.y, 0.32) + 0.45,
+                lookAhead.z
             );
             state.controls.update();
             renderFrame();
