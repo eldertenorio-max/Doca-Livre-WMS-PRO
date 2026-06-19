@@ -10,6 +10,8 @@
     var GAP_POS = 0.40;
     var GAP_CAM_ADJ = 0.58;
     var CAM_FLOOR_PAD = 0.22;
+    var NAV_ARROW_FLOOR_Y = 0.038;
+    var NAV_ARROW_LIFT = 0.016;
     var WALL_RACK_GAP = 0.12;
     var WALL_OUTSET = 0.08;
     var RACK_HALF_DEPTH = SLOT_D * 0.54;
@@ -200,29 +202,38 @@
         shape.lineTo(-0.14, -0.02);
         shape.lineTo(-0.36, -0.02);
         shape.closePath();
-        var geo = new THREE.ExtrudeGeometry(shape, { depth: 0.08, bevelEnabled: false });
+        var geo = new THREE.ExtrudeGeometry(shape, { depth: 0.14, bevelEnabled: false });
         geo.rotateX(-Math.PI / 2);
-        geo.translate(0, 0.04, 0.12);
+        geo.computeBoundingBox();
+        geo.translate(0, -geo.boundingBox.min.y + NAV_ARROW_LIFT, -geo.boundingBox.min.z);
         var mat = new THREE.MeshPhongMaterial({
             color: 0xff1744,
             emissive: 0x660000,
             shininess: 40,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: -3,
+            polygonOffsetUnits: -3
         });
         var mesh = new THREE.Mesh(geo, mat);
         mesh.scale.set(1.15, 1.15, 1.15);
+        mesh.renderOrder = 4;
         return mesh;
     }
 
+    function _navArrowFloorY() {
+        return NAV_ARROW_FLOOR_Y;
+    }
+
     function _orientNavArrow(arrow, x, z, dirX, dirZ) {
-        arrow.position.set(x, 0.26, z);
+        arrow.position.set(x, _navArrowFloorY(), z);
         var len = Math.hypot(dirX, dirZ);
         if (len < 0.0005) return;
         arrow.rotation.set(0, Math.atan2(dirX, dirZ), 0);
     }
 
     function _orientNavArrowToward(arrow, x, y, z, tx, ty, tz) {
-        arrow.position.set(x, y, z);
+        arrow.position.set(x, y != null ? y : _navArrowFloorY(), z);
         var dx = tx - x;
         var dz = tz - z;
         var len = Math.hypot(dx, dz);
@@ -2122,7 +2133,7 @@
             new THREE.MeshBasicMaterial({ color: 0xff1744, side: THREE.DoubleSide, transparent: true, opacity: 0.8 })
         );
         ring.rotation.x = -Math.PI / 2;
-        ring.position.set(dest.x, 0.028, dest.z);
+        ring.position.set(dest.x, _navArrowFloorY() + 0.004, dest.z);
         ring.visible = false;
 
         var addrLabel = _makeNavAddrLabel(THREE, slotInfo);
@@ -2141,6 +2152,9 @@
         var t0 = null;
         state.controls.enabled = false;
 
+        var startTan = curve.getTangent(0).normalize();
+        _orientNavArrow(leader, waypoints[0].x, waypoints[0].z, startTan.x, startTan.z);
+
         function _finishNav() {
             var fromPos = state.camera.position.clone();
             var fromTgt = state.controls.target.clone();
@@ -2148,9 +2162,8 @@
             labelPos.set(aisleX, labelY, dest.z - 0.22);
             var toPos = new THREE.Vector3(aisleX, labelY + 0.12, dest.z - 2.55);
             var toTgt = new THREE.Vector3(dest.x, dest.y + 0.5, dest.z);
-            var arrowY = 0.26;
             var arrowZ = dest.z - 0.72;
-            _orientNavArrowToward(leader, aisleX, arrowY, arrowZ, dest.x, dest.y * 0.22, dest.z);
+            _orientNavArrowToward(leader, aisleX, _navArrowFloorY(), arrowZ, dest.x, dest.y * 0.22, dest.z);
             _animateCameraTo(fromPos, fromTgt, toPos, toTgt, 1100, function () {
                 if (addrLabel) {
                     _navLabelFaceCamera(addrLabel, labelPos, state.camera.position);
