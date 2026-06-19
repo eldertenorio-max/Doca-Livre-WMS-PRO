@@ -453,10 +453,14 @@
         maxPos = Math.max(1, parseInt(maxPos, 10) || 1);
         var zMarks = [0];
         for (var p = 1; p <= maxPos; p++) {
-            zMarks.push((p - 1) * bayStep + SLOT_D);
+            zMarks.push(p * bayStep);
         }
-        zMarks.push(maxPos * bayStep + GAP_POS * 0.5);
         return zMarks;
+    }
+
+    function _aisleLenForMaxPos(maxPos) {
+        maxPos = Math.max(1, parseInt(maxPos, 10) || 1);
+        return maxPos * (SLOT_D + GAP_POS) + 0.5;
     }
 
     function _buildIndustrialRackSide(THREE, parent, xBase, towardAisle, rua, ruaSlots, camCod, shelfGeo, dummy, col, maxNiv, maxPos) {
