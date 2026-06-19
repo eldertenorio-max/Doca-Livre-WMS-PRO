@@ -891,6 +891,8 @@
                 maxDepthLeft: maxDepthLeft,
                 leftSpan: leftSpan,
                 rightEdge: rightEdge,
+                corridorMainZ: maxDepthLeft + MAIN_AISLE_W / 2,
+                corridor21Z: (layout.corridors && layout.corridors[1]) ? layout.corridors[1].z : null,
                 camRuas: {}
             };
             camaras.forEach(function (c) {
@@ -1455,22 +1457,101 @@
         return new THREE.Vector3(camPos.x + xBase, y, camPos.z + localZ);
     }
 
+    function _buildNavCurve(waypoints) {
+        var THREE = T();
+        var segLens = [];
+        var totalLen = 0;
+        for (var i = 0; i < waypoints.length - 1; i++) {
+            var len = waypoints[i].distanceTo(waypoints[i + 1]);
+            segLens.push(len);
+            totalLen += len;
+        }
+        return {
+            getLength: function () { return totalLen; },
+            getPoint: function (t) {
+                if (t <= 0) return waypoints[0].clone();
+                if (t >= 1) return waypoints[waypoints.length - 1].clone();
+                var dist = t * totalLen;
+                for (var j = 0; j < segLens.length; j++) {
+                    if (dist <= segLens[j] || j === segLens.length - 1) {
+                        var u = segLens[j] > 0 ? dist / segLens[j] : 0;
+                        return waypoints[j].clone().lerp(waypoints[j + 1], u);
+                    }
+                    dist -= segLens[j];
+                }
+                return waypoints[waypoints.length - 1].clone();
+            },
+            getTangent: function (t) {
+                var eps = 0.004;
+                var a = this.getPoint(Math.max(0, t - eps));
+                var b = this.getPoint(Math.min(1, t + eps));
+                return b.sub(a).normalize();
+            },
+            getPoints: function (divisions) {
+                var pts = [];
+                for (var k = 0; k <= divisions; k++) {
+                    pts.push(this.getPoint(k / divisions));
+                }
+                return pts;
+            }
+        };
+    }
+
     function _buildNavWaypoints(camCod, rua, posicao, nivel) {
         var THREE = T();
         var meta = state.layoutMeta || {};
         var camPos = meta.positions[camCod];
         var dest = _worldSlotPos(camCod, rua, posicao, nivel);
         if (!camPos || !dest) return [];
-        var rightX = (meta.rightEdge || 0) + MAIN_AISLE_W * 0.55;
-        var frontZ = camPos.z + 0.55;
-        var midZ = camPos.z + (dest.z - camPos.z) * 0.45;
-        return [
-            new THREE.Vector3(rightX + 3.5, 0.45, frontZ - 2.5),
-            new THREE.Vector3(rightX, 0.4, frontZ),
-            new THREE.Vector3(camPos.x, 0.38, frontZ),
-            new THREE.Vector3(dest.x, 0.38, midZ),
-            new THREE.Vector3(dest.x, dest.y + 0.65, dest.z)
+
+        var maxD = meta.maxDepthLeft || 18;
+        var corridorZ = meta.corridorMainZ || (maxD + MAIN_AISLE_W / 2);
+        var rightX = (meta.rightEdge || 0) + MAIN_AISLE_W * 0.52;
+        var entryZ = maxD + 0.28;
+        var yFloor = 0.42;
+        var pts = [
+            new THREE.Vector3(rightX + 3.4, yFloor, corridorZ),
+            new THREE.Vector3(rightX, yFloor, corridorZ)
         ];
+
+        if (parseInt(camCod, 10) === 21) {
+            pts.push(new THREE.Vector3(camPos.x, yFloor, corridorZ));
+            var c21Z = meta.corridor21Z || (camPos.z + MAIN_AISLE_W * 0.45);
+            pts.push(new THREE.Vector3(camPos.x, yFloor, c21Z));
+            pts.push(new THREE.Vector3(camPos.x, yFloor, camPos.z + 0.45));
+        } else {
+            pts.push(new THREE.Vector3(camPos.x, yFloor, corridorZ));
+            pts.push(new THREE.Vector3(camPos.x, yFloor, entryZ));
+        }
+
+        if (Math.abs(dest.x - camPos.x) > 0.35) {
+            pts.push(new THREE.Vector3(dest.x, yFloor, entryZ));
+        }
+        pts.push(new THREE.Vector3(dest.x, yFloor, dest.z + 2.2));
+        pts.push(new THREE.Vector3(dest.x, dest.y + 0.5, dest.z + 1.1));
+        return pts;
+    }
+
+    function _addPathArrowMarkers(parent, curve, spacing) {
+        var THREE = T();
+        var arrowGeo = new THREE.ConeGeometry(0.17, 0.46, 12);
+        var arrowMat = new THREE.MeshPhongMaterial({
+            color: 0xff1744,
+            emissive: 0x660000,
+            shininess: 36
+        });
+        var total = curve.getLength();
+        var gap = spacing || 2.1;
+        var count = Math.max(5, Math.floor(total / gap));
+        for (var i = 1; i <= count; i++) {
+            var u = i / (count + 1);
+            var pt = curve.getPoint(u);
+            var ahead = curve.getPoint(Math.min(u + 0.022, 1));
+            var arr = new THREE.Mesh(arrowGeo, arrowMat);
+            arr.position.set(pt.x, 0.13, pt.z);
+            arr.lookAt(ahead.x, 0.13, ahead.z);
+            parent.add(arr);
+        }
     }
 
     function _restoreHighlight() {
@@ -1528,52 +1609,79 @@
         _restoreHighlight();
     }
 
-    function _runNavigationPath(waypoints, dest) {
+    function _runNavigationPath(waypoints, dest, slotInfo) {
         var THREE = T();
         if (!state.camera || !state.controls || !state.rackGroup || waypoints.length < 2) return;
         _clearNavVisuals();
         if (state.camFilter) setCamaraFilter(null);
 
-        var curve = new THREE.CatmullRomCurve3(waypoints);
-        var linePts = curve.getPoints(96);
+        var curve = _buildNavCurve(waypoints);
+        var linePts = curve.getPoints(Math.max(48, waypoints.length * 12));
         var lineGeo = new THREE.BufferGeometry().setFromPoints(linePts);
         var line = new THREE.Line(
             lineGeo,
-            new THREE.LineBasicMaterial({ color: 0xffeb3b, transparent: true, opacity: 0.92 })
+            new THREE.LineBasicMaterial({ color: 0xffeb3b, transparent: true, opacity: 0.88 })
         );
 
-        var arrow = new THREE.Mesh(
-            new THREE.ConeGeometry(0.24, 0.62, 14),
-            new THREE.MeshPhongMaterial({ color: 0xff1744, emissive: 0x660000, shininess: 40 })
-        );
-        arrow.rotation.x = Math.PI / 2;
+        var leaderGeo = new THREE.ConeGeometry(0.26, 0.68, 14);
+        var leaderMat = new THREE.MeshPhongMaterial({ color: 0xff1744, emissive: 0x770000, shininess: 44 });
+        var leader = new THREE.Mesh(leaderGeo, leaderMat);
 
         var marker = new THREE.Mesh(
             new THREE.BoxGeometry(SLOT_D * 0.88, SHELF_TH * 2.4, SLOT_D * 0.88),
             new THREE.MeshPhongMaterial({
                 color: 0xe53935,
                 transparent: true,
-                opacity: 0.88,
+                opacity: 0.9,
                 emissive: 0x550000
             })
         );
         marker.position.copy(dest);
+        marker.visible = false;
 
         var ring = new THREE.Mesh(
-            new THREE.RingGeometry(SLOT_D * 0.35, SLOT_D * 0.55, 24),
-            new THREE.MeshBasicMaterial({ color: 0xff1744, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+            new THREE.RingGeometry(SLOT_D * 0.35, SLOT_D * 0.58, 28),
+            new THREE.MeshBasicMaterial({ color: 0xff1744, side: THREE.DoubleSide, transparent: true, opacity: 0.8 })
         );
         ring.rotation.x = -Math.PI / 2;
-        ring.position.set(dest.x, 0.025, dest.z);
+        ring.position.set(dest.x, 0.028, dest.z);
+        ring.visible = false;
+
+        var addrTxt = '';
+        if (slotInfo) {
+            addrTxt = 'Câm. ' + slotInfo.camCod + ' · rua ' + slotInfo.rua + ' · pos ' + slotInfo.posicao + ' · nív ' + slotInfo.nivel;
+        }
+        var addrLabel = _textPlane(THREE, addrTxt, 2.4, 0.55, 52, '#ffffff', 'rgba(183,28,28,0.88)');
+        addrLabel.position.set(dest.x, dest.y + 1.15, dest.z + 0.35);
+        addrLabel.visible = false;
 
         state._navGroup = new THREE.Group();
         state._navGroup.name = 'nav-path';
-        state._navGroup.add(line, arrow, marker, ring);
+        state._navGroup.add(line, leader, marker, ring, addrLabel);
+        _addPathArrowMarkers(state._navGroup, curve, 2.0);
         state.rackGroup.add(state._navGroup);
 
-        var duration = 5200;
+        var pathLen = curve.getLength();
+        var duration = Math.min(11000, Math.max(5200, pathLen * 210));
         var t0 = null;
         state.controls.enabled = false;
+
+        function _finishNav() {
+            state._navAnimId = null;
+            marker.visible = true;
+            ring.visible = true;
+            addrLabel.visible = !!addrTxt;
+            if (slotInfo) {
+                _highlightSlot(slotInfo.camCod, slotInfo.rua, slotInfo.posicao, slotInfo.nivel);
+            }
+            leader.position.set(dest.x, Math.max(dest.y, 0.2), dest.z + 0.55);
+            leader.lookAt(dest.x, dest.y + 0.2, dest.z);
+            state.camera.position.set(dest.x - 1.6, dest.y + 2.35, dest.z - 2.15);
+            state.controls.target.set(dest.x, dest.y + 0.38, dest.z);
+            state.controls.update();
+            state.controls.enabled = true;
+            renderFrame();
+        }
 
         function step(ts) {
             if (!state.camera || !state.controls) return;
@@ -1581,27 +1689,30 @@
             var u = Math.min((ts - t0) / duration, 1);
             u = u * u * (3 - 2 * u);
             var pt = curve.getPoint(u);
-            var ahead = curve.getPoint(Math.min(u + 0.035, 1));
-            arrow.position.set(pt.x, Math.max(pt.y, 0.18), pt.z);
-            arrow.lookAt(ahead.x, Math.max(ahead.y, 0.12), ahead.z);
+            var aheadU = Math.min(u + 0.028, 1);
+            var ahead = curve.getPoint(aheadU);
+            var tangent = curve.getTangent(u).normalize();
 
-            var camX = pt.x - (ahead.x - pt.x) * 1.6 - 1.2;
-            var camY = Math.max(pt.y, 0.2) + 2.6;
-            var camZ = pt.z - (ahead.z - pt.z) * 1.6 - 2.8;
+            leader.position.set(pt.x, Math.max(pt.y, 0.16), pt.z);
+            leader.lookAt(ahead.x, Math.max(ahead.y, 0.14), ahead.z);
+
+            var back = tangent.clone().multiplyScalar(-1);
+            var camX = pt.x + back.x * 3.4 - tangent.z * 0.8;
+            var camY = Math.max(pt.y, 0.28) + 2.55;
+            var camZ = pt.z + back.z * 3.4 + tangent.x * 0.8;
             state.camera.position.set(camX, camY, camZ);
-            state.controls.target.set(ahead.x, Math.max(ahead.y, 0.35) + 0.4, ahead.z);
+            state.controls.target.set(
+                ahead.x,
+                Math.max(ahead.y, 0.32) + 0.45,
+                ahead.z
+            );
             state.controls.update();
             renderFrame();
 
             if (u < 1) {
                 state._navAnimId = requestAnimationFrame(step);
             } else {
-                state._navAnimId = null;
-                state.controls.enabled = true;
-                state.camera.position.set(dest.x - 1.8, dest.y + 2.2, dest.z - 2.4);
-                state.controls.target.set(dest.x, dest.y + 0.35, dest.z);
-                state.controls.update();
-                renderFrame();
+                _finishNav();
             }
         }
         state._navAnimId = requestAnimationFrame(step);
@@ -1620,10 +1731,14 @@
         if (!dest) return;
 
         _restoreHighlight();
-        _highlightSlot(camCod, rua, posicao, nivel);
         var waypoints = _buildNavWaypoints(camCod, rua, posicao, nivel);
         if (waypoints.length < 2) return;
-        _runNavigationPath(waypoints, dest);
+        _runNavigationPath(waypoints, dest, {
+            camCod: camCod,
+            rua: rua,
+            posicao: posicao,
+            nivel: nivel
+        });
     }
 
     global.WmsMapa3d = {
