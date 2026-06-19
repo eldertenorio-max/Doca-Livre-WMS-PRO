@@ -63,6 +63,10 @@
         _studioGroup: null,
         _camIntroId: null,
         _canvas: null,
+        layoutMeta: null,
+        _navGroup: null,
+        _navAnimId: null,
+        _highlightPrev: null,
         _onPointerMove: null,
         _onClick: null,
         _onWindowResize: null
@@ -291,6 +295,8 @@
     }
 
     function clearRack() {
+        _clearNavigation();
+        state.layoutMeta = null;
         state.pickables = [];
         state.slotIndex = [];
         state.camGroups = {};
@@ -795,8 +801,35 @@
                 if (camarasByCode[c]) fpsLayout[c] = _camFootprint(camarasByCode[c]);
             });
             var maxDepthLeft = 0;
+            var leftSpan = 0;
             leftCodes.forEach(function (c) {
-                if (fpsLayout[c] && fpsLayout[c].depth > maxDepthLeft) maxDepthLeft = fpsLayout[c].depth;
+                if (!fpsLayout[c]) return;
+                leftSpan += fpsLayout[c].width + GAP_CAM_ADJ;
+                if (fpsLayout[c].depth > maxDepthLeft) maxDepthLeft = fpsLayout[c].depth;
+            });
+            if (leftSpan > 0) leftSpan -= GAP_CAM_ADJ;
+            var fp21 = camarasByCode[21] ? _camFootprint(camarasByCode[21]) : null;
+            if (fp21) fpsLayout[21] = fp21;
+            var rightEdge = 0;
+            leftCodes.forEach(function (c) {
+                if (layout.positions[c] && fpsLayout[c]) {
+                    var edge = layout.positions[c].x + fpsLayout[c].width / 2;
+                    if (edge > rightEdge) rightEdge = edge;
+                }
+            });
+            if (layout.positions[21] && fp21) {
+                var e21 = layout.positions[21].x + fp21.width / 2;
+                if (e21 > rightEdge) rightEdge = e21;
+            }
+            state.layoutMeta = {
+                positions: layout.positions,
+                maxDepthLeft: maxDepthLeft,
+                leftSpan: leftSpan,
+                rightEdge: rightEdge,
+                camRuas: {}
+            };
+            camaras.forEach(function (c) {
+                state.layoutMeta.camRuas[parseInt(c.codigo, 10)] = _ruasCamara(c);
             });
             var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 0.92, SHELF_TH * 0.96, SLOT_D * 0.80);
             var dummy = new THREE.Object3D();
@@ -1302,6 +1335,215 @@
         renderFrame();
     }
 
+    function _findSlotRecord(camCod, rua, posicao, nivel) {
+        var ruaUp = String(rua || '').trim().toUpperCase();
+        var pos = parseInt(posicao, 10);
+        var niv = parseInt(nivel, 10) || 1;
+        for (var i = 0; i < state.slotIndex.length; i++) {
+            var rec = state.slotIndex[i];
+            var s = rec.slot || {};
+            if (parseInt(rec.camara, 10) !== parseInt(camCod, 10)) continue;
+            if (String(s.rua || '').trim().toUpperCase() !== ruaUp) continue;
+            if ((parseInt(s.posicao, 10) || 0) !== pos) continue;
+            if ((parseInt(s.nivel, 10) || 1) !== niv) continue;
+            return rec;
+        }
+        return null;
+    }
+
+    function _worldSlotPos(camCod, rua, posicao, nivel) {
+        var THREE = T();
+        var meta = state.layoutMeta || {};
+        var camPos = meta.positions[camCod];
+        if (!camPos) return null;
+        var ruas = meta.camRuas[camCod] || [];
+        var ruaUp = String(rua || '').trim().toUpperCase();
+        var ri = 0;
+        for (var i = 0; i < ruas.length; i++) {
+            if (String(ruas[i]).trim().toUpperCase() === ruaUp) {
+                ri = i;
+                break;
+            }
+        }
+        var totalRuas = Math.max(ruas.length, 1);
+        var xBase = _rackXBase(ri, totalRuas);
+        var bayStep = SLOT_D + GAP_POS;
+        var localZ = (parseInt(posicao, 10) - 1) * bayStep + SLOT_D / 2;
+        var y = (parseInt(nivel, 10) - 1) * LEVEL_H + BEAM_H + SHELF_TH * 0.72;
+        return new THREE.Vector3(camPos.x + xBase, y, camPos.z + localZ);
+    }
+
+    function _buildNavWaypoints(camCod, rua, posicao, nivel) {
+        var THREE = T();
+        var meta = state.layoutMeta || {};
+        var camPos = meta.positions[camCod];
+        var dest = _worldSlotPos(camCod, rua, posicao, nivel);
+        if (!camPos || !dest) return [];
+        var rightX = (meta.rightEdge || 0) + MAIN_AISLE_W * 0.55;
+        var frontZ = camPos.z + 0.55;
+        var midZ = camPos.z + (dest.z - camPos.z) * 0.45;
+        return [
+            new THREE.Vector3(rightX + 3.5, 0.45, frontZ - 2.5),
+            new THREE.Vector3(rightX, 0.4, frontZ),
+            new THREE.Vector3(camPos.x, 0.38, frontZ),
+            new THREE.Vector3(dest.x, 0.38, midZ),
+            new THREE.Vector3(dest.x, dest.y + 0.65, dest.z)
+        ];
+    }
+
+    function _restoreHighlight() {
+        var prev = state._highlightPrev;
+        if (!prev) return;
+        var rec = _findSlotRecord(prev.camCod, prev.rua, prev.posicao, prev.nivel);
+        if (rec && rec.mesh) {
+            var col = new THREE.Color();
+            col.setHex(slotColor(rec.slot));
+            _setInstanceColor(rec.mesh, rec.instanceId, col);
+            if (rec.mesh.instanceColor) rec.mesh.instanceColor.needsUpdate = true;
+        }
+        state._highlightPrev = null;
+    }
+
+    function _highlightSlot(camCod, rua, posicao, nivel) {
+        _restoreHighlight();
+        var rec = _findSlotRecord(camCod, rua, posicao, nivel);
+        if (rec && rec.mesh) {
+            var col = new THREE.Color();
+            col.setHex(0xe53935);
+            _setInstanceColor(rec.mesh, rec.instanceId, col);
+            if (rec.mesh.instanceColor) rec.mesh.instanceColor.needsUpdate = true;
+            state._highlightPrev = {
+                camCod: camCod,
+                rua: rua,
+                posicao: posicao,
+                nivel: nivel
+            };
+        }
+    }
+
+    function _clearNavVisuals() {
+        if (state._navAnimId) {
+            cancelAnimationFrame(state._navAnimId);
+            state._navAnimId = null;
+        }
+        if (state._navGroup && state.rackGroup) {
+            state.rackGroup.remove(state._navGroup);
+            state._navGroup.traverse(function (ch) {
+                if (ch.geometry) ch.geometry.dispose();
+                if (ch.material) {
+                    if (Array.isArray(ch.material)) ch.material.forEach(function (m) { m.dispose(); });
+                    else ch.material.dispose();
+                }
+            });
+        }
+        state._navGroup = null;
+    }
+
+    function _clearNavigation() {
+        _cancelCamIntro();
+        _clearNavVisuals();
+        if (state.controls) state.controls.enabled = true;
+        _restoreHighlight();
+    }
+
+    function _runNavigationPath(waypoints, dest) {
+        var THREE = T();
+        if (!state.camera || !state.controls || !state.rackGroup || waypoints.length < 2) return;
+        _clearNavVisuals();
+        if (state.camFilter) setCamaraFilter(null);
+
+        var curve = new THREE.CatmullRomCurve3(waypoints);
+        var linePts = curve.getPoints(96);
+        var lineGeo = new THREE.BufferGeometry().setFromPoints(linePts);
+        var line = new THREE.Line(
+            lineGeo,
+            new THREE.LineBasicMaterial({ color: 0xffeb3b, transparent: true, opacity: 0.92 })
+        );
+
+        var arrow = new THREE.Mesh(
+            new THREE.ConeGeometry(0.24, 0.62, 14),
+            new THREE.MeshPhongMaterial({ color: 0xff1744, emissive: 0x660000, shininess: 40 })
+        );
+        arrow.rotation.x = Math.PI / 2;
+
+        var marker = new THREE.Mesh(
+            new THREE.BoxGeometry(SLOT_D * 0.88, SHELF_TH * 2.4, SLOT_D * 0.88),
+            new THREE.MeshPhongMaterial({
+                color: 0xe53935,
+                transparent: true,
+                opacity: 0.88,
+                emissive: 0x550000
+            })
+        );
+        marker.position.copy(dest);
+
+        var ring = new THREE.Mesh(
+            new THREE.RingGeometry(SLOT_D * 0.35, SLOT_D * 0.55, 24),
+            new THREE.MeshBasicMaterial({ color: 0xff1744, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(dest.x, 0.025, dest.z);
+
+        state._navGroup = new THREE.Group();
+        state._navGroup.name = 'nav-path';
+        state._navGroup.add(line, arrow, marker, ring);
+        state.rackGroup.add(state._navGroup);
+
+        var duration = 5200;
+        var t0 = null;
+        state.controls.enabled = false;
+
+        function step(ts) {
+            if (!state.camera || !state.controls) return;
+            if (!t0) t0 = ts;
+            var u = Math.min((ts - t0) / duration, 1);
+            u = u * u * (3 - 2 * u);
+            var pt = curve.getPoint(u);
+            var ahead = curve.getPoint(Math.min(u + 0.035, 1));
+            arrow.position.set(pt.x, Math.max(pt.y, 0.18), pt.z);
+            arrow.lookAt(ahead.x, Math.max(ahead.y, 0.12), ahead.z);
+
+            var camX = pt.x - (ahead.x - pt.x) * 1.6 - 1.2;
+            var camY = Math.max(pt.y, 0.2) + 2.6;
+            var camZ = pt.z - (ahead.z - pt.z) * 1.6 - 2.8;
+            state.camera.position.set(camX, camY, camZ);
+            state.controls.target.set(ahead.x, Math.max(ahead.y, 0.35) + 0.4, ahead.z);
+            state.controls.update();
+            renderFrame();
+
+            if (u < 1) {
+                state._navAnimId = requestAnimationFrame(step);
+            } else {
+                state._navAnimId = null;
+                state.controls.enabled = true;
+                state.camera.position.set(dest.x - 1.8, dest.y + 2.2, dest.z - 2.4);
+                state.controls.target.set(dest.x, dest.y + 0.35, dest.z);
+                state.controls.update();
+                renderFrame();
+            }
+        }
+        state._navAnimId = requestAnimationFrame(step);
+    }
+
+    function navigateToPosicao(opts) {
+        opts = opts || {};
+        var camCod = parseInt(opts.camara, 10);
+        var rua = String(opts.rua || '').trim().toUpperCase();
+        var posicao = parseInt(opts.posicao, 10);
+        var nivel = parseInt(opts.nivel, 10) || 1;
+        if (!camCod || !rua || !posicao) return;
+        if (!state.rackGroup || !state.layoutMeta) return;
+
+        var dest = _worldSlotPos(camCod, rua, posicao, nivel);
+        if (!dest) return;
+
+        _restoreHighlight();
+        _highlightSlot(camCod, rua, posicao, nivel);
+        var waypoints = _buildNavWaypoints(camCod, rua, posicao, nivel);
+        if (waypoints.length < 2) return;
+        _runNavigationPath(waypoints, dest);
+    }
+
     global.WmsMapa3d = {
         init: initScene,
         setWireframe: setWireframe,
@@ -1319,7 +1561,9 @@
                 pickables: state.pickables.length
             };
         },
-        dispose: disposeInternal
+        dispose: disposeInternal,
+        navigateToPosicao: navigateToPosicao,
+        clearNavigation: _clearNavigation
     };
     global.__wmsMapa3dReady = true;
 })(typeof window !== 'undefined' ? window : globalThis);

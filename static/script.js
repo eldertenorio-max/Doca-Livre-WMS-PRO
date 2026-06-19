@@ -4765,7 +4765,7 @@ async function loadWmsMapa3d() {
     }
 }
 
-function _wmsEndSlotHtml(p) {
+function _wmsEndSlotHtml(p, camara) {
     var st = (p.status || '').toLowerCase();
     var dest = (p.destino_acao || '').toLowerCase();
     var cls = 'wms-end-slot--livre';
@@ -4806,7 +4806,19 @@ function _wmsEndSlotHtml(p) {
     }
     if (p.categoria_zona) tit += ' · cat ' + p.categoria_zona;
     var num = p.nivel != null ? String(p.nivel) : String(p.posicao);
-    return '<div class="wms-end-slot ' + cls + '" title="' + escHtml(tit) + '"><strong>' + escHtml(num) + '</strong>' + escHtml(lbl) + '</div>';
+    var posNum = p.coluna != null ? parseInt(p.coluna, 10) : parseInt(p.posicao, 10);
+    var rua = String(p.rua || '').trim().toUpperCase();
+    var niv = parseInt(p.nivel, 10) || 1;
+    var dataAttr = '';
+    if (camara && camara !== 98 && rua && posNum) {
+        cls += ' wms-end-slot--clickable';
+        dataAttr = ' data-camara="' + escHtml(String(camara)) + '" data-rua="' + escHtml(rua)
+            + '" data-posicao="' + escHtml(String(posNum)) + '" data-nivel="' + escHtml(String(niv)) + '"'
+            + ' role="button" tabindex="0" title="' + escHtml(tit) + ' — clique para ver no 3D"';
+    } else {
+        dataAttr = ' title="' + escHtml(tit) + '"';
+    }
+    return '<div class="wms-end-slot ' + cls + '"' + dataAttr + '><strong>' + escHtml(num) + '</strong>' + escHtml(lbl) + '</div>';
 }
 
 function _wmsEndSlotPlaceholder(rua, coluna, nivel) {
@@ -4818,7 +4830,7 @@ function _wmsEndPosicoesTemNiveis(posicoes) {
     return posicoes.some(function(p) { return p.nivel != null && p.coluna != null; });
 }
 
-function _wmsEndRenderPosicoesPorNiveis(posicoes, maxNiveis) {
+function _wmsEndRenderPosicoesPorNiveis(posicoes, maxNiveis, camara) {
     maxNiveis = maxNiveis || 5;
     var porRua = {};
     var ruaOrder = [];
@@ -4851,7 +4863,7 @@ function _wmsEndRenderPosicoesPorNiveis(posicoes, maxNiveis) {
                 .sort(function(a, b) { return b - a; });
             html += '<div class="wms-end-rack-col">';
             niveisExistentes.forEach(function(n) {
-                html += _wmsEndSlotHtml(niveisMap[n]);
+                html += _wmsEndSlotHtml(niveisMap[n], camara);
             });
             html += '<div class="wms-end-rack-col-pos">' + escHtml(String(colNum)) + '</div>';
             html += '</div>';
@@ -4886,9 +4898,9 @@ function _wmsRenderEnderecoRow(grupo) {
     }
     var posHtml;
     if (_wmsEndPosicoesTemNiveis(grupo.posicoes)) {
-        posHtml = _wmsEndRenderPosicoesPorNiveis(grupo.posicoes, grupo.niveis || 5);
+        posHtml = _wmsEndRenderPosicoesPorNiveis(grupo.posicoes, grupo.niveis || 5, grupo.camara);
     } else {
-        posHtml = (grupo.posicoes || []).map(_wmsEndSlotHtml).join('');
+        posHtml = (grupo.posicoes || []).map(function(p) { return _wmsEndSlotHtml(p, grupo.camara); }).join('');
     }
     return '<div class="' + rowCls + '"' + dataAttr + '>'
         + '<div class="wms-end-row-titulo">' + escHtml(grupo.label || grupo.descricao || '—')
@@ -4899,7 +4911,7 @@ function _wmsRenderEnderecoRow(grupo) {
         + escHtml(livres) + ' livres · ' + escHtml(pct) + '%</div></div>';
 }
 
-var _wmsEndState = { data: null, mapa3d: null, regions: [], selectedCamara: null };
+var _wmsEndState = { data: null, mapa3d: null, regions: [], selectedCamara: null, selectedSlot: null };
 
 var _WMS_END2D_LEGENDA = [
     { cls: '', color: '#90caf9', border: '#f57c00', label: 'Posição livre (vazia)' },
@@ -5454,8 +5466,9 @@ function _wmsEndSlotsNivel15(slots) {
     return _wmsEndSlotsPorNivel(slots, 5);
 }
 
-function _wmsEndRenderPlantaRackSide(rua, slots, maxNiv) {
+function _wmsEndRenderPlantaRackSide(rua, slots, maxNiv, camCod) {
     maxNiv = maxNiv || 5;
+    camCod = camCod || 0;
     slots = _wmsEndSlotsPorNivel(slots, maxNiv);
     var posMap = _wmsEndSlotsPorRua(slots, rua);
     var colunas = _wmsEndColunasExistentes(posMap);
@@ -5472,7 +5485,7 @@ function _wmsEndRenderPlantaRackSide(rua, slots, maxNiv) {
             var tit = slot
                 ? (slot.codigo_endereco || ('Rua ' + rua + ' · pos ' + p + ' · nív ' + n))
                 : ('Rua ' + rua + ' · pos ' + p + ' · nív ' + n + ' (vazio)');
-            html += '<div class="wms-planta-cell" style="background:' + st.fill + ';border-color:' + st.stroke + ';" title="' + escHtml(tit) + '" data-nivel="' + n + '"></div>';
+            html += '<div class="wms-planta-cell wms-planta-cell--clickable" style="background:' + st.fill + ';border-color:' + st.stroke + ';" title="' + escHtml(tit) + '" data-camara="' + escHtml(String(camCod)) + '" data-rua="' + escHtml(String(rua).toUpperCase()) + '" data-posicao="' + escHtml(String(p)) + '" data-nivel="' + escHtml(String(n)) + '" role="button" tabindex="0"></div>';
         }
         html += '</div></div>';
     });
@@ -5491,8 +5504,8 @@ function _wmsEndRenderPlantaCamaraHtml(cam, selCam) {
     var act = selCam === cod ? ' wms-planta-cam--ativo' : '';
     var ruaEsq = ruas[0] || 'A';
     var ruaDir = ruas[1] || ruas[0] || 'B';
-    var rackEsq = _wmsEndRenderPlantaRackSide(ruaEsq, cam.slots || [], maxNiv);
-    var rackDir = ruas.length > 1 ? _wmsEndRenderPlantaRackSide(ruaDir, cam.slots || [], maxNiv) : '';
+    var rackEsq = _wmsEndRenderPlantaRackSide(ruaEsq, cam.slots || [], maxNiv, cod);
+    var rackDir = ruas.length > 1 ? _wmsEndRenderPlantaRackSide(ruaDir, cam.slots || [], maxNiv, cod) : '';
     var html = '<div class="wms-planta-cam wms-planta-cam--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-label="Câmara ' + escHtml(String(cod)) + '" role="button" tabindex="0" title="Clique para abrir 3D">';
     html += '<div class="wms-planta-cam-top">' + escHtml(total) + ' Posições · níveis ' + escHtml(_wmsEndPlantaNivelLabel(cod)) + '</div>';
     html += '<div class="wms-planta-cam-body wms-planta-cam-body--n' + maxNiv + '">';
@@ -5639,6 +5652,46 @@ function _wmsEndPrimeiraCamara3d() {
     return 11;
 }
 
+async function wmsEndNavigateToPosicao(opts) {
+    opts = opts || {};
+    var cam = parseInt(opts.camara, 10);
+    var rua = String(opts.rua || '').trim().toUpperCase();
+    var pos = parseInt(opts.posicao, 10);
+    var niv = parseInt(opts.nivel, 10) || 1;
+    if (!cam || cam === 98 || !rua || !pos) return;
+    _wmsEndState.selectedSlot = { camara: cam, rua: rua, posicao: pos, nivel: niv };
+    _wmsEndHighlightSlot2d(_wmsEndState.selectedSlot);
+    await wmsEndAbrir3d({
+        camara: cam,
+        label: 'Câm. ' + cam + ' · rua ' + rua + ' · pos ' + pos + ' · nív ' + niv
+    });
+    if (window.WmsMapa3d && WmsMapa3d.navigateToPosicao) {
+        WmsMapa3d.navigateToPosicao({ camara: cam, rua: rua, posicao: pos, nivel: niv });
+    }
+}
+window.wmsEndNavigateToPosicao = wmsEndNavigateToPosicao;
+
+function _wmsEndPosFromEl(el) {
+    if (!el) return null;
+    var cam = parseInt(el.getAttribute('data-camara'), 10);
+    var rua = (el.getAttribute('data-rua') || '').trim().toUpperCase();
+    var pos = parseInt(el.getAttribute('data-posicao'), 10);
+    var niv = parseInt(el.getAttribute('data-nivel'), 10) || 1;
+    if (!cam || cam === 98 || !rua || !pos) return null;
+    return { camara: cam, rua: rua, posicao: pos, nivel: niv };
+}
+
+function _wmsEndHighlightSlot2d(slot) {
+    document.querySelectorAll('.wms-end-slot--ativo, .wms-planta-cell--ativo').forEach(function(el) {
+        el.classList.remove('wms-end-slot--ativo', 'wms-planta-cell--ativo');
+    });
+    if (!slot) return;
+    var sel = '[data-camara="' + slot.camara + '"][data-rua="' + slot.rua + '"][data-posicao="' + slot.posicao + '"][data-nivel="' + slot.nivel + '"]';
+    document.querySelectorAll('.wms-end-slot--clickable' + sel + ', .wms-planta-cell--clickable' + sel).forEach(function(el) {
+        el.classList.add(el.classList.contains('wms-planta-cell--clickable') ? 'wms-planta-cell--ativo' : 'wms-end-slot--ativo');
+    });
+}
+
 async function wmsEndAbrir3d(opts) {
     opts = opts || {};
     if (window._wmsEnd3dBusy) return;
@@ -5690,7 +5743,7 @@ async function wmsEndAbrir3d(opts) {
         var wire = document.getElementById('wms-end-3d-wireframe');
         WmsMapa3d.setWireframe(wire && wire.checked);
         setLoad(true, 'Montando posições…');
-        if (window.WmsMapa3d.setCamaraFilter) WmsMapa3d.setCamaraFilter(cam);
+        if (window.WmsMapa3d.setCamaraFilter && !_wmsEndState.selectedSlot) WmsMapa3d.setCamaraFilter(cam);
         await Promise.resolve(WmsMapa3d.build(data));
         await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
         if (WmsMapa3d.onResize) WmsMapa3d.onResize();
@@ -5761,18 +5814,33 @@ function _wmsEndBindAccordion() {
 }
 
 function _wmsEndBind2dEvents() {
+    function onPosClick(ev) {
+        var slotEl = ev.target.closest('.wms-end-slot--clickable') || ev.target.closest('.wms-planta-cell--clickable');
+        if (slotEl) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var pos = _wmsEndPosFromEl(slotEl);
+            if (pos) wmsEndNavigateToPosicao(pos);
+            return true;
+        }
+        return false;
+    }
     var planta = document.getElementById('wms-end-2d-planta');
     if (planta && !planta._wmsEnd2dBound) {
         planta._wmsEnd2dBound = true;
         planta.addEventListener('click', function(ev) {
+            if (onPosClick(ev)) return;
             var card = ev.target.closest('.wms-planta-cam--clickable') || ev.target.closest('.wms-end-2d-cam-card--clickable');
             if (!card) return;
+            _wmsEndState.selectedSlot = null;
+            _wmsEndHighlightSlot2d(null);
             var cam = parseInt(card.getAttribute('data-camara'), 10);
             var label = card.getAttribute('data-label') || '';
             if (cam && cam !== 98) wmsEndAbrir3d({ camara: cam, label: label });
         });
         planta.addEventListener('keydown', function(ev) {
             if (ev.key !== 'Enter' && ev.key !== ' ') return;
+            if (onPosClick(ev)) return;
             var card = ev.target.closest('.wms-planta-cam--clickable') || ev.target.closest('.wms-end-2d-cam-card--clickable');
             if (!card) return;
             ev.preventDefault();
@@ -5785,14 +5853,18 @@ function _wmsEndBind2dEvents() {
     if (grid && !grid._wmsEndRowBound) {
         grid._wmsEndRowBound = true;
         grid.addEventListener('click', function(ev) {
+            if (onPosClick(ev)) return;
             var row = ev.target.closest('.wms-end-row--clickable');
             if (!row) return;
+            _wmsEndState.selectedSlot = null;
+            _wmsEndHighlightSlot2d(null);
             var cam = parseInt(row.getAttribute('data-camara'), 10);
             var label = row.getAttribute('data-label') || '';
             if (cam && cam !== 98) wmsEndAbrir3d({ camara: cam, label: label });
         });
         grid.addEventListener('keydown', function(ev) {
             if (ev.key !== 'Enter' && ev.key !== ' ') return;
+            if (onPosClick(ev)) return;
             var row = ev.target.closest('.wms-end-row--clickable');
             if (!row) return;
             ev.preventDefault();
