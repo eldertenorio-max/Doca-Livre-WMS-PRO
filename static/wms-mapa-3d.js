@@ -1099,30 +1099,6 @@
         if (b21 && dAll > d113 + 0.2) {
             _addWallRunZ(group, mats, wallH, leftX, bAll.minZ + dAll / 2, dAll, 'parede-esq-total');
             _addWallRunZ(group, mats, wallH, rightX, bAll.minZ + dAll / 2, dAll, 'parede-dir-total');
-            var divDepth = bAll.maxZ - b113.maxZ;
-            if (divDepth > 0.4) {
-                _addWallRunZ(
-                    group,
-                    mats,
-                    wallH,
-                    b21.minX - halfTh - out,
-                    b113.maxZ + divDepth / 2,
-                    divDepth,
-                    'parede-div-21-esq'
-                );
-            }
-            if (b21.maxX + halfTh + out < rightX - 0.12) {
-                var d21 = b21.maxZ - b21.minZ;
-                _addWallRunZ(
-                    group,
-                    mats,
-                    wallH,
-                    b21.maxX + halfTh + out,
-                    b21.minZ + d21 / 2,
-                    d21,
-                    'parede-21-dir'
-                );
-            }
         }
 
         parent.add(group);
