@@ -578,7 +578,7 @@
         };
     }
 
-    /** Planta CD: 11/12/13 em fila horizontal; corredor cinza; 21 à direita (mesma orientação). */
+    /** Planta CD: 11/12/13 em fila; corredor cinza na frente; 21 em frente da 13. */
     function _layoutCdPlanta(camarasByCode) {
         var leftCodes = [11, 12, 13];
         var fps = {};
@@ -588,18 +588,15 @@
         var fp21 = camarasByCode[21] ? _camFootprint(camarasByCode[21]) : null;
 
         var leftSpan = 0;
-        var maxDepth = 0;
+        var maxDepthLeft = 0;
         leftCodes.forEach(function (c) {
             if (!fps[c]) return;
             leftSpan += fps[c].width + GAP_CAM;
-            if (fps[c].depth > maxDepth) maxDepth = fps[c].depth;
+            if (fps[c].depth > maxDepthLeft) maxDepthLeft = fps[c].depth;
         });
         if (leftSpan > 0) leftSpan -= GAP_CAM;
-        if (fp21 && fp21.depth > maxDepth) maxDepth = fp21.depth;
 
-        var totalW = leftSpan + (leftSpan && fp21 ? MAIN_AISLE_W : 0) + (fp21 ? fp21.width : 0);
-        if (!totalW && fp21) totalW = fp21.width;
-        var startX = -totalW / 2;
+        var startX = leftSpan ? -leftSpan / 2 : 0;
         var positions = {};
         var xCursor = startX;
 
@@ -609,29 +606,25 @@
             xCursor += fps[c].width + GAP_CAM;
         });
 
-        var corridorX = 0;
-        var corridorDepth = Math.max(maxDepth, 8);
-        if (fp21) {
-            if (leftSpan) {
-                corridorX = xCursor + MAIN_AISLE_W / 2;
-                positions[21] = { x: xCursor + MAIN_AISLE_W + fp21.width / 2, z: 0 };
-            } else {
-                positions[21] = { x: startX + fp21.width / 2, z: 0 };
-            }
-        } else if (leftSpan) {
-            corridorX = xCursor + MAIN_AISLE_W / 2;
+        var corridor = {
+            show: false,
+            width: leftSpan || MAIN_AISLE_W,
+            depth: MAIN_AISLE_W,
+            x: 0,
+            z: maxDepthLeft + MAIN_AISLE_W / 2
+        };
+
+        if (leftSpan && fp21) {
+            corridor.show = true;
+            corridor.width = leftSpan;
+            corridor.z = maxDepthLeft + MAIN_AISLE_W / 2;
+            var x13 = positions[13] ? positions[13].x : 0;
+            positions[21] = { x: x13, z: maxDepthLeft + MAIN_AISLE_W };
+        } else if (fp21) {
+            positions[21] = { x: 0, z: 0 };
         }
 
-        return {
-            positions: positions,
-            corridor: {
-                show: !!(leftSpan && fp21),
-                width: MAIN_AISLE_W,
-                depth: corridorDepth,
-                x: corridorX,
-                z: corridorDepth / 2
-            }
-        };
+        return { positions: positions, corridor: corridor };
     }
 
     function _addMainCorridor(THREE, parent, w, d, cx, cz) {
@@ -731,14 +724,16 @@
             });
             var idx = 0;
 
-            _addMainCorridor(
-                THREE,
-                state.rackGroup,
-                layout.corridor.width,
-                layout.corridor.depth,
-                layout.corridor.x,
-                layout.corridor.z
-            );
+            if (layout.corridor && layout.corridor.show) {
+                _addMainCorridor(
+                    THREE,
+                    state.rackGroup,
+                    layout.corridor.width,
+                    layout.corridor.depth,
+                    layout.corridor.x,
+                    layout.corridor.z
+                );
+            }
 
             return new Promise(function (resolve, reject) {
                 function next() {
