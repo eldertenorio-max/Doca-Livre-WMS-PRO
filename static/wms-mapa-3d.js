@@ -8,7 +8,9 @@
     var SLOT_H = 0.76;
     var SLOT_D = 1.00;
     var GAP_POS = 0.40;
-    var GAP_CAM_ADJ = 2.5;
+    var GAP_CAM_ADJ = 0.52;
+    var CAM_FLOOR_PAD = 0.22;
+    var RACK_WALL_HUG = 0.58;
     var MAIN_AISLE_W = 10;
     var MAX_NIV = 5;
     var AISLE_W = 5.2;
@@ -567,6 +569,18 @@
         return ruaIndex === 0 ? -(off) : off;
     }
 
+    /** Desloca racks para encostar nas paredes divisórias entre câmaras 11|12|13. */
+    function _rackXBaseForCam(camCod, ruaIndex, totalRuas) {
+        var base = _rackXBase(ruaIndex, totalRuas);
+        var c = parseInt(camCod, 10);
+        if (c === 11) return base + RACK_WALL_HUG;
+        if (c === 13) return base - RACK_WALL_HUG;
+        if (c === 12 && totalRuas >= 2) {
+            return ruaIndex === 0 ? base - RACK_WALL_HUG : base + RACK_WALL_HUG;
+        }
+        return base;
+    }
+
     function _camMaxPosicao(slots, ruas) {
         var max = 1;
         var ruasUp = (ruas || []).map(function (r) { return String(r || '').trim().toUpperCase(); });
@@ -591,7 +605,7 @@
         var aisleLen = _aisleLenForMaxPos(maxPos);
         var floorW = AISLE_W + SLOT_D * 1.28;
         return {
-            width: floorW + 1.4,
+            width: floorW + CAM_FLOOR_PAD,
             depth: aisleLen + 0.8,
             aisleLen: aisleLen
         };
@@ -740,7 +754,7 @@
             shininess: 6,
             specular: 0x111111
         });
-        var depth = maxDepth + 0.85;
+        var depth = maxDepth * 0.992;
         var frameTh = 0.07;
         for (var i = 0; i < leftCodes.length - 1; i++) {
             var cA = leftCodes[i];
@@ -757,25 +771,25 @@
             wall.name = 'parede-cam-' + cA + '-' + cB;
             group.add(wall);
             var capH = 0.1;
-            var cap = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH + frameTh * 2, capH, depth + frameTh), frameMat);
+            var cap = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH + frameTh * 2, capH, depth), frameMat);
             cap.position.set(cx, wallH + capH / 2, cz);
             group.add(cap);
-            var base = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH + frameTh * 2, 0.08, depth + frameTh), frameMat);
+            var base = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH + frameTh * 2, 0.08, depth), frameMat);
             base.position.set(cx, 0.04, cz);
             group.add(base);
             [-1, 1].forEach(function (signX) {
                 var post = new THREE.Mesh(new THREE.BoxGeometry(frameTh, wallH, frameTh), frameMat);
-                post.position.set(cx + signX * (WALL_DIV_TH / 2 + frameTh * 0.45), wallH / 2, cz - depth / 2 + frameTh);
+                post.position.set(cx + signX * (WALL_DIV_TH / 2 + frameTh * 0.45), wallH / 2, frameTh * 0.5);
                 group.add(post);
                 var postBack = post.clone();
-                postBack.position.z = cz + depth / 2 - frameTh;
+                postBack.position.z = depth - frameTh * 0.5;
                 group.add(postBack);
             });
             var lblA = _textPlane(THREE, 'CÂM. ' + String(cA), 0.72, 0.42, 56, '#263238', 'rgba(255,255,255,0.9)');
-            lblA.position.set(cx + WALL_DIV_TH * 0.72, wallH * 0.62, cz + depth * 0.18);
+            lblA.position.set(cx + WALL_DIV_TH * 0.72, wallH * 0.62, cz + depth * 0.14);
             group.add(lblA);
             var lblB = _textPlane(THREE, 'CÂM. ' + String(cB), 0.72, 0.42, 56, '#263238', 'rgba(255,255,255,0.9)');
-            lblB.position.set(cx - WALL_DIV_TH * 0.72, wallH * 0.62, cz + depth * 0.18);
+            lblB.position.set(cx - WALL_DIV_TH * 0.72, wallH * 0.62, cz + depth * 0.14);
             lblB.rotation.y = Math.PI;
             group.add(lblB);
         }
@@ -801,7 +815,7 @@
                 var n = parseInt(s.nivel, 10) || 1;
                 return n >= 1 && n <= maxNiv;
             });
-            var xBase = _rackXBase(ri, ruas.length);
+            var xBase = _rackXBaseForCam(cod, ri, ruas.length);
             var towardAisle = ri === 0 ? 1 : -1;
             if (ruas.length <= 1) towardAisle = 1;
             var ruaGroup = new THREE.Group();
@@ -831,7 +845,7 @@
         floor.position.set(0, -0.04, aisleLen / 2);
         camGroup.add(floor);
 
-        var totalW = floorW + 1.4;
+        var totalW = floorW + CAM_FLOOR_PAD;
         camGroup.position.set(posX, 0, posZ);
         state.rackGroup.add(camGroup);
         state.camGroups[String(cod)] = camGroup;
@@ -1450,7 +1464,7 @@
             }
         }
         var totalRuas = Math.max(ruas.length, 1);
-        var xBase = _rackXBase(ri, totalRuas);
+        var xBase = _rackXBaseForCam(camCod, ri, totalRuas);
         var bayStep = SLOT_D + GAP_POS;
         var localZ = (parseInt(posicao, 10) - 1) * bayStep + SLOT_D / 2;
         var y = (parseInt(nivel, 10) - 1) * LEVEL_H + BEAM_H + SHELF_TH * 0.72;
