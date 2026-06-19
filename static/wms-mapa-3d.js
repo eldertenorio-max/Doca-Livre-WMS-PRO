@@ -939,6 +939,106 @@
         parent.add(group);
     }
 
+    function _wallMats(THREE) {
+        return {
+            panel: new THREE.MeshPhongMaterial({
+                color: COL_WALL_DIV,
+                shininess: 10,
+                specular: 0x333333,
+                side: THREE.DoubleSide
+            }),
+            frame: new THREE.MeshPhongMaterial({
+                color: COL_WALL_FRAME,
+                shininess: 6,
+                specular: 0x111111
+            })
+        };
+    }
+
+    function _addWallRunZ(group, mats, wallH, x, zCenter, depth, name) {
+        if (!depth || depth < 0.06) return;
+        var frameTh = 0.07;
+        var panel = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH, wallH, depth), mats.panel);
+        panel.position.set(x, wallH / 2, zCenter);
+        panel.castShadow = true;
+        panel.receiveShadow = true;
+        panel.name = name || 'parede-z';
+        group.add(panel);
+        var cap = new THREE.Mesh(
+            new THREE.BoxGeometry(WALL_DIV_TH + frameTh * 2, 0.1, depth),
+            mats.frame
+        );
+        cap.position.set(x, wallH + 0.05, zCenter);
+        group.add(cap);
+        var base = new THREE.Mesh(
+            new THREE.BoxGeometry(WALL_DIV_TH + frameTh * 2, 0.08, depth),
+            mats.frame
+        );
+        base.position.set(x, 0.04, zCenter);
+        group.add(base);
+    }
+
+    function _addWallRunX(group, mats, wallH, width, xCenter, z, name) {
+        if (!width || width < 0.06) return;
+        var frameTh = 0.07;
+        var panel = new THREE.Mesh(new THREE.BoxGeometry(width, wallH, WALL_DIV_TH), mats.panel);
+        panel.position.set(xCenter, wallH / 2, z);
+        panel.castShadow = true;
+        panel.receiveShadow = true;
+        panel.name = name || 'parede-x';
+        group.add(panel);
+        var cap = new THREE.Mesh(
+            new THREE.BoxGeometry(width, 0.1, WALL_DIV_TH + frameTh * 2),
+            mats.frame
+        );
+        cap.position.set(xCenter, wallH + 0.05, z);
+        group.add(cap);
+        var base = new THREE.Mesh(
+            new THREE.BoxGeometry(width, 0.08, WALL_DIV_TH + frameTh * 2),
+            mats.frame
+        );
+        base.position.set(xCenter, 0.04, z);
+        group.add(base);
+    }
+
+    /** Paredes externas rente ao bloco 11–13 e envoltório da câm. 21 (linhas perimetrais). */
+    function _addPerimeterWalls(THREE, parent, leftSpan, maxDepth, wallH, positions, fp21) {
+        if (!leftSpan || !maxDepth || !wallH) return;
+        var group = new THREE.Group();
+        group.name = 'paredes-perimetro';
+        var mats = _wallMats(THREE);
+        var leftX = -leftSpan / 2;
+        var rightX = leftSpan / 2;
+        var rackD = maxDepth * 0.992;
+        var halfTh = WALL_DIV_TH / 2;
+
+        _addWallRunX(group, mats, wallH, leftSpan, 0, halfTh, 'parede-fundo');
+        _addWallRunZ(group, mats, wallH, leftX, rackD / 2, rackD, 'parede-esq-bloco');
+        _addWallRunZ(group, mats, wallH, rightX, rackD / 2, rackD, 'parede-dir-bloco');
+
+        if (fp21 && positions && positions[21]) {
+            var p21 = positions[21];
+            var w21 = fp21.width;
+            var d21 = fp21.depth;
+            var z21End = p21.z + d21;
+            var zFront = z21End + MAIN_AISLE_W;
+            var x21L = p21.x - w21 / 2;
+            var x21R = p21.x + w21 / 2;
+            var innerLen = zFront - maxDepth;
+            var midInnerZ = maxDepth + innerLen / 2;
+
+            _addWallRunZ(group, mats, wallH, leftX, zFront / 2, zFront, 'parede-esq-total');
+            _addWallRunZ(group, mats, wallH, rightX, zFront / 2, zFront, 'parede-dir-total');
+            _addWallRunZ(group, mats, wallH, x21L, midInnerZ, innerLen, 'parede-div-21-esq');
+            if (x21R < rightX - 0.15) {
+                _addWallRunZ(group, mats, wallH, x21R, p21.z + d21 / 2, d21, 'parede-21-dir');
+            }
+            _addWallRunX(group, mats, wallH, w21, p21.x, zFront - halfTh, 'parede-frente-21');
+        }
+
+        parent.add(group);
+    }
+
     function buildOneCamara(THREE, cam, posX, posZ, shelfGeo, dummy, col) {
         var ruas = _ruasCamara(cam);
         var cod = parseInt(cam.codigo, 10);
@@ -1092,6 +1192,15 @@
                 layout.positions,
                 maxDepthLeft,
                 maxNivWall * LEVEL_H + 0.65
+            );
+            _addPerimeterWalls(
+                THREE,
+                state.rackGroup,
+                leftSpan,
+                maxDepthLeft,
+                maxNivWall * LEVEL_H + 0.65,
+                layout.positions,
+                fp21
             );
 
             return new Promise(function (resolve, reject) {
