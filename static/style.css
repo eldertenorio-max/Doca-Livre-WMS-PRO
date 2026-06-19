@@ -753,6 +753,7 @@ body.hub-modulos-aberto .container {
     flex: 1 1 240px;
     max-width: 280px;
     min-width: 220px;
+    min-height: 400px;
     display: flex;
     flex-direction: column;
     border: 2px solid #ff9800;
@@ -766,16 +767,17 @@ body.hub-modulos-aberto .container {
     flex: 0 0 200px;
     max-width: 200px;
     min-width: 200px;
+    min-height: 280px;
 }
 
 .wms-planta-cam[data-camara="21"] .wms-planta-cell {
-    width: 12px;
-    height: 16px;
+    width: 14px;
+    height: 20px;
 }
 
 .wms-planta-cam:not([data-camara="21"]) .wms-planta-cell {
-    width: 11px;
-    height: 15px;
+    width: 13px;
+    height: 18px;
     border-width: 1px;
 }
 
@@ -795,13 +797,14 @@ body.hub-modulos-aberto .container {
 
 .wms-planta-cam-top {
     text-align: center;
-    padding: 10px 6px;
+    padding: 8px 6px;
     font-size: 11px;
     font-weight: 700;
     color: #1565c0;
     border-bottom: 1px solid #ffe0b2;
     background: #fff;
-    min-height: 34px;
+    min-height: 30px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -817,11 +820,11 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-cam-body--n5 {
-    min-height: 220px;
+    min-height: 0;
 }
 
 .wms-planta-cam-body--n2 {
-    min-height: 120px;
+    min-height: 0;
 }
 
 .wms-planta-rack-side {
@@ -831,14 +834,14 @@ body.hub-modulos-aberto .container {
     flex-wrap: nowrap;
     align-items: stretch;
     justify-content: flex-start;
-    gap: 1px;
-    padding: 6px 3px 4px;
+    gap: 2px;
+    padding: 4px 2px 3px;
     background: #fff;
     border: 3px solid #ff9800;
     min-width: 0;
+    min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
-    max-height: 320px;
 }
 
 .wms-planta-rack-side--esq {
@@ -859,8 +862,8 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-row-pos-lbl {
-    flex: 0 0 12px;
-    font-size: 6px;
+    flex: 0 0 14px;
+    font-size: 7px;
     font-weight: 700;
     color: #546e7a;
     text-align: center;
@@ -871,7 +874,7 @@ body.hub-modulos-aberto .container {
     display: flex;
     flex-direction: row;
     flex-wrap: nowrap;
-    gap: 1px;
+    gap: 2px;
     align-items: center;
     flex: 1;
     min-width: 0;
@@ -896,8 +899,8 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-cell {
-    width: 11px;
-    height: 15px;
+    width: 13px;
+    height: 18px;
     border: 1px solid #ff9800;
     border-radius: 1px;
     box-sizing: border-box;
@@ -905,12 +908,12 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-corredor {
-    flex: 0 0 72px;
+    flex: 0 0 58px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    padding: 6px 4px 5px;
+    padding: 4px 2px 4px;
     background: #fff;
     border-top: 3px solid #ff9800;
     border-bottom: 3px solid #ff9800;
@@ -937,7 +940,7 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-corredor-num {
-    font-size: 36px;
+    font-size: 32px;
     font-weight: 800;
     line-height: 1;
     color: #c62828;
@@ -948,23 +951,16 @@ body.hub-modulos-aberto .container {
     writing-mode: vertical-rl;
     text-orientation: mixed;
     transform: rotate(180deg);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     color: #1565c0;
     letter-spacing: 0.06em;
     margin: 0;
 }
 
-.wms-planta-corredor-temp {
-    font-size: 18px;
-    font-weight: 800;
-    color: #c62828;
-    margin: 0;
-}
-
 .wms-planta-porta {
-    width: 40px;
-    height: 12px;
+    width: 36px;
+    height: 10px;
     background: linear-gradient(180deg, #ffeb3b 0%, #ffc107 100%);
     border: 1px solid #f9a825;
     border-radius: 1px;
@@ -976,9 +972,10 @@ body.hub-modulos-aberto .container {
     font-size: 9px;
     color: #616161;
     text-align: center;
-    padding: 4px;
+    padding: 6px 4px;
     border-top: 1px solid #eee;
     background: #fafafa;
+    flex-shrink: 0;
 }
 
 .wms-planta-row-98 {

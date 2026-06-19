@@ -5502,7 +5502,6 @@ function _wmsEndRenderPlantaCamaraHtml(cam, selCam) {
     html += '<div class="wms-planta-corredor-mid">';
     html += '<div class="wms-planta-corredor-num">' + escHtml(String(cod)) + '</div>';
     html += '<div class="wms-planta-corredor-tipo">' + escHtml(meta.tipo) + '</div>';
-    if (meta.temp) html += '<div class="wms-planta-corredor-temp">' + escHtml(meta.temp) + '</div>';
     html += '</div>';
     html += '<div class="wms-planta-porta" title="Entrada"></div>';
     html += '</div>';
