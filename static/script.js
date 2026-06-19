@@ -5663,7 +5663,8 @@ async function wmsEndNavigateToPosicao(opts) {
     _wmsEndHighlightSlot2d(_wmsEndState.selectedSlot);
     await wmsEndAbrir3d({
         camara: cam,
-        label: 'Câm. ' + cam + ' · rua ' + rua + ' · pos ' + pos + ' · nív ' + niv
+        label: String(cam).padStart(2, '0') + '-' + rua + '-' + String(pos).padStart(2, '0') + '-' + niv
+            + ' · Câmara ' + cam + ' · Rua ' + rua + ' · Col ' + String(pos).padStart(2, '0') + ' · Nív ' + niv
     });
     if (window.WmsMapa3d && WmsMapa3d.navigateToPosicao) {
         WmsMapa3d.navigateToPosicao({ camara: cam, rua: rua, posicao: pos, nivel: niv });

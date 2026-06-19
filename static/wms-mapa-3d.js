@@ -129,8 +129,78 @@
         });
     }
 
+    function _pad2(n) {
+        return String(parseInt(n, 10)).padStart(2, '0');
+    }
+
     function _barcodeLongarina(cam, pos, niv) {
         return parseInt(cam, 10) + '.' + parseInt(pos, 10) + '.' + parseInt(niv, 10);
+    }
+
+    function _formatEnderecoNav(slotInfo) {
+        if (!slotInfo) return { titulo: '', subtitulo: '' };
+        var cam = parseInt(slotInfo.camCod, 10);
+        var rua = String(slotInfo.rua || '').trim().toUpperCase();
+        var pos = parseInt(slotInfo.posicao, 10);
+        var niv = parseInt(slotInfo.nivel, 10) || 1;
+        return {
+            titulo: _pad2(cam) + '-' + rua + '-' + _pad2(pos) + '-' + niv,
+            subtitulo: 'Câmara ' + cam + ' · Rua ' + rua + ' · Col ' + _pad2(pos) + ' · Nív ' + niv
+        };
+    }
+
+    function _makeNavArrowMesh(THREE) {
+        var shape = new THREE.Shape();
+        shape.moveTo(0, 0.58);
+        shape.lineTo(0.36, 0.02);
+        shape.lineTo(0.14, 0.02);
+        shape.lineTo(0.14, -0.52);
+        shape.lineTo(-0.14, -0.52);
+        shape.lineTo(-0.14, 0.02);
+        shape.lineTo(-0.36, 0.02);
+        shape.closePath();
+        var geo = new THREE.ExtrudeGeometry(shape, { depth: 0.08, bevelEnabled: false });
+        geo.rotateX(-Math.PI / 2);
+        var mat = new THREE.MeshPhongMaterial({
+            color: 0xff1744,
+            emissive: 0x660000,
+            shininess: 40,
+            side: THREE.DoubleSide
+        });
+        var mesh = new THREE.Mesh(geo, mat);
+        mesh.scale.set(1.35, 1.35, 1.35);
+        return mesh;
+    }
+
+    function _orientNavArrow(arrow, x, z, dx, dz) {
+        arrow.position.set(x, 0.22, z);
+        if (Math.abs(dx) + Math.abs(dz) < 0.0005) return;
+        arrow.rotation.set(-Math.PI / 2, Math.atan2(dx, dz), 0);
+    }
+
+    function _smoothNavStep(u) {
+        return u * u * (3 - 2 * u);
+    }
+
+    function _animateCameraTo(fromPos, fromTgt, toPos, toTgt, duration, onDone) {
+        var t0 = null;
+        function step(ts) {
+            if (!state.camera || !state.controls) return;
+            if (!t0) t0 = ts;
+            var u = Math.min((ts - t0) / duration, 1);
+            u = _smoothNavStep(u);
+            state.camera.position.lerpVectors(fromPos, toPos, u);
+            state.controls.target.lerpVectors(fromTgt, toTgt, u);
+            state.controls.update();
+            renderFrame();
+            if (u < 1) {
+                state._navAnimId = requestAnimationFrame(step);
+            } else {
+                state._navAnimId = null;
+                if (onDone) onDone();
+            }
+        }
+        state._navAnimId = requestAnimationFrame(step);
     }
 
     function _beamLipAisleX(xF, xB, towardAisle) {
@@ -210,7 +280,9 @@
 
     function _textPlane(THREE, text, planeW, planeH, fontPx, color, bg) {
         var canvas = document.createElement('canvas');
-        canvas.width = 512;
+        var str = String(text);
+        var cw = str.length > 24 ? 1024 : 512;
+        canvas.width = cw;
         canvas.height = 256;
         var ctx = canvas.getContext('2d');
         if (bg) {
@@ -220,10 +292,15 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
         ctx.fillStyle = color || '#212121';
-        ctx.font = 'bold ' + fontPx + 'px Arial,sans-serif';
+        var px = fontPx;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(String(text), canvas.width / 2, canvas.height / 2);
+        ctx.font = 'bold ' + px + 'px Arial,sans-serif';
+        while (px > 16 && ctx.measureText(str).width > cw * 0.9) {
+            px -= 2;
+            ctx.font = 'bold ' + px + 'px Arial,sans-serif';
+        }
+        ctx.fillText(str, canvas.width / 2, canvas.height / 2);
         var tex = new THREE.CanvasTexture(canvas);
         tex.needsUpdate = true;
         var mat = new THREE.MeshBasicMaterial({
@@ -232,8 +309,52 @@
             side: THREE.DoubleSide,
             depthWrite: false
         });
-        var mesh = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeH), mat);
-        return mesh;
+        return new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeH), mat);
+    }
+
+    function _textPlaneMultiline(THREE, lines, planeW, planeH, fontPx, color, bg) {
+        var canvas = document.createElement('canvas');
+        var rows = (lines || []).filter(function (l) { return l; });
+        canvas.width = 1024;
+        canvas.height = 256;
+        var ctx = canvas.getContext('2d');
+        if (bg) {
+            ctx.fillStyle = bg;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        ctx.fillStyle = color || '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        var px = fontPx;
+        var maxW = 0;
+        rows.forEach(function (line) {
+            ctx.font = 'bold ' + px + 'px Arial,sans-serif';
+            maxW = Math.max(maxW, ctx.measureText(line).width);
+        });
+        while (px > 14 && maxW > canvas.width * 0.88) {
+            px -= 2;
+            maxW = 0;
+            rows.forEach(function (line) {
+                ctx.font = 'bold ' + px + 'px Arial,sans-serif';
+                maxW = Math.max(maxW, ctx.measureText(line).width);
+            });
+        }
+        var step = canvas.height / (rows.length + 1);
+        rows.forEach(function (line, i) {
+            ctx.font = (i === 0 ? 'bold ' : '') + px + 'px Arial,sans-serif';
+            ctx.fillText(line, canvas.width / 2, step * (i + 1));
+        });
+        var tex = new THREE.CanvasTexture(canvas);
+        tex.needsUpdate = true;
+        var mat = new THREE.MeshBasicMaterial({
+            map: tex,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        return new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeH), mat);
     }
 
     function _addCorridorSignage(THREE, camGroup, aisleLen, cod) {
@@ -668,7 +789,7 @@
                 depth: MAIN_AISLE_W,
                 x: 0,
                 z: maxDepthLeft + MAIN_AISLE_W / 2,
-                label: 'CORREDOR · CÂM. 11 · 12 · 13'
+                label: 'CORREDOR PRINCIPAL — CÂM 11 · 12 · 13'
             });
         }
 
@@ -680,7 +801,7 @@
                 depth: MAIN_AISLE_W,
                 x: x13,
                 z: positions[21].z + fp21.depth + MAIN_AISLE_W / 2,
-                label: 'CORREDOR · CÂM. 21'
+                label: 'CORREDOR — CÂM 21'
             });
         } else if (fp21) {
             positions[21] = { x: 0, z: 0 };
@@ -689,7 +810,7 @@
                 depth: MAIN_AISLE_W,
                 x: 0,
                 z: fp21.depth + MAIN_AISLE_W / 2,
-                label: 'CORREDOR · CÂM. 21'
+                label: 'CORREDOR — CÂM 21'
             });
         }
 
@@ -734,7 +855,7 @@
         parent.add(stripe);
 
         if (label) {
-            var lbl = _textPlane(THREE, label, Math.min(w * 0.82, 14), 1.05, 42, '#ffffff', 'rgba(33,33,33,0.72)');
+            var lbl = _textPlane(THREE, label, Math.min(w * 0.94, 16), 1.15, 38, '#ffffff', 'rgba(33,33,33,0.78)');
             lbl.rotation.x = -Math.PI / 2;
             lbl.position.set(cx, y + 0.004, cz);
             parent.add(lbl);
@@ -1632,9 +1753,7 @@
 
         var curve = _buildNavCurve(waypoints);
 
-        var leaderGeo = new THREE.ConeGeometry(0.28, 0.72, 14);
-        var leaderMat = new THREE.MeshPhongMaterial({ color: 0xff1744, emissive: 0x770000, shininess: 44 });
-        var leader = new THREE.Mesh(leaderGeo, leaderMat);
+        var leader = _makeNavArrowMesh(THREE);
 
         var marker = new THREE.Mesh(
             new THREE.BoxGeometry(SLOT_D * 0.88, SHELF_TH * 2.4, SLOT_D * 0.88),
@@ -1656,12 +1775,17 @@
         ring.position.set(dest.x, 0.028, dest.z);
         ring.visible = false;
 
-        var addrTxt = '';
-        if (slotInfo) {
-            addrTxt = 'Câm. ' + slotInfo.camCod + ' · rua ' + slotInfo.rua + ' · pos ' + slotInfo.posicao + ' · nív ' + slotInfo.nivel;
-        }
-        var addrLabel = _textPlane(THREE, addrTxt, 2.4, 0.55, 52, '#ffffff', 'rgba(183,28,28,0.88)');
-        addrLabel.position.set(dest.x, dest.y + 1.15, dest.z + 0.35);
+        var endLbl = _formatEnderecoNav(slotInfo);
+        var addrLabel = _textPlaneMultiline(
+            THREE,
+            endLbl.titulo ? [endLbl.titulo, endLbl.subtitulo] : [],
+            2.8,
+            0.82,
+            46,
+            '#ffffff',
+            'rgba(183,28,28,0.9)'
+        );
+        addrLabel.position.set(dest.x, dest.y + 1.25, dest.z + 0.35);
         addrLabel.visible = false;
 
         state._navGroup = new THREE.Group();
@@ -1677,34 +1801,34 @@
         state.controls.enabled = false;
 
         function _finishNav() {
-            state._navAnimId = null;
-            marker.visible = true;
-            ring.visible = true;
-            addrLabel.visible = !!addrTxt;
-            if (slotInfo) {
-                _highlightSlot(slotInfo.camCod, slotInfo.rua, slotInfo.posicao, slotInfo.nivel);
-            }
-            leader.position.set(aisleX, 0.18, dest.z + 0.55);
-            leader.lookAt(dest.x, dest.y + 0.15, dest.z);
-            state.camera.position.set(aisleX, dest.y + 2.25, dest.z - 2.05);
-            state.controls.target.set(dest.x, dest.y + 0.38, dest.z);
-            state.controls.update();
-            state.controls.enabled = true;
-            renderFrame();
+            var fromPos = state.camera.position.clone();
+            var fromTgt = state.controls.target.clone();
+            var toPos = new THREE.Vector3(aisleX, dest.y + 1.75, dest.z - 1.55);
+            var toTgt = new THREE.Vector3(dest.x, dest.y + 0.42, dest.z);
+            _orientNavArrow(leader, aisleX, dest.z + 0.45, dest.x - aisleX, dest.z - (dest.z + 0.45));
+            _animateCameraTo(fromPos, fromTgt, toPos, toTgt, 950, function () {
+                marker.visible = true;
+                ring.visible = true;
+                addrLabel.visible = !!endLbl.titulo;
+                if (slotInfo) {
+                    _highlightSlot(slotInfo.camCod, slotInfo.rua, slotInfo.posicao, slotInfo.nivel);
+                }
+                state.controls.enabled = true;
+                renderFrame();
+            });
         }
 
         function step(ts) {
             if (!state.camera || !state.controls) return;
             if (!t0) t0 = ts;
             var u = Math.min((ts - t0) / duration, 1);
-            u = u * u * (3 - 2 * u);
+            u = _smoothNavStep(u);
             var pt = curve.getPoint(u);
             var aheadU = Math.min(u + 0.028, 1);
             var ahead = curve.getPoint(aheadU);
             var tangent = curve.getTangent(u).normalize();
 
-            leader.position.set(pt.x, Math.max(pt.y, 0.16), pt.z);
-            leader.lookAt(ahead.x, Math.max(ahead.y, 0.14), ahead.z);
+            _orientNavArrow(leader, pt.x, pt.z, ahead.x - pt.x, ahead.z - pt.z);
 
             var back = tangent.clone().multiplyScalar(-1);
             var camX = pt.x + back.x * 3.4 - tangent.z * 0.8;
