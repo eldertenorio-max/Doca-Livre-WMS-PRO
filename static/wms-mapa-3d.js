@@ -578,7 +578,7 @@
         };
     }
 
-    /** Planta CD: 11/12/13 em fila; corredor cinza na frente; 21 em frente da 13. */
+    /** Planta CD: 11/12/13 em fila; dois corredores cinza (entre bloco e 21, e após 21). */
     function _layoutCdPlanta(camarasByCode) {
         var leftCodes = [11, 12, 13];
         var fps = {};
@@ -596,8 +596,17 @@
         });
         if (leftSpan > 0) leftSpan -= GAP_CAM;
 
-        var startX = leftSpan ? -leftSpan / 2 : 0;
+        var maxDepth = maxDepthLeft;
+        if (fp21 && fp21.depth > maxDepth) maxDepth = fp21.depth;
+        maxDepth = Math.max(maxDepth, 8);
+
+        var blockW = leftSpan;
+        if (fp21 && leftSpan) blockW += MAIN_AISLE_W + fp21.width + MAIN_AISLE_W;
+        else if (fp21) blockW = fp21.width;
+
+        var startX = blockW ? -blockW / 2 : 0;
         var positions = {};
+        var corridors = [];
         var xCursor = startX;
 
         leftCodes.forEach(function (c) {
@@ -606,32 +615,34 @@
             xCursor += fps[c].width + GAP_CAM;
         });
 
-        var corridor = {
-            show: false,
-            width: leftSpan || MAIN_AISLE_W,
-            depth: MAIN_AISLE_W,
-            x: 0,
-            z: maxDepthLeft + MAIN_AISLE_W / 2
-        };
-
         if (leftSpan && fp21) {
-            corridor.show = true;
-            corridor.width = leftSpan;
-            corridor.z = maxDepthLeft + MAIN_AISLE_W / 2;
-            var x13 = positions[13] ? positions[13].x : 0;
-            positions[21] = { x: x13, z: maxDepthLeft + MAIN_AISLE_W };
+            corridors.push({
+                width: MAIN_AISLE_W,
+                depth: maxDepth,
+                x: xCursor + MAIN_AISLE_W / 2,
+                z: maxDepth / 2
+            });
+            xCursor += MAIN_AISLE_W;
+            positions[21] = { x: xCursor + fp21.width / 2, z: 0 };
+            xCursor += fp21.width;
+            corridors.push({
+                width: MAIN_AISLE_W,
+                depth: maxDepth,
+                x: xCursor + MAIN_AISLE_W / 2,
+                z: maxDepth / 2
+            });
         } else if (fp21) {
-            positions[21] = { x: 0, z: 0 };
+            positions[21] = { x: startX + fp21.width / 2, z: 0 };
         }
 
-        return { positions: positions, corridor: corridor };
+        return { positions: positions, corridors: corridors };
     }
 
-    function _addMainCorridor(THREE, parent, w, d, cx, cz) {
+    function _addCorridorPlane(THREE, parent, w, d, cx, cz, name) {
         var geo = new THREE.PlaneGeometry(w, d);
         var mat = new THREE.MeshPhongMaterial({ color: COL_CORRIDOR, shininess: 6, side: THREE.DoubleSide });
         var mesh = new THREE.Mesh(geo, mat);
-        mesh.name = 'corredor-principal';
+        mesh.name = name || 'corredor';
         mesh.rotation.x = -Math.PI / 2;
         mesh.position.set(cx, -0.038, cz);
         mesh.receiveShadow = true;
@@ -724,16 +735,17 @@
             });
             var idx = 0;
 
-            if (layout.corridor && layout.corridor.show) {
-                _addMainCorridor(
+            (layout.corridors || []).forEach(function (cor, i) {
+                _addCorridorPlane(
                     THREE,
                     state.rackGroup,
-                    layout.corridor.width,
-                    layout.corridor.depth,
-                    layout.corridor.x,
-                    layout.corridor.z
+                    cor.width,
+                    cor.depth,
+                    cor.x,
+                    cor.z,
+                    'corredor-' + (i + 1)
                 );
-            }
+            });
 
             return new Promise(function (resolve, reject) {
                 function next() {
