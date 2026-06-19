@@ -579,35 +579,53 @@
         };
     }
 
-    /** Planta CD: 11/12/13/21 em fila contínua (sem corredor entre blocos). */
+    /** Planta CD: 11/12/13 em fila; corredor cinza na frente; cam 21 alinhada à 13. */
     function _layoutCdPlanta(camarasByCode) {
-        var rowCodes = [11, 12, 13, 21];
+        var leftCodes = [11, 12, 13];
         var fps = {};
-        rowCodes.forEach(function (c) {
+        leftCodes.forEach(function (c) {
             if (camarasByCode[c]) fps[c] = _camFootprint(camarasByCode[c]);
         });
+        var fp21 = camarasByCode[21] ? _camFootprint(camarasByCode[21]) : null;
 
-        var totalW = 0;
-        var count = 0;
-        rowCodes.forEach(function (c) {
+        var leftSpan = 0;
+        var maxDepthLeft = 0;
+        leftCodes.forEach(function (c) {
             if (!fps[c]) return;
-            totalW += fps[c].width;
-            if (count > 0) totalW += GAP_CAM_ADJ;
-            count += 1;
+            leftSpan += fps[c].width + GAP_CAM;
+            if (fps[c].depth > maxDepthLeft) maxDepthLeft = fps[c].depth;
         });
+        if (leftSpan > 0) leftSpan -= GAP_CAM;
 
-        var startX = totalW ? -totalW / 2 : 0;
+        var startX = leftSpan ? -leftSpan / 2 : 0;
         var positions = {};
         var xCursor = startX;
 
-        rowCodes.forEach(function (c) {
+        leftCodes.forEach(function (c) {
             if (!fps[c]) return;
-            if (xCursor > startX) xCursor += GAP_CAM_ADJ;
             positions[c] = { x: xCursor + fps[c].width / 2, z: 0 };
-            xCursor += fps[c].width;
+            xCursor += fps[c].width + GAP_CAM;
         });
 
-        return { positions: positions, corridors: [] };
+        var corridor = {
+            show: false,
+            width: leftSpan || MAIN_AISLE_W,
+            depth: MAIN_AISLE_W,
+            x: 0,
+            z: maxDepthLeft + MAIN_AISLE_W / 2
+        };
+
+        if (leftSpan && fp21) {
+            corridor.show = true;
+            corridor.width = leftSpan;
+            corridor.z = maxDepthLeft + MAIN_AISLE_W / 2;
+            var x13 = positions[13] ? positions[13].x : 0;
+            positions[21] = { x: x13, z: maxDepthLeft + MAIN_AISLE_W };
+        } else if (fp21) {
+            positions[21] = { x: 0, z: 0 };
+        }
+
+        return { positions: positions, corridor: corridor };
     }
 
     function _addCorridorPlane(THREE, parent, w, d, cx, cz, name) {
@@ -707,17 +725,17 @@
             });
             var idx = 0;
 
-            (layout.corridors || []).forEach(function (cor, i) {
+            if (layout.corridor && layout.corridor.show) {
                 _addCorridorPlane(
                     THREE,
                     state.rackGroup,
-                    cor.width,
-                    cor.depth,
-                    cor.x,
-                    cor.z,
-                    'corredor-' + (i + 1)
+                    layout.corridor.width,
+                    layout.corridor.depth,
+                    layout.corridor.x,
+                    layout.corridor.z,
+                    'corredor-principal'
                 );
-            });
+            }
 
             return new Promise(function (resolve, reject) {
                 function next() {
