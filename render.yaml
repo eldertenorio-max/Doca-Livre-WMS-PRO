@@ -4,8 +4,9 @@ services:
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    # gthread: SSE (/api/eventos-stream) não bloqueia outras requisições no mesmo worker
-    startCommand: gunicorn -b 0.0.0.0:$PORT --timeout 120 --worker-class gthread --threads 4 app:app
+    # 1 worker: app Flask grande (15k+ linhas) estourava RAM no free tier e derrubava o serviço
+    startCommand: gunicorn -b 0.0.0.0:$PORT --workers 1 --timeout 120 --graceful-timeout 30 --worker-class gthread --threads 4 app:app
+    healthCheckPath: /api/health
     autoDeploy: true
     envVars:
       - key: SECRET_KEY
