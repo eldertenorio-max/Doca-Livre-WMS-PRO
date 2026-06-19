@@ -1071,7 +1071,6 @@
             if (x21R < rightX - 0.15) {
                 _addWallRunZ(group, mats, wallH, x21R, p21.z + d21 / 2, d21, 'parede-21-dir');
             }
-            _addWallRunX(group, mats, wallH, w21, p21.x, zFront - halfTh, 'parede-frente-21');
         }
 
         parent.add(group);
