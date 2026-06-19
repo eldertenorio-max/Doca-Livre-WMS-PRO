@@ -5,6 +5,7 @@ try:
 except ImportError:
     ZoneInfo = None
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.exceptions import HTTPException
 import sqlite3
 import os
 import sys
@@ -2008,6 +2009,23 @@ def _usuario_ainda_existe(usuario):
     return existe
 
 
+@app.errorhandler(Exception)
+def _api_json_exception_handler(e):
+    """APIs /api/* sempre retornam JSON (evita HTML 500 opaco no frontend)."""
+    if isinstance(e, HTTPException):
+        if request.path.startswith('/api/') and e.code and int(e.code) >= 400:
+            msg = getattr(e, 'description', None) or str(e) or 'Erro HTTP'
+            return jsonify({'ok': False, 'erro': msg}), int(e.code)
+        return e
+    if request.path.startswith('/api/'):
+        try:
+            app.logger.exception('Erro na API %s: %s', request.path, e)
+        except Exception:
+            pass
+        return jsonify({'ok': False, 'erro': str(e) or 'Erro interno do servidor.'}), 500
+    raise e
+
+
 @app.before_request
 def proteger_rotas():
     """Redireciona para /login se o usuário não estiver autenticado. Invalida sessão se o usuário foi excluído."""
@@ -2018,7 +2036,13 @@ def proteger_rotas():
         return None
     # Se está logado, verificar se o usuário ainda existe no banco (não foi removido do config)
     if session.get('usuario'):
-        if not _usuario_ainda_existe(session.get('usuario')):
+        try:
+            usuario_ok = _usuario_ainda_existe(session.get('usuario'))
+        except Exception as e:
+            if request.path.startswith('/api/'):
+                return jsonify({'ok': False, 'erro': 'Falha ao validar sessão: %s' % (e,)}), 503
+            return redirect(url_for('login'))
+        if not usuario_ok:
             session.pop('usuario', None)
             session.pop('usuario_id', None)
             session.pop('_auth_ok_user', None)

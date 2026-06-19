@@ -12,6 +12,7 @@ import secrets
 import string
 from collections import Counter
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from urllib.parse import quote, urlencode
 
 from flask import Blueprint, jsonify, make_response, redirect, render_template, request, session
@@ -2303,15 +2304,28 @@ def ensure_wms_schema(conn):
     if _WMS_SCHEMA_READY:
         return
     if _wms_tabelas_existem(conn):
-        _ensure_zona_armazenagem_column(conn)
-        _ensure_produto_planejamento_columns(conn)
-        _ensure_wms_recebimento_terceiros_columns(conn)
-        _ensure_wms_palete_item_nf_columns(conn)
-        _ensure_wms_palete_item_disposicao(conn)
-        _ensure_wms_palete_controle_table(conn)
-        _ensure_movimentacao_expedicao_columns(conn)
-        _ensure_stage_localizacoes(conn)
-        _ensure_areas_especiais_localizacoes(conn)
+        for fn, label in (
+            (_ensure_zona_armazenagem_column, 'zona_armazenagem'),
+            (_ensure_produto_planejamento_columns, 'produto_planejamento'),
+            (_ensure_wms_recebimento_terceiros_columns, 'recebimento_terceiros'),
+            (_ensure_wms_palete_item_nf_columns, 'palete_item_nf'),
+            (_ensure_wms_palete_item_disposicao, 'palete_item_disposicao'),
+            (_ensure_wms_palete_controle_table, 'palete_controle'),
+            (_ensure_movimentacao_expedicao_columns, 'movimentacao_expedicao'),
+            (_ensure_stage_localizacoes, 'stage'),
+            (_ensure_areas_especiais_localizacoes, 'areas_especiais'),
+        ):
+            try:
+                fn(conn)
+            except Exception as e:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                try:
+                    print('[wms] ensure %s falhou:' % label, e, flush=True)
+                except Exception:
+                    pass
         _WMS_SCHEMA_READY = True
         return
     if _is_pg(conn):
@@ -2845,6 +2859,34 @@ def _row_dict(row):
     if isinstance(row, dict):
         return dict(row)
     return dict(row) if hasattr(row, 'keys') else None
+
+
+def _sanitize_json(value):
+    """Converte Decimal/datetime para tipos serializáveis (Postgres → JSON)."""
+    if isinstance(value, dict):
+        return {str(k): _sanitize_json(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_json(v) for v in value]
+    if isinstance(value, Decimal):
+        if value == value.to_integral_value():
+            return int(value)
+        return float(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, bytes):
+        return value.decode('utf-8', errors='replace')
+    return value
+
+
+def _ensure_wms_schema_safe(conn):
+    try:
+        ensure_wms_schema(conn)
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise RuntimeError('Falha ao preparar schema WMS: %s' % (e,)) from e
 
 
 def _ocupacao_camara(conn):
@@ -5744,11 +5786,11 @@ def api_wms_localizacoes():
 def api_wms_mapa_3d():
     """Layout físico + ocupação para visualização 3D (JSON + merge com banco)."""
     conn = _db()
-    ensure_wms_schema(conn)
-    _seed_wms_defaults(conn)
-    camara_filtro = request.args.get('camara', type=int)
-    t = _tbl(conn, 'wms_localizacao')
     try:
+        _ensure_wms_schema_safe(conn)
+        _seed_wms_defaults(conn)
+        camara_filtro = request.args.get('camara', type=int)
+        t = _tbl(conn, 'wms_localizacao')
         sql = (
             f'SELECT camara, rua, posicao, nivel, codigo_endereco, status, area, '
             f'categoria_zona, zona_armazenagem, tipo FROM {t} WHERE camara IN (11, 12, 13, 21)'
@@ -5803,10 +5845,10 @@ def api_wms_mapa_3d():
                 'slots': slots,
             })
         conn.close()
-        return jsonify({
+        return jsonify(_sanitize_json({
             'camaras': camaras_out,
             'destinos_acao': cfg.get('destinos_acao') or _destinos_acao_labels(),
-        })
+        }))
     except Exception as e:
         try:
             conn.rollback()
@@ -8815,15 +8857,16 @@ def api_wms_relatorios():
 def api_wms_areas_especiais():
     """Ocupação do endereçamento: estoque normal, destinos fixos e câm. 98."""
     conn = _db()
-    ensure_wms_schema(conn)
     try:
+        _ensure_wms_schema_safe(conn)
         data = _coletar_ocupacao_areas_especiais(conn)
         data['estoque_normal'] = _coletar_ocupacao_estoque_normal(conn)
         data['destinos_fixos'] = _coletar_mapa_destinos_fixos(conn)
         conn.close()
-        return jsonify(data)
+        return jsonify(_sanitize_json(data))
     except Exception as e:
         try:
+            conn.rollback()
             conn.close()
         except Exception:
             pass
