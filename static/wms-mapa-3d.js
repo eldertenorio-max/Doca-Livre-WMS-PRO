@@ -28,8 +28,9 @@
     var COL_CORRIDOR = 0x616161;
     var COL_CORRIDOR_EDGE = 0xf5f5f5;
     var COL_CORRIDOR_STRIPE = 0xffd54f;
-    var COL_WALL_DIV = 0xe2e8f0;
-    var WALL_DIV_TH = 0.16;
+    var COL_WALL_DIV = 0xd5dee6;
+    var COL_WALL_FRAME = 0x546e7a;
+    var WALL_DIV_TH = 0.34;
 
     var LEGENDA = [
         { key: 'vazia', label: 'Vazia (pulmão)', color: '#ffffff' },
@@ -730,12 +731,17 @@
         group.name = 'paredes-divisorias';
         var panelMat = new THREE.MeshPhongMaterial({
             color: COL_WALL_DIV,
-            shininess: 14,
-            specular: 0x444444,
+            shininess: 10,
+            specular: 0x333333,
             side: THREE.DoubleSide
         });
-        var trimMat = new THREE.MeshPhongMaterial({ color: 0x78909c, shininess: 8, specular: 0x222222 });
-        var depth = maxDepth + 0.6;
+        var frameMat = new THREE.MeshPhongMaterial({
+            color: COL_WALL_FRAME,
+            shininess: 6,
+            specular: 0x111111
+        });
+        var depth = maxDepth + 0.85;
+        var frameTh = 0.07;
         for (var i = 0; i < leftCodes.length - 1; i++) {
             var cA = leftCodes[i];
             var cB = leftCodes[i + 1];
@@ -743,24 +749,33 @@
             var xA = positions[cA].x + fps[cA].width / 2;
             var xB = positions[cB].x - fps[cB].width / 2;
             var cx = (xA + xB) / 2;
+            var cz = depth / 2;
             var wall = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH, wallH, depth), panelMat);
-            wall.position.set(cx, wallH / 2, depth / 2);
+            wall.position.set(cx, wallH / 2, cz);
             wall.castShadow = true;
             wall.receiveShadow = true;
             wall.name = 'parede-cam-' + cA + '-' + cB;
             group.add(wall);
-            var trimH = 0.08;
-            var trim = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH + 0.04, trimH, depth + 0.08), trimMat);
-            trim.position.set(cx, wallH + trimH / 2, depth / 2);
-            group.add(trim);
-            var baseTrim = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH + 0.06, 0.06, depth + 0.1), trimMat);
-            baseTrim.position.set(cx, 0.03, depth / 2);
-            group.add(baseTrim);
-            var lblA = _textPlane(THREE, String(cA), 0.55, 0.55, 72, '#37474f', 'rgba(255,255,255,0.85)');
-            lblA.position.set(cx + WALL_DIV_TH * 0.65, wallH * 0.55, depth * 0.22);
+            var capH = 0.1;
+            var cap = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH + frameTh * 2, capH, depth + frameTh), frameMat);
+            cap.position.set(cx, wallH + capH / 2, cz);
+            group.add(cap);
+            var base = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH + frameTh * 2, 0.08, depth + frameTh), frameMat);
+            base.position.set(cx, 0.04, cz);
+            group.add(base);
+            [-1, 1].forEach(function (signX) {
+                var post = new THREE.Mesh(new THREE.BoxGeometry(frameTh, wallH, frameTh), frameMat);
+                post.position.set(cx + signX * (WALL_DIV_TH / 2 + frameTh * 0.45), wallH / 2, cz - depth / 2 + frameTh);
+                group.add(post);
+                var postBack = post.clone();
+                postBack.position.z = cz + depth / 2 - frameTh;
+                group.add(postBack);
+            });
+            var lblA = _textPlane(THREE, 'CÂM. ' + String(cA), 0.72, 0.42, 56, '#263238', 'rgba(255,255,255,0.9)');
+            lblA.position.set(cx + WALL_DIV_TH * 0.72, wallH * 0.62, cz + depth * 0.18);
             group.add(lblA);
-            var lblB = _textPlane(THREE, String(cB), 0.55, 0.55, 72, '#37474f', 'rgba(255,255,255,0.85)');
-            lblB.position.set(cx - WALL_DIV_TH * 0.65, wallH * 0.55, depth * 0.22);
+            var lblB = _textPlane(THREE, 'CÂM. ' + String(cB), 0.72, 0.42, 56, '#263238', 'rgba(255,255,255,0.9)');
+            lblB.position.set(cx - WALL_DIV_TH * 0.72, wallH * 0.62, cz + depth * 0.18);
             lblB.rotation.y = Math.PI;
             group.add(lblB);
         }
