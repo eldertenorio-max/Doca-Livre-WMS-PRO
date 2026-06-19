@@ -9,6 +9,8 @@
     var SLOT_D = 1.00;
     var GAP_POS = 0.40;
     var GAP_CAM = 6;
+    var GAP_CAM_STACK = 3.5;
+    var MAIN_AISLE_W = 10;
     var MAX_NIV = 5;
     var AISLE_W = 3.6;
     var LEVEL_H = 0.82;
@@ -24,6 +26,7 @@
     var COL_DECK = 0xc9a86c;
     var COL_DECK_METAL = 0x9eabb3;
     var COL_FLOOR = 0xd8dde2;
+    var COL_CORRIDOR = 0x9e9e9e;
 
     var LEGENDA = [
         { key: 'vazia', label: 'Vazia (pulmão)', color: '#ffffff' },
@@ -530,14 +533,87 @@
         return max;
     }
 
-    function buildOneCamara(THREE, cam, camOffsetX, shelfGeo, dummy, col) {
+    function _camFootprint(cam) {
         var ruas = _ruasCamara(cam);
         var cod = parseInt(cam.codigo, 10);
         var maxNivCap = _maxNivCam(cod);
         var layoutNiv = parseInt(cam.niveis, 10);
         var maxNiv = layoutNiv > 0 ? Math.min(layoutNiv, maxNivCap) : maxNivCap;
         var slots = _filterSlotsNiv(cam.slots, maxNiv);
-        if (!slots.length) return camOffsetX;
+        if (!slots.length) return null;
+        var maxPos = _camMaxPosicao(slots, ruas);
+        var aisleLen = maxPos * (SLOT_D + GAP_POS) + GAP_POS * 0.7 + 0.5;
+        var floorW = AISLE_W + SLOT_D * 1.28;
+        return {
+            width: floorW + 1.4,
+            depth: aisleLen + 0.8,
+            aisleLen: aisleLen
+        };
+    }
+
+    /** Planta CD: 11/12/13 empilhadas à esquerda; corredor central; 21 à direita alinhada à 13. */
+    function _layoutCdPlanta(camarasByCode) {
+        var leftCodes = [11, 12, 13];
+        var fps = {};
+        leftCodes.forEach(function (c) {
+            if (camarasByCode[c]) fps[c] = _camFootprint(camarasByCode[c]);
+        });
+        var fp21 = camarasByCode[21] ? _camFootprint(camarasByCode[21]) : null;
+
+        var leftW = 0;
+        leftCodes.forEach(function (c) {
+            if (fps[c] && fps[c].width > leftW) leftW = fps[c].width;
+        });
+        if (!leftW && fp21) leftW = fp21.width;
+
+        var leftX = -(MAIN_AISLE_W / 2 + leftW / 2);
+        var positions = {};
+        var zCursor = 0;
+        var stackDepth = 0;
+
+        leftCodes.forEach(function (c) {
+            if (!fps[c]) return;
+            positions[c] = { x: leftX, z: zCursor + fps[c].depth / 2 };
+            zCursor += fps[c].depth + GAP_CAM_STACK;
+            stackDepth = zCursor - GAP_CAM_STACK;
+        });
+
+        if (fp21) {
+            var rightX = MAIN_AISLE_W / 2 + fp21.width / 2;
+            var z21 = positions[13] ? positions[13].z : (stackDepth > 0 ? stackDepth / 2 : fp21.depth / 2);
+            positions[21] = { x: rightX, z: z21 };
+        }
+
+        return {
+            positions: positions,
+            corridor: {
+                width: MAIN_AISLE_W,
+                depth: Math.max(stackDepth, 8),
+                x: 0,
+                z: Math.max(stackDepth, 8) / 2
+            }
+        };
+    }
+
+    function _addMainCorridor(THREE, parent, w, d, cx, cz) {
+        var geo = new THREE.PlaneGeometry(w, d);
+        var mat = new THREE.MeshPhongMaterial({ color: COL_CORRIDOR, shininess: 6, side: THREE.DoubleSide });
+        var mesh = new THREE.Mesh(geo, mat);
+        mesh.name = 'corredor-principal';
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(cx, -0.038, cz);
+        mesh.receiveShadow = true;
+        parent.add(mesh);
+    }
+
+    function buildOneCamara(THREE, cam, posX, posZ, shelfGeo, dummy, col) {
+        var ruas = _ruasCamara(cam);
+        var cod = parseInt(cam.codigo, 10);
+        var maxNivCap = _maxNivCam(cod);
+        var layoutNiv = parseInt(cam.niveis, 10);
+        var maxNiv = layoutNiv > 0 ? Math.min(layoutNiv, maxNivCap) : maxNivCap;
+        var slots = _filterSlotsNiv(cam.slots, maxNiv);
+        if (!slots.length) return null;
         var maxPos = _camMaxPosicao(slots, ruas);
 
         var camGroup = new THREE.Group();
@@ -559,7 +635,7 @@
             camGroup.add(ruaGroup);
         });
 
-        if (aisleLen < 1) return camOffsetX;
+        if (aisleLen < 1) return null;
         aisleLen += 0.5;
 
         var aisleGeo = new THREE.PlaneGeometry(AISLE_W, aisleLen);
@@ -580,10 +656,10 @@
         camGroup.add(floor);
 
         var totalW = floorW + 1.4;
-        camGroup.position.set(camOffsetX + totalW / 2, 0, 0);
+        camGroup.position.set(posX, 0, posZ);
         state.rackGroup.add(camGroup);
         state.camGroups[String(cod)] = camGroup;
-        return camOffsetX + totalW + GAP_CAM;
+        return { cod: cod, width: totalW, depth: aisleLen + 0.8 };
     }
 
     function buildRack(data) {
@@ -603,15 +679,31 @@
 
             var pendingFilter = state.camFilter;
             var camaras = _sortCamaras(data.camaras);
+            var camarasByCode = {};
+            camaras.forEach(function (c) {
+                camarasByCode[parseInt(c.codigo, 10)] = c;
+            });
+            var layout = _layoutCdPlanta(camarasByCode);
             var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 0.92, SHELF_TH * 0.96, SLOT_D * 0.80);
             var dummy = new THREE.Object3D();
             var col = new THREE.Color();
-            var camOffsetX = 0;
+            var buildOrder = [11, 12, 13, 21].filter(function (cod) {
+                return camarasByCode[cod] && layout.positions[cod];
+            });
             var idx = 0;
+
+            _addMainCorridor(
+                THREE,
+                state.rackGroup,
+                layout.corridor.width,
+                layout.corridor.depth,
+                layout.corridor.x,
+                layout.corridor.z
+            );
 
             return new Promise(function (resolve, reject) {
                 function next() {
-                    if (idx >= camaras.length) {
+                    if (idx >= buildOrder.length) {
                         if (!state.rackGroup.children.length) {
                             return reject(new Error('Nenhum rack montado no mapa 3D. Verifique layout e ruas.'));
                         }
@@ -622,7 +714,9 @@
                         return resolve();
                     }
                     try {
-                        camOffsetX = buildOneCamara(THREE, camaras[idx], camOffsetX, shelfGeo, dummy, col);
+                        var cod = buildOrder[idx];
+                        var pos = layout.positions[cod];
+                        buildOneCamara(THREE, camarasByCode[cod], pos.x, pos.z, shelfGeo, dummy, col);
                     } catch (err) {
                         return reject(err);
                     }
