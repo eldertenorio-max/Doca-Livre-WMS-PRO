@@ -5463,7 +5463,9 @@ function _wmsEndRenderPlantaRackSide(rua, slots, maxNiv) {
     var html = '';
     colunas.forEach(function(p) {
         var niveisMap = posMap[p] || {};
-        html += '<div class="wms-planta-col" title="Rua ' + escHtml(String(rua)) + ' · pos ' + p + '">';
+        html += '<div class="wms-planta-row-pos" title="Rua ' + escHtml(String(rua)) + ' · pos ' + p + '">';
+        html += '<div class="wms-planta-row-pos-lbl">' + escHtml(String(p)) + '</div>';
+        html += '<div class="wms-planta-row-pos-cells">';
         for (var n = maxNiv; n >= 1; n--) {
             var slot = niveisMap[n];
             var st = slot ? _wmsEndCellStylePlanta(slot) : _wmsEndCellStylePlantaEmpty(n);
@@ -5472,8 +5474,7 @@ function _wmsEndRenderPlantaRackSide(rua, slots, maxNiv) {
                 : ('Rua ' + rua + ' · pos ' + p + ' · nív ' + n + ' (vazio)');
             html += '<div class="wms-planta-cell" style="background:' + st.fill + ';border-color:' + st.stroke + ';" title="' + escHtml(tit) + '" data-nivel="' + n + '"></div>';
         }
-        html += '<div class="wms-planta-col-pos">' + escHtml(String(p)) + '</div>';
-        html += '</div>';
+        html += '</div></div>';
     });
     return html;
 }
