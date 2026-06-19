@@ -855,34 +855,38 @@
         });
 
         if (leftSpan) {
-            corridors.push({
-                width: leftSpan,
-                depth: MAIN_AISLE_W,
-                x: 0,
-                z: maxDepthLeft + MAIN_AISLE_W / 2,
-                label: 'CORREDOR PRINCIPAL — CÂM 11 · 12 · 13'
-            });
+            var mainCorridorZ = maxDepthLeft + MAIN_AISLE_W / 2;
+            if (fp21 && positions[13]) {
+                var passageX = positions[13].x;
+                var passageW = Math.max((fp21.width || AISLE_W) * 0.92, AISLE_W);
+                var blockLeft = -leftSpan / 2;
+                var passageLeft = passageX - passageW / 2;
+                var mainW = passageLeft - blockLeft;
+                if (mainW > 0.8) {
+                    corridors.push({
+                        width: mainW,
+                        depth: MAIN_AISLE_W,
+                        x: blockLeft + mainW / 2,
+                        z: mainCorridorZ,
+                        label: 'CORREDOR PRINCIPAL — CÂM 11 · 12 · 13'
+                    });
+                }
+            } else {
+                corridors.push({
+                    width: leftSpan,
+                    depth: MAIN_AISLE_W,
+                    x: 0,
+                    z: mainCorridorZ,
+                    label: 'CORREDOR PRINCIPAL — CÂM 11 · 12 · 13'
+                });
+            }
         }
 
         if (leftSpan && fp21) {
             var x13 = positions[13] ? positions[13].x : 0;
             positions[21] = { x: x13, z: maxDepthLeft + MAIN_AISLE_W };
-            corridors.push({
-                width: fp21.width,
-                depth: MAIN_AISLE_W,
-                x: x13,
-                z: positions[21].z + fp21.depth + MAIN_AISLE_W / 2,
-                label: 'CORREDOR — CÂM 21'
-            });
         } else if (fp21) {
             positions[21] = { x: 0, z: 0 };
-            corridors.push({
-                width: fp21.width,
-                depth: MAIN_AISLE_W,
-                x: 0,
-                z: fp21.depth + MAIN_AISLE_W / 2,
-                label: 'CORREDOR — CÂM 21'
-            });
         }
 
         return { positions: positions, corridors: corridors };
@@ -1214,7 +1218,7 @@
                 leftSpan: leftSpan,
                 rightEdge: rightEdge,
                 corridorMainZ: maxDepthLeft + MAIN_AISLE_W / 2,
-                corridor21Z: (layout.corridors && layout.corridors[1]) ? layout.corridors[1].z : null,
+                corridor21Z: (layout.corridors && layout.corridors[1]) ? layout.corridors[1].z : (maxDepthLeft + MAIN_AISLE_W * 0.75),
                 camRuas: {}
             };
             camaras.forEach(function (c) {
