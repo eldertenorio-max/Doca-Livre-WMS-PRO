@@ -122,50 +122,78 @@
         return parseInt(cam, 10) + '.' + parseInt(pos, 10) + '.' + parseInt(niv, 10);
     }
 
-    function _addLongarinaColumnStrip(THREE, parent, camCod, pos, maxNiv, xFace, z, towardAisle) {
-        var stripH = maxNiv * LEVEL_H * 0.88;
-        var planeW = 0.36;
+    function _beamLipAisleX(xF, xB, towardAisle) {
+        var cx = (xF + xB) / 2;
+        var w = Math.abs(xF - xB) + UPR_W;
+        var lipOff = towardAisle > 0 ? w * 0.18 : -w * 0.18;
+        var lipHalf = w * 0.26;
+        return towardAisle > 0 ? cx + lipOff + lipHalf + 0.004 : cx + lipOff - lipHalf - 0.004;
+    }
+
+    function _beamLipY(niv) {
+        var yBeam = (niv - 1) * LEVEL_H + BEAM_H * 0.5;
+        return yBeam + BEAM_H * 0.18;
+    }
+
+    function _addLongarinaEtqOnBeam(THREE, parent, camCod, pos, niv, maxNiv, xFace, y, z, towardAisle, labelW) {
+        var bc = _barcodeLongarina(camCod, pos, niv);
+        var planeH = BEAM_H * 0.34;
+        var planeW = labelW || Math.min(SLOT_D * 0.76, 0.32);
         var canvas = document.createElement('canvas');
-        canvas.width = 220;
-        canvas.height = Math.max(72, maxNiv * 56);
+        canvas.width = 280;
+        canvas.height = 72;
         var ctx = canvas.getContext('2d');
-        ctx.fillStyle = 'rgba(255,255,255,0.94)';
+        ctx.fillStyle = 'rgba(255,255,255,0.97)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = 'rgba(21,101,192,0.45)';
+        ctx.strokeStyle = 'rgba(0,0,0,0.18)';
         ctx.lineWidth = 2;
         ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
         ctx.fillStyle = '#1a237e';
-        ctx.font = 'bold 21px Arial,sans-serif';
+        ctx.font = 'bold 28px Arial,sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        for (var niv = 1; niv <= maxNiv; niv++) {
-            var cy = ((niv - 0.5) / maxNiv) * canvas.height;
-            ctx.fillText(_barcodeLongarina(camCod, pos, niv), canvas.width / 2, cy);
+        ctx.fillText(bc, canvas.width / 2 - (maxNiv > 1 ? 8 : 0), canvas.height / 2);
+        if (maxNiv > 1 && niv === 1) {
+            ctx.fillStyle = '#1565c0';
+            ctx.font = 'bold 22px Arial,sans-serif';
+            ctx.fillText('▼', canvas.width - 24, canvas.height / 2 + 1);
+        } else if (maxNiv > 1 && niv === maxNiv) {
+            ctx.fillStyle = '#1565c0';
+            ctx.font = 'bold 22px Arial,sans-serif';
+            ctx.fillText('▲', canvas.width - 24, canvas.height / 2 + 1);
         }
         var tex = new THREE.CanvasTexture(canvas);
         tex.needsUpdate = true;
         var mat = new THREE.MeshBasicMaterial({
             map: tex,
             transparent: true,
-            side: THREE.DoubleSide,
-            depthWrite: false
+            side: THREE.FrontSide,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -2
         });
-        var mesh = new THREE.Mesh(new THREE.PlaneGeometry(planeW, stripH), mat);
-        mesh.position.set(xFace, stripH / 2 + BEAM_H * 0.45, z);
+        var mesh = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeH), mat);
+        mesh.position.set(xFace, y + 0.002, z);
         mesh.rotation.y = towardAisle > 0 ? -Math.PI / 2 : Math.PI / 2;
-        mesh.userData = { isLongarinaLabel: true, posicao: pos, camara: camCod };
+        mesh.renderOrder = 2;
+        mesh.userData = { isLongarinaLabel: true, posicao: pos, nivel: niv, camara: camCod };
         parent.add(mesh);
     }
 
     function _addLongarinaLabelsRack(THREE, parent, camCod, rua, maxPos, maxNiv, xF, xB, towardAisle, bayStep) {
-        var xFace = towardAisle > 0 ? Math.max(xF, xB) + 0.045 : Math.min(xF, xB) - 0.045;
+        var xFace = _beamLipAisleX(xF, xB, towardAisle);
+        var labelW = Math.min(SLOT_D * 0.82, bayStep * 0.9);
         for (var pos = 1; pos <= maxPos; pos++) {
             var z = (pos - 1) * bayStep + SLOT_D / 2;
-            _addLongarinaColumnStrip(THREE, parent, camCod, pos, maxNiv, xFace, z, towardAisle);
+            for (var niv = 1; niv <= maxNiv; niv++) {
+                _addLongarinaEtqOnBeam(THREE, parent, camCod, pos, niv, maxNiv, xFace, _beamLipY(niv), z, towardAisle, labelW);
+            }
         }
-        var ruaLbl = _textPlane(THREE, 'Rua ' + String(rua || '').trim().toUpperCase(), 0.62, 0.16, 28, '#1565c0', 'rgba(255,255,255,0.92)');
-        ruaLbl.position.set(xFace, maxNiv * LEVEL_H * 0.52, SLOT_D * 0.35);
+        var ruaLbl = _textPlane(THREE, 'Rua ' + String(rua || '').trim().toUpperCase(), 0.5, 0.12, 24, '#fff', null);
+        ruaLbl.position.set(xFace, _beamLipY(1) + BEAM_H * 0.55, SLOT_D * 0.35);
         ruaLbl.rotation.y = towardAisle > 0 ? -Math.PI / 2 : Math.PI / 2;
+        ruaLbl.renderOrder = 2;
         parent.add(ruaLbl);
     }
 
