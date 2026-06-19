@@ -28,6 +28,8 @@
     var COL_CORRIDOR = 0x616161;
     var COL_CORRIDOR_EDGE = 0xf5f5f5;
     var COL_CORRIDOR_STRIPE = 0xffd54f;
+    var COL_WALL_DIV = 0xe2e8f0;
+    var WALL_DIV_TH = 0.16;
 
     var LEGENDA = [
         { key: 'vazia', label: 'Vazia (pulmão)', color: '#ffffff' },
@@ -585,7 +587,7 @@
         var slots = _filterSlotsNiv(cam.slots, maxNiv);
         if (!slots.length) return null;
         var maxPos = _camMaxPosicao(slots, ruas);
-        var aisleLen = maxPos * (SLOT_D + GAP_POS) + GAP_POS * 0.7 + 0.5;
+        var aisleLen = _aisleLenForMaxPos(maxPos);
         var floorW = AISLE_W + SLOT_D * 1.28;
         return {
             width: floorW + 1.4,
@@ -721,6 +723,50 @@
         }
     }
 
+    /** Paredes divisórias verticais entre câmaras 11|12 e 12|13 (vãos laterais). */
+    function _addChamberDividerWalls(THREE, parent, leftCodes, fps, positions, maxDepth, wallH) {
+        if (!leftCodes || leftCodes.length < 2 || !maxDepth || !wallH) return;
+        var group = new THREE.Group();
+        group.name = 'paredes-divisorias';
+        var panelMat = new THREE.MeshPhongMaterial({
+            color: COL_WALL_DIV,
+            shininess: 14,
+            specular: 0x444444,
+            side: THREE.DoubleSide
+        });
+        var trimMat = new THREE.MeshPhongMaterial({ color: 0x78909c, shininess: 8, specular: 0x222222 });
+        var depth = maxDepth + 0.6;
+        for (var i = 0; i < leftCodes.length - 1; i++) {
+            var cA = leftCodes[i];
+            var cB = leftCodes[i + 1];
+            if (!fps[cA] || !fps[cB] || !positions[cA] || !positions[cB]) continue;
+            var xA = positions[cA].x + fps[cA].width / 2;
+            var xB = positions[cB].x - fps[cB].width / 2;
+            var cx = (xA + xB) / 2;
+            var wall = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH, wallH, depth), panelMat);
+            wall.position.set(cx, wallH / 2, depth / 2);
+            wall.castShadow = true;
+            wall.receiveShadow = true;
+            wall.name = 'parede-cam-' + cA + '-' + cB;
+            group.add(wall);
+            var trimH = 0.08;
+            var trim = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH + 0.04, trimH, depth + 0.08), trimMat);
+            trim.position.set(cx, wallH + trimH / 2, depth / 2);
+            group.add(trim);
+            var baseTrim = new THREE.Mesh(new THREE.BoxGeometry(WALL_DIV_TH + 0.06, 0.06, depth + 0.1), trimMat);
+            baseTrim.position.set(cx, 0.03, depth / 2);
+            group.add(baseTrim);
+            var lblA = _textPlane(THREE, String(cA), 0.55, 0.55, 72, '#37474f', 'rgba(255,255,255,0.85)');
+            lblA.position.set(cx + WALL_DIV_TH * 0.65, wallH * 0.55, depth * 0.22);
+            group.add(lblA);
+            var lblB = _textPlane(THREE, String(cB), 0.55, 0.55, 72, '#37474f', 'rgba(255,255,255,0.85)');
+            lblB.position.set(cx - WALL_DIV_TH * 0.65, wallH * 0.55, depth * 0.22);
+            lblB.rotation.y = Math.PI;
+            group.add(lblB);
+        }
+        parent.add(group);
+    }
+
     function buildOneCamara(THREE, cam, posX, posZ, shelfGeo, dummy, col) {
         var ruas = _ruasCamara(cam);
         var cod = parseInt(cam.codigo, 10);
@@ -733,7 +779,7 @@
 
         var camGroup = new THREE.Group();
         camGroup.name = 'camara-' + cod;
-        var aisleLen = maxPos * (SLOT_D + GAP_POS) + GAP_POS * 0.7;
+        var aisleLen = _aisleLenForMaxPos(maxPos);
 
         ruas.forEach(function (rua, ri) {
             var ruaSlots = _ruaSlots(cam, rua).filter(function (s) {
@@ -856,6 +902,23 @@
                 );
             });
             _addCamGapStripes(THREE, state.rackGroup, leftCodes, fpsLayout, layout.positions, maxDepthLeft);
+            var maxNivWall = MAX_NIV;
+            leftCodes.forEach(function (c) {
+                if (!camarasByCode[c]) return;
+                var cap = _maxNivCam(c);
+                var layoutNiv = parseInt(camarasByCode[c].niveis, 10);
+                var n = layoutNiv > 0 ? Math.min(layoutNiv, cap) : cap;
+                if (n > maxNivWall) maxNivWall = n;
+            });
+            _addChamberDividerWalls(
+                THREE,
+                state.rackGroup,
+                leftCodes,
+                fpsLayout,
+                layout.positions,
+                maxDepthLeft,
+                maxNivWall * LEVEL_H + 0.65
+            );
 
             return new Promise(function (resolve, reject) {
                 function next() {
