@@ -4,14 +4,14 @@
 (function (global) {
     'use strict';
 
-    var SLOT_W = 0.92;
-    var SLOT_H = 0.68;
-    var SLOT_D = 0.90;
-    var GAP_POS = 0.28;
+    var SLOT_W = 1.02;
+    var SLOT_H = 0.76;
+    var SLOT_D = 1.00;
+    var GAP_POS = 0.40;
     var GAP_CAM = 6;
     var MAX_NIV = 5;
-    var AISLE_W = 2.8;
-    var LEVEL_H = 0.72;
+    var AISLE_W = 3.6;
+    var LEVEL_H = 0.82;
     var UPR_W = 0.078;
     var UPR_D = 0.078;
     var BEAM_H = 0.062;
@@ -156,11 +156,6 @@
         tipo.position.set(-0.55, 1.5, midZ + 0.5);
         tipo.rotation.y = Math.PI / 2;
         camGroup.add(tipo);
-        if (meta.temp) {
-            var temp = _textPlane(THREE, meta.temp, 0.9, 0.45, 72, '#c62828');
-            temp.position.set(0, 0.55, midZ + 1.1);
-            camGroup.add(temp);
-        }
         _addBox(THREE, camGroup, AISLE_W * 0.42, 0.06, 0.28, 0, 0.03, 0.18, new THREE.MeshPhongMaterial({ color: 0xffeb3b }));
     }
 
@@ -361,32 +356,27 @@
         _addBox(THREE, parent, w, SHELF_TH * 0.55, d, cx, y, cz, mat);
     }
 
-    function _colunasRua(slots) {
-        var set = {};
-        (slots || []).forEach(function (s) {
-            var p = parseInt(s.posicao, 10) || 0;
-            if (p > 0) set[p] = true;
-        });
-        return Object.keys(set).map(function (k) { return parseInt(k, 10); }).sort(function (a, b) { return a - b; });
+    function _zMarksUniformes(maxPos, bayStep) {
+        maxPos = Math.max(1, parseInt(maxPos, 10) || 1);
+        var zMarks = [0];
+        for (var p = 1; p <= maxPos; p++) {
+            zMarks.push((p - 1) * bayStep + SLOT_D);
+        }
+        zMarks.push(maxPos * bayStep + GAP_POS * 0.5);
+        return zMarks;
     }
 
-    function _buildIndustrialRackSide(THREE, parent, xBase, towardAisle, rua, ruaSlots, camCod, shelfGeo, dummy, col, maxNiv) {
-        if (!ruaSlots.length) return 0;
+    function _buildIndustrialRackSide(THREE, parent, xBase, towardAisle, rua, ruaSlots, camCod, shelfGeo, dummy, col, maxNiv, maxPos) {
         maxNiv = maxNiv || MAX_NIV;
+        maxPos = Math.max(1, parseInt(maxPos, 10) || 1);
+        if (!ruaSlots.length && maxPos < 1) return 0;
         var mats = _rackMaterials(THREE);
         var xs = _rackXs(xBase, towardAisle);
         var xF = xs.front;
         var xB = xs.back;
-        var colunas = _colunasRua(ruaSlots);
         var rackH = maxNiv * LEVEL_H + 0.35;
         var bayStep = SLOT_D + GAP_POS;
-        var zMarks = [0];
-        colunas.forEach(function (p) {
-            zMarks.push((p - 1) * bayStep + SLOT_D);
-        });
-        if (zMarks[zMarks.length - 1] < colunas.length * bayStep) {
-            zMarks.push(colunas.length * bayStep + GAP_POS * 0.5);
-        }
+        var zMarks = _zMarksUniformes(maxPos, bayStep);
         zMarks.forEach(function (z) {
             _addUprightPair(THREE, parent, xF, xB, z, rackH, mats, towardAisle);
         });
@@ -404,6 +394,10 @@
         for (var ti = 0; ti < zMarks.length - 1; ti++) {
             _addBeamRun(THREE, parent, xF, xB, zMarks[ti], zMarks[ti + 1], topY, mats, towardAisle);
             _addBayDeck(THREE, parent, xF, xB, zMarks[ti], zMarks[ti + 1], topDeckY, mats.deckMetal);
+        }
+
+        if (!ruaSlots.length) {
+            return zMarks[zMarks.length - 1] + 0.2;
         }
 
         var mat = _slotInstanceMaterial(THREE);
@@ -466,34 +460,48 @@
     }
 
     function _rackXBase(ruaIndex, totalRuas) {
-        var off = AISLE_W / 2 + SLOT_D * 0.52;
+        var off = AISLE_W / 2 + SLOT_D * 0.58;
         if (totalRuas <= 1) return -(off);
         return ruaIndex === 0 ? -(off) : off;
+    }
+
+    function _camMaxPosicao(slots, ruas) {
+        var max = 1;
+        var ruasUp = (ruas || []).map(function (r) { return String(r || '').trim().toUpperCase(); });
+        (slots || []).forEach(function (s) {
+            var rua = String(s.rua || '').trim().toUpperCase();
+            if (ruasUp.length && ruasUp.indexOf(rua) < 0) return;
+            var p = parseInt(s.posicao, 10) || 0;
+            if (p > max) max = p;
+        });
+        return max;
     }
 
     function buildOneCamara(THREE, cam, camOffsetX, shelfGeo, dummy, col) {
         var ruas = _ruasCamara(cam);
         var cod = parseInt(cam.codigo, 10);
-        var maxNiv = _maxNivCam(cod);
+        var maxNivCap = _maxNivCam(cod);
+        var layoutNiv = parseInt(cam.niveis, 10);
+        var maxNiv = layoutNiv > 0 ? Math.min(layoutNiv, maxNivCap) : maxNivCap;
         var slots = _filterSlotsNiv(cam.slots, maxNiv);
         if (!slots.length) return camOffsetX;
+        var maxPos = _camMaxPosicao(slots, ruas);
 
         var camGroup = new THREE.Group();
         camGroup.name = 'camara-' + cod;
-        var aisleLen = 0;
+        var aisleLen = maxPos * (SLOT_D + GAP_POS) + GAP_POS * 0.7;
 
         ruas.forEach(function (rua, ri) {
             var ruaSlots = _ruaSlots(cam, rua).filter(function (s) {
                 var n = parseInt(s.nivel, 10) || 1;
                 return n >= 1 && n <= maxNiv;
             });
-            if (!ruaSlots.length) return;
             var xBase = _rackXBase(ri, ruas.length);
             var towardAisle = ri === 0 ? 1 : -1;
             if (ruas.length <= 1) towardAisle = 1;
             var ruaGroup = new THREE.Group();
             ruaGroup.name = 'rua-' + rua;
-            var len = _buildIndustrialRackSide(THREE, ruaGroup, xBase, towardAisle, rua, ruaSlots, cod, shelfGeo, dummy, col, maxNiv);
+            var len = _buildIndustrialRackSide(THREE, ruaGroup, xBase, towardAisle, rua, ruaSlots, cod, shelfGeo, dummy, col, maxNiv, maxPos);
             if (len > aisleLen) aisleLen = len;
             camGroup.add(ruaGroup);
         });
@@ -510,7 +518,7 @@
 
         _addCorridorSignage(THREE, camGroup, aisleLen, cod);
 
-        var floorW = AISLE_W + SLOT_D * 1.12;
+        var floorW = AISLE_W + SLOT_D * 1.28;
         var floorGeo = new THREE.PlaneGeometry(floorW, aisleLen + 0.8);
         var floorMat = new THREE.MeshPhongMaterial({ color: COL_FLOOR, shininess: 5, side: THREE.DoubleSide });
         var floor = new THREE.Mesh(floorGeo, floorMat);
@@ -542,7 +550,7 @@
 
             var pendingFilter = state.camFilter;
             var camaras = _sortCamaras(data.camaras);
-            var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 0.88, SHELF_TH * 0.92, SLOT_D * 0.76);
+            var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 0.92, SHELF_TH * 0.96, SLOT_D * 0.80);
             var dummy = new THREE.Object3D();
             var col = new THREE.Color();
             var camOffsetX = 0;
