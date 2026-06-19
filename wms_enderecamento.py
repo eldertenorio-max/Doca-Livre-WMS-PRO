@@ -30,9 +30,14 @@ _get_db = None
 _WMS_SCHEMA_READY = False
 
 
-def init_wms_enderecamento(get_db_func):
+def register_wms_db(get_db_func):
+    """Registra get_db de imediato (APIs WMS não dependem do schema em background)."""
     global _get_db
     _get_db = get_db_func
+
+
+def init_wms_enderecamento(get_db_func):
+    register_wms_db(get_db_func)
     try:
         conn = get_db_func()
         ensure_wms_schema(conn)

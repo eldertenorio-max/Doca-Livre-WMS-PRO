@@ -880,8 +880,9 @@ class CompatConn:
 
 
 try:
-    from wms_enderecamento import bp as wms_enderecamento_bp, init_wms_enderecamento
+    from wms_enderecamento import bp as wms_enderecamento_bp, init_wms_enderecamento, register_wms_db
     from wms_etiqueta_zebra import ctx_etiqueta_zebra
+    register_wms_db(get_db)
     app.register_blueprint(wms_enderecamento_bp, url_prefix='/api/wms')
 
     @app.context_processor
