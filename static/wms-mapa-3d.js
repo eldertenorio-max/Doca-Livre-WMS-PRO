@@ -8,7 +8,8 @@
     var SLOT_H = 0.76;
     var SLOT_D = 1.00;
     var GAP_POS = 0.40;
-    var GAP_CAM = 6;
+    var GAP_CAM = 0.15;
+    var CAM_PAD_W = 0.35;
     var MAIN_AISLE_W = 10;
     var MAX_NIV = 5;
     var AISLE_W = 3.6;
@@ -572,7 +573,7 @@
         var aisleLen = maxPos * (SLOT_D + GAP_POS) + GAP_POS * 0.7 + 0.5;
         var floorW = AISLE_W + SLOT_D * 1.28;
         return {
-            width: floorW + 1.4,
+            width: floorW + CAM_PAD_W,
             depth: aisleLen + 0.8,
             aisleLen: aisleLen
         };
@@ -698,7 +699,7 @@
         floor.position.set(0, -0.04, aisleLen / 2);
         camGroup.add(floor);
 
-        var totalW = floorW + 1.4;
+        var totalW = floorW + CAM_PAD_W;
         camGroup.position.set(posX, 0, posZ);
         state.rackGroup.add(camGroup);
         state.camGroups[String(cod)] = camGroup;
