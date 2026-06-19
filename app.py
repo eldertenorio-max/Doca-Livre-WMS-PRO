@@ -2011,7 +2011,7 @@ def _usuario_ainda_existe(usuario):
 def proteger_rotas():
     """Redireciona para /login se o usuário não estiver autenticado. Invalida sessão se o usuário foi excluído."""
     # Rotas que não exigem autenticação
-    if request.endpoint in (None, 'login', 'static', 'raiz', 'ravex_env_check'):
+    if request.endpoint in (None, 'login', 'static', 'raiz', 'ravex_env_check', 'api_health'):
         return None
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return None
