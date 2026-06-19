@@ -5782,6 +5782,7 @@ def api_wms_mapa_3d():
                     'posicao': pos,
                     'nivel': niv,
                     'codigo_endereco': cod_end,
+                    'barcode_longarina': _barcode_longarina(cod_cam, pos, niv),
                     'status': (loc.get('status') or 'vazia').strip().lower(),
                     'categoria_zona': (loc.get('categoria_zona') or '').strip().upper() or None,
                     'zona_armazenagem': (loc.get('zona_armazenagem') or _zona_por_nivel(niv)).lower(),

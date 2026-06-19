@@ -115,6 +115,57 @@
         });
     }
 
+    function _barcodeLongarina(cam, pos, niv) {
+        return parseInt(cam, 10) + '.' + parseInt(pos, 10) + '.' + parseInt(niv, 10);
+    }
+
+    function _addLongarinaColumnStrip(THREE, parent, camCod, pos, maxNiv, xFace, z, towardAisle) {
+        var stripH = maxNiv * LEVEL_H * 0.88;
+        var planeW = 0.36;
+        var canvas = document.createElement('canvas');
+        canvas.width = 220;
+        canvas.height = Math.max(72, maxNiv * 56);
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'rgba(255,255,255,0.94)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = 'rgba(21,101,192,0.45)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+        ctx.fillStyle = '#1a237e';
+        ctx.font = 'bold 21px Arial,sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (var niv = 1; niv <= maxNiv; niv++) {
+            var cy = ((niv - 0.5) / maxNiv) * canvas.height;
+            ctx.fillText(_barcodeLongarina(camCod, pos, niv), canvas.width / 2, cy);
+        }
+        var tex = new THREE.CanvasTexture(canvas);
+        tex.needsUpdate = true;
+        var mat = new THREE.MeshBasicMaterial({
+            map: tex,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        var mesh = new THREE.Mesh(new THREE.PlaneGeometry(planeW, stripH), mat);
+        mesh.position.set(xFace, stripH / 2 + BEAM_H * 0.45, z);
+        mesh.rotation.y = towardAisle > 0 ? -Math.PI / 2 : Math.PI / 2;
+        mesh.userData = { isLongarinaLabel: true, posicao: pos, camara: camCod };
+        parent.add(mesh);
+    }
+
+    function _addLongarinaLabelsRack(THREE, parent, camCod, rua, maxPos, maxNiv, xF, xB, towardAisle, bayStep) {
+        var xFace = towardAisle > 0 ? Math.max(xF, xB) + 0.045 : Math.min(xF, xB) - 0.045;
+        for (var pos = 1; pos <= maxPos; pos++) {
+            var z = (pos - 1) * bayStep + SLOT_D / 2;
+            _addLongarinaColumnStrip(THREE, parent, camCod, pos, maxNiv, xFace, z, towardAisle);
+        }
+        var ruaLbl = _textPlane(THREE, 'Rua ' + String(rua || '').trim().toUpperCase(), 0.62, 0.16, 28, '#1565c0', 'rgba(255,255,255,0.92)');
+        ruaLbl.position.set(xFace, maxNiv * LEVEL_H * 0.52, SLOT_D * 0.35);
+        ruaLbl.rotation.y = towardAisle > 0 ? -Math.PI / 2 : Math.PI / 2;
+        parent.add(ruaLbl);
+    }
+
     function _textPlane(THREE, text, planeW, planeH, fontPx, color, bg) {
         var canvas = document.createElement('canvas');
         canvas.width = 512;
@@ -395,6 +446,8 @@
             _addBeamRun(THREE, parent, xF, xB, zMarks[ti], zMarks[ti + 1], topY, mats, towardAisle);
             _addBayDeck(THREE, parent, xF, xB, zMarks[ti], zMarks[ti + 1], topDeckY, mats.deckMetal);
         }
+
+        _addLongarinaLabelsRack(THREE, parent, camCod, rua, maxPos, maxNiv, xF, xB, towardAisle, bayStep);
 
         if (!ruaSlots.length) {
             return zMarks[zMarks.length - 1] + 0.2;
@@ -825,9 +878,11 @@
                 tip.hidden = false;
                 tip.style.left = (ev.clientX - wrap.getBoundingClientRect().left + 12) + 'px';
                 tip.style.top = (ev.clientY - wrap.getBoundingClientRect().top + 12) + 'px';
+                var bcLong = slot.barcode_longarina || _barcodeLongarina(rec.camara, slot.posicao, slot.nivel);
                 var zona = parseInt(slot.nivel, 10) === 1 ? 'PICKING' : 'PULMÃO';
                 var extra = slot.destino_label ? (' · ' + slot.destino_label) : (slot.categoria_zona ? (' · Cat ' + slot.categoria_zona) : '');
                 tip.innerHTML = '<strong>' + escapeHtml(slot.codigo_endereco) + '</strong><br>'
+                    + 'Longarina <strong>' + escapeHtml(bcLong) + '</strong><br>'
                     + 'Câm. ' + rec.camara + ' · Rua ' + escapeHtml(slot.rua)
                     + ' · Pos ' + slot.posicao + ' · Nív ' + slot.nivel + '<br>'
                     + escapeHtml(zona) + ' · ' + escapeHtml(slot.status) + escapeHtml(extra);
@@ -847,9 +902,11 @@
             return;
         }
         var slot = rec.slot;
+        var bcLong = slot.barcode_longarina || _barcodeLongarina(rec.camara, slot.posicao, slot.nivel);
         det.hidden = false;
         det.innerHTML = '<strong>' + escapeHtml(slot.codigo_endereco) + '</strong>'
-            + ' — Câmara <strong>' + rec.camara + '</strong> · Rua <strong>' + escapeHtml(slot.rua) + '</strong>'
+            + ' — Longarina <strong>' + escapeHtml(bcLong) + '</strong><br>'
+            + 'Câmara <strong>' + rec.camara + '</strong> · Rua <strong>' + escapeHtml(slot.rua) + '</strong>'
             + ' · Coluna <strong>' + slot.posicao + '</strong> · Nível <strong>' + slot.nivel + '</strong><br>'
             + 'Status: <strong>' + escapeHtml(slot.status) + '</strong>'
             + (slot.categoria_zona ? (' · Categoria zona: <strong>' + escapeHtml(slot.categoria_zona) + '</strong>') : '')
