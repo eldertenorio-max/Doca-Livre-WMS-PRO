@@ -885,6 +885,14 @@
         if (leftSpan && fp21) {
             var x13 = positions[13] ? positions[13].x : 0;
             positions[21] = { x: x13, z: maxDepthLeft + MAIN_AISLE_W };
+            corridors.push({
+                width: Math.max(AISLE_W * 0.92, (fp21.width || AISLE_W) * 0.55),
+                depth: MAIN_AISLE_W,
+                x: x13,
+                z: maxDepthLeft + MAIN_AISLE_W / 2,
+                label: 'PASSAGEM — CÂM 21',
+                axis: 'z'
+            });
         } else if (fp21) {
             positions[21] = { x: 0, z: 0 };
         }
@@ -1105,6 +1113,12 @@
             _addWallRunZ(group, mats, wallH, rightX, bAll.minZ + dAll / 2, dAll, 'parede-dir-total');
         }
 
+        if (b21) {
+            var rearZ21 = b21.maxZ + halfTh + out;
+            var rearW21 = (b21.maxX - b21.minX) + WALL_DIV_TH + out * 2;
+            _addWallRunX(group, mats, wallH, rearW21, (b21.minX + b21.maxX) / 2, rearZ21, 'parede-fundo-21');
+        }
+
         parent.add(group);
     }
 
@@ -1218,7 +1232,12 @@
                 leftSpan: leftSpan,
                 rightEdge: rightEdge,
                 corridorMainZ: maxDepthLeft + MAIN_AISLE_W / 2,
-                corridor21Z: (layout.corridors && layout.corridors[1]) ? layout.corridors[1].z : (maxDepthLeft + MAIN_AISLE_W * 0.75),
+                corridor21Z: (function () {
+                    var pass = (layout.corridors || []).filter(function (c) {
+                        return c && (c.axis === 'z' || (c.label && c.label.indexOf('CÂM 21') >= 0));
+                    })[0];
+                    return pass ? pass.z : (maxDepthLeft + MAIN_AISLE_W * 0.75);
+                })(),
                 camRuas: {}
             };
             camaras.forEach(function (c) {
