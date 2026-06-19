@@ -151,16 +151,15 @@
 
     function _makeNavArrowMesh(THREE) {
         var shape = new THREE.Shape();
-        shape.moveTo(0, 0.58);
-        shape.lineTo(0.36, 0.02);
-        shape.lineTo(0.14, 0.02);
-        shape.lineTo(0.14, -0.52);
-        shape.lineTo(-0.14, -0.52);
-        shape.lineTo(-0.14, 0.02);
-        shape.lineTo(-0.36, 0.02);
+        shape.moveTo(0, -0.58);
+        shape.lineTo(0.36, -0.02);
+        shape.lineTo(0.14, -0.02);
+        shape.lineTo(0.14, 0.52);
+        shape.lineTo(-0.14, 0.52);
+        shape.lineTo(-0.14, -0.02);
+        shape.lineTo(-0.36, -0.02);
         shape.closePath();
         var geo = new THREE.ExtrudeGeometry(shape, { depth: 0.08, bevelEnabled: false });
-        geo.rotateX(-Math.PI / 2);
         var mat = new THREE.MeshPhongMaterial({
             color: 0xff1744,
             emissive: 0x660000,
