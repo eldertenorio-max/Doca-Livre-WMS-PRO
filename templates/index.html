@@ -2778,7 +2778,7 @@
                         <div class="table-container"><table class="data-table"><thead><tr><th>Endereço WMS</th><th>Bip longarina</th><th>Câmara</th><th>Rua</th><th>Pos</th><th>Nível</th><th>Zona</th><th>Cat.</th><th>Status</th><th></th></tr></thead><tbody id="wms-tbody-localizacoes"><tr><td colspan="10" class="loading">Carregando...</td></tr></tbody></table></div>
                     </div>
                     <div id="wms-panel-mapa-3d" class="wms-inner-panel" hidden>
-                        <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Visualização <strong>3D interativa</strong> do layout físico (ruas, colunas e níveis). Arraste para girar, scroll para zoom. Clique em uma posição para ver o endereço.</p>
+                        <p class="info-text" style="margin: 0 0 12px 0; font-size: 13px;">Visualização <strong>3D interativa</strong> do layout físico. Arraste para girar · scroll para zoom · botão direito para deslocar. Selecione uma câmara e use <strong>Entrar na câmara</strong> (ou duplo clique no mapa) para caminhar pelo corredor entre as longarinas.</p>
                         <div class="wms-mapa3d-toolbar">
                             <div class="form-group"><label>Câmara</label>
                                 <select id="wms-mapa3d-camara">
@@ -2789,8 +2789,9 @@
                                     <option value="21">21 — ruas G/H</option>
                                 </select>
                             </div>
+                            <button type="button" class="btn btn-success btn-sm" id="btn-wms-mapa3d-entrar">Entrar na câmara</button>
                             <button type="button" class="btn btn-primary btn-sm" id="btn-wms-mapa3d-atualizar">Atualizar</button>
-                            <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-mapa3d-reset">Resetar vista</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-mapa3d-reset">Visão geral</button>
                             <label class="wms-mapa3d-check"><input type="checkbox" id="wms-mapa3d-wireframe"> Wireframe</label>
                         </div>
                         <div id="wms-mapa3d-wrap" class="wms-mapa3d-wrap">
@@ -3218,10 +3219,11 @@
                                             <option value="21">21 — ruas G/H</option>
                                         </select>
                                     </div>
+                                    <button type="button" class="btn btn-success btn-sm" id="btn-wms-end-3d-entrar">Entrar na câmara</button>
                                     <button type="button" class="btn btn-primary btn-sm" id="btn-wms-end-3d-abrir">Abrir 3D</button>
                                     <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-end-voltar-2d">Fechar 3D</button>
                                     <strong id="wms-end-3d-titulo" class="wms-end-3d-titulo"></strong>
-                                    <button type="button" class="btn btn-primary btn-sm" id="btn-wms-end-3d-reset">Resetar vista</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-wms-end-3d-reset">Visão geral</button>
                                     <label class="wms-mapa3d-check"><input type="checkbox" id="wms-end-3d-wireframe"> Wireframe</label>
                                 </div>
                                 <div id="wms-end-3d-wrap" class="wms-mapa3d-wrap wms-end-3d-wrap-embed">

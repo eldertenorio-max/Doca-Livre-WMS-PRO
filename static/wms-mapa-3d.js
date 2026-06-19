@@ -70,6 +70,7 @@
         _studioGroup: null,
         _camIntroId: null,
         _canvas: null,
+        interiorMode: false,
         layoutMeta: null,
         _navGroup: null,
         _navAnimId: null,
@@ -422,7 +423,109 @@
             var g = state.camGroups[cod];
             if (g) g.visible = !filter || parseInt(cod, 10) === filter;
         });
-        centerCameraOnRack(!!intro);
+        centerCameraOnRack(!!intro, !!filter);
+    }
+
+    function _setExplorationControls(interior) {
+        if (!state.controls) return;
+        if (interior) {
+            state.controls.minDistance = 0.35;
+            state.controls.maxDistance = 72;
+            state.controls.maxPolarAngle = Math.PI * 0.92;
+            state.controls.minPolarAngle = 0.06;
+            state.controls.enablePan = true;
+            if (state.scene && state.scene.fog) {
+                state.scene.fog.near = 12;
+                state.scene.fog.far = 95;
+            }
+            if (state.camera) {
+                state.camera.fov = 62;
+                state.camera.near = 0.08;
+                state.camera.updateProjectionMatrix();
+            }
+        } else {
+            state.controls.minDistance = 1.1;
+            state.controls.maxDistance = 220;
+            state.controls.maxPolarAngle = Math.PI / 2.05;
+            state.controls.minPolarAngle = 0;
+            if (state.scene && state.scene.fog) {
+                state.scene.fog.near = 55;
+                state.scene.fog.far = 320;
+            }
+            if (state.camera) {
+                state.camera.fov = 48;
+                state.camera.near = 0.1;
+                state.camera.updateProjectionMatrix();
+            }
+        }
+    }
+
+    function _interiorCameraPos(camCod) {
+        var THREE = T();
+        var meta = state.layoutMeta || {};
+        var camPos = meta.positions[camCod];
+        if (!camPos) return null;
+        var g = state.camGroups[String(camCod)];
+        if (!g || !g.visible) return null;
+        var box = _boxFromRackGroup(g);
+        if (box.isEmpty()) return null;
+        var size = box.getSize(new THREE.Vector3());
+        var center = box.getCenter(new THREE.Vector3());
+        var eyeY = 1.68;
+        var lookY = 1.42;
+        var entryZ = camPos.z + Math.max(size.z * 0.14, 1.2);
+        var deepZ = camPos.z + Math.max(size.z * 0.78, 5.5);
+        return {
+            pos: new THREE.Vector3(center.x, eyeY, entryZ),
+            target: new THREE.Vector3(center.x, lookY, deepZ)
+        };
+    }
+
+    function enterChamberView(camCod) {
+        if (!state.camera || !state.controls || !state.rackGroup) return;
+        camCod = parseInt(camCod || state.camFilter, 10);
+        if (!camCod || !state.camGroups[String(camCod)]) return;
+        if (state.camFilter !== camCod) {
+            state.camFilter = camCod;
+            Object.keys(state.camGroups).forEach(function (cod) {
+                var grp = state.camGroups[cod];
+                if (grp) grp.visible = parseInt(cod, 10) === camCod;
+            });
+        }
+        var interior = _interiorCameraPos(camCod);
+        if (!interior) return;
+        _cancelCamIntro();
+        _clearNavigation();
+        state.interiorMode = true;
+        _setExplorationControls(true);
+        var fromPos = state.camera.position.clone();
+        var fromTgt = state.controls.target.clone();
+        _animateCameraTo(fromPos, fromTgt, interior.pos, interior.target, 980, function () {
+            state.defaultCamPos = interior.pos.clone();
+            state.defaultTarget = interior.target.clone();
+            renderFrame();
+        });
+    }
+
+    function _pickCamaraCodAt(ev) {
+        var wrap = $('wrap');
+        if (!wrap || !state.raycaster || !state.camera || !state.rackGroup) return null;
+        var rect = wrap.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1) return null;
+        state.mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+        state.mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+        state.raycaster.setFromCamera(state.mouse, state.camera);
+        var hits = state.raycaster.intersectObject(state.rackGroup, true);
+        for (var i = 0; i < hits.length; i++) {
+            var obj = hits[i].object;
+            while (obj) {
+                if (obj.name && /^camara-\d+$/.test(obj.name)) {
+                    return parseInt(obj.name.replace('camara-', ''), 10);
+                }
+                obj = obj.parent;
+            }
+        }
+        return null;
     }
 
     function setCamaraFilter(cod) {
@@ -1476,9 +1579,40 @@
         }
     }
 
-    function centerCameraOnRack(intro) {
+    function centerCameraOnRack(intro, preferInterior) {
         if (!state.rackGroup || !state.camera || !state.controls) return;
         var THREE = T();
+        if (preferInterior !== false && state.camFilter) {
+            var interior = _interiorCameraPos(state.camFilter);
+            if (interior) {
+                state.interiorMode = true;
+                _setExplorationControls(true);
+                _cancelCamIntro();
+                if (intro !== false) {
+                    var ibox = _computeVisibleBox();
+                    var icenter = ibox.isEmpty() ? interior.target.clone() : ibox.getCenter(new THREE.Vector3());
+                    var isize = ibox.isEmpty() ? new THREE.Vector3(8, 4, 12) : ibox.getSize(new THREE.Vector3());
+                    var imax = Math.max(isize.x, isize.y, isize.z, 8);
+                    var isp = _showcaseCameraPos(ibox, icenter, isize, imax);
+                    var from = new THREE.Vector3(isp.x, isp.y, isp.z);
+                    _animateCameraTo(from, icenter, interior.pos, interior.target, 1100, function () {
+                        state.defaultCamPos = interior.pos.clone();
+                        state.defaultTarget = interior.target.clone();
+                        renderFrame();
+                    });
+                } else {
+                    state.camera.position.copy(interior.pos);
+                    state.controls.target.copy(interior.target);
+                    state.controls.update();
+                    state.defaultCamPos = interior.pos.clone();
+                    state.defaultTarget = interior.target.clone();
+                    renderFrame();
+                }
+                return;
+            }
+        }
+        state.interiorMode = false;
+        _setExplorationControls(false);
         var box = _computeVisibleBox();
         if (box.isEmpty()) {
             _fallbackCamera(intro !== false);
@@ -1491,8 +1625,8 @@
         var sp = _showcaseCameraPos(box, center, size, maxDim);
         var dest = new THREE.Vector3(sp.x, sp.y, sp.z);
         if (intro !== false) {
-            var from = dest.clone().add(new THREE.Vector3(-maxDim * 0.55, maxDim * 0.38, maxDim * 0.42));
-            _runCameraIntro(from, dest, center);
+            var fromExt = dest.clone().add(new THREE.Vector3(-maxDim * 0.55, maxDim * 0.38, maxDim * 0.42));
+            _runCameraIntro(fromExt, dest, center);
         } else {
             _cancelCamIntro();
             state.camera.position.copy(dest);
@@ -1577,6 +1711,12 @@
         }
     }
 
+    function onDblClick(ev) {
+        ev.preventDefault();
+        var cod = _pickCamaraCodAt(ev) || state.camFilter;
+        if (cod) enterChamberView(cod);
+    }
+
     function onClick(ev) {
         var det = $('detalhe');
         var rec = pickInstance(ev);
@@ -1614,6 +1754,7 @@
         if (state._canvas && state._onPointerMove) {
             state._canvas.removeEventListener('pointermove', state._onPointerMove);
             state._canvas.removeEventListener('click', state._onClick);
+            if (state._onDblClick) state._canvas.removeEventListener('dblclick', state._onDblClick);
         }
         if (state.resizeObs) {
             try { state.resizeObs.disconnect(); } catch (e) { /* ignore */ }
@@ -1682,7 +1823,7 @@
                 var rect = wrap.getBoundingClientRect();
                 var w = Math.max(rect.width || wrap.clientWidth, 320);
                 var h = Math.max(rect.height || wrap.clientHeight, 280);
-                state.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 400);
+                state.camera = new THREE.PerspectiveCamera(48, w / h, 0.1, 400);
                 state.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false });
                 state.renderer.setPixelRatio(Math.min(global.devicePixelRatio || 1, 2));
                 state.renderer.setSize(w, h, false);
@@ -1694,8 +1835,9 @@
                 state.controls.enableDamping = true;
                 state.controls.dampingFactor = 0.08;
                 state.controls.maxPolarAngle = Math.PI / 2.05;
-                state.controls.minDistance = 4;
+                state.controls.minDistance = 1.1;
                 state.controls.maxDistance = 220;
+                state.controls.enablePan = true;
                 state.camera.position.set(-38, 18, 22);
                 state.controls.target.set(28, 2.5, 8);
                 state.controls.update();
@@ -1731,8 +1873,10 @@
                 state._canvas = canvas;
                 state._onPointerMove = onPointerMove;
                 state._onClick = onClick;
+                state._onDblClick = onDblClick;
                 canvas.addEventListener('pointermove', onPointerMove);
                 canvas.addEventListener('click', onClick);
+                canvas.addEventListener('dblclick', onDblClick);
 
                 state._onWindowResize = onResize;
                 if (typeof ResizeObserver !== 'undefined') {
@@ -1762,14 +1906,9 @@
     function resetView() {
         if (!state.camera || !state.controls) return;
         _cancelCamIntro();
-        if (!state.defaultCamPos || !state.defaultTarget) {
-            centerCameraOnRack(false);
-            return;
-        }
-        state.camera.position.copy(state.defaultCamPos);
-        state.controls.target.copy(state.defaultTarget);
-        state.controls.update();
-        renderFrame();
+        state.interiorMode = false;
+        _setExplorationControls(false);
+        centerCameraOnRack(false, false);
     }
 
     function _findSlotRecord(camCod, rua, posicao, nivel) {
@@ -2071,6 +2210,7 @@
         init: initScene,
         setWireframe: setWireframe,
         resetView: resetView,
+        enterChamberView: enterChamberView,
         build: buildRack,
         setCamaraFilter: setCamaraFilter,
         setLoading: setLoading,
