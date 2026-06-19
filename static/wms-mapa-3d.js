@@ -25,7 +25,9 @@
     var COL_DECK = 0xc9a86c;
     var COL_DECK_METAL = 0x9eabb3;
     var COL_FLOOR = 0xd8dde2;
-    var COL_CORRIDOR = 0x9e9e9e;
+    var COL_CORRIDOR = 0x616161;
+    var COL_CORRIDOR_EDGE = 0xf5f5f5;
+    var COL_CORRIDOR_STRIPE = 0xffd54f;
 
     var LEGENDA = [
         { key: 'vazia', label: 'Vazia (pulmão)', color: '#ffffff' },
@@ -238,6 +240,10 @@
         tipo.rotation.y = Math.PI / 2;
         camGroup.add(tipo);
         _addBox(THREE, camGroup, AISLE_W * 0.42, 0.06, 0.28, 0, 0.03, 0.18, new THREE.MeshPhongMaterial({ color: 0xffeb3b }));
+        var floorNum = _textPlane(THREE, String(cod), 1.1, 0.85, 120, '#c62828', 'rgba(255,255,255,0.92)');
+        floorNum.rotation.x = -Math.PI / 2;
+        floorNum.position.set(0, 0.018, 0.55);
+        camGroup.add(floorNum);
     }
 
     function _applyCamFilter(intro) {
@@ -612,7 +618,8 @@
                 width: leftSpan,
                 depth: MAIN_AISLE_W,
                 x: 0,
-                z: maxDepthLeft + MAIN_AISLE_W / 2
+                z: maxDepthLeft + MAIN_AISLE_W / 2,
+                label: 'CORREDOR · CÂM. 11 · 12 · 13'
             });
         }
 
@@ -623,7 +630,8 @@
                 width: fp21.width,
                 depth: MAIN_AISLE_W,
                 x: x13,
-                z: positions[21].z + fp21.depth + MAIN_AISLE_W / 2
+                z: positions[21].z + fp21.depth + MAIN_AISLE_W / 2,
+                label: 'CORREDOR · CÂM. 21'
             });
         } else if (fp21) {
             positions[21] = { x: 0, z: 0 };
@@ -631,22 +639,76 @@
                 width: fp21.width,
                 depth: MAIN_AISLE_W,
                 x: 0,
-                z: fp21.depth + MAIN_AISLE_W / 2
+                z: fp21.depth + MAIN_AISLE_W / 2,
+                label: 'CORREDOR · CÂM. 21'
             });
         }
 
         return { positions: positions, corridors: corridors };
     }
 
-    function _addCorridorPlane(THREE, parent, w, d, cx, cz, name) {
-        var geo = new THREE.PlaneGeometry(w, d);
-        var mat = new THREE.MeshPhongMaterial({ color: COL_CORRIDOR, shininess: 6, side: THREE.DoubleSide });
-        var mesh = new THREE.Mesh(geo, mat);
-        mesh.name = name || 'corredor';
-        mesh.rotation.x = -Math.PI / 2;
-        mesh.position.set(cx, -0.038, cz);
-        mesh.receiveShadow = true;
-        parent.add(mesh);
+    function _addCorridorPlane(THREE, parent, w, d, cx, cz, name, label) {
+        var y = 0.012;
+        var baseMat = new THREE.MeshPhongMaterial({
+            color: COL_CORRIDOR,
+            shininess: 8,
+            specular: 0x222222,
+            side: THREE.DoubleSide
+        });
+        var base = new THREE.Mesh(new THREE.PlaneGeometry(w, d), baseMat);
+        base.name = name || 'corredor';
+        base.rotation.x = -Math.PI / 2;
+        base.position.set(cx, y, cz);
+        base.receiveShadow = true;
+        parent.add(base);
+
+        var edgeMat = new THREE.MeshBasicMaterial({ color: COL_CORRIDOR_EDGE, side: THREE.DoubleSide });
+        var edgeW = Math.min(0.14, w * 0.012);
+        var edgeD = Math.min(0.14, d * 0.04);
+        [-1, 1].forEach(function (signX) {
+            var edge = new THREE.Mesh(new THREE.PlaneGeometry(edgeW, d * 0.96), edgeMat);
+            edge.rotation.x = -Math.PI / 2;
+            edge.position.set(cx + signX * (w / 2 - edgeW * 0.6), y + 0.001, cz);
+            parent.add(edge);
+        });
+        [-1, 1].forEach(function (signZ) {
+            var edgeZ = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.96, edgeD), edgeMat);
+            edgeZ.rotation.x = -Math.PI / 2;
+            edgeZ.position.set(cx, y + 0.001, cz + signZ * (d / 2 - edgeD * 0.6));
+            parent.add(edgeZ);
+        });
+
+        var stripeMat = new THREE.MeshBasicMaterial({ color: COL_CORRIDOR_STRIPE, side: THREE.DoubleSide });
+        var stripe = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(w * 0.08, 0.55), d * 0.88), stripeMat);
+        stripe.rotation.x = -Math.PI / 2;
+        stripe.position.set(cx, y + 0.002, cz);
+        parent.add(stripe);
+
+        if (label) {
+            var lbl = _textPlane(THREE, label, Math.min(w * 0.82, 14), 1.05, 42, '#ffffff', 'rgba(33,33,33,0.72)');
+            lbl.rotation.x = -Math.PI / 2;
+            lbl.position.set(cx, y + 0.004, cz);
+            parent.add(lbl);
+        }
+    }
+
+    function _addCamGapStripes(THREE, parent, leftCodes, fps, positions, maxDepth) {
+        if (!leftCodes || leftCodes.length < 2 || !maxDepth) return;
+        var mat = new THREE.MeshBasicMaterial({ color: 0x90a4ae, side: THREE.DoubleSide });
+        for (var i = 0; i < leftCodes.length - 1; i++) {
+            var cA = leftCodes[i];
+            var cB = leftCodes[i + 1];
+            if (!fps[cA] || !fps[cB] || !positions[cA] || !positions[cB]) continue;
+            var xA = positions[cA].x + fps[cA].width / 2;
+            var xB = positions[cB].x - fps[cB].width / 2;
+            var cx = (xA + xB) / 2;
+            var gw = Math.max(xB - xA, 0.08);
+            var stripe = new THREE.Mesh(new THREE.PlaneGeometry(gw, maxDepth * 0.98), mat);
+            stripe.rotation.x = -Math.PI / 2;
+            stripe.position.set(cx, 0.006, maxDepth / 2);
+            stripe.name = 'vao-cam-' + cA + '-' + cB;
+            parent.add(stripe);
+        }
     }
 
     function buildOneCamara(THREE, cam, posX, posZ, shelfGeo, dummy, col) {
@@ -682,7 +744,7 @@
         aisleLen += 0.5;
 
         var aisleGeo = new THREE.PlaneGeometry(AISLE_W, aisleLen);
-        var aisleMat = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 10, side: THREE.DoubleSide });
+        var aisleMat = new THREE.MeshPhongMaterial({ color: 0xfafafa, shininess: 14, specular: 0xcccccc, side: THREE.DoubleSide });
         var aisle = new THREE.Mesh(aisleGeo, aisleMat);
         aisle.rotation.x = -Math.PI / 2;
         aisle.position.set(0, -0.02, aisleLen / 2);
@@ -727,6 +789,15 @@
                 camarasByCode[parseInt(c.codigo, 10)] = c;
             });
             var layout = _layoutCdPlanta(camarasByCode);
+            var leftCodes = [11, 12, 13];
+            var fpsLayout = {};
+            leftCodes.forEach(function (c) {
+                if (camarasByCode[c]) fpsLayout[c] = _camFootprint(camarasByCode[c]);
+            });
+            var maxDepthLeft = 0;
+            leftCodes.forEach(function (c) {
+                if (fpsLayout[c] && fpsLayout[c].depth > maxDepthLeft) maxDepthLeft = fpsLayout[c].depth;
+            });
             var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 0.92, SHELF_TH * 0.96, SLOT_D * 0.80);
             var dummy = new THREE.Object3D();
             var col = new THREE.Color();
@@ -743,9 +814,11 @@
                     cor.depth,
                     cor.x,
                     cor.z,
-                    'corredor-' + (i + 1)
+                    'corredor-' + (i + 1),
+                    cor.label
                 );
             });
+            _addCamGapStripes(THREE, state.rackGroup, leftCodes, fpsLayout, layout.positions, maxDepthLeft);
 
             return new Promise(function (resolve, reject) {
                 function next() {
@@ -803,13 +876,13 @@
             new THREE.MeshPhongMaterial({ color: 0xeceff1, shininess: 12, specular: 0x222222 })
         );
         floor.rotation.x = -Math.PI / 2;
-        floor.position.set(center.x, -0.055, center.z);
+        floor.position.set(center.x, -0.058, center.z);
         floor.receiveShadow = true;
         group.add(floor);
         if (THREE.GridHelper) {
             var gSize = Math.max(pw, pd);
-            var grid = new THREE.GridHelper(gSize, Math.min(40, Math.max(12, Math.floor(gSize / 2))), 0xb0bec5, 0xdde3e8);
-            grid.position.set(center.x, -0.048, center.z);
+            var grid = new THREE.GridHelper(gSize, Math.min(40, Math.max(12, Math.floor(gSize / 2))), 0x90a4ae, 0xeceff1);
+            grid.position.set(center.x, -0.052, center.z);
             group.add(grid);
         }
         state.scene.add(group);
