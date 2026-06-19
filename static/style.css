@@ -739,21 +739,21 @@ body.hub-modulos-aberto .container {
 .wms-end-2d-planta {
     display: flex;
     flex-direction: row;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: flex-start;
-    justify-content: center;
-    padding: 12px;
+    flex-wrap: nowrap;
+    gap: 8px;
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 8px;
     min-height: 120px;
     background: #f5f5f5;
     overflow-x: auto;
 }
 
 .wms-planta-cam {
-    flex: 1 1 240px;
-    max-width: 280px;
-    min-width: 220px;
-    min-height: 400px;
+    flex: 1 1 0;
+    max-width: none;
+    min-width: 0;
+    min-height: 440px;
     display: flex;
     flex-direction: column;
     border: 2px solid #ff9800;
@@ -764,20 +764,20 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-cam[data-camara="21"] {
-    flex: 0 0 200px;
-    max-width: 200px;
-    min-width: 200px;
-    min-height: 280px;
+    flex: 0.72 1 0;
+    max-width: none;
+    min-width: 0;
+    min-height: 320px;
 }
 
 .wms-planta-cam[data-camara="21"] .wms-planta-cell {
-    width: 14px;
-    height: 20px;
+    width: 18px;
+    height: 26px;
 }
 
 .wms-planta-cam:not([data-camara="21"]) .wms-planta-cell {
-    width: 13px;
-    height: 18px;
+    width: 18px;
+    height: 24px;
     border-width: 1px;
 }
 
@@ -834,8 +834,8 @@ body.hub-modulos-aberto .container {
     flex-wrap: nowrap;
     align-items: stretch;
     justify-content: flex-start;
-    gap: 2px;
-    padding: 4px 2px 3px;
+    gap: 3px;
+    padding: 5px 3px 4px;
     background: #fff;
     border: 3px solid #ff9800;
     min-width: 0;
@@ -857,13 +857,13 @@ body.hub-modulos-aberto .container {
     flex-direction: row;
     flex-wrap: nowrap;
     align-items: center;
-    gap: 2px;
+    gap: 3px;
     flex-shrink: 0;
 }
 
 .wms-planta-row-pos-lbl {
-    flex: 0 0 14px;
-    font-size: 7px;
+    flex: 0 0 18px;
+    font-size: 8px;
     font-weight: 700;
     color: #546e7a;
     text-align: center;
@@ -874,7 +874,7 @@ body.hub-modulos-aberto .container {
     display: flex;
     flex-direction: row;
     flex-wrap: nowrap;
-    gap: 2px;
+    gap: 3px;
     align-items: center;
     flex: 1;
     min-width: 0;
@@ -899,8 +899,8 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-cell {
-    width: 13px;
-    height: 18px;
+    width: 18px;
+    height: 24px;
     border: 1px solid #ff9800;
     border-radius: 1px;
     box-sizing: border-box;
@@ -908,7 +908,7 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-corredor {
-    flex: 0 0 58px;
+    flex: 0 0 72px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -940,7 +940,7 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-corredor-num {
-    font-size: 32px;
+    font-size: 38px;
     font-weight: 800;
     line-height: 1;
     color: #c62828;
@@ -959,8 +959,8 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-planta-porta {
-    width: 36px;
-    height: 10px;
+    width: 44px;
+    height: 12px;
     background: linear-gradient(180deg, #ffeb3b 0%, #ffc107 100%);
     border: 1px solid #f9a825;
     border-radius: 1px;
@@ -985,6 +985,18 @@ body.hub-modulos-aberto .container {
     flex-wrap: wrap;
     gap: 12px;
     padding-top: 8px;
+}
+
+@media (max-width: 1100px) {
+    .wms-end-2d-planta {
+        flex-wrap: wrap;
+    }
+
+    .wms-planta-cam,
+    .wms-planta-cam[data-camara="21"] {
+        flex: 1 1 calc(50% - 8px);
+        min-width: 280px;
+    }
 }
 
 .wms-end-2d-vazio {
