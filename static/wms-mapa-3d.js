@@ -8,8 +8,8 @@
     var SLOT_H = 0.76;
     var SLOT_D = 1.00;
     var GAP_POS = 0.40;
-    var GAP_CAM = 0.15;
-    var CAM_PAD_W = 0.35;
+    var GAP_CAM = 6;
+    var GAP_CAM_ADJ = 1.8;
     var MAIN_AISLE_W = 10;
     var MAX_NIV = 5;
     var AISLE_W = 3.6;
@@ -573,70 +573,41 @@
         var aisleLen = maxPos * (SLOT_D + GAP_POS) + GAP_POS * 0.7 + 0.5;
         var floorW = AISLE_W + SLOT_D * 1.28;
         return {
-            width: floorW + CAM_PAD_W,
+            width: floorW + 1.4,
             depth: aisleLen + 0.8,
             aisleLen: aisleLen
         };
     }
 
-    /** Planta CD: 11/12/13 em fila; dois corredores cinza (entre bloco e 21, e após 21). */
+    /** Planta CD: 11/12/13/21 em fila contínua (sem corredor entre blocos). */
     function _layoutCdPlanta(camarasByCode) {
-        var leftCodes = [11, 12, 13];
+        var rowCodes = [11, 12, 13, 21];
         var fps = {};
-        leftCodes.forEach(function (c) {
+        rowCodes.forEach(function (c) {
             if (camarasByCode[c]) fps[c] = _camFootprint(camarasByCode[c]);
         });
-        var fp21 = camarasByCode[21] ? _camFootprint(camarasByCode[21]) : null;
 
-        var leftSpan = 0;
-        var maxDepthLeft = 0;
-        leftCodes.forEach(function (c) {
+        var totalW = 0;
+        var count = 0;
+        rowCodes.forEach(function (c) {
             if (!fps[c]) return;
-            leftSpan += fps[c].width + GAP_CAM;
-            if (fps[c].depth > maxDepthLeft) maxDepthLeft = fps[c].depth;
+            totalW += fps[c].width;
+            if (count > 0) totalW += GAP_CAM_ADJ;
+            count += 1;
         });
-        if (leftSpan > 0) leftSpan -= GAP_CAM;
 
-        var maxDepth = maxDepthLeft;
-        if (fp21 && fp21.depth > maxDepth) maxDepth = fp21.depth;
-        maxDepth = Math.max(maxDepth, 8);
-
-        var blockW = leftSpan;
-        if (fp21 && leftSpan) blockW += MAIN_AISLE_W + fp21.width + MAIN_AISLE_W;
-        else if (fp21) blockW = fp21.width;
-
-        var startX = blockW ? -blockW / 2 : 0;
+        var startX = totalW ? -totalW / 2 : 0;
         var positions = {};
-        var corridors = [];
         var xCursor = startX;
 
-        leftCodes.forEach(function (c) {
+        rowCodes.forEach(function (c) {
             if (!fps[c]) return;
+            if (xCursor > startX) xCursor += GAP_CAM_ADJ;
             positions[c] = { x: xCursor + fps[c].width / 2, z: 0 };
-            xCursor += fps[c].width + GAP_CAM;
+            xCursor += fps[c].width;
         });
 
-        if (leftSpan && fp21) {
-            corridors.push({
-                width: MAIN_AISLE_W,
-                depth: maxDepth,
-                x: xCursor + MAIN_AISLE_W / 2,
-                z: maxDepth / 2
-            });
-            xCursor += MAIN_AISLE_W;
-            positions[21] = { x: xCursor + fp21.width / 2, z: 0 };
-            xCursor += fp21.width;
-            corridors.push({
-                width: MAIN_AISLE_W,
-                depth: maxDepth,
-                x: xCursor + MAIN_AISLE_W / 2,
-                z: maxDepth / 2
-            });
-        } else if (fp21) {
-            positions[21] = { x: startX + fp21.width / 2, z: 0 };
-        }
-
-        return { positions: positions, corridors: corridors };
+        return { positions: positions, corridors: [] };
     }
 
     function _addCorridorPlane(THREE, parent, w, d, cx, cz, name) {
@@ -699,7 +670,7 @@
         floor.position.set(0, -0.04, aisleLen / 2);
         camGroup.add(floor);
 
-        var totalW = floorW + CAM_PAD_W;
+        var totalW = floorW + 1.4;
         camGroup.position.set(posX, 0, posZ);
         state.rackGroup.add(camGroup);
         state.camGroups[String(cod)] = camGroup;
