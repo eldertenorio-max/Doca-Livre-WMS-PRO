@@ -9,7 +9,6 @@
     var SLOT_D = 1.00;
     var GAP_POS = 0.40;
     var GAP_CAM = 6;
-    var GAP_CAM_STACK = 3.5;
     var MAIN_AISLE_W = 10;
     var MAX_NIV = 5;
     var AISLE_W = 3.6;
@@ -579,7 +578,7 @@
         };
     }
 
-    /** Planta CD: 11/12/13 empilhadas à esquerda; corredor central; 21 à direita alinhada à 13. */
+    /** Planta CD: 11/12/13 em fila horizontal; corredor cinza; 21 à direita (mesma orientação). */
     function _layoutCdPlanta(camarasByCode) {
         var leftCodes = [11, 12, 13];
         var fps = {};
@@ -588,37 +587,49 @@
         });
         var fp21 = camarasByCode[21] ? _camFootprint(camarasByCode[21]) : null;
 
-        var leftW = 0;
+        var leftSpan = 0;
+        var maxDepth = 0;
         leftCodes.forEach(function (c) {
-            if (fps[c] && fps[c].width > leftW) leftW = fps[c].width;
+            if (!fps[c]) return;
+            leftSpan += fps[c].width + GAP_CAM;
+            if (fps[c].depth > maxDepth) maxDepth = fps[c].depth;
         });
-        if (!leftW && fp21) leftW = fp21.width;
+        if (leftSpan > 0) leftSpan -= GAP_CAM;
+        if (fp21 && fp21.depth > maxDepth) maxDepth = fp21.depth;
 
-        var leftX = -(MAIN_AISLE_W / 2 + leftW / 2);
+        var totalW = leftSpan + (leftSpan && fp21 ? MAIN_AISLE_W : 0) + (fp21 ? fp21.width : 0);
+        if (!totalW && fp21) totalW = fp21.width;
+        var startX = -totalW / 2;
         var positions = {};
-        var zCursor = 0;
-        var stackDepth = 0;
+        var xCursor = startX;
 
         leftCodes.forEach(function (c) {
             if (!fps[c]) return;
-            positions[c] = { x: leftX, z: zCursor + fps[c].depth / 2 };
-            zCursor += fps[c].depth + GAP_CAM_STACK;
-            stackDepth = zCursor - GAP_CAM_STACK;
+            positions[c] = { x: xCursor + fps[c].width / 2, z: 0 };
+            xCursor += fps[c].width + GAP_CAM;
         });
 
+        var corridorX = 0;
+        var corridorDepth = Math.max(maxDepth, 8);
         if (fp21) {
-            var rightX = MAIN_AISLE_W / 2 + fp21.width / 2;
-            var z21 = positions[13] ? positions[13].z : (stackDepth > 0 ? stackDepth / 2 : fp21.depth / 2);
-            positions[21] = { x: rightX, z: z21 };
+            if (leftSpan) {
+                corridorX = xCursor + MAIN_AISLE_W / 2;
+                positions[21] = { x: xCursor + MAIN_AISLE_W + fp21.width / 2, z: 0 };
+            } else {
+                positions[21] = { x: startX + fp21.width / 2, z: 0 };
+            }
+        } else if (leftSpan) {
+            corridorX = xCursor + MAIN_AISLE_W / 2;
         }
 
         return {
             positions: positions,
             corridor: {
+                show: !!(leftSpan && fp21),
                 width: MAIN_AISLE_W,
-                depth: Math.max(stackDepth, 8),
-                x: 0,
-                z: Math.max(stackDepth, 8) / 2
+                depth: corridorDepth,
+                x: corridorX,
+                z: corridorDepth / 2
             }
         };
     }
