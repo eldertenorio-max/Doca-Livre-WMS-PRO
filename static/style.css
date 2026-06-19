@@ -738,14 +738,25 @@ body.hub-modulos-aberto .container {
 
 .wms-end-2d-planta {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     flex-wrap: nowrap;
-    gap: 8px;
+    gap: 12px;
     align-items: stretch;
-    justify-content: stretch;
+    justify-content: flex-start;
     padding: 8px;
     min-height: 120px;
     background: #f5f5f5;
+    overflow-x: hidden;
+}
+
+.wms-planta-row-cams {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    align-items: stretch;
     overflow-x: auto;
 }
 
@@ -980,15 +991,24 @@ body.hub-modulos-aberto .container {
 
 .wms-planta-row-98 {
     width: 100%;
-    flex-basis: 100%;
+    flex-basis: auto;
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
-    padding-top: 8px;
+    gap: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.wms-planta-row-98-titulo {
+    flex: 0 0 100%;
+    font-size: 12px;
+    font-weight: 700;
+    color: #546e7a;
+    margin: 0 0 2px 2px;
 }
 
 @media (max-width: 1100px) {
-    .wms-end-2d-planta {
+    .wms-planta-row-cams {
         flex-wrap: wrap;
     }
 
