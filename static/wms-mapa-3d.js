@@ -1523,49 +1523,28 @@
         var rightX = (meta.rightEdge || 0) + MAIN_AISLE_W * 0.52;
         var entryZ = maxD + 0.28;
         var yFloor = 0.42;
+        var aisleX = camPos.x;
+        var slotZ = dest.z;
         var pts = [
             new THREE.Vector3(rightX + 3.4, yFloor, corridorZ),
             new THREE.Vector3(rightX, yFloor, corridorZ)
         ];
 
         if (parseInt(camCod, 10) === 21) {
-            pts.push(new THREE.Vector3(camPos.x, yFloor, corridorZ));
+            pts.push(new THREE.Vector3(aisleX, yFloor, corridorZ));
             var c21Z = meta.corridor21Z || (camPos.z + MAIN_AISLE_W * 0.45);
-            pts.push(new THREE.Vector3(camPos.x, yFloor, c21Z));
-            pts.push(new THREE.Vector3(camPos.x, yFloor, camPos.z + 0.45));
+            pts.push(new THREE.Vector3(aisleX, yFloor, c21Z));
+            pts.push(new THREE.Vector3(aisleX, yFloor, camPos.z + 0.45));
         } else {
-            pts.push(new THREE.Vector3(camPos.x, yFloor, corridorZ));
-            pts.push(new THREE.Vector3(camPos.x, yFloor, entryZ));
+            pts.push(new THREE.Vector3(aisleX, yFloor, corridorZ));
+            pts.push(new THREE.Vector3(aisleX, yFloor, entryZ));
         }
 
-        if (Math.abs(dest.x - camPos.x) > 0.35) {
-            pts.push(new THREE.Vector3(dest.x, yFloor, entryZ));
+        if (Math.abs((pts[pts.length - 1].z) - slotZ) > 0.6) {
+            pts.push(new THREE.Vector3(aisleX, yFloor, slotZ + 2.0));
         }
-        pts.push(new THREE.Vector3(dest.x, yFloor, dest.z + 2.2));
-        pts.push(new THREE.Vector3(dest.x, dest.y + 0.5, dest.z + 1.1));
+        pts.push(new THREE.Vector3(aisleX, yFloor, slotZ + 0.85));
         return pts;
-    }
-
-    function _addPathArrowMarkers(parent, curve, spacing) {
-        var THREE = T();
-        var arrowGeo = new THREE.ConeGeometry(0.17, 0.46, 12);
-        var arrowMat = new THREE.MeshPhongMaterial({
-            color: 0xff1744,
-            emissive: 0x660000,
-            shininess: 36
-        });
-        var total = curve.getLength();
-        var gap = spacing || 2.1;
-        var count = Math.max(5, Math.floor(total / gap));
-        for (var i = 1; i <= count; i++) {
-            var u = i / (count + 1);
-            var pt = curve.getPoint(u);
-            var ahead = curve.getPoint(Math.min(u + 0.022, 1));
-            var arr = new THREE.Mesh(arrowGeo, arrowMat);
-            arr.position.set(pt.x, 0.13, pt.z);
-            arr.lookAt(ahead.x, 0.13, ahead.z);
-            parent.add(arr);
-        }
     }
 
     function _restoreHighlight() {
@@ -1630,14 +1609,8 @@
         if (state.camFilter) setCamaraFilter(null);
 
         var curve = _buildNavCurve(waypoints);
-        var linePts = curve.getPoints(Math.max(48, waypoints.length * 12));
-        var lineGeo = new THREE.BufferGeometry().setFromPoints(linePts);
-        var line = new THREE.Line(
-            lineGeo,
-            new THREE.LineBasicMaterial({ color: 0xffeb3b, transparent: true, opacity: 0.88 })
-        );
 
-        var leaderGeo = new THREE.ConeGeometry(0.26, 0.68, 14);
+        var leaderGeo = new THREE.ConeGeometry(0.28, 0.72, 14);
         var leaderMat = new THREE.MeshPhongMaterial({ color: 0xff1744, emissive: 0x770000, shininess: 44 });
         var leader = new THREE.Mesh(leaderGeo, leaderMat);
 
@@ -1671,9 +1644,10 @@
 
         state._navGroup = new THREE.Group();
         state._navGroup.name = 'nav-path';
-        state._navGroup.add(line, leader, marker, ring, addrLabel);
-        _addPathArrowMarkers(state._navGroup, curve, 2.0);
+        state._navGroup.add(leader, marker, ring, addrLabel);
         state.rackGroup.add(state._navGroup);
+
+        var aisleX = waypoints[waypoints.length - 1].x;
 
         var pathLen = curve.getLength();
         var duration = Math.min(11000, Math.max(5200, pathLen * 210));
@@ -1688,9 +1662,9 @@
             if (slotInfo) {
                 _highlightSlot(slotInfo.camCod, slotInfo.rua, slotInfo.posicao, slotInfo.nivel);
             }
-            leader.position.set(dest.x, Math.max(dest.y, 0.2), dest.z + 0.55);
-            leader.lookAt(dest.x, dest.y + 0.2, dest.z);
-            state.camera.position.set(dest.x - 1.6, dest.y + 2.35, dest.z - 2.15);
+            leader.position.set(aisleX, 0.18, dest.z + 0.55);
+            leader.lookAt(dest.x, dest.y + 0.15, dest.z);
+            state.camera.position.set(aisleX, dest.y + 2.25, dest.z - 2.05);
             state.controls.target.set(dest.x, dest.y + 0.38, dest.z);
             state.controls.update();
             state.controls.enabled = true;
