@@ -867,8 +867,12 @@ body.hub-modulos-aberto .container {
     border-left: none;
 }
 
+.wms-planta-rack-side--dir .wms-planta-row-pos {
+    flex-direction: row-reverse;
+}
+
 .wms-planta-rack-side--dir .wms-planta-row-pos-cells {
-    justify-content: flex-end;
+    justify-content: flex-start;
 }
 
 .wms-planta-row-pos {
