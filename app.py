@@ -882,12 +882,25 @@ class CompatConn:
 try:
     from wms_enderecamento import bp as wms_enderecamento_bp, init_wms_enderecamento
     from wms_etiqueta_zebra import ctx_etiqueta_zebra
-    init_wms_enderecamento(get_db)
     app.register_blueprint(wms_enderecamento_bp, url_prefix='/api/wms')
 
     @app.context_processor
     def _inject_etiqueta_zebra_config():
         return ctx_etiqueta_zebra()
+
+    def _init_wms_em_background():
+        """Não bloqueia o boot do Gunicorn (schema WMS pode demorar no Postgres)."""
+        try:
+            init_wms_enderecamento(get_db)
+        except Exception as e:
+            import traceback
+            try:
+                print('[controle-carregamento] init_wms_enderecamento falhou:', e, flush=True)
+                traceback.print_exc()
+            except Exception:
+                pass
+
+    threading.Thread(target=_init_wms_em_background, daemon=True, name='init_wms').start()
 except Exception as _wms_import_err:
     print('Aviso: módulo WMS endereçamento não carregado:', _wms_import_err)
 
