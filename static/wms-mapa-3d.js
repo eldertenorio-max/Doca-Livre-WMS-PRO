@@ -892,6 +892,7 @@
         return base;
     }
 
+    /** Passagem cinza que liga o corredor principal à câm. 21. */
     /** Limites reais dos racks no mundo (para paredes rente por fora). */
     function _computeRackBounds(camarasByCode, positions, camCodes) {
         var minX = Infinity;
@@ -922,6 +923,33 @@
         });
         if (!isFinite(minX)) return null;
         return { minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ };
+    }
+
+    function _passagemCam21(corridors) {
+        var list = corridors || [];
+        for (var i = 0; i < list.length; i++) {
+            var c = list[i];
+            if (!c) continue;
+            if (c.axis === 'z' || (c.label && c.label.indexOf('CÂM 21') >= 0)) return c;
+        }
+        return null;
+    }
+
+    function _camFloorBounds(cod, positions, camarasByCode, rackBounds) {
+        var pos = positions[cod];
+        var cam = camarasByCode[cod];
+        if (!pos || !cam) return rackBounds;
+        var fp = _camFootprint(cam);
+        if (!fp) return rackBounds;
+        var halfW = fp.width / 2;
+        var minZ = rackBounds ? rackBounds.minZ : pos.z;
+        var maxZ = rackBounds ? rackBounds.maxZ : pos.z + fp.depth;
+        return {
+            minX: pos.x - halfW,
+            maxX: pos.x + halfW,
+            minZ: minZ,
+            maxZ: maxZ
+        };
     }
 
     function _camMaxPosicao(slots, ruas) {
@@ -1214,7 +1242,7 @@
     }
 
     /** Paredes externas rente ao bloco 11–13 e envoltório da câm. 21 (por fora dos racks). */
-    function _addPerimeterWalls(THREE, parent, wallH, positions, camarasByCode) {
+    function _addPerimeterWalls(THREE, parent, wallH, positions, camarasByCode, corridors) {
         if (!wallH || !positions || !camarasByCode) return;
         var b113 = _computeRackBounds(camarasByCode, positions, [11, 12, 13]);
         if (!b113) return;
@@ -1243,9 +1271,38 @@
         }
 
         if (b21) {
-            var rearZ21 = b21.maxZ + halfTh + out;
-            var rearW21 = (b21.maxX - b21.minX) + WALL_DIV_TH + out * 2;
-            _addWallRunX(group, mats, wallH, rearW21, (b21.minX + b21.maxX) / 2, rearZ21, 'parede-fundo-21');
+            var f21 = _camFloorBounds(21, positions, camarasByCode, b21);
+            var passage21 = _passagemCam21(corridors);
+            var passLeft = passage21 ? passage21.x - passage21.width / 2 : f21.minX + AISLE_W * 0.45;
+            var passRight = passage21 ? passage21.x + passage21.width / 2 : f21.maxX - AISLE_W * 0.45;
+            var rearZ21 = f21.maxZ + halfTh + out;
+            var rearW21 = (f21.maxX - f21.minX) + WALL_DIV_TH + out * 2;
+            _addWallRunX(group, mats, wallH, rearW21, (f21.minX + f21.maxX) / 2, rearZ21, 'parede-fundo-21');
+
+            var frontZ21 = f21.minZ - halfTh - out;
+            var d21 = f21.maxZ - frontZ21;
+            var cz21 = frontZ21 + d21 / 2;
+            var leftX21 = f21.minX - halfTh - out;
+            var rightX21 = f21.maxX + halfTh + out;
+            _addWallRunZ(group, mats, wallH, leftX21, cz21, d21, 'parede-esq-21');
+            _addWallRunZ(group, mats, wallH, rightX21, cz21, d21, 'parede-dir-21');
+
+            var leftFrontW = passLeft - f21.minX;
+            if (leftFrontW > 0.28) {
+                _addWallRunX(
+                    group, mats, wallH, leftFrontW,
+                    f21.minX + leftFrontW / 2, frontZ21,
+                    'parede-frente-21-esq'
+                );
+            }
+            var rightFrontW = f21.maxX - passRight;
+            if (rightFrontW > 0.28) {
+                _addWallRunX(
+                    group, mats, wallH, rightFrontW,
+                    passRight + rightFrontW / 2, frontZ21,
+                    'parede-frente-21-dir'
+                );
+            }
         }
 
         parent.add(group);
@@ -1416,7 +1473,8 @@
                 state.rackGroup,
                 maxNivWall * LEVEL_H + 0.65,
                 layout.positions,
-                camarasByCode
+                camarasByCode,
+                layout.corridors
             );
 
             return new Promise(function (resolve, reject) {
