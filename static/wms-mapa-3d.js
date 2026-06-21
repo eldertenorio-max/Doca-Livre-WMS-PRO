@@ -70,6 +70,8 @@
         camGroups: {},
         camFilter: null,
         _studioGroup: null,
+        _interiorLightGroup: null,
+        _sceneLights: null,
         _camIntroId: null,
         _canvas: null,
         interiorMode: false,
@@ -452,21 +454,22 @@
         centerCameraOnRack(!!intro, !!filter);
     }
 
-    function _setExplorationControls(interior) {
+    function _setExplorationControls(interior, camCod) {
         if (!state.controls) return;
         if (interior) {
-            state.controls.minDistance = 0.35;
-            state.controls.maxDistance = 72;
-            state.controls.maxPolarAngle = Math.PI * 0.92;
-            state.controls.minPolarAngle = 0.06;
+            state.controls.minDistance = 0.45;
+            state.controls.maxDistance = 52;
+            state.controls.maxPolarAngle = Math.PI * 0.88;
+            state.controls.minPolarAngle = 0.12;
             state.controls.enablePan = true;
+            state.controls.dampingFactor = 0.06;
             if (state.scene && state.scene.fog) {
-                state.scene.fog.near = 12;
-                state.scene.fog.far = 95;
+                state.scene.fog.near = 16;
+                state.scene.fog.far = 105;
             }
             if (state.camera) {
-                state.camera.fov = 62;
-                state.camera.near = 0.08;
+                state.camera.fov = 68;
+                state.camera.near = 0.12;
                 state.camera.updateProjectionMatrix();
             }
         } else {
@@ -474,6 +477,7 @@
             state.controls.maxDistance = 220;
             state.controls.maxPolarAngle = Math.PI / 2.05;
             state.controls.minPolarAngle = 0;
+            state.controls.dampingFactor = 0.08;
             if (state.scene && state.scene.fog) {
                 state.scene.fog.near = 55;
                 state.scene.fog.far = 320;
@@ -483,6 +487,63 @@
                 state.camera.near = 0.1;
                 state.camera.updateProjectionMatrix();
             }
+        }
+        _setInteriorVisuals(!!interior, camCod || state.camFilter);
+    }
+
+    function _clearInteriorLights() {
+        if (state._interiorLightGroup && state.scene) {
+            state.scene.remove(state._interiorLightGroup);
+            state._interiorLightGroup.traverse(function (ch) {
+                if (ch.isLight && ch.dispose) ch.dispose();
+            });
+        }
+        state._interiorLightGroup = null;
+    }
+
+    function _setInteriorVisuals(active, camCod) {
+        var THREE = T();
+        var bgExt = 0xf4f6f8;
+        var bgInt = 0xe3eaf2;
+        if (state.scene) {
+            state.scene.background.setHex(active ? bgInt : bgExt);
+            if (state.scene.fog) state.scene.fog.color.setHex(active ? bgInt : bgExt);
+        }
+        if (state._studioGroup) state._studioGroup.visible = !active;
+        if (state._sceneLights) {
+            var L = state._sceneLights;
+            L.ambient.intensity = active ? 0.68 : 0.58;
+            L.hemi.intensity = active ? 0.5 : 0.45;
+            L.dir.intensity = active ? 0.58 : 0.92;
+            L.fill.intensity = active ? 0.48 : 0.35;
+            L.rim.intensity = active ? 0.18 : 0.22;
+        }
+        if (state._sceneLights && !active) {
+            state._sceneLights.dir.position.set(28, 42, 22);
+            state._sceneLights.fill.position.set(-24, 22, -16);
+        }
+        _clearInteriorLights();
+        if (!active || !state.scene || !camCod) return;
+        var interior = _interiorCameraPos(camCod);
+        if (!interior) return;
+        var cx = interior.target.x;
+        var cz = interior.target.z;
+        var group = new THREE.Group();
+        group.name = 'interior-lights';
+        var ceil = new THREE.PointLight(0xffffff, 0.62, 32);
+        ceil.position.set(cx, 4.1, cz - 2.5);
+        group.add(ceil);
+        var mid = new THREE.PointLight(0xe8f4ff, 0.45, 26);
+        mid.position.set(cx, 3.4, cz + 1.5);
+        group.add(mid);
+        var floorFill = new THREE.PointLight(0xdde8f5, 0.28, 18);
+        floorFill.position.set(cx, 0.9, interior.pos.z + 1.2);
+        group.add(floorFill);
+        state.scene.add(group);
+        state._interiorLightGroup = group;
+        if (state._sceneLights) {
+            state._sceneLights.dir.position.set(cx + 3.5, 6.5, interior.pos.z - 1.5);
+            state._sceneLights.fill.position.set(cx - 4, 3.2, interior.pos.z + 2);
         }
     }
 
@@ -497,10 +558,10 @@
         if (box.isEmpty()) return null;
         var size = box.getSize(new THREE.Vector3());
         var center = box.getCenter(new THREE.Vector3());
-        var eyeY = 1.68;
-        var lookY = 1.42;
-        var entryZ = camPos.z + Math.max(size.z * 0.14, 1.2);
-        var deepZ = camPos.z + Math.max(size.z * 0.78, 5.5);
+        var eyeY = 1.74;
+        var lookY = 1.35;
+        var entryZ = camPos.z + Math.max(size.z * 0.22, 1.4);
+        var deepZ = camPos.z + Math.max(size.z * 0.88, size.z - 0.6);
         return {
             pos: new THREE.Vector3(center.x, eyeY, entryZ),
             target: new THREE.Vector3(center.x, lookY, deepZ)
@@ -523,7 +584,7 @@
         _cancelCamIntro();
         _clearNavigation();
         state.interiorMode = true;
-        _setExplorationControls(true);
+        _setExplorationControls(true, camCod);
         var fromPos = state.camera.position.clone();
         var fromTgt = state.controls.target.clone();
         _animateCameraTo(fromPos, fromTgt, interior.pos, interior.target, 980, function () {
@@ -557,7 +618,7 @@
     function setCamaraFilter(cod) {
         state.camFilter = cod ? parseInt(cod, 10) : null;
         if (!state.rackGroup || !Object.keys(state.camGroups).length) return;
-        _applyCamFilter(false);
+        _applyCamFilter(true);
     }
 
     function slotColor(slot) {
@@ -1670,16 +1731,13 @@
             var interior = _interiorCameraPos(state.camFilter);
             if (interior) {
                 state.interiorMode = true;
-                _setExplorationControls(true);
+                _setExplorationControls(true, state.camFilter);
                 _cancelCamIntro();
+                _clearStudio();
                 if (intro !== false) {
-                    var ibox = _computeVisibleBox();
-                    var icenter = ibox.isEmpty() ? interior.target.clone() : ibox.getCenter(new THREE.Vector3());
-                    var isize = ibox.isEmpty() ? new THREE.Vector3(8, 4, 12) : ibox.getSize(new THREE.Vector3());
-                    var imax = Math.max(isize.x, isize.y, isize.z, 8);
-                    var isp = _showcaseCameraPos(ibox, icenter, isize, imax);
-                    var from = new THREE.Vector3(isp.x, isp.y, isp.z);
-                    _animateCameraTo(from, icenter, interior.pos, interior.target, 1100, function () {
+                    var fromPos = state.camera.position.clone();
+                    var fromTgt = state.controls.target.clone();
+                    _animateCameraTo(fromPos, fromTgt, interior.pos, interior.target, 1050, function () {
                         state.defaultCamPos = interior.pos.clone();
                         state.defaultTarget = interior.target.clone();
                         renderFrame();
@@ -1696,7 +1754,7 @@
             }
         }
         state.interiorMode = false;
-        _setExplorationControls(false);
+        _setExplorationControls(false, null);
         var box = _computeVisibleBox();
         if (box.isEmpty()) {
             _fallbackCamera(intro !== false);
@@ -1848,6 +1906,8 @@
             global.removeEventListener('resize', state._onWindowResize);
             state._onWindowResize = null;
         }
+        _clearStudio();
+        _clearInteriorLights();
         if (state.controls) {
             try { state.controls.dispose(); } catch (e) { /* ignore */ }
             state.controls = null;
@@ -1863,6 +1923,7 @@
         state.camGroups = {};
         state.camFilter = null;
         state._rackMats = null;
+        state._sceneLights = null;
         state._canvas = null;
         state.inited = false;
     }
@@ -1926,7 +1987,8 @@
                 state.controls.target.set(28, 2.5, 8);
                 state.controls.update();
 
-                state.scene.add(new THREE.AmbientLight(0xffffff, 0.58));
+                var ambient = new THREE.AmbientLight(0xffffff, 0.58);
+                state.scene.add(ambient);
                 var hemi = new THREE.HemisphereLight(0xf0f4ff, 0xcfd8dc, 0.45);
                 state.scene.add(hemi);
                 var dir = new THREE.DirectionalLight(0xffffff, 0.92);
@@ -1947,6 +2009,13 @@
                 var rim = new THREE.DirectionalLight(0xffffff, 0.22);
                 rim.position.set(0, 16, -32);
                 state.scene.add(rim);
+                state._sceneLights = {
+                    ambient: ambient,
+                    hemi: hemi,
+                    dir: dir,
+                    fill: fill,
+                    rim: rim
+                };
 
                 state.rackGroup = new THREE.Group();
                 state.scene.add(state.rackGroup);
@@ -1991,7 +2060,7 @@
         if (!state.camera || !state.controls) return;
         _cancelCamIntro();
         state.interiorMode = false;
-        _setExplorationControls(false);
+        _setExplorationControls(false, null);
         centerCameraOnRack(false, false);
     }
 

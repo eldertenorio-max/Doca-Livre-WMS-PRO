@@ -4585,7 +4585,7 @@ function _wmsMostrarSubtab(tab) {
 
 var _wmsMapa3dScriptPromise = null;
 var _WMS_THREE_LEGACY_CDN = 'https://cdn.jsdelivr.net/npm/three@0.128.0';
-var _WMS_MAPA3D_VER = '20260619x';
+var _WMS_MAPA3D_VER = '20260619y';
 
 function _wmsScriptJaPronto(key) {
     if (key.indexOf('three.min.js') >= 0) return !!window.THREE;
@@ -6060,16 +6060,6 @@ function initWmsEnderecamento() {
     if (bMapa3dReset) bMapa3dReset.addEventListener('click', function() {
         if (window.WmsMapa3d && WmsMapa3d.resetView) WmsMapa3d.resetView();
     });
-    var bMapa3dEntrar = document.getElementById('btn-wms-mapa3d-entrar');
-    if (bMapa3dEntrar) bMapa3dEntrar.addEventListener('click', function() {
-        var sel = document.getElementById('wms-mapa3d-camara');
-        var cod = sel && sel.value ? parseInt(sel.value, 10) : null;
-        if (!cod) {
-            alert('Selecione uma câmara no filtro para entrar na visualização interna.');
-            return;
-        }
-        if (window.WmsMapa3d && WmsMapa3d.enterChamberView) WmsMapa3d.enterChamberView(cod);
-    });
     var wireMapa3d = document.getElementById('wms-mapa3d-wireframe');
     if (wireMapa3d) wireMapa3d.addEventListener('change', function() {
         if (window.WmsMapa3d) WmsMapa3d.setWireframe(wireMapa3d.checked);
@@ -6193,16 +6183,6 @@ function initWmsEnderecamento() {
     var bEnd3dReset = document.getElementById('btn-wms-end-3d-reset');
     if (bEnd3dReset) bEnd3dReset.addEventListener('click', function() {
         if (window.WmsMapa3d && WmsMapa3d.resetView) WmsMapa3d.resetView();
-    });
-    var bEnd3dEntrar = document.getElementById('btn-wms-end-3d-entrar');
-    if (bEnd3dEntrar) bEnd3dEntrar.addEventListener('click', function() {
-        var sel = document.getElementById('wms-end-3d-camara');
-        var cod = sel && sel.value ? parseInt(sel.value, 10) : null;
-        if (!cod) {
-            alert('Selecione uma câmara no filtro para entrar na visualização interna.');
-            return;
-        }
-        if (window.WmsMapa3d && WmsMapa3d.enterChamberView) WmsMapa3d.enterChamberView(cod);
     });
     var wireEnd3d = document.getElementById('wms-end-3d-wireframe');
     if (wireEnd3d) wireEnd3d.addEventListener('change', function() {
