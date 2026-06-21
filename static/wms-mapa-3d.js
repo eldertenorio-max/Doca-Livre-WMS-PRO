@@ -1118,9 +1118,9 @@
             var x13 = positions[13] ? positions[13].x : 0;
             positions[21] = { x: x13, z: maxDepthLeft + MAIN_AISLE_W };
             corridors.push({
-                width: fp21.width,
+                width: leftSpan,
                 depth: MAIN_AISLE_W,
-                x: x13,
+                x: 0,
                 z: maxDepthLeft + MAIN_AISLE_W + fp21.depth + MAIN_AISLE_W / 2,
                 label: 'CORREDOR — CÂM. 21'
             });
@@ -1354,8 +1354,13 @@
             var rearCx = (leftX21 + rightX21) / 2;
 
             _addWallRunX(group, mats, wallH, rearW21, rearCx, frontZ21, 'parede-frente-21');
+            _addWallRunX(group, mats, wallH, rearW21, rearCx, rearZ21, 'parede-fundo-21');
             _addWallRunZ(group, mats, wallH, leftX21, cz21, d21Full, 'parede-esq-21');
             _addWallRunZ(group, mats, wallH, rightX21, cz21, d21Full, 'parede-dir-21');
+
+            var frontCorrCz = rearZ21 + MAIN_AISLE_W / 2;
+            _addWallRunZ(group, mats, wallH, leftX, frontCorrCz, MAIN_AISLE_W, 'parede-esq-corredor-21');
+            _addWallRunZ(group, mats, wallH, rightX, frontCorrCz, MAIN_AISLE_W, 'parede-dir-corredor-21');
         }
 
         parent.add(group);
