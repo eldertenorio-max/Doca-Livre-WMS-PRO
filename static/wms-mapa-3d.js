@@ -1330,57 +1330,17 @@
         _addWallRunZ(group, mats, wallH, leftX, b113.minZ + d113 / 2, d113, 'parede-esq-bloco');
         _addWallRunZ(group, mats, wallH, rightX, b113.minZ + d113 / 2, d113, 'parede-dir-bloco');
 
-        if (b21 && dAll > d113 + 0.2) {
-            _addWallRunZ(group, mats, wallH, leftX, bAll.minZ + dAll / 2, dAll, 'parede-esq-total');
-            _addWallRunZ(group, mats, wallH, rightX, bAll.minZ + dAll / 2, dAll, 'parede-dir-total');
-        }
-
         if (b21) {
             var f21 = _camFloorBounds(21, positions, camarasByCode, b21);
-            var passage21 = _passagemCam21(corridors, passagem21);
-            var passLeft = passage21 ? passage21.x - passage21.width / 2 : f21.minX + AISLE_W * 0.45;
-            var passRight = passage21 ? passage21.x + passage21.width / 2 : f21.maxX - AISLE_W * 0.45;
-            var maxDepthLeft = positions[21] ? positions[21].z - MAIN_AISLE_W : b113.maxZ;
             var leftX21 = f21.minX - halfTh - out;
             var rightX21 = f21.maxX + halfTh + out;
             var frontZ21 = f21.minZ - halfTh - out;
             var rearZ21 = f21.maxZ + halfTh + out;
-            var d21Full = rearZ21 - frontZ21 + halfTh;
-            var cz21 = frontZ21 + d21Full / 2;
             var rearW21 = rightX21 - leftX21 + WALL_DIV_TH;
             var rearCx = (leftX21 + rightX21) / 2;
 
             _addWallRunX(group, mats, wallH, rearW21, rearCx, rearZ21, 'parede-fundo-21');
-            _addWallRunZ(group, mats, wallH, leftX21, cz21, d21Full, 'parede-esq-21');
-            _addWallRunZ(group, mats, wallH, rightX21, cz21, d21Full, 'parede-dir-21');
-
-            if (passage21) {
-                var passLen = frontZ21 - maxDepthLeft;
-                if (passLen > 0.35) {
-                    var passZc = maxDepthLeft + passLen / 2;
-                    var passWallL = passLeft - halfTh - out;
-                    var passWallR = passRight + halfTh + out;
-                    _addWallRunZ(group, mats, wallH, passWallL, passZc, passLen, 'parede-passagem-esq-21');
-                    _addWallRunZ(group, mats, wallH, passWallR, passZc, passLen, 'parede-passagem-dir-21');
-                }
-            }
-
-            var leftFrontW = passLeft - leftX21;
-            if (leftFrontW > 0.18) {
-                _addWallRunX(
-                    group, mats, wallH, leftFrontW,
-                    leftX21 + leftFrontW / 2, frontZ21,
-                    'parede-frente-21-esq'
-                );
-            }
-            var rightFrontW = rightX21 - passRight;
-            if (rightFrontW > 0.18) {
-                _addWallRunX(
-                    group, mats, wallH, rightFrontW,
-                    passRight + rightFrontW / 2, frontZ21,
-                    'parede-frente-21-dir'
-                );
-            }
+            _addWallRunX(group, mats, wallH, rearW21, rearCx, frontZ21, 'parede-frente-21');
         }
 
         parent.add(group);
