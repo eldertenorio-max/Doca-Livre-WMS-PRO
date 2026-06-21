@@ -1448,7 +1448,6 @@
             _addWallRunX(group, mats, wallH, rearW21, rearCx, frontZ21, 'parede-frente-21');
             _addWallRunXWithDoor(THREE, group, mats, wallH, rearW21, rearCx, rearZ21, 'parede-fundo-21');
             _addWallRunZ(group, mats, wallH, leftX21, cz21, d21Full, 'parede-esq-21');
-            _addWallRunZ(group, mats, wallH, rightX21, cz21, d21Full, 'parede-dir-21');
 
             /* fechamento das laterais do corredor entre o bloco 11-13 e a câm. 21 */
             var corrZ0 = b113.maxZ + halfTh;
