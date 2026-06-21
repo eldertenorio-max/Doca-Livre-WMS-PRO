@@ -182,7 +182,7 @@
             side: THREE.FrontSide,
             depthWrite: false
         });
-        var mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.65, 0.92), mat);
+        var mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.52), mat);
         mesh.renderOrder = 5;
         mesh.visible = false;
         return mesh;
@@ -2233,8 +2233,17 @@
     function _runNavigationPath(waypoints, dest, slotInfo) {
         var THREE = T();
         if (!state.camera || !state.controls || !state.rackGroup || waypoints.length < 2) return;
+        _cancelCamIntro();
         _clearNavVisuals();
-        if (state.camFilter) setCamaraFilter(null);
+        state.interiorMode = false;
+        _setExplorationControls(false, null);
+        if (state.camFilter) {
+            state.camFilter = null;
+            Object.keys(state.camGroups).forEach(function (cod) {
+                var g = state.camGroups[cod];
+                if (g) g.visible = true;
+            });
+        }
 
         var curve = _buildNavCurve(waypoints);
 
@@ -2272,9 +2281,8 @@
         var aisleX = waypoints[waypoints.length - 1].x;
 
         var pathLen = curve.getLength();
-        var duration = Math.min(11000, Math.max(5200, pathLen * 210));
+        var duration = Math.min(4000, Math.max(1800, pathLen * 95));
         var t0 = null;
-        state.controls.enabled = false;
 
         var startTan = curve.getTangent(0).normalize();
         _orientNavArrow(leader, waypoints[0].x, waypoints[0].z, startTan.x, startTan.z);
@@ -2282,11 +2290,11 @@
         function _finishNav() {
             var fromPos = state.camera.position.clone();
             var fromTgt = state.controls.target.clone();
-            var labelY = dest.y + 1.02;
-            labelPos.set(aisleX, labelY, dest.z - 0.22);
-            var toPos = new THREE.Vector3(aisleX, labelY + 0.12, dest.z - 2.55);
+            var labelY = dest.y + 1.0;
+            labelPos.set(aisleX, labelY, dest.z - 0.3);
+            var toPos = new THREE.Vector3(aisleX, labelY + 0.2, dest.z - 4.2);
             var toTgt = new THREE.Vector3(dest.x, dest.y + 0.5, dest.z);
-            var arrowZ = dest.z - 0.72;
+            var arrowZ = dest.z - 1.1;
             _orientNavArrowToward(leader, aisleX, _navArrowFloorY(), arrowZ, dest.x, dest.y * 0.22, dest.z);
             _animateCameraTo(fromPos, fromTgt, toPos, toTgt, 1100, function () {
                 if (addrLabel) {
@@ -2298,7 +2306,6 @@
                 if (slotInfo) {
                     _highlightSlot(slotInfo.camCod, slotInfo.rua, slotInfo.posicao, slotInfo.nivel);
                 }
-                state.controls.enabled = true;
                 renderFrame();
             });
         }
