@@ -4,38 +4,38 @@
 (function (global) {
     'use strict';
 
-    var SLOT_W = 1.02;
-    var SLOT_H = 0.76;
-    var SLOT_D = 1.00;
-    var GAP_POS = 0.40;
+    var SLOT_W = 1.22;
+    var SLOT_H = 0.95;
+    var SLOT_D = 1.15;
+    var GAP_POS = 0.92;
     var GAP_CAM_ADJ = 0.58;
-    var CAM_FLOOR_PAD = 0.22;
-    var NAV_ARROW_FLOOR_Y = 0.038;
-    var NAV_ARROW_LIFT = 0.016;
-    var WALL_RACK_GAP = 0.12;
-    var WALL_OUTSET = 0.08;
+    var CAM_FLOOR_PAD = 0.28;
+    var NAV_ARROW_FLOOR_Y = 0.045;
+    var NAV_ARROW_LIFT = 0.018;
+    var WALL_RACK_GAP = 0.14;
+    var WALL_OUTSET = 0.10;
     var RACK_HALF_DEPTH = SLOT_D * 0.54;
-    var MAIN_AISLE_W = 10;
+    var MAIN_AISLE_W = 12;
     var MAX_NIV = 5;
-    var AISLE_W = 5.2;
-    var LEVEL_H = 0.95;
-    var UPR_W = 0.092;
-    var UPR_D = 0.092;
-    var BEAM_H = 0.075;
-    var BEAM_FACE = 0.11;
-    var SHELF_TH = 0.052;
+    var AISLE_W = 6.8;
+    var LEVEL_H = 1.42;
+    var UPR_W = 0.13;
+    var UPR_D = 0.13;
+    var BEAM_H = 0.12;
+    var BEAM_FACE = 0.16;
+    var SHELF_TH = 0.075;
 
-    var COL_BLUE = 0x1a56a5;
-    var COL_BLUE_DARK = 0x0c3563;
-    var COL_ORANGE = 0xff6d00;
-    var COL_DECK = 0xc9a86c;
-    var COL_DECK_METAL = 0x9eabb3;
-    var COL_FLOOR = 0xd8dde2;
-    var COL_CORRIDOR = 0x616161;
-    var COL_CORRIDOR_EDGE = 0xf5f5f5;
+    var COL_BLUE = 0x1158b4;
+    var COL_BLUE_DARK = 0x0a2e72;
+    var COL_ORANGE = 0xee6800;
+    var COL_DECK = 0xc47f38;
+    var COL_DECK_METAL = 0x8fa3b0;
+    var COL_FLOOR = 0xcdd2d8;
+    var COL_CORRIDOR = 0x555e66;
+    var COL_CORRIDOR_EDGE = 0xf0f2f4;
     var COL_CORRIDOR_STRIPE = 0xffd54f;
-    var COL_WALL_DIV = 0xd5dee6;
-    var COL_WALL_FRAME = 0x546e7a;
+    var COL_WALL_DIV = 0xcdd5de;
+    var COL_WALL_FRAME = 0x4a6272;
     var WALL_DIV_TH = 0.34;
 
     var LEGENDA = [
@@ -729,12 +729,12 @@
     function _rackMaterials(THREE) {
         if (state._rackMats) return state._rackMats;
         state._rackMats = {
-            blue: new THREE.MeshPhongMaterial({ color: COL_BLUE, shininess: 48, specular: 0x336699 }),
-            blueDark: new THREE.MeshPhongMaterial({ color: COL_BLUE_DARK, shininess: 28, specular: 0x112233 }),
-            orange: new THREE.MeshPhongMaterial({ color: COL_ORANGE, shininess: 52, specular: 0x994400 }),
-            bracing: new THREE.MeshPhongMaterial({ color: COL_BLUE, shininess: 40, specular: 0x224466 }),
-            deck: new THREE.MeshPhongMaterial({ color: COL_DECK, shininess: 18, specular: 0x443322 }),
-            deckMetal: new THREE.MeshPhongMaterial({ color: COL_DECK_METAL, shininess: 58, specular: 0x888888 })
+            blue: new THREE.MeshPhongMaterial({ color: COL_BLUE, shininess: 95, specular: 0x4488cc, emissive: 0x040e1e }),
+            blueDark: new THREE.MeshPhongMaterial({ color: COL_BLUE_DARK, shininess: 55, specular: 0x1a3366, emissive: 0x020810 }),
+            orange: new THREE.MeshPhongMaterial({ color: COL_ORANGE, shininess: 110, specular: 0xcc5500, emissive: 0x1a0800 }),
+            bracing: new THREE.MeshPhongMaterial({ color: COL_BLUE, shininess: 75, specular: 0x3366aa, emissive: 0x030c1a }),
+            deck: new THREE.MeshPhongMaterial({ color: COL_DECK, shininess: 30, specular: 0x664422 }),
+            deckMetal: new THREE.MeshPhongMaterial({ color: COL_DECK_METAL, shininess: 140, specular: 0xaabbcc, emissive: 0x060a0d })
         };
         return state._rackMats;
     }
@@ -775,26 +775,40 @@
     }
 
     function _addUprightPair(THREE, parent, xF, xB, z, rackH, mats, towardAisle) {
-        var foot = UPR_W * 2.35;
-        var baseY = 0.014;
-        _addBox(THREE, parent, foot, 0.028, foot, xF, baseY, z, mats.blue);
-        _addBox(THREE, parent, foot, 0.028, foot, xB, baseY, z, mats.blue);
-        var cy = rackH / 2 + 0.028;
+        var foot = UPR_W * 2.8;
+        var baseY = 0.018;
+        _addBox(THREE, parent, foot, 0.036, foot, xF, baseY, z, mats.blue);
+        _addBox(THREE, parent, foot, 0.036, foot, xB, baseY, z, mats.blue);
+        var cy = rackH / 2 + 0.036;
         _addBox(THREE, parent, UPR_W, rackH, UPR_D, xF, cy, z, mats.blue);
         _addBox(THREE, parent, UPR_W, rackH, UPR_D, xB, cy, z, mats.blue);
+        /* perfil C nas costas dos montantes */
+        var flangeW = UPR_W * 0.55;
+        var flangeD = UPR_D * 0.28;
+        _addBox(THREE, parent, flangeW, rackH, flangeD, xF - (towardAisle > 0 ? 1 : -1) * (UPR_W * 0.72), cy, z, mats.blueDark);
+        _addBox(THREE, parent, flangeW, rackH, flangeD, xB - (towardAisle > 0 ? 1 : -1) * (UPR_W * 0.72), cy, z, mats.blueDark);
         var aisleX = towardAisle > 0 ? xF : xB;
         _addUprightHoles(THREE, parent, aisleX, z, rackH, towardAisle, mats);
         var dx = xB - xF;
         var span = Math.abs(dx);
-        var midY = rackH * 0.38;
-        var topYb = rackH * 0.62;
-        var rise = rackH * 0.28;
-        var lenD = Math.sqrt(span * span + rise * rise);
-        var braceLo = _addBox(THREE, parent, lenD, 0.024, 0.024, (xF + xB) / 2, midY, z, mats.bracing);
-        braceLo.rotation.z = Math.atan2(rise, dx);
-        var braceHi = _addBox(THREE, parent, lenD, 0.024, 0.024, (xF + xB) / 2, topYb, z, mats.bracing);
-        braceHi.rotation.z = -Math.atan2(rise, dx);
-        _addBox(THREE, parent, span * 0.88, 0.02, 0.022, (xF + xB) / 2, rackH * 0.5, z, mats.bracing);
+        var bT = 0.030;
+        /* 3 bandas de X-brace ao longo da altura */
+        var bands = [0, 0.36, 0.68];
+        bands.forEach(function(start) {
+            var y0 = rackH * start + 0.06;
+            var y1 = rackH * (start + 0.34) - 0.06;
+            var rise = y1 - y0;
+            var lenD = Math.sqrt(span * span + rise * rise);
+            var my = (y0 + y1) / 2;
+            var bA = _addBox(THREE, parent, lenD, bT, bT, (xF + xB) / 2, my, z, mats.bracing);
+            bA.rotation.z = Math.atan2(rise, dx);
+            var bB = _addBox(THREE, parent, lenD, bT, bT, (xF + xB) / 2, my, z, mats.bracing);
+            bB.rotation.z = -Math.atan2(rise, dx);
+        });
+        /* barras horizontais em cada nó */
+        [0, 0.34, 0.68, 1.0].forEach(function(t) {
+            _addBox(THREE, parent, span * 0.92, 0.022, 0.025, (xF + xB) / 2, rackH * t + (t > 0 ? 0 : 0.04), z, mats.bracing);
+        });
     }
 
     function _addBeamRun(THREE, parent, xF, xB, z0, z1, y, mats, towardAisle) {
@@ -802,18 +816,34 @@
         var cz = (z0 + z1) / 2;
         var w = Math.abs(xF - xB) + UPR_W;
         var d = Math.max(UPR_D, Math.abs(z1 - z0) + UPR_D * 0.5);
-        _addBox(THREE, parent, w, BEAM_H * 0.68, d, cx, y - BEAM_H * 0.1, cz, mats.orange);
-        var lipOff = towardAisle > 0 ? w * 0.18 : -w * 0.18;
-        _addBox(THREE, parent, w * 0.52, BEAM_H * 0.38, d * 0.94, cx + lipOff, y + BEAM_H * 0.18, cz, mats.orange);
+        /* alma da viga (horizontal) */
+        _addBox(THREE, parent, w, BEAM_H * 0.72, d, cx, y - BEAM_H * 0.08, cz, mats.orange);
+        /* aba superior */
+        _addBox(THREE, parent, w, BEAM_H * 0.16, d * 1.05, cx, y + BEAM_H * 0.30, cz, mats.orange);
+        /* aba inferior */
+        _addBox(THREE, parent, w, BEAM_H * 0.12, d * 1.02, cx, y - BEAM_H * 0.44, cz, mats.orange);
+        /* placa de reforço lateral (face do corredor) */
+        var faceOff = towardAisle > 0 ? (w * 0.5 + 0.008) : -(w * 0.5 + 0.008);
+        _addBox(THREE, parent, 0.018, BEAM_H * 0.85, d * 0.9, cx + faceOff, y - BEAM_H * 0.05, cz, mats.orange);
     }
 
     function _addBayDeck(THREE, parent, xF, xB, z0, z1, y, mat) {
         var cx = (xF + xB) / 2;
         var cz = (z0 + z1) / 2;
-        var w = Math.abs(xF - xB) - UPR_W * 0.35;
+        var w = Math.abs(xF - xB) - UPR_W * 0.30;
         var d = Math.abs(z1 - z0) - 0.06;
         if (w < 0.12 || d < 0.12) return;
-        _addBox(THREE, parent, w, SHELF_TH * 0.88, d, cx, y, cz, mat);
+        /* piso principal (chapa) */
+        _addBox(THREE, parent, w, SHELF_TH, d, cx, y, cz, mat);
+        /* vigotas longitudinais de reforço debaixo do piso */
+        var nVigas = Math.max(2, Math.round(d / 0.38));
+        var vigaT = SHELF_TH * 0.55;
+        var vigaH = SHELF_TH * 1.8;
+        var zStep = d / (nVigas + 1);
+        for (var vi = 1; vi <= nVigas; vi++) {
+            var vz = (z0 + zStep * vi);
+            _addBox(THREE, parent, w * 0.92, vigaH, vigaT, cx, y - vigaH * 0.5 - SHELF_TH * 0.1, vz, mat);
+        }
     }
 
     function _zMarksUniformes(maxPos, bayStep) {
@@ -838,7 +868,7 @@
         var xs = _rackXs(xBase, towardAisle);
         var xF = xs.front;
         var xB = xs.back;
-        var rackH = (maxNiv - 1) * LEVEL_H + BEAM_H + SHELF_TH + (maxNiv >= MAX_NIV ? 0.38 : 0.12);
+        var rackH = (maxNiv - 1) * LEVEL_H + BEAM_H + SHELF_TH + (maxNiv >= MAX_NIV ? 0.55 : 0.18);
         var bayStep = SLOT_D + GAP_POS;
         var zMarks = _zMarksUniformes(maxPos, bayStep);
         zMarks.forEach(function (z) {
