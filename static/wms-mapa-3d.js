@@ -1074,7 +1074,8 @@
                 var passageW = Math.max((fp21.width || AISLE_W) * 0.92, AISLE_W);
                 var blockLeft = -leftSpan / 2;
                 var passageLeft = passageX - passageW / 2;
-                var mainW = passageLeft - blockLeft;
+                var passageRight = passageX + passageW / 2;
+                var mainW = passageRight - blockLeft;
                 if (mainW > 0.8) {
                     corridors.push({
                         width: mainW,
@@ -1084,6 +1085,13 @@
                         label: 'CORREDOR PRINCIPAL — CÂM 11 · 12 · 13'
                     });
                 }
+                corridors.push({
+                    width: passageW,
+                    depth: MAIN_AISLE_W,
+                    x: passageX,
+                    z: mainCorridorZ,
+                    silent: true
+                });
             } else {
                 corridors.push({
                     width: leftSpan,
@@ -1107,14 +1115,14 @@
             passagem21 = {
                 x: positions[13].x,
                 z: maxDepthLeft + MAIN_AISLE_W / 2,
-                width: Math.max(AISLE_W * 0.92, (fp21.width || AISLE_W) * 0.55)
+                width: Math.max((fp21.width || AISLE_W) * 0.92, AISLE_W)
             };
         }
 
         return { positions: positions, corridors: corridors, passagem21: passagem21 };
     }
 
-    function _addCorridorPlane(THREE, parent, w, d, cx, cz, name, label) {
+    function _addCorridorPlane(THREE, parent, w, d, cx, cz, name, label, silent) {
         var y = 0.012;
         var baseMat = new THREE.MeshPhongMaterial({
             color: COL_CORRIDOR,
@@ -1151,7 +1159,7 @@
         stripe.position.set(cx, y + 0.002, cz);
         parent.add(stripe);
 
-        if (label) {
+        if (label && !silent) {
             var lbl = _textPlane(THREE, label, Math.min(w * 0.94, 16), 1.15, 38, '#ffffff', 'rgba(33,33,33,0.78)');
             lbl.rotation.x = -Math.PI / 2;
             lbl.position.set(cx, y + 0.004, cz);
@@ -1332,28 +1340,41 @@
             var passage21 = _passagemCam21(corridors, passagem21);
             var passLeft = passage21 ? passage21.x - passage21.width / 2 : f21.minX + AISLE_W * 0.45;
             var passRight = passage21 ? passage21.x + passage21.width / 2 : f21.maxX - AISLE_W * 0.45;
-            var rearZ21 = f21.maxZ + halfTh + out;
-            var rearW21 = (f21.maxX - f21.minX) + WALL_DIV_TH + out * 2;
-            _addWallRunX(group, mats, wallH, rearW21, (f21.minX + f21.maxX) / 2, rearZ21, 'parede-fundo-21');
-
-            var frontZ21 = f21.minZ - halfTh - out;
-            var d21 = f21.maxZ - frontZ21;
-            var cz21 = frontZ21 + d21 / 2;
+            var maxDepthLeft = positions[21] ? positions[21].z - MAIN_AISLE_W : b113.maxZ;
             var leftX21 = f21.minX - halfTh - out;
             var rightX21 = f21.maxX + halfTh + out;
-            _addWallRunZ(group, mats, wallH, leftX21, cz21, d21, 'parede-esq-21');
-            _addWallRunZ(group, mats, wallH, rightX21, cz21, d21, 'parede-dir-21');
+            var frontZ21 = f21.minZ - halfTh - out;
+            var rearZ21 = f21.maxZ + halfTh + out;
+            var d21Full = rearZ21 - frontZ21 + halfTh;
+            var cz21 = frontZ21 + d21Full / 2;
+            var rearW21 = rightX21 - leftX21 + WALL_DIV_TH;
+            var rearCx = (leftX21 + rightX21) / 2;
 
-            var leftFrontW = passLeft - f21.minX;
-            if (leftFrontW > 0.28) {
+            _addWallRunX(group, mats, wallH, rearW21, rearCx, rearZ21, 'parede-fundo-21');
+            _addWallRunZ(group, mats, wallH, leftX21, cz21, d21Full, 'parede-esq-21');
+            _addWallRunZ(group, mats, wallH, rightX21, cz21, d21Full, 'parede-dir-21');
+
+            if (passage21) {
+                var passLen = frontZ21 - maxDepthLeft;
+                if (passLen > 0.35) {
+                    var passZc = maxDepthLeft + passLen / 2;
+                    var passWallL = passLeft - halfTh - out;
+                    var passWallR = passRight + halfTh + out;
+                    _addWallRunZ(group, mats, wallH, passWallL, passZc, passLen, 'parede-passagem-esq-21');
+                    _addWallRunZ(group, mats, wallH, passWallR, passZc, passLen, 'parede-passagem-dir-21');
+                }
+            }
+
+            var leftFrontW = passLeft - leftX21;
+            if (leftFrontW > 0.18) {
                 _addWallRunX(
                     group, mats, wallH, leftFrontW,
-                    f21.minX + leftFrontW / 2, frontZ21,
+                    leftX21 + leftFrontW / 2, frontZ21,
                     'parede-frente-21-esq'
                 );
             }
-            var rightFrontW = f21.maxX - passRight;
-            if (rightFrontW > 0.28) {
+            var rightFrontW = rightX21 - passRight;
+            if (rightFrontW > 0.18) {
                 _addWallRunX(
                     group, mats, wallH, rightFrontW,
                     passRight + rightFrontW / 2, frontZ21,
@@ -1501,7 +1522,8 @@
                     cor.x,
                     cor.z,
                     'corredor-' + (i + 1),
-                    cor.label
+                    cor.label,
+                    cor.silent
                 );
             });
             _addCamGapStripes(THREE, state.rackGroup, leftCodes, fpsLayout, layout.positions, maxDepthLeft);
