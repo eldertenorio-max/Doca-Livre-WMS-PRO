@@ -1378,8 +1378,8 @@
             var rightX21 = f21.maxX + halfTh + out;
             var frontZ21 = f21.minZ - halfTh - out;
             var rearZ21 = f21.maxZ + halfTh + out;
-            var d21Full = rearZ21 - frontZ21 + halfTh;
-            var cz21 = frontZ21 + d21Full / 2;
+            var d21Full = rearZ21 - frontZ21 + WALL_DIV_TH;
+            var cz21 = (frontZ21 + rearZ21) / 2;
             var rearW21 = rightX21 - leftX21 + WALL_DIV_TH;
             var rearCx = (leftX21 + rightX21) / 2;
 
