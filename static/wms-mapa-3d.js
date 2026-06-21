@@ -1387,10 +1387,6 @@
             _addWallRunX(group, mats, wallH, rearW21, rearCx, rearZ21, 'parede-fundo-21');
             _addWallRunZ(group, mats, wallH, leftX21, cz21, d21Full, 'parede-esq-21');
             _addWallRunZ(group, mats, wallH, rightX21, cz21, d21Full, 'parede-dir-21');
-
-            var frontCorrCz = rearZ21 + MAIN_AISLE_W / 2;
-            _addWallRunZ(group, mats, wallH, leftX, frontCorrCz, MAIN_AISLE_W, 'parede-esq-corredor-21');
-            _addWallRunZ(group, mats, wallH, rightX, frontCorrCz, MAIN_AISLE_W, 'parede-dir-corredor-21');
         }
 
         parent.add(group);
