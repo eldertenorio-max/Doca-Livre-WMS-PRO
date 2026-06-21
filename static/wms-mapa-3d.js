@@ -827,7 +827,7 @@
         var xs = _rackXs(xBase, towardAisle);
         var xF = xs.front;
         var xB = xs.back;
-        var rackH = maxNiv * LEVEL_H + 0.35;
+        var rackH = (maxNiv - 1) * LEVEL_H + BEAM_H + SHELF_TH + 0.12;
         var bayStep = SLOT_D + GAP_POS;
         var zMarks = _zMarksUniformes(maxPos, bayStep);
         zMarks.forEach(function (z) {
@@ -841,12 +841,6 @@
                 _addBeamRun(THREE, parent, xF, xB, zMarks[i], zMarks[i + 1], yBeam, mats, towardAisle);
                 _addBayDeck(THREE, parent, xF, xB, zMarks[i], zMarks[i + 1], yDeck, deckMat);
             }
-        }
-        var topY = maxNiv * LEVEL_H + BEAM_H * 0.5;
-        var topDeckY = maxNiv * LEVEL_H + BEAM_H + SHELF_TH * 0.22;
-        for (var ti = 0; ti < zMarks.length - 1; ti++) {
-            _addBeamRun(THREE, parent, xF, xB, zMarks[ti], zMarks[ti + 1], topY, mats, towardAisle);
-            _addBayDeck(THREE, parent, xF, xB, zMarks[ti], zMarks[ti + 1], topDeckY, mats.deckMetal);
         }
 
         _addLongarinaLabelsRack(THREE, parent, camCod, rua, maxPos, maxNiv, xF, xB, towardAisle, bayStep);
