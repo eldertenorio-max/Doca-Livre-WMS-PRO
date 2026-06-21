@@ -1153,12 +1153,6 @@
             parent.add(edgeZ);
         });
 
-        var stripeMat = new THREE.MeshBasicMaterial({ color: COL_CORRIDOR_STRIPE, side: THREE.DoubleSide });
-        var stripe = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(w * 0.08, 0.55), d * 0.88), stripeMat);
-        stripe.rotation.x = -Math.PI / 2;
-        stripe.position.set(cx, y + 0.002, cz);
-        parent.add(stripe);
-
         if (label && !silent) {
             var lbl = _textPlane(THREE, label, Math.min(w * 0.94, 16), 1.15, 38, '#ffffff', 'rgba(33,33,33,0.78)');
             lbl.rotation.x = -Math.PI / 2;
