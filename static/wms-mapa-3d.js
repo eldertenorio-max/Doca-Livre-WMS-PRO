@@ -2389,10 +2389,11 @@
             var fromPos = state.camera.position.clone();
             var fromTgt = state.controls.target.clone();
             var labelY = dest.y + 1.0;
-            labelPos.set(aisleX, labelY, dest.z - 0.3);
-            var toPos = new THREE.Vector3(aisleX, labelY + 0.2, dest.z - 4.2);
+            /* label colado à face da prateleira, ligeiramente à frente */
+            labelPos.set(dest.x, labelY, dest.z + 0.22);
+            var toPos = new THREE.Vector3(aisleX, labelY + 0.15, dest.z - 2.8);
             var toTgt = new THREE.Vector3(dest.x, dest.y + 0.5, dest.z);
-            var arrowZ = dest.z - 1.1;
+            var arrowZ = dest.z - 0.9;
             _orientNavArrowToward(leader, aisleX, _navArrowFloorY(), arrowZ, dest.x, dest.y * 0.22, dest.z);
             _animateCameraTo(fromPos, fromTgt, toPos, toTgt, 1100, function () {
                 if (addrLabel) {
