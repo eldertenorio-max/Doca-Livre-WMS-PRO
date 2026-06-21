@@ -121,6 +121,12 @@
         return parseInt(cod, 10) === 21 ? 2 : MAX_NIV;
     }
 
+    function _levelHForCam(cod) {
+        /* câmaras com poucos níveis ganham nível mais alto (armazenamento a granel) */
+        var mn = _maxNivCam(cod);
+        return mn <= 2 ? LEVEL_H * 2.1 : LEVEL_H;
+    }
+
     function _camMeta(cod) {
         cod = parseInt(cod, 10);
         if (cod === 21) return { tipo: 'Refrigerado', temp: '-18' };
@@ -279,8 +285,9 @@
         return towardAisle > 0 ? cx + lipOff + lipHalf + 0.004 : cx + lipOff - lipHalf - 0.004;
     }
 
-    function _beamLipY(niv) {
-        var yBeam = (niv - 1) * LEVEL_H + BEAM_H * 0.5;
+    function _beamLipY(niv, levelH) {
+        var lh = levelH || LEVEL_H;
+        var yBeam = (niv - 1) * lh + BEAM_H * 0.5;
         return yBeam + BEAM_H * 0.18;
     }
 
@@ -330,17 +337,18 @@
         parent.add(mesh);
     }
 
-    function _addLongarinaLabelsRack(THREE, parent, camCod, rua, maxPos, maxNiv, xF, xB, towardAisle, bayStep) {
+    function _addLongarinaLabelsRack(THREE, parent, camCod, rua, maxPos, maxNiv, xF, xB, towardAisle, bayStep, levelH) {
+        var lh = levelH || LEVEL_H;
         var xFace = _beamLipAisleX(xF, xB, towardAisle);
         var labelW = Math.min(SLOT_D * 0.82, bayStep * 0.9);
         for (var pos = 1; pos <= maxPos; pos++) {
             var z = (pos - 1) * bayStep + SLOT_D / 2;
             for (var niv = 1; niv <= maxNiv; niv++) {
-                _addLongarinaEtqOnBeam(THREE, parent, camCod, pos, niv, maxNiv, xFace, _beamLipY(niv), z, towardAisle, labelW);
+                _addLongarinaEtqOnBeam(THREE, parent, camCod, pos, niv, maxNiv, xFace, _beamLipY(niv, lh), z, towardAisle, labelW);
             }
         }
         var ruaLbl = _textPlane(THREE, 'Rua ' + String(rua || '').trim().toUpperCase(), 0.5, 0.12, 24, '#fff', null);
-        ruaLbl.position.set(xFace, _beamLipY(1) + BEAM_H * 0.55, SLOT_D * 0.35);
+        ruaLbl.position.set(xFace, _beamLipY(1, lh) + BEAM_H * 0.55, SLOT_D * 0.35);
         ruaLbl.rotation.y = towardAisle > 0 ? -Math.PI / 2 : Math.PI / 2;
         ruaLbl.renderOrder = 2;
         parent.add(ruaLbl);
@@ -860,23 +868,24 @@
         return maxPos * (SLOT_D + GAP_POS) + 0.5;
     }
 
-    function _buildIndustrialRackSide(THREE, parent, xBase, towardAisle, rua, ruaSlots, camCod, shelfGeo, dummy, col, maxNiv, maxPos) {
+    function _buildIndustrialRackSide(THREE, parent, xBase, towardAisle, rua, ruaSlots, camCod, shelfGeo, dummy, col, maxNiv, maxPos, levelH) {
         maxNiv = maxNiv || MAX_NIV;
         maxPos = Math.max(1, parseInt(maxPos, 10) || 1);
         if (!ruaSlots.length && maxPos < 1) return 0;
+        var lh = levelH || LEVEL_H;
         var mats = _rackMaterials(THREE);
         var xs = _rackXs(xBase, towardAisle);
         var xF = xs.front;
         var xB = xs.back;
-        var rackH = (maxNiv - 1) * LEVEL_H + BEAM_H + SHELF_TH + (maxNiv >= MAX_NIV ? 0.55 : 0.18);
+        var rackH = (maxNiv - 1) * lh + BEAM_H + SHELF_TH + (maxNiv >= MAX_NIV ? 0.55 : 0.28);
         var bayStep = SLOT_D + GAP_POS;
         var zMarks = _zMarksUniformes(maxPos, bayStep);
         zMarks.forEach(function (z) {
             _addUprightPair(THREE, parent, xF, xB, z, rackH, mats, towardAisle);
         });
         for (var n = 1; n <= maxNiv; n++) {
-            var yBeam = (n - 1) * LEVEL_H + BEAM_H * 0.5;
-            var yDeck = (n - 1) * LEVEL_H + BEAM_H + SHELF_TH * 0.22;
+            var yBeam = (n - 1) * lh + BEAM_H * 0.5;
+            var yDeck = (n - 1) * lh + BEAM_H + SHELF_TH * 0.22;
             var deckMat = n === maxNiv ? mats.deckMetal : mats.deck;
             for (var i = 0; i < zMarks.length - 1; i++) {
                 _addBeamRun(THREE, parent, xF, xB, zMarks[i], zMarks[i + 1], yBeam, mats, towardAisle);
@@ -884,7 +893,7 @@
             }
         }
 
-        _addLongarinaLabelsRack(THREE, parent, camCod, rua, maxPos, maxNiv, xF, xB, towardAisle, bayStep);
+        _addLongarinaLabelsRack(THREE, parent, camCod, rua, maxPos, maxNiv, xF, xB, towardAisle, bayStep, lh);
 
         if (!ruaSlots.length) {
             return zMarks[zMarks.length - 1] + 0.2;
@@ -1402,6 +1411,7 @@
         if (!slots.length) return null;
         var maxPos = _camMaxPosicao(slots, ruas);
 
+        var levelH = _levelHForCam(cod);
         var camGroup = new THREE.Group();
         camGroup.name = 'camara-' + cod;
         var aisleLen = _aisleLenForMaxPos(maxPos);
@@ -1416,7 +1426,7 @@
             if (ruas.length <= 1) towardAisle = 1;
             var ruaGroup = new THREE.Group();
             ruaGroup.name = 'rua-' + rua;
-            var len = _buildIndustrialRackSide(THREE, ruaGroup, xBase, towardAisle, rua, ruaSlots, cod, shelfGeo, dummy, col, maxNiv, maxPos);
+            var len = _buildIndustrialRackSide(THREE, ruaGroup, xBase, towardAisle, rua, ruaSlots, cod, shelfGeo, dummy, col, maxNiv, maxPos, levelH);
             if (len > aisleLen) aisleLen = len;
             camGroup.add(ruaGroup);
         });
