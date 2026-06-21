@@ -18,7 +18,7 @@
     var MAIN_AISLE_W = 10;
     var MAX_NIV = 5;
     var AISLE_W = 5.2;
-    var LEVEL_H = 0.82;
+    var LEVEL_H = 0.95;
     var UPR_W = 0.092;
     var UPR_D = 0.092;
     var BEAM_H = 0.075;
@@ -827,7 +827,7 @@
         var xs = _rackXs(xBase, towardAisle);
         var xF = xs.front;
         var xB = xs.back;
-        var rackH = (maxNiv - 1) * LEVEL_H + BEAM_H + SHELF_TH + 0.12;
+        var rackH = (maxNiv - 1) * LEVEL_H + BEAM_H + SHELF_TH + (maxNiv >= MAX_NIV ? 0.38 : 0.12);
         var bayStep = SLOT_D + GAP_POS;
         var zMarks = _zMarksUniformes(maxPos, bayStep);
         zMarks.forEach(function (z) {
