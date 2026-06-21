@@ -1357,6 +1357,59 @@
         group.add(base);
     }
 
+    function _addWallRunXWithDoor(THREE, group, mats, wallH, width, xCenter, z, name) {
+        if (!width || width < 0.06) return;
+        var doorW = Math.min(1.4, width * 0.18);
+        var doorH = Math.min(wallH * 0.42, 3.0);
+        var sideW = (width - doorW) / 2;
+        /* painel esquerdo */
+        _addWallRunX(group, mats, wallH, sideW, xCenter - doorW / 2 - sideW / 2, z, name + '-esq');
+        /* painel direito */
+        _addWallRunX(group, mats, wallH, sideW, xCenter + doorW / 2 + sideW / 2, z, name + '-dir');
+        /* trecho acima da porta */
+        var frameTh = 0.07;
+        var overH = wallH - doorH;
+        var THREE_obj = T ? T() : THREE;
+        var panelMat = mats.panel;
+        var frameMat = mats.frame;
+        var overPan = new THREE_obj.Mesh(new THREE_obj.BoxGeometry(doorW, overH, WALL_DIV_TH), panelMat);
+        overPan.position.set(xCenter, doorH + overH / 2, z);
+        group.add(overPan);
+        /* marco da porta */
+        var jambH = doorH + 0.06;
+        var jambW = 0.10;
+        var doorMat = new THREE_obj.MeshPhongMaterial({ color: 0xd4c5b0, shininess: 60, specular: 0x888866 });
+        /* jambas laterais */
+        [xCenter - doorW / 2 - jambW / 2, xCenter + doorW / 2 + jambW / 2].forEach(function (jx) {
+            var j = new THREE_obj.Mesh(new THREE_obj.BoxGeometry(jambW, jambH, WALL_DIV_TH * 1.3), frameMat);
+            j.position.set(jx, jambH / 2, z);
+            group.add(j);
+        });
+        /* verga (topo do marco) */
+        var vg = new THREE_obj.Mesh(new THREE_obj.BoxGeometry(doorW + jambW * 2, 0.10, WALL_DIV_TH * 1.3), frameMat);
+        vg.position.set(xCenter, doorH + 0.05, z);
+        group.add(vg);
+        /* folha da porta (ligeiramente aberta ~15°) */
+        var leafGeo = new THREE_obj.BoxGeometry(doorW - 0.06, doorH - 0.08, 0.055);
+        var leaf = new THREE_obj.Mesh(leafGeo, doorMat);
+        var angle = 0.26;
+        leaf.position.set(
+            xCenter + (doorW / 2 - 0.04) * (1 - Math.cos(angle)),
+            doorH / 2,
+            z + (doorW / 2 - 0.04) * Math.sin(angle)
+        );
+        leaf.rotation.y = -angle;
+        group.add(leaf);
+        /* maçaneta */
+        var knob = new THREE_obj.Mesh(new THREE_obj.SphereGeometry(0.06, 8, 8), new THREE_obj.MeshPhongMaterial({ color: 0xb8860b, shininess: 160 }));
+        knob.position.set(
+            xCenter + (doorW / 2 - 0.18) * Math.cos(-angle),
+            doorH * 0.50,
+            z + (doorW / 2 - 0.18) * Math.sin(-angle) + 0.06
+        );
+        group.add(knob);
+    }
+
     /** Paredes externas rente ao bloco 11–13 e envoltório da câm. 21 (por fora dos racks). */
     function _addPerimeterWalls(THREE, parent, wallH, positions, camarasByCode, corridors, passagem21) {
         if (!wallH || !positions || !camarasByCode) return;
@@ -1393,9 +1446,19 @@
             var rearCx = (leftX21 + rightX21) / 2;
 
             _addWallRunX(group, mats, wallH, rearW21, rearCx, frontZ21, 'parede-frente-21');
-            _addWallRunX(group, mats, wallH, rearW21, rearCx, rearZ21, 'parede-fundo-21');
+            _addWallRunXWithDoor(THREE, group, mats, wallH, rearW21, rearCx, rearZ21, 'parede-fundo-21');
             _addWallRunZ(group, mats, wallH, leftX21, cz21, d21Full, 'parede-esq-21');
             _addWallRunZ(group, mats, wallH, rightX21, cz21, d21Full, 'parede-dir-21');
+
+            /* fechamento das laterais do corredor entre o bloco 11-13 e a câm. 21 */
+            var corrZ0 = b113.maxZ + halfTh;
+            var corrZ1 = frontZ21 - halfTh;
+            if (corrZ1 > corrZ0 + 0.2) {
+                var corrD = corrZ1 - corrZ0;
+                var corrCz = (corrZ0 + corrZ1) / 2;
+                _addWallRunZ(group, mats, wallH, leftX, corrCz, corrD, 'parede-esq-corredor');
+                _addWallRunZ(group, mats, wallH, rightX, corrCz, corrD, 'parede-dir-corredor');
+            }
         }
 
         parent.add(group);
