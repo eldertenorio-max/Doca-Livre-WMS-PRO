@@ -454,13 +454,22 @@
         centerCameraOnRack(!!intro, !!filter);
     }
 
+    function _setPerimeterWallsVisible(visible) {
+        if (!state.rackGroup) return;
+        state.rackGroup.traverse(function (obj) {
+            if (obj.isGroup && obj.name === 'paredes-perimetro') {
+                obj.visible = visible;
+            }
+        });
+    }
+
     function _setExplorationControls(interior, camCod) {
         if (!state.controls) return;
         if (interior) {
-            state.controls.minDistance = 0.45;
+            state.controls.minDistance = 0.25;
             state.controls.maxDistance = 52;
             state.controls.maxPolarAngle = Math.PI * 0.88;
-            state.controls.minPolarAngle = 0.12;
+            state.controls.minPolarAngle = 0.08;
             state.controls.enablePan = true;
             state.controls.dampingFactor = 0.06;
             if (state.scene && state.scene.fog) {
@@ -468,10 +477,11 @@
                 state.scene.fog.far = 105;
             }
             if (state.camera) {
-                state.camera.fov = 68;
-                state.camera.near = 0.12;
+                state.camera.fov = 72;
+                state.camera.near = 0.05;
                 state.camera.updateProjectionMatrix();
             }
+            _setPerimeterWallsVisible(false);
         } else {
             state.controls.minDistance = 1.1;
             state.controls.maxDistance = 220;
@@ -487,6 +497,7 @@
                 state.camera.near = 0.1;
                 state.camera.updateProjectionMatrix();
             }
+            _setPerimeterWallsVisible(true);
         }
         _setInteriorVisuals(!!interior, camCod || state.camFilter);
     }
@@ -560,8 +571,8 @@
         var center = box.getCenter(new THREE.Vector3());
         var eyeY = 1.74;
         var lookY = 1.35;
-        var entryZ = camPos.z + Math.max(size.z * 0.22, 1.4);
-        var deepZ = camPos.z + Math.max(size.z * 0.88, size.z - 0.6);
+        var entryZ = camPos.z + Math.max(size.z * 0.35, 2.0);
+        var deepZ = camPos.z + Math.max(size.z * 0.82, size.z - 1.2);
         return {
             pos: new THREE.Vector3(center.x, eyeY, entryZ),
             target: new THREE.Vector3(center.x, lookY, deepZ)
