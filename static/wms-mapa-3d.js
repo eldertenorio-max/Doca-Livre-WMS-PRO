@@ -1106,6 +1106,13 @@
         if (leftSpan && fp21) {
             var x13 = positions[13] ? positions[13].x : 0;
             positions[21] = { x: x13, z: maxDepthLeft + MAIN_AISLE_W };
+            corridors.push({
+                width: fp21.width,
+                depth: MAIN_AISLE_W,
+                x: x13,
+                z: maxDepthLeft + MAIN_AISLE_W + fp21.depth + MAIN_AISLE_W / 2,
+                label: 'CORREDOR — CÂM. 21'
+            });
         } else if (fp21) {
             positions[21] = { x: 0, z: 0 };
         }
@@ -1330,11 +1337,14 @@
             var rightX21 = f21.maxX + halfTh + out;
             var frontZ21 = f21.minZ - halfTh - out;
             var rearZ21 = f21.maxZ + halfTh + out;
+            var d21Full = rearZ21 - frontZ21 + halfTh;
+            var cz21 = frontZ21 + d21Full / 2;
             var rearW21 = rightX21 - leftX21 + WALL_DIV_TH;
             var rearCx = (leftX21 + rightX21) / 2;
 
-            _addWallRunX(group, mats, wallH, rearW21, rearCx, rearZ21, 'parede-fundo-21');
             _addWallRunX(group, mats, wallH, rearW21, rearCx, frontZ21, 'parede-frente-21');
+            _addWallRunZ(group, mats, wallH, leftX21, cz21, d21Full, 'parede-esq-21');
+            _addWallRunZ(group, mats, wallH, rightX21, cz21, d21Full, 'parede-dir-21');
         }
 
         parent.add(group);
