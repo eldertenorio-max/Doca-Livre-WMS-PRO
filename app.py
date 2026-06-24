@@ -1411,12 +1411,78 @@ def _ensure_viagem_periodo_bipagem_table(conn):
             )'''
         )
     try:
+        if is_pg:
+            conn.execute(
+                f'ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS extrato_gerado_em TIMESTAMPTZ'
+            )
+        else:
+            cols = [r[1] for r in conn.execute(f'PRAGMA table_info({tbl})').fetchall()]
+            if 'extrato_gerado_em' not in cols:
+                conn.execute(f'ALTER TABLE {tbl} ADD COLUMN extrato_gerado_em TEXT')
         conn.commit()
     except Exception:
         try:
             conn.rollback()
         except Exception:
             pass
+
+
+def _marcar_extrato_gerado(conn, id_viagem, fluxo='carregamento', momento=None, commit=False):
+    """Marca que o extrato/comprovante da viagem foi gerado (carregamento concluído)."""
+    id_norm = _normalizar_id_viagem(id_viagem)
+    if not id_norm:
+        return
+    fluxo = (fluxo or 'carregamento').strip().lower()
+    if fluxo not in ('carregamento', 'devolucao'):
+        fluxo = 'carregamento'
+    _ensure_viagem_periodo_bipagem_table(conn)
+    momento = momento or datetime.now(timezone.utc)
+    arm = _datetime_para_armazenamento(conn, momento)
+    tbl = 'public.viagem_periodo_bipagem' if getattr(conn, 'kind', None) == 'pg' else 'viagem_periodo_bipagem'
+    if getattr(conn, 'kind', None) == 'pg':
+        conn.execute(
+            f'''UPDATE {tbl} SET extrato_gerado_em = ?
+                WHERE id_viagem = ? AND fluxo = ? AND extrato_gerado_em IS NULL''',
+            (arm, id_norm, fluxo),
+        )
+        conn.execute(
+            f'''INSERT INTO {tbl} (id_viagem, fluxo, inicio_em, fim_em, extrato_gerado_em)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (id_viagem, fluxo) DO UPDATE SET
+                  extrato_gerado_em = COALESCE({tbl}.extrato_gerado_em, excluded.extrato_gerado_em)''',
+            (id_norm, fluxo, arm, arm, arm),
+        )
+    else:
+        conn.execute(
+            f'''UPDATE {tbl} SET extrato_gerado_em = ?
+                WHERE id_viagem = ? AND fluxo = ? AND (extrato_gerado_em IS NULL OR extrato_gerado_em = '')''',
+            (arm, id_norm, fluxo),
+        )
+        conn.execute(
+            f'''INSERT INTO {tbl} (id_viagem, fluxo, inicio_em, fim_em, extrato_gerado_em)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id_viagem, fluxo) DO UPDATE SET
+                  extrato_gerado_em = COALESCE({tbl}.extrato_gerado_em, excluded.extrato_gerado_em)''',
+            (id_norm, fluxo, arm, arm, arm),
+        )
+    if commit:
+        conn.commit()
+
+
+def _viagem_carregamento_concluido(extrato_gerado_em, bip_row):
+    """Extrato gerado (comprovante) ou bipagem gravada em lote no comprovante."""
+    if extrato_gerado_em:
+        return True
+    if not bip_row:
+        return False
+    total = int((bip_row.get('total_bipados') if hasattr(bip_row, 'get') else bip_row['total_bipados']) or 0)
+    if total <= 0:
+        return False
+    inicio_b = bip_row.get('inicio') if hasattr(bip_row, 'get') else bip_row['inicio']
+    fim_b = bip_row.get('fim') if hasattr(bip_row, 'get') else bip_row['fim']
+    if inicio_b is None or fim_b is None:
+        return False
+    return str(inicio_b).strip() == str(fim_b).strip()
 
 
 def _parse_datetime_iso(val):
@@ -3277,12 +3343,19 @@ def gravar_bipagem_viagem(id_viagem):
             )
             gravados += 1
         _bulk_insert_produtos_bipados(conn, params_insert)
-        inicio_p = _parse_datetime_iso(data.get('inicio_carregamento'))
-        fim_p = _parse_datetime_iso(data.get('fim_carregamento'))
-        if inicio_p and fim_p:
-            _definir_periodo_bipagem(conn, id_norm, fluxo, inicio_p, fim_p)
-        elif gravados > 0:
-            _definir_periodo_bipagem(conn, id_norm, fluxo, agora, datetime.now(timezone.utc))
+        if gravados > 0:
+            inicio_p = _parse_datetime_iso(data.get('inicio_carregamento'))
+            fim_p = _parse_datetime_iso(data.get('fim_carregamento'))
+            agora_fim = datetime.now(timezone.utc)
+            if not fim_p:
+                fim_p = agora_fim
+            if inicio_p and fim_p and fim_p <= inicio_p:
+                fim_p = inicio_p + timedelta(seconds=1)
+            if inicio_p and fim_p:
+                _definir_periodo_bipagem(conn, id_norm, fluxo, inicio_p, fim_p)
+            else:
+                _definir_periodo_bipagem(conn, id_norm, fluxo, agora_fim - timedelta(seconds=1), agora_fim)
+            _marcar_extrato_gerado(conn, id_norm, fluxo, agora_fim)
         conn.commit()
     except Exception as e:
         try:
@@ -10418,6 +10491,7 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None, janela_inicio=None, janela
 
     ids_norm = [_normalizar_id_viagem(i) for i in ids]
     periodo_map = {}
+    extrato_map = {}
     bip_map = {}
     placa_override = {}
 
@@ -10426,7 +10500,7 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None, janela_inicio=None, janela
     ph = ','.join('?' * len(ids_norm))
     try:
         rows_per = conn.execute(
-            f"SELECT id_viagem, inicio_em, fim_em FROM {tbl_per} WHERE fluxo = 'carregamento' AND id_viagem IN ({ph})",
+            f"SELECT id_viagem, inicio_em, fim_em, extrato_gerado_em FROM {tbl_per} WHERE fluxo = 'carregamento' AND id_viagem IN ({ph})",
             tuple(ids_norm),
         ).fetchall()
         for r in rows_per or []:
@@ -10435,6 +10509,7 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None, janela_inicio=None, janela
                 r.get('inicio_em') if hasattr(r, 'get') else r[1],
                 r.get('fim_em') if hasattr(r, 'get') else r[2],
             )
+            extrato_map[vid] = r.get('extrato_gerado_em') if hasattr(r, 'get') else (r[3] if len(r) > 3 else None)
     except Exception:
         pass
 
@@ -10524,15 +10599,15 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None, janela_inicio=None, janela
         if total_bip <= 0:
             status = 'Não carregado'
             resumo['nao_carregados'] += 1
-        elif dur_min is not None and dur_min > 0 and inicio_fmt and fim_fmt and inicio_fmt != fim_fmt:
-            status = 'Carregado'
+        elif _viagem_carregamento_concluido(extrato_map.get(vid), bip):
+            status = 'Concluído'
             resumo['carregados'] += 1
         elif total_bip > 0:
             status = 'Em andamento'
             resumo['em_andamento'] += 1
         else:
-            status = 'Carregado'
-            resumo['carregados'] += 1
+            status = 'Não carregado'
+            resumo['nao_carregados'] += 1
 
         peso_bip = round(peso_bipado_map.get(vid, 0.0), 2)
         peso_rom = vb.get('peso_romaneio_kg') or 0.0

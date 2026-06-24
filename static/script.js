@@ -18173,6 +18173,7 @@ function paintEstatisticas(stats) {
 
 function _painelPlacasStatusClass(status) {
     var s = (status || '').toLowerCase();
+    if (s.indexOf('conclu') >= 0) return 'painel-status-carregado';
     if (s.indexOf('carregado') >= 0 && s.indexOf('não') < 0 && s.indexOf('nao') < 0) return 'painel-status-carregado';
     if (s.indexOf('andamento') >= 0) return 'painel-status-andamento';
     return 'painel-status-pendente';
@@ -18246,7 +18247,7 @@ function paintPlacasBaixadasCharts(placasDia) {
             chartPlacasStatus = new Chart(ctxStatus, {
                 type: 'doughnut',
                 data: {
-                    labels: ['Carregado', 'Em andamento', 'Não carregado'],
+                    labels: ['Concluído', 'Em andamento', 'Não carregado'],
                     datasets: [{
                         data: [car, and, nao],
                         backgroundColor: ['#2e7d32', '#e65100', '#c62828'],
