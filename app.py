@@ -5347,7 +5347,7 @@ def _ravex_insert_linhas_romaneio(conn, ds, id_viagem, linhas, id_roteiro=None):
         )
         id_viagem_grav = id_viagem_del
     next_row_index = _ravex_proximo_row_index_romaneio(conn, ds)
-    importado_em = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    importado_em = datetime.now(_ravex_tz_baixados()).isoformat()
     params = []
     for L in linhas:
         next_row_index += 1
@@ -9795,12 +9795,7 @@ def _estatisticas_romaneio_por_item_banco(conn, janela_inicio=None, janela_fim_e
     if not ds:
         return out
     ds_s = str(ds)
-    filtro_janela = ''
-    params_janela = ()
-    if janela_inicio is not None and janela_fim_excl is not None:
-        ini_p, fim_p = _painel_sql_janela_params(janela_inicio, janela_fim_excl, conn)
-        filtro_janela = ' AND importado_em >= ? AND importado_em < ?'
-        params_janela = (ini_p, fim_p)
+    filtro_janela, params_janela = _painel_romaneio_janela_sql(conn, janela_inicio, janela_fim_excl)
     try:
         row_totais = conn.execute(
             f"""SELECT
@@ -10246,6 +10241,40 @@ def _painel_sql_janela_params(inicio, fim_excl, conn):
     return inicio.strftime('%Y-%m-%d %H:%M:%S'), fim_excl.strftime('%Y-%m-%d %H:%M:%S')
 
 
+def _painel_romaneio_janela_sql(conn, janela_inicio, janela_fim_excl):
+    """Filtro do painel em romaneio_por_item: importado_em ou data_expedicao na janela."""
+    if janela_inicio is None or janela_fim_excl is None:
+        return '', ()
+    ini_p, fim_p = _painel_sql_janela_params(janela_inicio, janela_fim_excl, conn)
+    if getattr(conn, 'kind', None) != 'pg':
+        return ' AND importado_em >= ? AND importado_em < ?', (ini_p, fim_p)
+    tz = _ravex_tz_baixados()
+    di = janela_inicio.astimezone(tz) if janela_inicio.tzinfo else janela_inicio.replace(tzinfo=tz)
+    df = janela_fim_excl.astimezone(tz) if janela_fim_excl.tzinfo else janela_fim_excl.replace(tzinfo=tz)
+    d_ini = di.date().isoformat()
+    d_fim_excl = df.date().isoformat()
+    sql = """ AND (
+            (importado_em >= ? AND importado_em < ?)
+            OR (
+                CASE
+                    WHEN TRIM(COALESCE(data_expedicao::text, '')) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+                        THEN LEFT(TRIM(data_expedicao::text), 10)::date
+                    WHEN TRIM(COALESCE(data_expedicao::text, '')) ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}'
+                        THEN to_date(LEFT(TRIM(data_expedicao::text), 10), 'DD/MM/YYYY')
+                    ELSE NULL
+                END >= ?::date
+                AND CASE
+                    WHEN TRIM(COALESCE(data_expedicao::text, '')) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+                        THEN LEFT(TRIM(data_expedicao::text), 10)::date
+                    WHEN TRIM(COALESCE(data_expedicao::text, '')) ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}'
+                        THEN to_date(LEFT(TRIM(data_expedicao::text), 10), 'DD/MM/YYYY')
+                    ELSE NULL
+                END < ?::date
+            )
+        )"""
+    return sql, (ini_p, fim_p, d_ini, d_fim_excl)
+
+
 def _painel_request_janela_meta(conn):
     """Lê data/hora início e fim do request e devolve janela + parâmetros SQL + resumo legível."""
     data_inicio = (request.args.get('data_inicio') or request.args.get('data') or '').strip()[:10] or None
@@ -10300,12 +10329,15 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None, janela_inicio=None, janela
         fim_dia = dia + timedelta(days=1)
         inicio_q, fim_q = _painel_sql_janela_params(dia, fim_dia, conn)
     data_label = dia.strftime('%d/%m/%Y')
+    rom_janela_ini = janela_inicio if janela_inicio is not None else dia
+    rom_janela_fim = janela_fim_excl if janela_fim_excl is not None else fim_dia
 
     viagens_base = []
     if getattr(conn, 'kind', None) == 'pg' and _usa_banco_para_dados():
         ds = _get_latest_dataset_id(conn)
         if ds:
             try:
+                filtro_rom, params_rom = _painel_romaneio_janela_sql(conn, rom_janela_ini, rom_janela_fim)
                 rows = conn.execute(
                     """SELECT TRIM(COALESCE(id_viagem::text, '')) AS id_viagem,
                               MAX(TRIM(COALESCE(id_roteiro::text, ''))) AS id_roteiro,
@@ -10319,11 +10351,11 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None, janela_inicio=None, janela
                               ), 0) AS peso_romaneio
                        FROM romaneio_por_item
                        WHERE dataset_id = ?
-                         AND importado_em >= ? AND importado_em < ?
-                         AND TRIM(COALESCE(id_viagem::text, '')) != ''
-                       GROUP BY TRIM(COALESCE(id_viagem::text, ''))
+                         AND TRIM(COALESCE(id_viagem::text, '')) != ''"""
+                    + filtro_rom +
+                    """ GROUP BY TRIM(COALESCE(id_viagem::text, ''))
                        ORDER BY MAX(importado_em) DESC""",
-                    (str(ds), inicio_q, fim_q),
+                    (str(ds),) + params_rom,
                 ).fetchall()
                 for r in rows or []:
                     vid = (r.get('id_viagem') if hasattr(r, 'get') else r[0]) or ''
@@ -10556,7 +10588,7 @@ def get_painel_completo():
         conn.row_factory = sqlite3.Row
     try:
         ini_p, fim_p = _painel_sql_janela_params(inicio_j, fim_excl, conn)
-        filtro_dt = ' AND data_hora >= ? AND data_hora < ?'
+        filtro_dt = " AND COALESCE(fluxo, 'carregamento') = 'carregamento' AND data_hora >= ? AND data_hora < ?"
         params_dt = (ini_p, fim_p)
         # Estatísticas em uma única query (menos ida e volta ao DB)
         row_stats = conn.execute(f'''
@@ -10717,7 +10749,8 @@ def get_painel_completo():
                 pass
         placas_dia = {'data': '', 'data_iso': '', 'rows': [], 'resumo': {'total': 0, 'carregados': 0, 'nao_carregados': 0, 'em_andamento': 0, 'peso_total_kg': 0}}
         try:
-            placas_dia = _coletar_placas_baixadas_dia(conn, data_painel, inicio_j, fim_excl)
+            placas_dia = _coletar_placas_baixadas_dia(conn, None, inicio_j, fim_excl)
+            placas_dia['filtros'] = filtros_resp
         except Exception as ex_placas:
             try:
                 app.logger.warning('painel placas_baixadas_dia: %s', ex_placas)

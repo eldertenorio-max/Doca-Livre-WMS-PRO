@@ -18362,7 +18362,7 @@ function _modPainelFiltroInit(opts) {
     var btnFiltrar = document.getElementById(opts.btnFiltrarId);
     var btnLimpar = document.getElementById(opts.btnLimparId);
     var hoje = _painelHojeIso();
-    if (dataIni && !dataIni.value) dataIni.value = hoje;
+    if (dataIni && !dataIni.value) dataIni.value = _painelHojeIso(-1);
     if (dataFim && !dataFim.value) dataFim.value = hoje;
     if (btnFiltrar && opts.onFiltrar) btnFiltrar.addEventListener('click', opts.onFiltrar);
     if (btnLimpar && opts.onLimpar) btnLimpar.addEventListener('click', opts.onLimpar);
