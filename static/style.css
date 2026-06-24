@@ -4395,6 +4395,18 @@ body.conferencia-lista-maximizada-aberta {
     grid-column: 1 / -1;
 }
 
+#painel .chart-box--span-full {
+    grid-column: 1 / -1;
+    width: 100%;
+}
+
+#painel .painel-chart-legenda {
+    margin: -8px 0 12px;
+    font-size: 0.82rem;
+    color: #6a7a89;
+    line-height: 1.4;
+}
+
 @media (min-width: 900px) {
     #painel .painel-charts--inline {
         grid-template-columns: repeat(2, minmax(320px, 1fr));

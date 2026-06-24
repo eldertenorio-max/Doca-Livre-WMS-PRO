@@ -18345,6 +18345,12 @@ function paintErrosCarregamento(errosPayload) {
     set('stat-erros-faltas', resumo.total_faltas);
     set('stat-erros-sobras', resumo.total_sobras);
     set('stat-erros-viagens', resumo.viagens_com_erro);
+    var efic = resumo.eficiencia_geral_pct;
+    var elEfic = document.getElementById('stat-erros-eficiencia');
+    if (elEfic) {
+        elEfic.textContent = (efic != null ? efic : 100) + '%';
+        elEfic.style.color = (efic != null && efic < 95) ? '#c62828' : ((efic != null && efic < 99) ? '#e65100' : '#1565c0');
+    }
     var tbody = document.getElementById('tbody-painel-erros');
     if (tbody) {
         if (rows.length === 0) {
@@ -18397,6 +18403,7 @@ function paintErrosCarregamentoCharts(errosPayload) {
     if (typeof Chart === 'undefined') return;
     if (chartErrosCarregamento) { chartErrosCarregamento.destroy(); chartErrosCarregamento = null; }
     if (chartErrosTipo) { chartErrosTipo.destroy(); chartErrosTipo = null; }
+    if (chartErrosEficiencia) { chartErrosEficiencia.destroy(); chartErrosEficiencia = null; }
     errosPayload = errosPayload || {};
     var porViagem = errosPayload.por_viagem || [];
     var resumo = errosPayload.resumo || {};
@@ -18478,6 +18485,102 @@ function paintErrosCarregamentoCharts(errosPayload) {
                     datasets: [{ data: dadosTipo, backgroundColor: coresTipo, borderWidth: 2 }]
                 },
                 options: _painelChartBaseOpts({ plugins: { legend: { position: 'bottom', display: true } } })
+            });
+        }
+    }
+    var ctxEfic = document.getElementById('chart-erros-eficiencia');
+    if (ctxEfic) {
+        var corr = (errosPayload.correlacao || []).slice(0, 15);
+        if (!corr.length && porViagem.length) {
+            corr = porViagem.map(function(v) {
+                return {
+                    id_viagem: v.id_viagem,
+                    unidades_bipadas: v.unidades_bipadas || 0,
+                    unidades_erro: (v.total_faltas || 0) + (v.total_sobras || 0),
+                    eficiencia_pct: v.eficiencia_pct
+                };
+            });
+        }
+        _painelPrepChartCanvas(ctxEfic, { height: Math.max(300, corr.length * 8 + 220) });
+        if (corr.length === 0) {
+            chartErrosEficiencia = new Chart(ctxEfic, {
+                type: 'bar',
+                data: { labels: ['Sem bipagem'], datasets: [{ data: [0], backgroundColor: ['#e0e0e0'] }] },
+                options: _painelChartBaseOpts()
+            });
+        } else {
+            var lblCorr = corr.map(function(c) { return _painelTruncLabel(c.id_viagem, 14); });
+            chartErrosEficiencia = new Chart(ctxEfic, {
+                type: 'bar',
+                data: {
+                    labels: lblCorr,
+                    datasets: [
+                        {
+                            type: 'bar',
+                            label: 'Unidades bipadas',
+                            data: corr.map(function(c) { return c.unidades_bipadas || 0; }),
+                            backgroundColor: 'rgba(46, 125, 50, 0.75)',
+                            borderColor: '#2e7d32',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            type: 'bar',
+                            label: 'Unidades com erro',
+                            data: corr.map(function(c) { return c.unidades_erro || 0; }),
+                            backgroundColor: 'rgba(198, 40, 40, 0.75)',
+                            borderColor: '#c62828',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            type: 'line',
+                            label: 'Eficiência %',
+                            data: corr.map(function(c) { return c.eficiencia_pct != null ? c.eficiencia_pct : 100; }),
+                            borderColor: '#1565c0',
+                            backgroundColor: 'rgba(21, 101, 192, 0.12)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#1565c0',
+                            tension: 0.25,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: _painelChartBaseOpts({
+                    plugins: {
+                        legend: { position: 'bottom', display: true },
+                        tooltip: {
+                            callbacks: {
+                                afterBody: function(items) {
+                                    if (!items || !items.length) return '';
+                                    var i = items[0].dataIndex;
+                                    var c = corr[i];
+                                    if (!c) return '';
+                                    return 'Eficiência: ' + (c.eficiencia_pct != null ? c.eficiencia_pct : '—') + '%';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 15, font: { size: 11 } } },
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            beginAtZero: true,
+                            title: { display: true, text: 'Unidades' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            min: 0,
+                            max: 100,
+                            grid: { drawOnChartArea: false },
+                            title: { display: true, text: 'Eficiência %' },
+                            ticks: { callback: function(v) { return v + '%'; } }
+                        }
+                    }
+                })
             });
         }
     }
@@ -18996,6 +19099,7 @@ let chartPlacasResumo = null;
 let chartCargasBipadas = null;
 let chartErrosCarregamento = null;
 let chartErrosTipo = null;
+let chartErrosEficiencia = null;
 let devChartItensMaisDevolvidos = null;
 let devChartVeiculosDevolucoes = null;
 let devChartDocasDevolucoes = null;
@@ -19020,6 +19124,7 @@ function destroyCharts() {
     if (chartCargasBipadas) { chartCargasBipadas.destroy(); chartCargasBipadas = null; }
     if (chartErrosCarregamento) { chartErrosCarregamento.destroy(); chartErrosCarregamento = null; }
     if (chartErrosTipo) { chartErrosTipo.destroy(); chartErrosTipo = null; }
+    if (chartErrosEficiencia) { chartErrosEficiencia.destroy(); chartErrosEficiencia = null; }
 }
 
 function destroyPainelDevolucoesCharts() {

@@ -167,6 +167,10 @@
                             <h3>Roteiros com erro</h3>
                             <p class="stat-number" id="stat-erros-viagens" style="color:#c62828;">0</p>
                         </div>
+                        <div class="stat-card">
+                            <h3>Eficiência média</h3>
+                            <p class="stat-number" id="stat-erros-eficiencia" style="color:#1565c0;">100%</p>
+                        </div>
                     </div>
                     <div class="painel-secao-grid painel-secao-grid--2charts">
                         <div class="chart-box">
@@ -177,6 +181,11 @@
                             <h3>Tipo de erro</h3>
                             <canvas id="chart-erros-tipo" height="240"></canvas>
                         </div>
+                    </div>
+                    <div class="chart-box chart-box--span-full" style="margin-bottom: 20px;">
+                        <h3>Correlação bipagem × erros — eficiência (%)</h3>
+                        <p class="painel-chart-legenda">Barras: unidades bipadas (verde) e com erro (vermelho). Linha: % de eficiência do carregamento.</p>
+                        <canvas id="chart-erros-eficiencia"></canvas>
                     </div>
                     <div class="table-container">
                         <h3 class="painel-tabela-titulo">Detalhamento dos erros</h3>
