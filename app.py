@@ -10639,6 +10639,77 @@ def _coletar_placas_baixadas_dia(conn, data_ref=None, janela_inicio=None, janela
     }
 
 
+def _painel_coletar_erros_carregamento(conn, ids_viagem, id_viagem_placa=None):
+    """Divergências (faltas/sobras) das viagens do período para o painel."""
+    id_viagem_placa = id_viagem_placa or {}
+    rows_out = []
+    por_viagem = {}
+    faltas_map = {}
+    resumo = {
+        'total_itens_erro': 0,
+        'total_faltas': 0,
+        'total_sobras': 0,
+        'viagens_com_erro': 0,
+    }
+    ids_norm = []
+    for vid in ids_viagem or []:
+        v = _normalizar_id_viagem(vid)
+        if v and v not in ids_norm:
+            ids_norm.append(v)
+    for vid in ids_norm[:25]:
+        try:
+            lista = _conferencia_lista_interna(vid, 'carregamento', conn=conn, somente_divergencias=True)
+            divergentes = _itens_divergentes_da_lista(lista, vid)
+        except Exception:
+            divergentes = []
+        try:
+            _carregar_motivos_divergencia(divergentes, conn=conn)
+        except Exception:
+            pass
+        faltas_v = sum(int(it.get('quantidade_falta') or 0) for it in divergentes)
+        sobras_v = sum(int(it.get('quantidade_sobra') or 0) for it in divergentes)
+        faltas_map[vid] = faltas_v
+        if not divergentes:
+            continue
+        resumo['viagens_com_erro'] += 1
+        placa = (id_viagem_placa.get(vid) or id_viagem_placa.get(str(vid)) or '').strip()
+        por_viagem[vid] = {
+            'id_viagem': vid,
+            'placa': placa or '—',
+            'total_faltas': faltas_v,
+            'total_sobras': sobras_v,
+            'qtd_itens': len(divergentes),
+        }
+        for it in divergentes:
+            falta = int(it.get('quantidade_falta') or 0)
+            sobra = int(it.get('quantidade_sobra') or 0)
+            if falta <= 0 and sobra <= 0:
+                continue
+            tipo = 'Falta' if falta > 0 and sobra <= 0 else ('Sobra' if sobra > 0 and falta <= 0 else 'Falta e sobra')
+            rows_out.append({
+                'id_viagem': vid,
+                'placa': placa or '—',
+                'codigo_produto': (it.get('codigo_produto') or it.get('codigo_interno') or '').strip(),
+                'produto': ((it.get('produto') or '').strip() or '—')[:100],
+                'quantidade_falta': falta,
+                'quantidade_sobra': sobra,
+                'tipo_erro': tipo,
+                'motivo': _formatar_motivo_divergencia(it.get('motivo_divergencia') or ''),
+            })
+            resumo['total_itens_erro'] += 1
+            resumo['total_faltas'] += falta
+            resumo['total_sobras'] += sobra
+    rows_out.sort(
+        key=lambda r: (-(r.get('quantidade_falta') or 0) - (r.get('quantidade_sobra') or 0), r.get('id_viagem') or ''),
+    )
+    return {
+        'resumo': resumo,
+        'rows': rows_out[:120],
+        'por_viagem': sorted(por_viagem.values(), key=lambda x: -(x.get('total_faltas') or 0) - (x.get('total_sobras') or 0)),
+        'faltas_por_viagem': faltas_map,
+    }
+
+
 @app.route('/api/painel-completo', methods=['GET'])
 def get_painel_completo():
     """Um único request: estatísticas + viagens + gráficos. Estatísticas em 1 query para carregar mais rápido."""
@@ -10745,8 +10816,6 @@ def get_painel_completo():
             })
         wb = None
         from_cache = False
-        for v in viagens:
-            v['total_faltas'] = 0
         id_viagem_placa = {}
         romaneio_stats = {}
         if _usa_banco_para_dados() and getattr(conn, 'kind', None) == 'pg':
@@ -10817,6 +10886,21 @@ def get_painel_completo():
                 pass
         elif romaneio_stats and romaneio_stats.get('peso_por_carro'):
             carros_peso = [{'veiculo': k, 'peso_total': v} for k, v in sorted(romaneio_stats['peso_por_carro'].items(), key=lambda x: -x[1])[:15]]
+        erros_carregamento = {'resumo': {'total_itens_erro': 0, 'total_faltas': 0, 'total_sobras': 0, 'viagens_com_erro': 0}, 'rows': [], 'por_viagem': []}
+        try:
+            erros_carregamento = _painel_coletar_erros_carregamento(conn, ids_viagem, id_viagem_placa)
+            faltas_map = erros_carregamento.get('faltas_por_viagem') or {}
+            for v in viagens:
+                vid_n = _normalizar_id_viagem(v.get('id_viagem'))
+                v['total_faltas'] = int(faltas_map.get(vid_n, 0) or 0)
+            estatisticas['total_divergencias'] = int((erros_carregamento.get('resumo') or {}).get('total_itens_erro') or 0)
+        except Exception as ex_err:
+            try:
+                app.logger.warning('painel erros_carregamento: %s', ex_err)
+            except Exception:
+                pass
+            for v in viagens:
+                v['total_faltas'] = 0
         if wb and not from_cache:
             try:
                 wb.close()
@@ -10842,6 +10926,11 @@ def get_painel_completo():
             'carros_mais_peso': carros_peso,
             'romaneio': romaneio_resp,
             'placas_baixadas_dia': placas_dia,
+            'erros_carregamento': {
+                'resumo': erros_carregamento.get('resumo') or {},
+                'rows': erros_carregamento.get('rows') or [],
+                'por_viagem': erros_carregamento.get('por_viagem') or [],
+            },
             'filtros': filtros_resp,
         })
     except Exception as e:
@@ -10864,6 +10953,7 @@ def get_painel_completo():
             'carros_mais_peso': [],
             'romaneio': {},
             'placas_baixadas_dia': {'data': '', 'data_iso': '', 'rows': [], 'resumo': {'total': 0, 'carregados': 0, 'nao_carregados': 0, 'em_andamento': 0, 'peso_total_kg': 0}},
+            'erros_carregamento': {'resumo': {'total_itens_erro': 0, 'total_faltas': 0, 'total_sobras': 0, 'viagens_com_erro': 0}, 'rows': [], 'por_viagem': []},
             'erro': str(e)
         }), 200
 

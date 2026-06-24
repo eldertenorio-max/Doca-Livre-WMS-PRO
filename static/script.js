@@ -18221,6 +18221,148 @@ function paintPlacasBaixadasDia(placasDia) {
     paintPlacasBaixadasCharts(placasDia);
 }
 
+function paintPainelTopItens(topItens) {
+    var tbody = document.getElementById('tbody-painel-top-itens');
+    if (!tbody) return;
+    topItens = topItens || [];
+    if (topItens.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" class="loading">Nenhum item bipado no período.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = topItens.slice(0, 15).map(function(i) {
+        return '<tr><td>' + escapeHtml(i.label || '—') + '</td><td><strong>' + (i.total || 0) + '</strong></td></tr>';
+    }).join('');
+}
+
+function paintErrosCarregamento(errosPayload) {
+    errosPayload = errosPayload || {};
+    var resumo = errosPayload.resumo || {};
+    var rows = errosPayload.rows || [];
+    var set = function(id, val) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = val != null ? val : '0';
+    };
+    set('stat-erros-itens', resumo.total_itens_erro);
+    set('stat-erros-faltas', resumo.total_faltas);
+    set('stat-erros-sobras', resumo.total_sobras);
+    set('stat-erros-viagens', resumo.viagens_com_erro);
+    var tbody = document.getElementById('tbody-painel-erros');
+    if (tbody) {
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="loading">Nenhum erro de carregamento no período.</td></tr>';
+        } else {
+            tbody.innerHTML = rows.map(function(r) {
+                var falta = r.quantidade_falta || 0;
+                var sobra = r.quantidade_sobra || 0;
+                return '<tr>'
+                    + '<td><strong>' + escapeHtml(r.id_viagem || '—') + '</strong></td>'
+                    + '<td>' + escapeHtml(r.placa || '—') + '</td>'
+                    + '<td><span class="painel-erro-badge painel-erro-' + (falta > 0 ? 'falta' : 'sobra') + '">' + escapeHtml(r.tipo_erro || '—') + '</span></td>'
+                    + '<td>' + escapeHtml(r.codigo_produto || '—') + '</td>'
+                    + '<td>' + escapeHtml(r.produto || '—') + '</td>'
+                    + '<td style="color:' + (falta > 0 ? '#c62828' : '#888') + '"><strong>' + falta + '</strong></td>'
+                    + '<td style="color:' + (sobra > 0 ? '#e65100' : '#888') + '"><strong>' + sobra + '</strong></td>'
+                    + '<td>' + escapeHtml(r.motivo || '—') + '</td>'
+                    + '</tr>';
+            }).join('');
+        }
+    }
+    paintErrosCarregamentoCharts(errosPayload);
+}
+
+function paintCargasBipadasChart(viagens) {
+    if (typeof Chart === 'undefined') return;
+    if (chartCargasBipadas) { chartCargasBipadas.destroy(); chartCargasBipadas = null; }
+    var ctx = document.getElementById('chart-cargas-bipadas');
+    if (!ctx) return;
+    viagens = (viagens || []).slice(0, 15);
+    var cores = ['#2e7d32', '#388e3c', '#43a047', '#4caf50', '#66bb6a', '#81c784', '#1b5e20', '#33691e'];
+    if (viagens.length === 0) {
+        chartCargasBipadas = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: ['Sem cargas'], datasets: [{ data: [0], backgroundColor: ['#e0e0e0'] }] },
+            options: { responsive: true, plugins: { legend: { display: false } } }
+        });
+        return;
+    }
+    chartCargasBipadas = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: viagens.map(function(v) { return v.id_viagem || '—'; }),
+            datasets: [{
+                label: 'Itens bipados',
+                data: viagens.map(function(v) { return v.total_bipados || 0; }),
+                backgroundColor: cores.slice(0, viagens.length),
+                borderColor: '#1b5e20',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Quantidade' } } }
+        }
+    });
+}
+
+function paintErrosCarregamentoCharts(errosPayload) {
+    if (typeof Chart === 'undefined') return;
+    if (chartErrosCarregamento) { chartErrosCarregamento.destroy(); chartErrosCarregamento = null; }
+    if (chartErrosTipo) { chartErrosTipo.destroy(); chartErrosTipo = null; }
+    errosPayload = errosPayload || {};
+    var porViagem = errosPayload.por_viagem || [];
+    var resumo = errosPayload.resumo || {};
+    var ctxBar = document.getElementById('chart-erros-carregamento');
+    if (ctxBar) {
+        var lista = porViagem.slice(0, 12);
+        if (lista.length === 0) {
+            chartErrosCarregamento = new Chart(ctxBar, {
+                type: 'bar',
+                data: { labels: ['Sem erros'], datasets: [{ data: [0], backgroundColor: ['#e8f5e9'] }] },
+                options: { responsive: true, plugins: { legend: { display: false } } }
+            });
+        } else {
+            chartErrosCarregamento = new Chart(ctxBar, {
+                type: 'bar',
+                data: {
+                    labels: lista.map(function(v) { return v.id_viagem || '—'; }),
+                    datasets: [
+                        { label: 'Faltas', data: lista.map(function(v) { return v.total_faltas || 0; }), backgroundColor: '#c62828' },
+                        { label: 'Sobras', data: lista.map(function(v) { return v.total_sobras || 0; }), backgroundColor: '#e65100' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }
+                }
+            });
+        }
+    }
+    var ctxTipo = document.getElementById('chart-erros-tipo');
+    if (ctxTipo) {
+        var faltas = resumo.total_faltas || 0;
+        var sobras = resumo.total_sobras || 0;
+        if (faltas + sobras === 0) {
+            chartErrosTipo = new Chart(ctxTipo, {
+                type: 'doughnut',
+                data: { labels: ['Sem erros'], datasets: [{ data: [1], backgroundColor: ['#e8f5e9'] }] },
+                options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+            });
+        } else {
+            chartErrosTipo = new Chart(ctxTipo, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Faltas', 'Sobras'],
+                    datasets: [{ data: [faltas, sobras], backgroundColor: ['#c62828', '#e65100'], borderWidth: 2 }]
+                },
+                options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+    }
+}
+
 function paintPlacasBaixadasCharts(placasDia) {
     if (typeof Chart === 'undefined') return;
     if (chartPlacasStatus) { chartPlacasStatus.destroy(); chartPlacasStatus = null; }
@@ -18452,8 +18594,12 @@ async function loadPainelCompleto() {
     initPainelFiltros();
     var tbodyPlacas = document.getElementById('tbody-painel-placas-dia');
     var tbodyViagens = document.getElementById('tbody-painel-viagens');
-    if (tbodyPlacas) tbodyPlacas.innerHTML = '<tr><td colspan="8" class="loading">Carregando placas do dia...</td></tr>';
+    var tbodyErros = document.getElementById('tbody-painel-erros');
+    var tbodyTopItens = document.getElementById('tbody-painel-top-itens');
+    if (tbodyPlacas) tbodyPlacas.innerHTML = '<tr><td colspan="8" class="loading">Carregando placas...</td></tr>';
     if (tbodyViagens) tbodyViagens.innerHTML = '<tr><td colspan="6" class="loading">Carregando viagens...</td></tr>';
+    if (tbodyErros) tbodyErros.innerHTML = '<tr><td colspan="8" class="loading">Carregando erros...</td></tr>';
+    if (tbodyTopItens) tbodyTopItens.innerHTML = '<tr><td colspan="2" class="loading">Carregando...</td></tr>';
     var qs = _painelBuildQueryString();
     try {
     const data = await _carregFetchGet('/painel-completo' + qs, 90000);
@@ -18474,8 +18620,11 @@ async function loadPainelCompleto() {
         resumoEl.style.display = '';
     }
     paintPlacasBaixadasDia(placasPayload);
+    paintPainelTopItens(data.top_itens_bipados || []);
+    paintErrosCarregamento(data.erros_carregamento || {});
     paintRomaneioStats(data.romaneio || {});
     const viagens = data.viagens || [];
+    paintCargasBipadasChart(viagens);
     const tbody = document.getElementById('tbody-painel-viagens');
     if (tbody) {
         if (viagens.length === 0) {
@@ -18764,6 +18913,9 @@ let chartPlacasStatus = null;
 let chartPlacasTempo = null;
 let chartPlacasPeso = null;
 let chartPlacasResumo = null;
+let chartCargasBipadas = null;
+let chartErrosCarregamento = null;
+let chartErrosTipo = null;
 let devChartItensMaisDevolvidos = null;
 let devChartVeiculosDevolucoes = null;
 let devChartDocasDevolucoes = null;
@@ -18785,6 +18937,9 @@ function destroyCharts() {
     if (chartPlacasTempo) { chartPlacasTempo.destroy(); chartPlacasTempo = null; }
     if (chartPlacasPeso) { chartPlacasPeso.destroy(); chartPlacasPeso = null; }
     if (chartPlacasResumo) { chartPlacasResumo.destroy(); chartPlacasResumo = null; }
+    if (chartCargasBipadas) { chartCargasBipadas.destroy(); chartCargasBipadas = null; }
+    if (chartErrosCarregamento) { chartErrosCarregamento.destroy(); chartErrosCarregamento = null; }
+    if (chartErrosTipo) { chartErrosTipo.destroy(); chartErrosTipo = null; }
 }
 
 function destroyPainelDevolucoesCharts() {

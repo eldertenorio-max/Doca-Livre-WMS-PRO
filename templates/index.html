@@ -94,224 +94,306 @@
                     </div>
                 </div>
                 <p id="painel-filtro-resumo" class="baixa-ravex-filtro-resumo" style="margin-bottom: 16px;"></p>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <h3>Total de Itens Bipados (registros)</h3>
-                        <p class="stat-number" id="stat-bipados">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Soma das Quantidades Bipadas</h3>
-                        <p class="stat-number" id="stat-soma-quantidades">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Total de Itens Carregados</h3>
-                        <p class="stat-number" id="stat-carregados">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Itens Únicos (códigos)</h3>
-                        <p class="stat-number" id="stat-unicos">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Total de Viagens</h3>
-                        <p class="stat-number" id="stat-viagens">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Total de Divergências</h3>
-                        <p class="stat-number" id="stat-divergencias">0</p>
-                    </div>
-                </div>
 
-                <h2 style="margin-top: 30px;">PLACAS BAIXADAS NO DIA</h2>
-                <p class="info-text" style="margin-bottom: 12px;">Viagens importadas do Ravex no período filtrado — status de carregamento, período e peso.</p>
-                <div class="stats-grid" id="painel-placas-resumo-grid" style="margin-bottom: 16px;">
-                    <div class="stat-card">
-                        <h3>Total baixadas</h3>
-                        <p class="stat-number" id="stat-placas-total">0</p>
+                <!-- SEÇÃO: Bipagem e cargas -->
+                <section class="painel-secao" id="painel-secao-bipagem">
+                    <h2 class="painel-secao-titulo">Bipagem e cargas</h2>
+                    <p class="painel-secao-sub">Resumo das bipagens gravadas no período e cargas por roteiro.</p>
+                    <div class="stats-grid painel-secao-stats">
+                        <div class="stat-card">
+                            <h3>Registros bipados</h3>
+                            <p class="stat-number" id="stat-bipados">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Soma das quantidades</h3>
+                            <p class="stat-number" id="stat-soma-quantidades">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Itens carregados</h3>
+                            <p class="stat-number" id="stat-carregados">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Códigos únicos</h3>
+                            <p class="stat-number" id="stat-unicos">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Viagens / roteiros</h3>
+                            <p class="stat-number" id="stat-viagens">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Itens com divergência</h3>
+                            <p class="stat-number" id="stat-divergencias">0</p>
+                        </div>
                     </div>
-                    <div class="stat-card">
-                        <h3>Concluídas</h3>
-                        <p class="stat-number" id="stat-placas-carregadas" style="color: #2e7d32;">0</p>
+                    <div class="painel-secao-grid painel-secao-grid--chart-table">
+                        <div class="chart-box">
+                            <h3>Cargas bipadas por roteiro</h3>
+                            <canvas id="chart-cargas-bipadas" height="240"></canvas>
+                        </div>
+                        <div class="table-container painel-secao-tabela-lateral">
+                            <h3 class="painel-tabela-titulo">Top itens bipados</h3>
+                            <table class="data-table" id="tabela-painel-top-itens">
+                                <thead>
+                                    <tr><th>Produto / código</th><th>Qtd.</th></tr>
+                                </thead>
+                                <tbody id="tbody-painel-top-itens">
+                                    <tr><td colspan="2" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div class="stat-card">
-                        <h3>Em andamento</h3>
-                        <p class="stat-number" id="stat-placas-andamento" style="color: #e65100;">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Não carregadas</h3>
-                        <p class="stat-number" id="stat-placas-nao-carregadas" style="color: #c62828;">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Peso total (kg)</h3>
-                        <p class="stat-number" id="stat-placas-peso-total">0</p>
-                    </div>
-                </div>
-                <div class="table-container" style="margin-bottom: 24px;">
-                    <table class="data-table" id="tabela-painel-placas-dia">
-                        <thead>
-                            <tr>
-                                <th>Placa</th>
-                                <th>ID Roteiro</th>
-                                <th>ID Viagem</th>
-                                <th>Status</th>
-                                <th>Início carreg.</th>
-                                <th>Fim carreg.</th>
-                                <th>Tempo carreg.</th>
-                                <th>Peso (kg)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tbody-painel-placas-dia">
-                            <tr><td colspan="8" class="loading">Carregando...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <h3 style="margin-bottom: 16px;">Gráficos – Placas do dia</h3>
-                <div class="painel-charts" style="margin-bottom: 32px;">
-                    <div class="chart-box">
-                        <h3>Status de carregamento</h3>
-                        <canvas id="chart-placas-status" height="220"></canvas>
-                    </div>
-                    <div class="chart-box">
-                        <h3>Tempo de carregamento por placa (min)</h3>
-                        <canvas id="chart-placas-tempo" height="220"></canvas>
-                    </div>
-                    <div class="chart-box">
-                        <h3>Peso por placa (kg)</h3>
-                        <canvas id="chart-placas-peso" height="220"></canvas>
-                    </div>
-                    <div class="chart-box">
-                        <h3>Placas: baixadas vs carregadas</h3>
-                        <canvas id="chart-placas-resumo" height="220"></canvas>
-                    </div>
-                </div>
+                    <h3 class="painel-subsecao-titulo">Por veículo</h3>
+                    <div class="veiculos-grid" id="veiculos-stats"></div>
+                </section>
 
-                <h2 style="margin-top: 30px;">DADOS DA ABA ROMANEIO POR ITEM</h2>
-                <p class="info-text" style="margin-bottom: 16px;">Resumo com base na tabela de romaneio por item — somente <strong>Unidade CD Guarulhos Ultrapão (Distribuidora)</strong>.</p>
-                <div class="stats-grid" id="romaneio-stats-grid">
-                    <div class="stat-card">
-                        <h3>Quantidade de Roteiros</h3>
-                        <p class="stat-number" id="stat-romaneio-roteiros">—</p>
+                <!-- SEÇÃO: Erros de carregamento -->
+                <section class="painel-secao painel-secao-erros" id="painel-secao-erros">
+                    <h2 class="painel-secao-titulo">Erros de carregamento</h2>
+                    <p class="painel-secao-sub">Faltas e sobras na conferência — divergências entre romaneio e bipagem.</p>
+                    <div class="stats-grid painel-secao-stats" id="painel-erros-resumo-grid">
+                        <div class="stat-card">
+                            <h3>Itens com erro</h3>
+                            <p class="stat-number" id="stat-erros-itens" style="color:#c62828;">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Total de faltas</h3>
+                            <p class="stat-number" id="stat-erros-faltas" style="color:#c62828;">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Total de sobras</h3>
+                            <p class="stat-number" id="stat-erros-sobras" style="color:#e65100;">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Roteiros com erro</h3>
+                            <p class="stat-number" id="stat-erros-viagens" style="color:#c62828;">0</p>
+                        </div>
                     </div>
-                    <div class="stat-card">
-                        <h3>Quantidade de Veículos</h3>
-                        <p class="stat-number" id="stat-romaneio-veiculos">—</p>
+                    <div class="painel-secao-grid painel-secao-grid--2charts">
+                        <div class="chart-box">
+                            <h3>Erros por roteiro (faltas + sobras)</h3>
+                            <canvas id="chart-erros-carregamento" height="240"></canvas>
+                        </div>
+                        <div class="chart-box">
+                            <h3>Tipo de erro</h3>
+                            <canvas id="chart-erros-tipo" height="240"></canvas>
+                        </div>
                     </div>
-                    <div class="stat-card">
-                        <h3>Quantidade Total de Itens (soma)</h3>
-                        <p class="stat-number" id="stat-romaneio-qtd-itens">—</p>
+                    <div class="table-container">
+                        <h3 class="painel-tabela-titulo">Detalhamento dos erros</h3>
+                        <table class="data-table" id="tabela-painel-erros">
+                            <thead>
+                                <tr>
+                                    <th>Roteiro</th>
+                                    <th>Placa</th>
+                                    <th>Tipo</th>
+                                    <th>Código</th>
+                                    <th>Produto</th>
+                                    <th>Falta</th>
+                                    <th>Sobra</th>
+                                    <th>Motivo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-painel-erros">
+                                <tr><td colspan="8" class="loading">Carregando...</td></tr>
+                            </tbody>
+                        </table>
                     </div>
-                    <div class="stat-card">
-                        <h3>Peso Total (todos os roteiros) kg</h3>
-                        <p class="stat-number" id="stat-romaneio-peso-total">—</p>
-                    </div>
-                </div>
-                <div class="table-container table-container-base" style="margin-top: 16px; margin-bottom: 24px;">
-                    <h3 style="margin-bottom: 10px;">Quantidade por item (código do produto)</h3>
-                    <table class="data-table" id="tabela-romaneio-itens">
-                        <thead>
-                            <tr>
-                                <th>Código do produto</th>
-                                <th>Descrição do produto</th>
-                                <th>Quantidade total</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tbody-romaneio-itens">
-                            <tr><td colspan="3" class="loading">Carregando...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="table-container table-container-base" style="margin-bottom: 24px;">
-                    <h3 style="margin-bottom: 10px;">Peso por carro (veículo)</h3>
-                    <table class="data-table" id="tabela-romaneio-peso-carro">
-                        <thead>
-                            <tr>
-                                <th>Placa / Veículo</th>
-                                <th>Peso total (kg)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tbody-romaneio-peso-carro">
-                            <tr><td colspan="2" class="loading">Carregando...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
+                </section>
 
-                <h3 style="margin-top: 28px; margin-bottom: 16px;">Gráficos – Romaneio por item</h3>
-                <p class="info-text" style="margin-bottom: 16px;">Dados da tabela ROMANEIO POR ITEM (CD Guarulhos).</p>
-                <div class="romaneio-charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-bottom: 24px;">
-                    <div class="chart-container-romaneio" style="background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); min-height: 260px;">
-                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #366092;">Roteiros e Veículos</h4>
-                        <canvas id="chart-romaneio-roteiros-veiculos" height="220"></canvas>
+                <!-- SEÇÃO: Placas baixadas -->
+                <section class="painel-secao" id="painel-secao-placas">
+                    <h2 class="painel-secao-titulo">Placas baixadas no período</h2>
+                    <p class="painel-secao-sub">Viagens importadas do Ravex — status de carregamento, período e peso.</p>
+                    <div class="stats-grid painel-secao-stats" id="painel-placas-resumo-grid">
+                        <div class="stat-card">
+                            <h3>Total baixadas</h3>
+                            <p class="stat-number" id="stat-placas-total">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Concluídas</h3>
+                            <p class="stat-number" id="stat-placas-carregadas" style="color: #2e7d32;">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Em andamento</h3>
+                            <p class="stat-number" id="stat-placas-andamento" style="color: #e65100;">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Não carregadas</h3>
+                            <p class="stat-number" id="stat-placas-nao-carregadas" style="color: #c62828;">0</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Peso total (kg)</h3>
+                            <p class="stat-number" id="stat-placas-peso-total">0</p>
+                        </div>
                     </div>
-                    <div class="chart-container-romaneio" style="background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); min-height: 260px;">
-                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #366092;">Quantidade por item (código)</h4>
-                        <canvas id="chart-romaneio-qtd-itens" height="220"></canvas>
+                    <div class="painel-secao-grid painel-secao-grid--table-charts">
+                        <div class="table-container painel-secao-tabela-principal">
+                            <table class="data-table" id="tabela-painel-placas-dia">
+                                <thead>
+                                    <tr>
+                                        <th>Placa</th>
+                                        <th>ID Roteiro</th>
+                                        <th>ID Viagem</th>
+                                        <th>Status</th>
+                                        <th>Início carreg.</th>
+                                        <th>Fim carreg.</th>
+                                        <th>Tempo carreg.</th>
+                                        <th>Peso (kg)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-painel-placas-dia">
+                                    <tr><td colspan="8" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="painel-secao-charts-col">
+                            <div class="chart-box">
+                                <h3>Status de carregamento</h3>
+                                <canvas id="chart-placas-status" height="200"></canvas>
+                            </div>
+                            <div class="chart-box">
+                                <h3>Placas: baixadas vs concluídas</h3>
+                                <canvas id="chart-placas-resumo" height="200"></canvas>
+                            </div>
+                        </div>
                     </div>
-                    <div class="chart-container-romaneio" style="background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); min-height: 260px;">
-                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #366092;">Peso por carro (kg)</h4>
-                        <canvas id="chart-romaneio-peso-carro" height="220"></canvas>
+                    <div class="painel-charts painel-charts--inline">
+                        <div class="chart-box">
+                            <h3>Tempo de carregamento por placa (min)</h3>
+                            <canvas id="chart-placas-tempo" height="220"></canvas>
+                        </div>
+                        <div class="chart-box">
+                            <h3>Peso por placa (kg)</h3>
+                            <canvas id="chart-placas-peso" height="220"></canvas>
+                        </div>
                     </div>
-                    <div class="chart-container-romaneio" style="background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); min-height: 260px;">
-                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #366092;">Peso total (todos os roteiros) kg</h4>
-                        <canvas id="chart-romaneio-peso-total" height="220"></canvas>
-                    </div>
-                </div>
+                </section>
 
-                <h2 style="margin-top: 30px;">DADOS DETALHADOS POR VIAGEM</h2>
-                <div class="table-container" style="margin-bottom: 24px;">
-                    <table class="data-table" id="tabela-painel-viagens">
-                        <thead>
-                            <tr>
-                                <th>ID Roteiro</th>
-                                <th>Início carregamento</th>
-                                <th>Fim carregamento</th>
-                                <th>Duração (min)</th>
-                                <th>Itens bipados</th>
-                                <th>Faltas</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tbody-painel-viagens">
-                            <tr><td colspan="6" class="loading">Carregando...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
+                <!-- SEÇÃO: Romaneio -->
+                <section class="painel-secao" id="painel-secao-romaneio">
+                    <h2 class="painel-secao-titulo">Romaneio por item</h2>
+                    <p class="painel-secao-sub">Resumo da tabela de romaneio — somente <strong>Unidade CD Guarulhos Ultrapão (Distribuidora)</strong>.</p>
+                    <div class="stats-grid painel-secao-stats" id="romaneio-stats-grid">
+                        <div class="stat-card">
+                            <h3>Roteiros</h3>
+                            <p class="stat-number" id="stat-romaneio-roteiros">—</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Veículos</h3>
+                            <p class="stat-number" id="stat-romaneio-veiculos">—</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Itens (soma)</h3>
+                            <p class="stat-number" id="stat-romaneio-qtd-itens">—</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Peso total (kg)</h3>
+                            <p class="stat-number" id="stat-romaneio-peso-total">—</p>
+                        </div>
+                    </div>
+                    <div class="romaneio-charts-grid painel-romaneio-charts">
+                        <div class="chart-container-romaneio">
+                            <h4>Roteiros e veículos</h4>
+                            <canvas id="chart-romaneio-roteiros-veiculos" height="220"></canvas>
+                        </div>
+                        <div class="chart-container-romaneio">
+                            <h4>Quantidade por item</h4>
+                            <canvas id="chart-romaneio-qtd-itens" height="220"></canvas>
+                        </div>
+                        <div class="chart-container-romaneio">
+                            <h4>Peso por carro (kg)</h4>
+                            <canvas id="chart-romaneio-peso-carro" height="220"></canvas>
+                        </div>
+                        <div class="chart-container-romaneio">
+                            <h4>Peso total (kg)</h4>
+                            <canvas id="chart-romaneio-peso-total" height="220"></canvas>
+                        </div>
+                    </div>
+                    <div class="painel-secao-grid painel-secao-grid--2tables">
+                        <div class="table-container table-container-base">
+                            <h3 class="painel-tabela-titulo">Quantidade por código de produto</h3>
+                            <table class="data-table" id="tabela-romaneio-itens">
+                                <thead>
+                                    <tr><th>Código</th><th>Descrição</th><th>Qtd.</th></tr>
+                                </thead>
+                                <tbody id="tbody-romaneio-itens">
+                                    <tr><td colspan="3" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="table-container table-container-base">
+                            <h3 class="painel-tabela-titulo">Peso por veículo</h3>
+                            <table class="data-table" id="tabela-romaneio-peso-carro">
+                                <thead>
+                                    <tr><th>Placa / Veículo</th><th>Peso (kg)</th></tr>
+                                </thead>
+                                <tbody id="tbody-romaneio-peso-carro">
+                                    <tr><td colspan="2" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
 
-                <h2 style="margin-top: 30px;">GRÁFICOS</h2>
-                <div class="painel-charts">
-                    <div class="chart-box">
-                        <h3>Tempo de carregamento por viagem (minutos)</h3>
-                        <canvas id="chart-tempo-carregamento" height="220"></canvas>
+                <!-- SEÇÃO: Viagens detalhadas -->
+                <section class="painel-secao" id="painel-secao-viagens">
+                    <h2 class="painel-secao-titulo">Detalhamento por viagem</h2>
+                    <p class="painel-secao-sub">Tempo de carregamento, itens bipados e faltas por roteiro.</p>
+                    <div class="painel-secao-grid painel-secao-grid--table-charts">
+                        <div class="table-container painel-secao-tabela-principal">
+                            <table class="data-table" id="tabela-painel-viagens">
+                                <thead>
+                                    <tr>
+                                        <th>ID Roteiro</th>
+                                        <th>Início</th>
+                                        <th>Fim</th>
+                                        <th>Duração (min)</th>
+                                        <th>Itens bipados</th>
+                                        <th>Faltas</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-painel-viagens">
+                                    <tr><td colspan="6" class="loading">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="painel-secao-charts-col">
+                            <div class="chart-box">
+                                <h3>Tempo por viagem (min)</h3>
+                                <canvas id="chart-tempo-carregamento" height="200"></canvas>
+                            </div>
+                            <div class="chart-box">
+                                <h3>Faltas por viagem</h3>
+                                <canvas id="chart-faltas" height="200"></canvas>
+                            </div>
+                        </div>
                     </div>
-                    <div class="chart-box">
-                        <h3>Tempo de carregamento por placa (minutos)</h3>
-                        <canvas id="chart-tempo-por-placa" height="220"></canvas>
+                    <div class="painel-charts painel-charts--inline">
+                        <div class="chart-box">
+                            <h3>Tempo por placa (min)</h3>
+                            <canvas id="chart-tempo-por-placa" height="220"></canvas>
+                        </div>
+                        <div class="chart-box">
+                            <h3>Itens bipados por viagem</h3>
+                            <canvas id="chart-itens-bipados" height="220"></canvas>
+                        </div>
+                        <div class="chart-box">
+                            <h3>Itens mais bipados (top 15)</h3>
+                            <canvas id="chart-itens-mais-bipados" height="220"></canvas>
+                        </div>
+                        <div class="chart-box">
+                            <h3>Carros com mais itens</h3>
+                            <canvas id="chart-carros-itens" height="220"></canvas>
+                        </div>
+                        <div class="chart-box">
+                            <h3>Carros com mais peso</h3>
+                            <canvas id="chart-carros-peso" height="220"></canvas>
+                        </div>
                     </div>
-                    <div class="chart-box">
-                        <h3>Quantidade de itens bipados por viagem</h3>
-                        <canvas id="chart-itens-bipados" height="220"></canvas>
-                    </div>
-                    <div class="chart-box">
-                        <h3>Quantidade de faltas por viagem</h3>
-                        <canvas id="chart-faltas" height="220"></canvas>
-                    </div>
-                    <div class="chart-box">
-                        <h3>Itens mais bipados (top 15)</h3>
-                        <canvas id="chart-itens-mais-bipados" height="220"></canvas>
-                    </div>
-                    <div class="chart-box">
-                        <h3>Carros carregados com mais itens</h3>
-                        <canvas id="chart-carros-itens" height="220"></canvas>
-                    </div>
-                    <div class="chart-box">
-                        <h3>Carros carregados com mais peso</h3>
-                        <canvas id="chart-carros-peso" height="220"></canvas>
-                    </div>
-                </div>
+                </section>
 
-                <h2 style="margin-top: 30px;">ESTATÍSTICAS POR VEÍCULO</h2>
-                <div class="veiculos-grid" id="veiculos-stats">
-                    <!-- Preenchido via JavaScript -->
-                </div>
-
-                <h2 style="margin-top: 30px;">IMPORTAR PLANILHA EXCEL</h2>
+                <section class="painel-secao painel-secao-import" id="painel-secao-import">
+                    <h2 class="painel-secao-titulo">Importar planilha Excel</h2>
                 <div class="import-section">
                     <p class="info-text">Importe os dados (Excel ou arquivo) para popular as tabelas do sistema.</p>
                     <div class="import-buttons">
@@ -325,6 +407,7 @@
                     </div>
                     <div id="import-result" style="margin-top: 15px;"></div>
                 </div>
+                </section>
             </div>
 
             <!-- ABA Base de produtos -->

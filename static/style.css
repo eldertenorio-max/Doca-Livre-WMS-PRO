@@ -4372,6 +4372,158 @@ body.conferencia-lista-maximizada-aberta {
     font-weight: 600;
 }
 
+/* Painel — seções organizadas */
+#painel .painel-secao {
+    margin-top: 28px;
+    padding: 24px 26px;
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e4e9ef;
+    box-shadow: 0 2px 14px rgba(26, 77, 122, 0.06);
+}
+
+#painel .painel-secao:first-of-type {
+    margin-top: 8px;
+}
+
+#painel .painel-secao-titulo {
+    margin: 0 0 6px;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #1a4d7a;
+    letter-spacing: 0.02em;
+}
+
+#painel .painel-secao-sub {
+    margin: 0 0 20px;
+    font-size: 0.92rem;
+    color: #5a6a7a;
+    line-height: 1.45;
+}
+
+#painel .painel-subsecao-titulo {
+    margin: 20px 0 12px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #366092;
+}
+
+#painel .painel-tabela-titulo {
+    margin: 0 0 12px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #366092;
+}
+
+#painel .painel-secao-stats {
+    margin-bottom: 20px;
+}
+
+#painel .painel-secao-grid {
+    display: grid;
+    gap: 22px;
+    margin-bottom: 20px;
+    align-items: start;
+}
+
+#painel .painel-secao-grid--chart-table {
+    grid-template-columns: minmax(280px, 1.1fr) minmax(260px, 0.9fr);
+}
+
+#painel .painel-secao-grid--table-charts {
+    grid-template-columns: minmax(320px, 1.4fr) minmax(260px, 0.85fr);
+}
+
+#painel .painel-secao-grid--2charts {
+    grid-template-columns: repeat(2, minmax(260px, 1fr));
+}
+
+#painel .painel-secao-grid--2tables {
+    grid-template-columns: repeat(2, minmax(280px, 1fr));
+}
+
+#painel .painel-secao-charts-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+#painel .painel-secao-charts-col .chart-box {
+    margin: 0;
+}
+
+#painel .painel-secao-tabela-principal {
+    max-height: 420px;
+    overflow: auto;
+}
+
+#painel .painel-secao-tabela-lateral {
+    max-height: 320px;
+    overflow: auto;
+}
+
+#painel .painel-charts--inline {
+    margin-bottom: 0;
+    margin-top: 4px;
+}
+
+#painel .painel-secao-erros .stat-card h3 {
+    font-size: 0.82rem;
+}
+
+#painel .painel-romaneio-charts {
+    margin-bottom: 22px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+#painel .chart-container-romaneio {
+    background: #f8f9fa;
+    padding: 16px;
+    border-radius: 10px;
+    border: 1px solid #e0e0e0;
+    min-height: 260px;
+}
+
+#painel .chart-container-romaneio h4 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: #366092;
+    font-weight: 600;
+}
+
+#painel .painel-secao-import {
+    background: #f8fafc;
+}
+
+#painel .painel-erro-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+#painel .painel-erro-falta {
+    background: #ffebee;
+    color: #c62828;
+}
+
+#painel .painel-erro-sobra {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+@media (max-width: 960px) {
+    #painel .painel-secao-grid--chart-table,
+    #painel .painel-secao-grid--table-charts,
+    #painel .painel-secao-grid--2charts,
+    #painel .painel-secao-grid--2tables {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Input de quantidade do romaneio */
 .romaneio-input {
     width: 100px;
