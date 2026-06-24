@@ -18318,7 +18318,6 @@ function paintPlacasBaixadasDia(placasDia) {
             }).join('');
         }
     }
-    paintPlacasBaixadasCharts(placasDia);
 }
 
 function paintPainelTopItens(topItens) {
@@ -18367,7 +18366,6 @@ function paintErrosCarregamento(errosPayload) {
             }).join('');
         }
     }
-    paintErrosCarregamentoCharts(errosPayload);
 }
 
 function paintCargasBipadasChart(viagens) {
@@ -18402,17 +18400,41 @@ function paintErrosCarregamentoCharts(errosPayload) {
     errosPayload = errosPayload || {};
     var porViagem = errosPayload.por_viagem || [];
     var resumo = errosPayload.resumo || {};
+    if (!porViagem.length && (errosPayload.rows || []).length) {
+        var mapV = {};
+        (errosPayload.rows || []).forEach(function(r) {
+            var vid = String(r.id_viagem || '—').trim() || '—';
+            if (!mapV[vid]) {
+                mapV[vid] = { id_viagem: vid, placa: r.placa || '—', total_faltas: 0, total_sobras: 0 };
+            }
+            mapV[vid].total_faltas += parseInt(r.quantidade_falta, 10) || 0;
+            mapV[vid].total_sobras += parseInt(r.quantidade_sobra, 10) || 0;
+        });
+        porViagem = Object.keys(mapV).map(function(k) { return mapV[k]; });
+    }
     var ctxBar = document.getElementById('chart-erros-carregamento');
     if (ctxBar) {
         var lista = porViagem.slice(0, 12);
-        _painelPrepChartCanvas(ctxBar, { items: Math.max(lista.length, 1), height: 260 });
         if (lista.length === 0) {
+            _painelPrepChartCanvas(ctxBar, { height: 220 });
             chartErrosCarregamento = new Chart(ctxBar, {
                 type: 'bar',
                 data: { labels: ['Sem erros'], datasets: [{ data: [0], backgroundColor: ['#e8f5e9'] }] },
                 options: _painelChartBaseOpts()
             });
+        } else if (lista.length <= 8) {
+            var lblErr = lista.map(function(v) { return _painelTruncLabel(v.id_viagem, 16); });
+            var totaisErr = lista.map(function(v) {
+                return (parseInt(v.total_faltas, 10) || 0) + (parseInt(v.total_sobras, 10) || 0);
+            });
+            chartErrosCarregamento = _painelCriarBarraHorizontal(
+                ctxBar, lblErr,
+                lista.map(function(v) { return v.id_viagem || '—'; }),
+                totaisErr,
+                { label: 'Erros', backgroundColor: '#c62828', borderColor: '#b71c1c' }
+            );
         } else {
+            _painelPrepChartCanvas(ctxBar, { items: lista.length, height: 280 });
             chartErrosCarregamento = new Chart(ctxBar, {
                 type: 'bar',
                 data: {
@@ -18444,11 +18466,16 @@ function paintErrosCarregamentoCharts(errosPayload) {
                 options: _painelChartBaseOpts({ plugins: { legend: { position: 'bottom', display: true } } })
             });
         } else {
+            var lblTipo = [];
+            var dadosTipo = [];
+            var coresTipo = [];
+            if (faltas > 0) { lblTipo.push('Faltas'); dadosTipo.push(faltas); coresTipo.push('#c62828'); }
+            if (sobras > 0) { lblTipo.push('Sobras'); dadosTipo.push(sobras); coresTipo.push('#e65100'); }
             chartErrosTipo = new Chart(ctxTipo, {
                 type: 'doughnut',
                 data: {
-                    labels: ['Faltas', 'Sobras'],
-                    datasets: [{ data: [faltas, sobras], backgroundColor: ['#c62828', '#e65100'], borderWidth: 2 }]
+                    labels: lblTipo,
+                    datasets: [{ data: dadosTipo, backgroundColor: coresTipo, borderWidth: 2 }]
                 },
                 options: _painelChartBaseOpts({ plugins: { legend: { position: 'bottom', display: true } } })
             });
@@ -18698,7 +18725,6 @@ async function loadPainelCompleto() {
     paintErrosCarregamento(data.erros_carregamento || {});
     paintRomaneioStats(data.romaneio || {});
     const viagens = data.viagens || [];
-    paintCargasBipadasChart(viagens);
     const tbody = document.getElementById('tbody-painel-viagens');
     if (tbody) {
         if (viagens.length === 0) {
@@ -18794,6 +18820,9 @@ async function loadPainelCompleto() {
             );
         }
         paintRomaneioCharts(data.romaneio || {});
+        paintPlacasBaixadasCharts(placasPayload);
+        paintErrosCarregamentoCharts(data.erros_carregamento || {});
+        paintCargasBipadasChart(viagens);
     }
     } catch (e) {
         console.error('loadPainelCompleto', e);
