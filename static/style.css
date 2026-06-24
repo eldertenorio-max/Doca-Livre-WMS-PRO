@@ -4372,6 +4372,35 @@ body.conferencia-lista-maximizada-aberta {
     font-weight: 600;
 }
 
+#painel .chart-box {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#painel .chart-canvas-wrap {
+    position: relative;
+    width: 100%;
+    flex: 1;
+    min-height: 200px;
+}
+
+#painel .chart-canvas-wrap canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+#painel .painel-charts--inline .chart-box--span-2 {
+    grid-column: 1 / -1;
+}
+
+@media (min-width: 900px) {
+    #painel .painel-charts--inline {
+        grid-template-columns: repeat(2, minmax(320px, 1fr));
+    }
+}
+
 /* Painel — seções organizadas */
 #painel .painel-secao {
     margin-top: 28px;

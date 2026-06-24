@@ -18171,6 +18171,106 @@ function paintEstatisticas(stats) {
     }
 }
 
+function _painelTruncLabel(text, maxLen) {
+    var s = String(text || '').trim();
+    maxLen = maxLen || 32;
+    if (!s) return '—';
+    if (s.length <= maxLen) return s;
+    return s.slice(0, maxLen - 1) + '…';
+}
+
+function _painelPrepChartCanvas(canvas, opts) {
+    if (!canvas) return;
+    opts = opts || {};
+    var n = opts.items || 6;
+    var horizontal = !!opts.horizontal;
+    var h = horizontal ? Math.max(280, n * 28 + 56) : (opts.height || 260);
+    var wrap = canvas.parentElement;
+    if (!wrap || !wrap.classList.contains('chart-canvas-wrap')) {
+        wrap = document.createElement('div');
+        wrap.className = 'chart-canvas-wrap';
+        canvas.parentNode.insertBefore(wrap, canvas);
+        wrap.appendChild(canvas);
+    }
+    wrap.classList.toggle('chart-canvas-wrap--horizontal', horizontal);
+    wrap.style.height = h + 'px';
+}
+
+function _painelChartBaseOpts(extra) {
+    var base = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
+    if (!extra) return base;
+    var out = Object.assign({}, base, extra);
+    if (base.plugins && extra.plugins) {
+        out.plugins = Object.assign({}, base.plugins, extra.plugins);
+    }
+    return out;
+}
+
+function _painelChartOptsVertical(scaleExtra) {
+    var scales = {
+        x: { ticks: { maxRotation: 45, minRotation: 0, autoSkip: true, maxTicksLimit: 12, font: { size: 11 } } },
+        y: { beginAtZero: true }
+    };
+    if (scaleExtra) Object.assign(scales, scaleExtra);
+    return _painelChartBaseOpts({ scales: scales });
+}
+
+function _painelChartOptsHorizontal(fullLabels) {
+    return _painelChartBaseOpts({
+        indexAxis: 'y',
+        scales: {
+            x: { beginAtZero: true },
+            y: { ticks: { autoSkip: false, font: { size: 11 } } }
+        },
+        layout: { padding: { left: 4, right: 10 } },
+        plugins: {
+            legend: { display: false },
+            tooltip: fullLabels ? {
+                callbacks: {
+                    title: function(items) {
+                        if (!items || !items.length) return '';
+                        var i = items[0].dataIndex;
+                        return (fullLabels[i] != null ? fullLabels[i] : items[0].label) || '';
+                    }
+                }
+            } : {}
+        }
+    });
+}
+
+function _painelCriarBarraVertical(canvas, labels, data, datasetOpts, scaleExtra) {
+    if (!canvas || typeof Chart === 'undefined') return null;
+    _painelPrepChartCanvas(canvas, { items: (labels || []).length, height: 260 });
+    return new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [Object.assign({
+                data: data,
+                borderWidth: 1
+            }, datasetOpts || {})]
+        },
+        options: _painelChartOptsVertical(scaleExtra)
+    });
+}
+
+function _painelCriarBarraHorizontal(canvas, labels, fullLabels, data, datasetOpts) {
+    if (!canvas || typeof Chart === 'undefined') return null;
+    var n = (labels || []).length;
+    _painelPrepChartCanvas(canvas, { items: n, horizontal: true });
+    return new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [Object.assign({
+                data: data,
+                borderWidth: 1
+            }, datasetOpts || {})]
+        },
+        options: _painelChartOptsHorizontal(fullLabels || labels)
+    });
+}
+
 function _painelPlacasStatusClass(status) {
     var s = (status || '').toLowerCase();
     if (s.indexOf('conclu') >= 0) return 'painel-status-carregado';
@@ -18276,34 +18376,23 @@ function paintCargasBipadasChart(viagens) {
     var ctx = document.getElementById('chart-cargas-bipadas');
     if (!ctx) return;
     viagens = (viagens || []).slice(0, 15);
-    var cores = ['#2e7d32', '#388e3c', '#43a047', '#4caf50', '#66bb6a', '#81c784', '#1b5e20', '#33691e'];
     if (viagens.length === 0) {
+        _painelPrepChartCanvas(ctx, { height: 220 });
         chartCargasBipadas = new Chart(ctx, {
             type: 'bar',
             data: { labels: ['Sem cargas'], datasets: [{ data: [0], backgroundColor: ['#e0e0e0'] }] },
-            options: { responsive: true, plugins: { legend: { display: false } } }
+            options: _painelChartBaseOpts()
         });
         return;
     }
-    chartCargasBipadas = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: viagens.map(function(v) { return v.id_viagem || '—'; }),
-            datasets: [{
-                label: 'Itens bipados',
-                data: viagens.map(function(v) { return v.total_bipados || 0; }),
-                backgroundColor: cores.slice(0, viagens.length),
-                borderColor: '#1b5e20',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, title: { display: true, text: 'Quantidade' } } }
-        }
-    });
+    var cores = ['#2e7d32', '#388e3c', '#43a047', '#4caf50', '#66bb6a', '#81c784', '#1b5e20', '#33691e'];
+    chartCargasBipadas = _painelCriarBarraVertical(
+        ctx,
+        viagens.map(function(v) { return v.id_viagem || '—'; }),
+        viagens.map(function(v) { return v.total_bipados || 0; }),
+        { label: 'Itens bipados', backgroundColor: cores.slice(0, viagens.length), borderColor: '#1b5e20' },
+        { y: { beginAtZero: true, title: { display: true, text: 'Quantidade' } } }
+    );
 }
 
 function paintErrosCarregamentoCharts(errosPayload) {
@@ -18316,11 +18405,12 @@ function paintErrosCarregamentoCharts(errosPayload) {
     var ctxBar = document.getElementById('chart-erros-carregamento');
     if (ctxBar) {
         var lista = porViagem.slice(0, 12);
+        _painelPrepChartCanvas(ctxBar, { items: Math.max(lista.length, 1), height: 260 });
         if (lista.length === 0) {
             chartErrosCarregamento = new Chart(ctxBar, {
                 type: 'bar',
                 data: { labels: ['Sem erros'], datasets: [{ data: [0], backgroundColor: ['#e8f5e9'] }] },
-                options: { responsive: true, plugins: { legend: { display: false } } }
+                options: _painelChartBaseOpts()
             });
         } else {
             chartErrosCarregamento = new Chart(ctxBar, {
@@ -18332,23 +18422,26 @@ function paintErrosCarregamentoCharts(errosPayload) {
                         { label: 'Sobras', data: lista.map(function(v) { return v.total_sobras || 0; }), backgroundColor: '#e65100' }
                     ]
                 },
-                options: {
-                    responsive: true,
-                    plugins: { legend: { position: 'bottom' } },
-                    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }
-                }
+                options: _painelChartBaseOpts({
+                    plugins: { legend: { position: 'bottom', display: true } },
+                    scales: {
+                        x: { stacked: true, ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 12, font: { size: 11 } } },
+                        y: { stacked: true, beginAtZero: true }
+                    }
+                })
             });
         }
     }
     var ctxTipo = document.getElementById('chart-erros-tipo');
     if (ctxTipo) {
+        _painelPrepChartCanvas(ctxTipo, { height: 240 });
         var faltas = resumo.total_faltas || 0;
         var sobras = resumo.total_sobras || 0;
         if (faltas + sobras === 0) {
             chartErrosTipo = new Chart(ctxTipo, {
                 type: 'doughnut',
                 data: { labels: ['Sem erros'], datasets: [{ data: [1], backgroundColor: ['#e8f5e9'] }] },
-                options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+                options: _painelChartBaseOpts({ plugins: { legend: { position: 'bottom', display: true } } })
             });
         } else {
             chartErrosTipo = new Chart(ctxTipo, {
@@ -18357,7 +18450,7 @@ function paintErrosCarregamentoCharts(errosPayload) {
                     labels: ['Faltas', 'Sobras'],
                     datasets: [{ data: [faltas, sobras], backgroundColor: ['#c62828', '#e65100'], borderWidth: 2 }]
                 },
-                options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+                options: _painelChartBaseOpts({ plugins: { legend: { position: 'bottom', display: true } } })
             });
         }
     }
@@ -18371,11 +18464,11 @@ function paintPlacasBaixadasCharts(placasDia) {
     if (chartPlacasResumo) { chartPlacasResumo.destroy(); chartPlacasResumo = null; }
     var rows = (placasDia && placasDia.rows) || [];
     var resumo = (placasDia && placasDia.resumo) || {};
-    var opts = { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } } };
     var cores = ['#366092', '#4a7ba7', '#5a8bb5', '#6a9bc3', '#7aabd1', '#8bbce0', '#9bccee', '#5c6bc0'];
 
     var ctxStatus = document.getElementById('chart-placas-status');
     if (ctxStatus) {
+        _painelPrepChartCanvas(ctxStatus, { height: 200 });
         var car = resumo.carregados || 0;
         var and = resumo.em_andamento || 0;
         var nao = resumo.nao_carregados || 0;
@@ -18383,82 +18476,63 @@ function paintPlacasBaixadasCharts(placasDia) {
             chartPlacasStatus = new Chart(ctxStatus, {
                 type: 'doughnut',
                 data: { labels: ['Sem dados'], datasets: [{ data: [1], backgroundColor: ['#e0e0e0'] }] },
-                options: { ...opts, plugins: { legend: { display: true } } }
+                options: _painelChartBaseOpts({ plugins: { legend: { display: true, position: 'bottom' } } })
             });
         } else {
             chartPlacasStatus = new Chart(ctxStatus, {
                 type: 'doughnut',
                 data: {
                     labels: ['Concluído', 'Em andamento', 'Não carregado'],
-                    datasets: [{
-                        data: [car, and, nao],
-                        backgroundColor: ['#2e7d32', '#e65100', '#c62828'],
-                        borderWidth: 2
-                    }]
+                    datasets: [{ data: [car, and, nao], backgroundColor: ['#2e7d32', '#e65100', '#c62828'], borderWidth: 2 }]
                 },
-                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom' } } }
+                options: _painelChartBaseOpts({ plugins: { legend: { position: 'bottom', display: true } } })
             });
         }
     }
 
     var comTempo = rows.filter(function(r) { return r.duracao_minutos != null && r.duracao_minutos > 0; })
         .sort(function(a, b) { return (b.duracao_minutos || 0) - (a.duracao_minutos || 0); })
-        .slice(0, 15);
+        .slice(0, 12);
     var ctxTempo = document.getElementById('chart-placas-tempo');
     if (ctxTempo && comTempo.length > 0) {
-        chartPlacasTempo = new Chart(ctxTempo, {
-            type: 'bar',
-            data: {
-                labels: comTempo.map(function(r) { return r.placa || r.id_viagem || '—'; }),
-                datasets: [{
-                    label: 'Minutos',
-                    data: comTempo.map(function(r) { return r.duracao_minutos || 0; }),
-                    backgroundColor: cores.slice(0, comTempo.length),
-                    borderColor: '#1a4d7a',
-                    borderWidth: 1
-                }]
-            },
-            options: { ...opts, scales: { y: { beginAtZero: true, title: { display: true, text: 'Minutos' } } } }
-        });
+        var lblTempo = comTempo.map(function(r) { return _painelTruncLabel(r.placa || r.id_viagem, 14); });
+        chartPlacasTempo = _painelCriarBarraHorizontal(
+            ctxTempo, lblTempo,
+            comTempo.map(function(r) { return r.placa || r.id_viagem || '—'; }),
+            comTempo.map(function(r) { return r.duracao_minutos || 0; }),
+            { label: 'Minutos', backgroundColor: cores.slice(0, comTempo.length), borderColor: '#1a4d7a' }
+        );
     }
 
     var comPeso = rows.filter(function(r) { return (r.peso_kg || 0) > 0; })
         .sort(function(a, b) { return (b.peso_kg || 0) - (a.peso_kg || 0); })
-        .slice(0, 15);
+        .slice(0, 12);
     var ctxPeso = document.getElementById('chart-placas-peso');
     if (ctxPeso && comPeso.length > 0) {
-        chartPlacasPeso = new Chart(ctxPeso, {
-            type: 'bar',
-            data: {
-                labels: comPeso.map(function(r) { return r.placa || r.id_viagem || '—'; }),
-                datasets: [{
-                    label: 'Peso (kg)',
-                    data: comPeso.map(function(r) { return r.peso_kg || 0; }),
-                    backgroundColor: '#e65100',
-                    borderColor: '#bf360c',
-                    borderWidth: 1
-                }]
-            },
-            options: { ...opts, scales: { y: { beginAtZero: true, title: { display: true, text: 'kg' } } } }
-        });
+        var lblPeso = comPeso.map(function(r) { return _painelTruncLabel(r.placa || r.id_viagem, 14); });
+        chartPlacasPeso = _painelCriarBarraHorizontal(
+            ctxPeso, lblPeso,
+            comPeso.map(function(r) { return r.placa || r.id_viagem || '—'; }),
+            comPeso.map(function(r) { return r.peso_kg || 0; }),
+            { label: 'Peso (kg)', backgroundColor: '#e65100', borderColor: '#bf360c' }
+        );
     }
 
     var ctxResumo = document.getElementById('chart-placas-resumo');
     if (ctxResumo) {
-        var total = resumo.total || 0;
-        var carreg = resumo.carregados || 0;
+        _painelPrepChartCanvas(ctxResumo, { height: 200 });
         chartPlacasResumo = new Chart(ctxResumo, {
             type: 'bar',
             data: {
-                labels: ['Baixadas', 'Carregadas', 'Em andamento', 'Não carregadas'],
+                labels: ['Baixadas', 'Concluídas', 'Em andamento', 'Não carregadas'],
                 datasets: [{
                     label: 'Quantidade',
-                    data: [total, resumo.carregados || 0, resumo.em_andamento || 0, resumo.nao_carregados || 0],
+                    data: [resumo.total || 0, resumo.carregados || 0, resumo.em_andamento || 0, resumo.nao_carregados || 0],
                     backgroundColor: ['#366092', '#2e7d32', '#e65100', '#c62828'],
                     borderWidth: 1
                 }]
             },
-            options: { ...opts, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+            options: _painelChartOptsVertical({ y: { beginAtZero: true, ticks: { stepSize: 1 } } })
         });
     }
 }
@@ -18646,87 +18720,78 @@ async function loadPainelCompleto() {
     const cores = ['#366092', '#4a7ba7', '#5a8bb5', '#6a9bc3', '#7aabd1', '#8bbce0', '#9bccee', '#5c6bc0', '#7e57c2', '#9575cd', '#b39ddb', '#ce93d8', '#ab47bc', '#8e24aa', '#6a1b9a'];
     destroyCharts();
     if (typeof Chart !== 'undefined') {
-        const opts = { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } } };
         const ctxTempo = document.getElementById('chart-tempo-carregamento');
         if (ctxTempo) {
-            chartTempoCarregamento = new Chart(ctxTempo, {
-                type: 'bar',
-                data: {
-                    labels,
-                    datasets: [{ label: 'Minutos', data: viagens.slice(0, 15).map(v => v.duracao_minutos != null ? v.duracao_minutos : 0), backgroundColor: cores.slice(0, labels.length), borderColor: '#1a4d7a', borderWidth: 1 }]
-                },
-                options: { ...opts, scales: { y: { beginAtZero: true, title: { display: true, text: 'Minutos' } } } }
-            });
+            chartTempoCarregamento = _painelCriarBarraVertical(
+                ctxTempo, labels,
+                viagens.slice(0, 15).map(v => v.duracao_minutos != null ? v.duracao_minutos : 0),
+                { label: 'Minutos', backgroundColor: cores.slice(0, labels.length), borderColor: '#1a4d7a' },
+                { y: { beginAtZero: true, title: { display: true, text: 'Minutos' } } }
+            );
         }
-        const tempoPorPlaca = (data.tempo_por_placa || []).slice(0, 15);
+        const tempoPorPlaca = (data.tempo_por_placa || []).slice(0, 12);
         const ctxTempoPlaca = document.getElementById('chart-tempo-por-placa');
         if (ctxTempoPlaca && tempoPorPlaca.length > 0) {
-            chartTempoPorPlaca = new Chart(ctxTempoPlaca, {
-                type: 'bar',
-                data: {
-                    labels: tempoPorPlaca.map(p => p.placa || 'Sem placa'),
-                    datasets: [{ label: 'Minutos', data: tempoPorPlaca.map(p => p.total_minutos || 0), backgroundColor: cores.slice(0, tempoPorPlaca.length), borderColor: '#1a4d7a', borderWidth: 1 }]
-                },
-                options: { ...opts, scales: { y: { beginAtZero: true, title: { display: true, text: 'Minutos' } } } }
-            });
+            var lblPlaca = tempoPorPlaca.map(p => _painelTruncLabel(p.placa || 'Sem placa', 14));
+            chartTempoPorPlaca = _painelCriarBarraHorizontal(
+                ctxTempoPlaca, lblPlaca,
+                tempoPorPlaca.map(p => p.placa || 'Sem placa'),
+                tempoPorPlaca.map(p => p.total_minutos || 0),
+                { label: 'Minutos', backgroundColor: cores.slice(0, tempoPorPlaca.length), borderColor: '#1a4d7a' }
+            );
         }
         const ctxBipados = document.getElementById('chart-itens-bipados');
         if (ctxBipados) {
-            chartItensBipados = new Chart(ctxBipados, {
-                type: 'bar',
-                data: {
-                    labels,
-                    datasets: [{ label: 'Itens bipados', data: viagens.slice(0, 15).map(v => v.total_bipados || 0), backgroundColor: '#2e7d32', borderColor: '#1b5e20', borderWidth: 1 }]
-                },
-                options: { ...opts, scales: { y: { beginAtZero: true } } }
-            });
+            chartItensBipados = _painelCriarBarraVertical(
+                ctxBipados, labels,
+                viagens.slice(0, 15).map(v => v.total_bipados || 0),
+                { label: 'Itens bipados', backgroundColor: '#2e7d32', borderColor: '#1b5e20' }
+            );
         }
         const ctxFaltas = document.getElementById('chart-faltas');
         if (ctxFaltas) {
-            chartFaltas = new Chart(ctxFaltas, {
-                type: 'bar',
-                data: {
-                    labels,
-                    datasets: [{ label: 'Faltas', data: viagens.slice(0, 15).map(v => v.total_faltas ?? 0), backgroundColor: '#c62828', borderColor: '#b71c1c', borderWidth: 1 }]
-                },
-                options: { ...opts, scales: { y: { beginAtZero: true } } }
-            });
+            chartFaltas = _painelCriarBarraVertical(
+                ctxFaltas, labels,
+                viagens.slice(0, 15).map(v => v.total_faltas ?? 0),
+                {
+                    label: 'Faltas',
+                    backgroundColor: viagens.slice(0, 15).map(v => (v.total_faltas || 0) > 0 ? '#c62828' : '#81c784'),
+                    borderColor: '#b71c1c'
+                }
+            );
         }
-        const topItens = data.top_itens_bipados || [];
+        const topItens = (data.top_itens_bipados || []).slice(0, 15);
         const ctxItens = document.getElementById('chart-itens-mais-bipados');
         if (ctxItens && topItens.length > 0) {
-            chartItensMaisBipados = new Chart(ctxItens, {
-                type: 'bar',
-                data: {
-                    labels: topItens.map(i => i.label),
-                    datasets: [{ label: 'Total', data: topItens.map(i => i.total), backgroundColor: '#1565c0', borderColor: '#0d47a1', borderWidth: 1 }]
-                },
-                options: { ...opts, scales: { y: { beginAtZero: true } } }
-            });
+            var fullItens = topItens.map(i => i.label || '—');
+            var shortItens = fullItens.map(function(l) { return _painelTruncLabel(l, 36); });
+            chartItensMaisBipados = _painelCriarBarraHorizontal(
+                ctxItens, shortItens, fullItens,
+                topItens.map(i => i.total),
+                { label: 'Total', backgroundColor: '#1565c0', borderColor: '#0d47a1' }
+            );
         }
-        const carrosItens = data.carros_mais_itens || [];
+        const carrosItens = (data.carros_mais_itens || []).slice(0, 12);
         const ctxCarros = document.getElementById('chart-carros-itens');
         if (ctxCarros && carrosItens.length > 0) {
-            chartCarrosItens = new Chart(ctxCarros, {
-                type: 'bar',
-                data: {
-                    labels: carrosItens.map(c => c.veiculo || ''),
-                    datasets: [{ label: 'Itens', data: carrosItens.map(c => c.total), backgroundColor: '#6a1b9a', borderColor: '#4a148c', borderWidth: 1 }]
-                },
-                options: { ...opts, scales: { y: { beginAtZero: true } } }
-            });
+            var lblCar = carrosItens.map(c => _painelTruncLabel(c.veiculo, 14));
+            chartCarrosItens = _painelCriarBarraHorizontal(
+                ctxCarros, lblCar,
+                carrosItens.map(c => c.veiculo || ''),
+                carrosItens.map(c => c.total),
+                { label: 'Itens', backgroundColor: '#6a1b9a', borderColor: '#4a148c' }
+            );
         }
-        const carrosPeso = data.carros_mais_peso || [];
+        const carrosPeso = (data.carros_mais_peso || []).slice(0, 12);
         const ctxPeso = document.getElementById('chart-carros-peso');
         if (ctxPeso && carrosPeso.length > 0) {
-            chartCarrosPeso = new Chart(ctxPeso, {
-                type: 'bar',
-                data: {
-                    labels: carrosPeso.map(c => c.veiculo || ''),
-                    datasets: [{ label: 'Peso (kg)', data: carrosPeso.map(c => c.peso_total), backgroundColor: '#e65100', borderColor: '#bf360c', borderWidth: 1 }]
-                },
-                options: { ...opts, scales: { y: { beginAtZero: true } } }
-            });
+            var lblCarP = carrosPeso.map(c => _painelTruncLabel(c.veiculo, 14));
+            chartCarrosPeso = _painelCriarBarraHorizontal(
+                ctxPeso, lblCarP,
+                carrosPeso.map(c => c.veiculo || ''),
+                carrosPeso.map(c => c.peso_total),
+                { label: 'Peso (kg)', backgroundColor: '#e65100', borderColor: '#bf360c' }
+            );
         }
         paintRomaneioCharts(data.romaneio || {});
     }
@@ -18784,7 +18849,6 @@ function paintRomaneioCharts(romaneio) {
     if (chartRomaneioPesoCarro) { chartRomaneioPesoCarro.destroy(); chartRomaneioPesoCarro = null; }
     if (chartRomaneioPesoTotal) { chartRomaneioPesoTotal.destroy(); chartRomaneioPesoTotal = null; }
 
-    const opts = { responsive: true, maintainAspectRatio: true };
     const cores = ['#366092', '#4a7ba7', '#5a8bb5', '#6a9bc3', '#7aabd1', '#8bbce0', '#9bccee', '#5c6bc0', '#7e57c2', '#9575cd', '#b39ddb', '#ce93d8', '#ab47bc', '#8e24aa', '#6a1b9a'];
 
     // 1. Roteiros e Veículos
@@ -18793,6 +18857,7 @@ function paintRomaneioCharts(romaneio) {
         const qtdR = romaneio.qtd_roteiros != null ? Number(romaneio.qtd_roteiros) : 0;
         const qtdV = romaneio.qtd_veiculos != null ? Number(romaneio.qtd_veiculos) : 0;
         const maxRoteiros = Math.max(1, qtdR, qtdV);
+        _painelPrepChartCanvas(ctxRoteiros, { height: 220 });
         chartRomaneioRoteirosVeiculos = new Chart(ctxRoteiros, {
             type: 'bar',
             data: {
@@ -18805,7 +18870,7 @@ function paintRomaneioCharts(romaneio) {
                     borderWidth: 1
                 }]
             },
-            options: { ...opts, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: maxRoteiros, ticks: { stepSize: 1 } } } }
+            options: _painelChartOptsVertical({ y: { beginAtZero: true, suggestedMax: maxRoteiros, ticks: { stepSize: 1 } } })
         });
     }
 
@@ -18814,41 +18879,27 @@ function paintRomaneioCharts(romaneio) {
     const itensSorted = Object.entries(itens).sort((a, b) => (b[1] || 0) - (a[1] || 0)).slice(0, 15);
     const ctxItens = document.getElementById('chart-romaneio-qtd-itens');
     if (ctxItens && itensSorted.length > 0) {
-        chartRomaneioQtdItens = new Chart(ctxItens, {
-            type: 'bar',
-            data: {
-                labels: itensSorted.map(([cod]) => (cod || '').length > 12 ? (cod || '').substring(0, 12) + '…' : (cod || '')),
-                datasets: [{
-                    label: 'Quantidade',
-                    data: itensSorted.map(([, qtd]) => qtd || 0),
-                    backgroundColor: cores.slice(0, itensSorted.length),
-                    borderColor: '#1a4d7a',
-                    borderWidth: 1
-                }]
-            },
-            options: { ...opts, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
-        });
+        var codFull = itensSorted.map(([cod]) => cod || '—');
+        var codShort = codFull.map(function(c) { return _painelTruncLabel(c, 16); });
+        chartRomaneioQtdItens = _painelCriarBarraHorizontal(
+            ctxItens, codShort, codFull,
+            itensSorted.map(([, qtd]) => qtd || 0),
+            { label: 'Quantidade', backgroundColor: cores.slice(0, itensSorted.length), borderColor: '#1a4d7a' }
+        );
     }
 
     // 3. Peso por carro (veículo)
     const pesoCarro = romaneio.peso_por_carro || {};
-    const pesoCarroSorted = Object.entries(pesoCarro).sort((a, b) => (b[1] || 0) - (a[1] || 0)).slice(0, 15);
+    const pesoCarroSorted = Object.entries(pesoCarro).sort((a, b) => (b[1] || 0) - (a[1] || 0)).slice(0, 12);
     const ctxPesoCarro = document.getElementById('chart-romaneio-peso-carro');
     if (ctxPesoCarro && pesoCarroSorted.length > 0) {
-        chartRomaneioPesoCarro = new Chart(ctxPesoCarro, {
-            type: 'bar',
-            data: {
-                labels: pesoCarroSorted.map(([placa]) => (placa || '').length > 10 ? (placa || '').substring(0, 10) + '…' : (placa || '')),
-                datasets: [{
-                    label: 'Peso (kg)',
-                    data: pesoCarroSorted.map(([, p]) => p != null ? Number(p) : 0),
-                    backgroundColor: cores.slice(0, pesoCarroSorted.length),
-                    borderColor: '#1a4d7a',
-                    borderWidth: 1
-                }]
-            },
-            options: { ...opts, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'kg' } } } }
-        });
+        var plFull = pesoCarroSorted.map(([placa]) => placa || '—');
+        var plShort = plFull.map(function(p) { return _painelTruncLabel(p, 14); });
+        chartRomaneioPesoCarro = _painelCriarBarraHorizontal(
+            ctxPesoCarro, plShort, plFull,
+            pesoCarroSorted.map(([, p]) => p != null ? Number(p) : 0),
+            { label: 'Peso (kg)', backgroundColor: cores.slice(0, pesoCarroSorted.length), borderColor: '#1a4d7a' }
+        );
     }
 
     // 4. Peso total (todos os roteiros) – doughnut com um único segmento (mínimo 1 para exibir o anel)
@@ -18856,6 +18907,7 @@ function paintRomaneioCharts(romaneio) {
     const ctxPesoTotal = document.getElementById('chart-romaneio-peso-total');
     if (ctxPesoTotal) {
         const valorExibir = pesoTotal > 0 ? pesoTotal : 1;
+        _painelPrepChartCanvas(ctxPesoTotal, { height: 220 });
         chartRomaneioPesoTotal = new Chart(ctxPesoTotal, {
             type: 'doughnut',
             data: {
@@ -18867,14 +18919,13 @@ function paintRomaneioCharts(romaneio) {
                     borderWidth: 2
                 }]
             },
-            options: {
-                ...opts,
+            options: Object.assign(_painelChartBaseOpts({
                 cutout: '60%',
                 plugins: {
                     legend: { display: false },
                     tooltip: { callbacks: { label: (ctx) => 'Total: ' + (ctx.raw || 0).toLocaleString('pt-BR') + ' kg' } }
                 }
-            },
+            })),
             plugins: [{
                 id: 'pesoTotalCenter',
                 afterDraw: (chart) => {
