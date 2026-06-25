@@ -740,7 +740,7 @@
         "D"
       ],
       "niveis": 5,
-      "total_posicoes": 133,
+      "total_posicoes": 134,
       "enderecos": [
         {
           "rua": "C",
@@ -1146,6 +1146,11 @@
         {
           "rua": "D",
           "posicao": 4,
+          "nivel": 1
+        },
+        {
+          "rua": "D",
+          "posicao": 4,
           "nivel": 3
         },
         {
@@ -1387,22 +1392,22 @@
           "rua": "D",
           "posicao": 14,
           "nivel": 1,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "D",
           "posicao": 14,
           "nivel": 2,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "D",
           "posicao": 14,
           "nivel": 3,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "D",
@@ -1415,22 +1420,22 @@
           "rua": "D",
           "posicao": 15,
           "nivel": 1,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "D",
           "posicao": 15,
           "nivel": 2,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "D",
           "posicao": 15,
           "nivel": 3,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "D",

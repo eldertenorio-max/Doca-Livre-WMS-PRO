@@ -4993,6 +4993,10 @@ var _WMS_ULTRA_ZONAS_LAYOUT = {
     '12:C': [
         { tipo: 'porta', cols: [2, 2], niveis: [1, 2], label: 'porta' },
         { tipo: 'retrabalho', cols: [14, 15], niveis: [1, 4], label: 'retrabalho' }
+    ],
+    '12:D': [
+        { tipo: 'porta', cols: [2, 3], niveis: [1, 2], label: 'porta' },
+        { tipo: 'retrabalho', cols: [14, 15], niveis: [1, 4], label: 'retrabalho' }
     ]
 };
 
