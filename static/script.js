@@ -5050,12 +5050,15 @@ function _wmsUltraRowLabelWidth(cellSize) {
     return Math.max(22, Math.round(cellSize * 0.82));
 }
 
-function _wmsUltraComputeCellSize(containerWidth, maxCols) {
+function _wmsUltraComputeCellSize(containerWidth, maxCols, numRuas) {
     if (!containerWidth || containerWidth <= 0) return _WMS_ULTRA_CELL_MIN;
     maxCols = Math.max(1, maxCols || 1);
-    var pad = 24;
+    numRuas = Math.max(1, parseInt(numRuas, 10) || 1);
+    var pad = 20;
     var labelArea = 30;
-    var perRua = Math.max(180, containerWidth * 0.46) - pad - labelArea;
+    var gap = 8 * Math.max(0, numRuas - 1);
+    var usable = Math.max(200, containerWidth - gap - pad * numRuas);
+    var perRua = usable / numRuas - labelArea;
     var size = Math.floor(perRua / maxCols);
     return Math.min(_WMS_ULTRA_CELL_MAX, Math.max(_WMS_ULTRA_CELL_MIN, size));
 }
@@ -5186,12 +5189,12 @@ function _wmsUltraRenderCamaraSection(cam, selCam, cellSize) {
     if (cellSize == null) {
         var wrap = document.getElementById('wms-end-2d-wrap');
         var w = wrap ? wrap.clientWidth : 900;
-        cellSize = _wmsUltraComputeCellSize(w, maxCols);
+        cellSize = _wmsUltraComputeCellSize(w, maxCols, ruas.length);
     }
     var html = '<section class="camara-section wms-ultra-cam--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-label="Câmara ' + escHtml(String(cod)) + '" tabindex="0" title="Clique para abrir 3D">';
     html += '<header class="camara-header"><h2>Câmara ' + escHtml(String(cod)) + '</h2>';
     html += '<span>' + escHtml(meta.tipo) + (meta.temp ? ' · ' + escHtml(meta.temp) + '°' : '') + '</span></header>';
-    html += '<div class="ruas-row">';
+    html += '<div class="ruas-row" style="--ruas-count:' + escHtml(String(Math.max(1, ruas.length))) + '">';
     ruas.forEach(function(rua) {
         html += _wmsUltraRenderRuaGrid(cod, rua, cam.slots || [], maxNiv, cellSize);
     });
@@ -5785,14 +5788,17 @@ function _wmsEndRender2DPlanta() {
     var wrap = document.getElementById('wms-end-2d-wrap');
     var wrapW = wrap ? wrap.clientWidth : 900;
     var maxColsAll = 1;
+    var maxRuasCam = 1;
     camOrder.forEach(function(cod) {
         var cam = camByCod[cod];
+        var nRuas = (cam.ruas || []).length;
+        if (nRuas > maxRuasCam) maxRuasCam = nRuas;
         (cam.ruas || []).forEach(function(rua) {
             var m = _wmsUltraMaxColunas(_wmsUltraSlotsPorRua(cam.slots || [], rua));
             if (m > maxColsAll) maxColsAll = m;
         });
     });
-    var cellSize = _wmsUltraComputeCellSize(wrapW, maxColsAll);
+    var cellSize = _wmsUltraComputeCellSize(wrapW, maxColsAll, maxRuasCam);
     var html = '<div class="wms-ultra-layout layout-panel">';
 
     if (camOrder.length) {

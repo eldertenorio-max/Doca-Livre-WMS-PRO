@@ -771,7 +771,7 @@ body.hub-modulos-aberto .container {
     padding: 8px;
     min-height: 120px;
     background: #eef2f6;
-    overflow-x: hidden;
+    overflow-x: auto;
 }
 
 /* Planta 2D — estilo Ultrafrio (grade por rua) */
@@ -885,14 +885,12 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-ultra-layout .ruas-row {
-    display: flex;
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: repeat(var(--ruas-count, 2), minmax(0, 1fr));
     gap: 8px;
     width: 100%;
-    align-items: flex-start;
-    overflow-x: auto;
-    scroll-snap-type: x proximity;
-    padding-bottom: 4px;
+    align-items: start;
+    min-width: 0;
 }
 
 .wms-ultra-layout .ruas-row::-webkit-scrollbar {
@@ -905,8 +903,8 @@ body.hub-modulos-aberto .container {
 }
 
 .wms-ultra-layout .rua-block {
-    flex: 0 0 auto;
-    scroll-snap-align: start;
+    min-width: 0;
+    width: 100%;
 }
 
 .wms-ultra-layout .rua-title {
@@ -919,6 +917,7 @@ body.hub-modulos-aberto .container {
 .wms-ultra-layout .rua-grid-scroll {
     overflow-x: auto;
     max-width: 100%;
+    width: 100%;
 }
 
 .wms-ultra-layout .rua-grid-inner {
