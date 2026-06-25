@@ -8969,6 +8969,7 @@ def api_wms_areas_especiais():
     conn = _db()
     try:
         _ensure_wms_schema_safe(conn)
+        _ensure_layout_enderecos(conn)
         if _query_flag_sync():
             _ensure_layout_enderecos_atualizado(conn)
             _sync_wms_camara_layout(conn)
