@@ -4972,246 +4972,25 @@ function _wmsRenderEnderecoRow(grupo) {
 
 var _wmsEndState = { data: null, mapa3d: null, regions: [], selectedCamara: null, selectedSlot: null };
 
-var _WMS_ULTRA_NIVEIS = [5, 4, 3, 2, 1];
-var _WMS_ULTRA_CELL_MIN = 32;
-var _WMS_ULTRA_CELL_MAX = 52;
-
 var _WMS_END2D_LEGENDA = [
-    { swatch: 'swatch--disp', label: 'Disponível' },
-    { swatch: 'swatch--ocup', label: 'Ocupado' },
-    { swatch: 'swatch--porta', label: 'Porta' },
-    { swatch: 'swatch--retrab', label: 'Retrabalho' },
-    { swatch: 'swatch--bloq', label: 'Destino fixo / indisponível' },
-    { swatch: 'swatch--nv5', label: 'Sem posição neste nível' }
+    { swatch: 'wms-swatch--disp', label: 'Disponível' },
+    { swatch: 'wms-swatch--ocup', label: 'Ocupado' },
+    { swatch: 'wms-swatch--porta', label: 'Porta' },
+    { swatch: 'wms-swatch--nv5', label: 'Indisponível' },
+    { swatch: 'wms-swatch--mg', label: 'ENVIO P/ MINAS' },
+    { swatch: 'wms-swatch--retrabalho', label: 'RETRABALHO' },
+    { swatch: 'wms-swatch--descarte', label: 'DESCARTE' },
+    { swatch: 'wms-swatch--avaria', label: 'AVARIA' },
+    { swatch: 'wms-swatch--reentregas', label: 'REENTREGAS' }
 ];
-
-/** Zonas especiais no layout 2D — chave "câmara:rua". */
-var _WMS_ULTRA_ZONAS_LAYOUT = {
-    '11:B': [
-        { tipo: 'porta', cols: [2, 3], niveis: [1, 2], label: 'porta' }
-    ],
-    '12:C': [
-        { tipo: 'porta', cols: [2, 3], niveis: [1, 2], label: 'porta' }
-    ],
-    '12:D': [
-        { tipo: 'porta', cols: [2, 4], niveis: [1, 2], label: 'porta' }
-    ],
-    '13:E': [
-        { tipo: 'porta', cols: [2, 3], niveis: [1, 2], label: 'porta' }
-    ]
-};
-
-function _wmsUltraZonasLayout(camCod, rua) {
-    var key = String(parseInt(camCod, 10) || '') + ':' + String(rua || '').toUpperCase();
-    return _WMS_ULTRA_ZONAS_LAYOUT[key] || [];
-}
-
-function _wmsUltraCelulaNaZona(zonas, col, nivel) {
-    for (var i = 0; i < (zonas || []).length; i++) {
-        var z = zonas[i];
-        if (col >= z.cols[0] && col <= z.cols[1] && nivel >= z.niveis[0] && nivel <= z.niveis[1]) {
-            return z;
-        }
-    }
-    return null;
-}
-
-function _wmsUltraPortaConfig(camCod, rua) {
-    var zonas = _wmsUltraZonasLayout(camCod, rua);
-    for (var i = 0; i < zonas.length; i++) {
-        if (zonas[i].tipo === 'porta') return zonas[i];
-    }
-    return null;
-}
-
-function _wmsUltraCelulaPorta(porta, col, nivel) {
-    if (!porta) return false;
-    return col >= porta.cols[0] && col <= porta.cols[1]
-        && nivel >= porta.niveis[0] && nivel <= porta.niveis[1];
-}
-
-function _wmsUltraZonaOverlayStyle(zona, cellSize, niveisVisiveis) {
-    var c0 = zona.cols[0];
-    var c1 = zona.cols[1];
-    var n0 = zona.niveis[0];
-    var n1 = zona.niveis[1];
-    var idxTop = niveisVisiveis.indexOf(Math.max(n0, n1));
-    if (idxTop < 0) idxTop = 0;
-    var rowCount = n1 - n0 + 1;
-    return {
-        left: (c0 - 1) * cellSize,
-        top: idxTop * cellSize,
-        width: (c1 - c0 + 1) * cellSize,
-        height: rowCount * cellSize
-    };
-}
 
 function _wmsEndRenderLegenda2d() {
     var el = document.getElementById('wms-end-2d-legenda');
     if (!el) return;
-    el.className = 'wms-end-2d-legenda layout-legend';
+    el.className = 'wms-end-2d-legenda wms-layout-legend';
     el.innerHTML = _WMS_END2D_LEGENDA.map(function(it) {
-        return '<span><i class="swatch ' + escHtml(it.swatch) + '" aria-hidden="true"></i>' + escHtml(it.label) + '</span>';
+        return '<span><i class="wms-swatch ' + it.swatch + '" aria-hidden="true"></i>' + escHtml(it.label) + '</span>';
     }).join('');
-}
-
-function _wmsUltraRowLabelWidth(cellSize) {
-    return Math.max(22, Math.round(cellSize * 0.82));
-}
-
-function _wmsUltraComputeCellSize(containerWidth, maxCols, numRuas) {
-    if (!containerWidth || containerWidth <= 0) return _WMS_ULTRA_CELL_MIN;
-    maxCols = Math.max(1, maxCols || 1);
-    numRuas = Math.max(1, parseInt(numRuas, 10) || 1);
-    var pad = 20;
-    var labelArea = 30;
-    var gap = 8 * Math.max(0, numRuas - 1);
-    var usable = Math.max(200, containerWidth - gap - pad * numRuas);
-    var perRua = usable / numRuas - labelArea;
-    var size = Math.floor(perRua / maxCols);
-    return Math.min(_WMS_ULTRA_CELL_MAX, Math.max(_WMS_ULTRA_CELL_MIN, size));
-}
-
-function _wmsUltraSlotsPorRua(slots, rua) {
-    var map = {};
-    (slots || []).forEach(function(s) {
-        if (String(s.rua || '').toUpperCase() !== String(rua || '').toUpperCase()) return;
-        var p = parseInt(s.posicao, 10) || 0;
-        var n = parseInt(s.nivel, 10) || 1;
-        if (!p) return;
-        if (!map[p]) map[p] = {};
-        map[p][n] = s;
-    });
-    return map;
-}
-
-function _wmsUltraMaxColunas(posMap) {
-    var max = 0;
-    Object.keys(posMap || {}).forEach(function(k) {
-        var p = parseInt(k, 10) || 0;
-        if (p > max) max = p;
-    });
-    return max;
-}
-
-function _wmsUltraColunaTemAlgumNivel(posMap, col) {
-    var niveisMap = posMap[col] || {};
-    return Object.keys(niveisMap).length > 0;
-}
-
-function _wmsUltraSemNivel5Ausente(col, nivel, totalCols, maxNiv) {
-    return maxNiv >= 5 && nivel === 5 && totalCols >= 2 && col >= totalCols - 1;
-}
-
-function _wmsUltraCellClass(slot, hasAddress, col, nivel, totalCols, maxNiv, porta, camCod) {
-    if (_wmsUltraCelulaPorta(porta, col, nivel)) return 'cell--porta';
-    if (_wmsUltraSemNivel5Ausente(col, nivel, totalCols, maxNiv)) return 'cell--sem-nivel5';
-    if (!hasAddress) return 'cell--sem-nivel5';
-    if (!slot) return 'cell--sem-nivel5';
-    if (slot.destino_acao) return 'cell--bloqueado';
-    if ((slot.status || '') === 'ocupada') return 'cell--ocupado';
-    return 'cell--disponivel';
-}
-
-function _wmsUltraCellClickable(kind) {
-    return kind === 'cell--disponivel' || kind === 'cell--ocupado';
-}
-
-function _wmsUltraRenderRuaGrid(camCod, rua, slots, maxNiv, cellSize) {
-    var posMap = _wmsUltraSlotsPorRua(slots, rua);
-    var colunas = _wmsUltraMaxColunas(posMap);
-    if (!colunas) return '';
-    var porta = _wmsUltraPortaConfig(camCod, rua);
-    var zonas = _wmsUltraZonasLayout(camCod, rua);
-    var labelW = _wmsUltraRowLabelWidth(cellSize);
-    var headerH = Math.max(14, Math.round(cellSize * 0.72));
-    var axisFont = cellSize >= 36 ? 11 : 9;
-    var gridWidth = labelW + 6 + colunas * cellSize;
-    var niveisVisiveis = _WMS_ULTRA_NIVEIS.filter(function(n) { return n <= maxNiv; });
-    var colTpl = 'repeat(' + colunas + ', ' + cellSize + 'px)';
-    var html = '<div class="rua-block">';
-    html += '<div class="rua-title">Rua ' + escHtml(String(rua)) + '</div>';
-    html += '<div class="rua-grid-scroll"><div class="rua-grid-inner" style="min-width:' + gridWidth + 'px">';
-    html += '<div class="rua-grid-wrap" style="padding-top:' + (headerH + 4) + 'px">';
-    html += '<div class="col-headers" style="margin-left:' + labelW + 'px;grid-template-columns:' + colTpl + '">';
-    for (var c = 1; c <= colunas; c++) {
-        html += '<span class="axis-label" style="width:' + cellSize + 'px;font-size:' + axisFont + 'px">' + c + '</span>';
-    }
-    html += '</div><div class="rua-body"><div class="row-labels" style="width:' + labelW + 'px">';
-    niveisVisiveis.forEach(function(nivel) {
-        html += '<span class="axis-label row-axis" style="height:' + cellSize + 'px;line-height:' + cellSize + 'px;font-size:' + axisFont + 'px">' + nivel + '</span>';
-    });
-    html += '</div><div class="cells-area" style="position:relative"><div class="cells-stack">';
-    niveisVisiveis.forEach(function(nivel) {
-        html += '<div class="cells-row" style="grid-template-columns:' + colTpl + '">';
-        for (var col = 1; col <= colunas; col++) {
-            var slot = (posMap[col] || {})[nivel] || null;
-            var hasAddress = !!slot || _wmsUltraColunaTemAlgumNivel(posMap, col);
-            var kind = _wmsUltraCellClass(slot, hasAddress, col, nivel, colunas, maxNiv, porta, camCod);
-            var clickable = _wmsUltraCellClickable(kind);
-            var tit = slot
-                ? (slot.codigo_endereco || ('Câmara ' + camCod + ' · Rua ' + rua + ' · Col ' + col + ' · Nív ' + nivel))
-                : ('Câmara ' + camCod + ' · Rua ' + rua + ' · Col ' + col + ' · Nív ' + nivel);
-            if (_wmsUltraCelulaPorta(porta, col, nivel)) tit += ' — Porta';
-            else if (_wmsUltraSemNivel5Ausente(col, nivel, colunas, maxNiv)) tit += ' — Sem nível 5 nesta coluna';
-            if (slot && slot.destino_label) tit += ' — ' + slot.destino_label;
-            else if (slot && (slot.status || '') === 'ocupada') tit += ' — Ocupado';
-            else if (clickable) tit += ' — Disponível';
-            var cls = 'cell ' + kind + (clickable ? ' wms-ultra-cell--clickable' : '');
-            var attrs = ' type="button" class="' + cls + '" style="width:' + cellSize + 'px;height:' + cellSize + 'px"';
-            attrs += ' title="' + escHtml(tit) + '" aria-label="' + escHtml(tit) + '"';
-            if (clickable) {
-                attrs += ' data-camara="' + escHtml(String(camCod)) + '" data-rua="' + escHtml(String(rua).toUpperCase()) + '"';
-                attrs += ' data-posicao="' + escHtml(String(col)) + '" data-nivel="' + escHtml(String(nivel)) + '"';
-            }
-            html += '<button' + attrs + '></button>';
-        }
-        html += '</div>';
-    });
-    html += '</div>';
-    zonas.forEach(function(zona) {
-        var zo = _wmsUltraZonaOverlayStyle(zona, cellSize, niveisVisiveis);
-        var zFont = Math.max(8, Math.min(cellSize >= 36 ? 11 : 9, Math.floor(zo.width / 6)));
-        if (zona.tipo === 'retrabalho') zFont = Math.max(7, Math.min(10, Math.floor(zo.width / 8)));
-        var zCls = zona.tipo === 'porta' ? 'porta-label' : ('destino-zona-label destino-zona--' + zona.tipo);
-        html += '<div class="' + zCls + '" style="left:' + zo.left + 'px;top:' + zo.top + 'px;width:' + zo.width + 'px;height:' + zo.height + 'px;font-size:' + zFont + 'px">' + escHtml(zona.label || zona.tipo) + '</div>';
-    });
-    html += '</div></div></div></div></div></div></div>';
-    return html;
-}
-
-function _wmsUltraRenderCamaraSection(cam, selCam, cellSize, containerW) {
-    var cod = parseInt(cam.codigo, 10);
-    var ruas = cam.ruas || [];
-    var maxNiv = parseInt(cam.niveis, 10) || _wmsEndPlantaMaxNivel(cod);
-    var total = cam._total != null ? cam._total : (cam.slots || []).length;
-    var ocup = cam._ocup != null ? cam._ocup : 0;
-    var pct = cam._pct != null ? cam._pct : 0;
-    var meta = _wmsEndCamaraPlantaMeta(cod);
-    var act = selCam === cod ? ' camara-section--ativo' : '';
-    var maxCols = 1;
-    ruas.forEach(function(rua) {
-        var m = _wmsUltraMaxColunas(_wmsUltraSlotsPorRua(cam.slots || [], rua));
-        if (m > maxCols) maxCols = m;
-    });
-    if (cellSize == null) {
-        var w = containerW || (function() {
-            var wrap = document.getElementById('wms-end-2d-wrap');
-            return wrap ? wrap.clientWidth : 900;
-        }());
-        cellSize = _wmsUltraComputeCellSize(w, maxCols, ruas.length);
-    }
-    var html = '<section class="camara-section wms-ultra-cam--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-label="Câmara ' + escHtml(String(cod)) + '" tabindex="0" title="Clique para abrir 3D">';
-    html += '<header class="camara-header"><h2>Câmara ' + escHtml(String(cod)) + '</h2>';
-    html += '<span>' + escHtml(meta.tipo) + (meta.temp ? ' · ' + escHtml(meta.temp) + '°' : '') + '</span></header>';
-    html += '<div class="ruas-row" style="--ruas-count:' + escHtml(String(Math.max(1, ruas.length))) + '">';
-    ruas.forEach(function(rua) {
-        html += _wmsUltraRenderRuaGrid(cod, rua, cam.slots || [], maxNiv, cellSize);
-    });
-    html += '</div>';
-    html += '<p class="wms-ultra-cam-stats">' + escHtml(ocup) + '/' + escHtml(total) + ' ocupadas · ' + escHtml(pct) + '% · clique no cabeçalho para 3D</p>';
-    html += '</section>';
-    return html;
 }
 
 function _wmsEndCellStyle(slot) {
@@ -5743,6 +5522,145 @@ function _wmsEndSlotsNivel15(slots) {
     return _wmsEndSlotsPorNivel(slots, 5);
 }
 
+function _wmsLayoutCellInfo(slot) {
+    if (!slot) return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
+    var tipo = (slot.tipo || '').toLowerCase();
+    if (tipo === 'porta_palete') return { kind: 'porta', className: 'wms-layout-cell--porta' };
+    var dest = (slot.destino_acao || '').toLowerCase();
+    if (dest) {
+        if (dest === 'palete_bloqueado') return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
+        return { kind: 'destino', className: 'wms-layout-cell--destino wms-layout-cell--dest-' + dest.replace(/[^a-z0-9_-]/g, '') };
+    }
+    if ((slot.status || '') === 'ocupada') return { kind: 'ocupado', className: 'wms-layout-cell--ocupado' };
+    return { kind: 'disponivel', className: 'wms-layout-cell--disponivel' };
+}
+
+function _wmsLayoutComputeCellSize(containerWidth, maxCols) {
+    if (containerWidth <= 0 || maxCols <= 0) return 28;
+    var pad = 24;
+    var labelArea = 30;
+    var perRua = containerWidth - pad - labelArea;
+    var size = Math.floor(perRua / maxCols);
+    return Math.min(46, Math.max(22, size));
+}
+
+function _wmsLayoutFitGrids(root) {
+    root = root || document.getElementById('wms-end-2d-planta');
+    if (!root) return;
+    root.querySelectorAll('.wms-layout-camara').forEach(function(sec) {
+        var maxCols = parseInt(sec.getAttribute('data-max-cols') || '1', 10);
+        var cellSize = _wmsLayoutComputeCellSize(sec.clientWidth, maxCols);
+        sec.style.setProperty('--wms-layout-cell', cellSize + 'px');
+        sec.style.setProperty('--wms-layout-label-w', Math.max(22, Math.round(cellSize * 0.82)) + 'px');
+        sec.style.setProperty('--wms-layout-header-h', Math.max(14, Math.round(cellSize * 0.72)) + 'px');
+        sec.style.setProperty('--wms-layout-axis-font', cellSize >= 36 ? '11px' : '9px');
+    });
+}
+
+function _wmsLayoutInitResize() {
+    if (window._wmsLayoutResizeInit) return;
+    var root = document.getElementById('wms-end-2d-planta');
+    if (!root) return;
+    window._wmsLayoutResizeInit = true;
+    if (window.ResizeObserver) {
+        var ro = new ResizeObserver(function() { _wmsLayoutFitGrids(root); });
+        ro.observe(root);
+    }
+    window.addEventListener('resize', function() { _wmsLayoutFitGrids(root); });
+}
+
+function _wmsLayoutCellLabel(slot, cellSize) {
+    if (!slot) return '';
+    var txt = (slot.palete_etiqueta || slot.codigo_endereco || '').trim();
+    if (!txt) return '';
+    if (cellSize >= 36) return txt;
+    if (cellSize >= 28) return txt.length > 6 ? txt.slice(-6) : txt;
+    return txt.length > 4 ? txt.slice(-4) : txt;
+}
+
+function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint) {
+    var posMap = _wmsEndSlotsPorRua(slots, rua);
+    var colunas = _wmsEndColunasExistentes(posMap);
+    if (!colunas.length) return '';
+    var nivs = [];
+    for (var n = maxNiv; n >= 1; n--) nivs.push(n);
+    var html = '<div class="wms-layout-rua-block">';
+    html += '<div class="wms-layout-rua-title">Rua ' + escHtml(String(rua)) + '</div>';
+    html += '<div class="wms-layout-rua-grid-scroll"><div class="wms-layout-rua-grid-inner">';
+    html += '<div class="wms-layout-rua-grid-wrap" style="padding-top:calc(var(--wms-layout-header-h, 16px) + 4px)">';
+    html += '<div class="wms-layout-col-headers" style="margin-left:calc(var(--wms-layout-label-w, 22px) + 6px);grid-template-columns:repeat(' + colunas.length + ', var(--wms-layout-cell, 28px))">';
+    colunas.forEach(function(p) {
+        html += '<span class="wms-layout-axis-label" style="width:var(--wms-layout-cell,28px);font-size:var(--wms-layout-axis-font,9px)">' + escHtml(String(p)) + '</span>';
+    });
+    html += '</div>';
+    html += '<div class="wms-layout-rua-body">';
+    html += '<div class="wms-layout-row-labels" style="width:var(--wms-layout-label-w,22px)">';
+    nivs.forEach(function(niv) {
+        html += '<span class="wms-layout-axis-label wms-layout-row-axis" style="height:var(--wms-layout-cell,28px);line-height:var(--wms-layout-cell,28px);font-size:var(--wms-layout-axis-font,9px)">' + niv + '</span>';
+    });
+    html += '</div>';
+    html += '<div class="wms-layout-cells-area"><div class="wms-layout-cells-stack">';
+    nivs.forEach(function(niv) {
+        html += '<div class="wms-layout-cells-row" style="grid-template-columns:repeat(' + colunas.length + ', var(--wms-layout-cell, 28px))">';
+        colunas.forEach(function(p) {
+            var slot = (posMap[p] || {})[niv];
+            var info = _wmsLayoutCellInfo(slot);
+            var tit = slot
+                ? (slot.codigo_endereco || ('Rua ' + rua + ' · pos ' + p + ' · nív ' + niv))
+                : ('Rua ' + rua + ' · pos ' + p + ' · nív ' + niv);
+            if (slot && (slot.status || '') === 'ocupada') tit += ' — ocupada';
+            var clickable = info.kind === 'disponivel' || info.kind === 'ocupado' || info.kind === 'destino';
+            var cls = 'wms-layout-cell ' + info.className;
+            if (clickable) cls += ' wms-layout-cell--clickable wms-planta-cell--clickable';
+            html += '<button type="button" class="' + cls + '" style="width:var(--wms-layout-cell,28px);height:var(--wms-layout-cell,28px)" title="' + escHtml(tit) + '" aria-label="' + escHtml(tit) + '" data-camara="' + escHtml(String(camCod)) + '" data-rua="' + escHtml(String(rua).toUpperCase()) + '" data-posicao="' + escHtml(String(p)) + '" data-nivel="' + escHtml(String(niv)) + '"' + (clickable ? '' : ' disabled') + '>';
+            if (info.kind === 'ocupado' && slot) {
+                var lbl = _wmsLayoutCellLabel(slot, cellSizeHint || 28);
+                if (lbl) html += '<span class="wms-layout-cell-label" style="font-size:' + (cellSizeHint >= 36 ? '11px' : (cellSizeHint >= 28 ? '10px' : '9px')) + '">' + escHtml(lbl) + '</span>';
+            }
+            html += '</button>';
+        });
+        html += '</div>';
+    });
+    html += '</div></div></div></div></div></div></div>';
+    return html;
+}
+
+function _wmsLayoutRenderCamaraSection(cam, selCam) {
+    var cod = cam.codigo;
+    var ruas = cam.ruas || [];
+    var maxNiv = _wmsEndPlantaMaxNivel(cod);
+    var slots = _wmsEndSlotsPorNivel(cam.slots || [], maxNiv);
+    var total = cam._total != null ? cam._total : slots.length;
+    var ocup = cam._ocup != null ? cam._ocup : 0;
+    var pct = cam._pct != null ? cam._pct : 0;
+    var meta = _wmsEndCamaraPlantaMeta(cod);
+    var act = selCam === cod ? ' wms-layout-camara--ativo' : '';
+    var maxCols = 1;
+    ruas.forEach(function(rua) {
+        var pm = _wmsEndSlotsPorRua(cam.slots || [], rua);
+        var c = _wmsEndColunasExistentes(pm).length;
+        if (c > maxCols) maxCols = c;
+    });
+    var cellHint = _wmsLayoutComputeCellSize(640, maxCols);
+    var html = '<section class="wms-layout-camara wms-layout-camara--clickable wms-planta-cam--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-max-cols="' + maxCols + '" data-label="Câmara ' + escHtml(String(cod)) + '" role="button" tabindex="0" title="Clique para abrir 3D">';
+    html += '<header class="wms-layout-camara-header"><h2>Câmara ' + escHtml(String(cod)) + '</h2>';
+    html += '<span>' + escHtml(meta.tipo) + (meta.temp ? ' ' + escHtml(meta.temp) + '°' : '') + ' · ' + escHtml(String(ocup)) + '/' + escHtml(String(total)) + ' ocup. (' + escHtml(String(pct)) + '%)</span></header>';
+    html += '<div class="wms-layout-ruas-row">';
+    ruas.forEach(function(rua) {
+        html += _wmsLayoutRenderRuaGrid(cod, rua, cam.slots || [], maxNiv, cellHint);
+    });
+    html += '</div></section>';
+    return html;
+}
+
+function _wmsEndRenderPlantaRackSide(rua, slots, maxNiv, camCod) {
+    return '';
+}
+
+function _wmsEndRenderPlantaCamaraHtml(cam, selCam) {
+    return _wmsLayoutRenderCamaraSection(cam, selCam);
+}
+
 function _wmsEndEnsureMapa3dParaPlanta() {
     if (_wmsEndState.mapa3d && (_wmsEndState.mapa3d.camaras || []).length) return Promise.resolve(_wmsEndState.mapa3d);
     if (_wmsEndState._mapa3dPlantaLoading) {
@@ -5757,22 +5675,6 @@ function _wmsEndEnsureMapa3dParaPlanta() {
         return null;
     });
     return _wmsEndState._mapa3dPlantaLoading;
-}
-
-function _wmsEndBindUltraLayoutResize() {
-    var wrap = document.getElementById('wms-end-2d-wrap');
-    if (!wrap || wrap._wmsUltraRo) return;
-    if (typeof ResizeObserver === 'undefined') return;
-    var timer = null;
-    wrap._wmsUltraRo = new ResizeObserver(function() {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(function() {
-            if (document.getElementById('wms-end-acc-2d') && document.getElementById('wms-end-acc-2d').open) {
-                _wmsEndRender2DPlanta();
-            }
-        }, 120);
-    });
-    wrap._wmsUltraRo.observe(wrap);
 }
 
 function _wmsEndRender2DPlanta() {
@@ -5795,16 +5697,14 @@ function _wmsEndRender2DPlanta() {
     });
     var camOrder = [11, 12, 13, 21].filter(function(cod) { return !!camByCod[cod]; });
     var selCam = _wmsEndState.selectedCamara;
-    var wrap = document.getElementById('wms-end-2d-wrap');
-    var wrapW = wrap ? wrap.clientWidth : 900;
-    var html = '<div class="wms-ultra-layout layout-panel">';
+    var html = '';
 
     if (camOrder.length) {
-        html += '<div class="camaras-stack">';
+        html += '<div class="wms-layout-panel"><div class="wms-layout-camaras-stack">';
         camOrder.forEach(function(cod) {
-            html += _wmsUltraRenderCamaraSection(camByCod[cod], selCam, null, wrapW);
+            html += _wmsLayoutRenderCamaraSection(camByCod[cod], selCam);
         });
-        html += '</div>';
+        html += '</div></div>';
     } else {
         html += '<p class="wms-end-2d-vazio">Carregando layout das câmaras 11, 12, 13 e 21…</p>';
         _wmsEndEnsureMapa3dParaPlanta().then(function() {
@@ -5816,7 +5716,7 @@ function _wmsEndRender2DPlanta() {
 
     var areas98 = (data.areas_especiais && data.areas_especiais.areas) || data.areas || [];
     if (areas98.length) {
-        html += '<div class="wms-ultra-areas98">';
+        html += '<div class="wms-planta-row-98">';
         html += '<div class="wms-planta-row-98-titulo">Quarentena e fluxos especiais — câmara 98</div>';
         areas98.forEach(function(a) {
             html += '<div class="wms-end-2d-area98" style="flex:1;min-width:200px;">';
@@ -5831,20 +5731,12 @@ function _wmsEndRender2DPlanta() {
         });
         html += '</div>';
     }
-    html += '</div>';
     root.innerHTML = html || '<p class="wms-end-2d-vazio">Nenhuma câmara no layout.</p>';
-    _wmsEndBindUltraLayoutResize();
+    _wmsLayoutInitResize();
+    _wmsLayoutFitGrids(root);
 }
 
 function _wmsEndDraw2D() {
-    var root = document.getElementById('wms-end-2d-planta');
-    if (root) root.innerHTML = '<p class="loading" style="padding:16px;">Carregando planta 2D…</p>';
-    return _wmsEndEnsureMapa3dParaPlanta().then(function() {
-        _wmsEndRender2DPlanta();
-    });
-}
-
-function _wmsEndDraw2DPlantaSync() {
     _wmsEndRender2DPlanta();
 }
 
@@ -5858,8 +5750,8 @@ function _wmsEndHighlightRow(camara) {
     document.querySelectorAll('.wms-planta-cam--clickable').forEach(function(el) {
         el.classList.remove('wms-planta-cam--ativo');
     });
-    document.querySelectorAll('.wms-ultra-cam--clickable').forEach(function(el) {
-        el.classList.remove('camara-section--ativo');
+    document.querySelectorAll('.wms-layout-camara--clickable').forEach(function(el) {
+        el.classList.remove('wms-layout-camara--ativo');
     });
     if (!camara) return;
     document.querySelectorAll('.wms-end-row--clickable[data-camara="' + camara + '"]').forEach(function(el) {
@@ -5871,8 +5763,8 @@ function _wmsEndHighlightRow(camara) {
     document.querySelectorAll('.wms-planta-cam--clickable[data-camara="' + camara + '"]').forEach(function(el) {
         el.classList.add('wms-planta-cam--ativo');
     });
-    document.querySelectorAll('.wms-ultra-cam--clickable[data-camara="' + camara + '"]').forEach(function(el) {
-        el.classList.add('camara-section--ativo');
+    document.querySelectorAll('.wms-layout-camara--clickable[data-camara="' + camara + '"]').forEach(function(el) {
+        el.classList.add('wms-layout-camara--ativo');
     });
 }
 
@@ -5935,14 +5827,14 @@ function _wmsEndPosFromEl(el) {
 }
 
 function _wmsEndHighlightSlot2d(slot) {
-    document.querySelectorAll('.wms-end-slot--ativo, .wms-planta-cell--ativo, .wms-ultra-cell--ativo').forEach(function(el) {
-        el.classList.remove('wms-end-slot--ativo', 'wms-planta-cell--ativo', 'wms-ultra-cell--ativo');
+    document.querySelectorAll('.wms-end-slot--ativo, .wms-planta-cell--ativo, .wms-layout-cell--ativo').forEach(function(el) {
+        el.classList.remove('wms-end-slot--ativo', 'wms-planta-cell--ativo', 'wms-layout-cell--ativo');
     });
     if (!slot) return;
     var sel = '[data-camara="' + slot.camara + '"][data-rua="' + slot.rua + '"][data-posicao="' + slot.posicao + '"][data-nivel="' + slot.nivel + '"]';
-    document.querySelectorAll('.wms-end-slot--clickable' + sel + ', .wms-planta-cell--clickable' + sel + ', .wms-ultra-cell--clickable' + sel).forEach(function(el) {
-        if (el.classList.contains('wms-ultra-cell--clickable') || el.classList.contains('wms-planta-cell--clickable')) {
-            el.classList.add(el.classList.contains('wms-ultra-cell--clickable') ? 'wms-ultra-cell--ativo' : 'wms-planta-cell--ativo');
+    document.querySelectorAll('.wms-end-slot--clickable' + sel + ', .wms-planta-cell--clickable' + sel + ', .wms-layout-cell--clickable' + sel).forEach(function(el) {
+        if (el.classList.contains('wms-layout-cell--clickable') || el.classList.contains('wms-planta-cell--clickable')) {
+            el.classList.add(el.classList.contains('wms-layout-cell--clickable') ? 'wms-layout-cell--ativo' : 'wms-planta-cell--ativo');
         } else {
             el.classList.add('wms-end-slot--ativo');
         }
@@ -6024,7 +5916,9 @@ function _wmsEndBindAccordion() {
         acc2d._wmsBound = true;
         acc2d.addEventListener('toggle', function() {
             if (acc2d.open) {
-                void _wmsEndDraw2D();
+                requestAnimationFrame(function() {
+                    requestAnimationFrame(function() { _wmsEndDraw2D(); });
+                });
             }
         });
     }
@@ -6070,7 +5964,7 @@ function _wmsEndBindAccordion() {
 
 function _wmsEndBind2dEvents() {
     function onPosClick(ev) {
-        var slotEl = ev.target.closest('.wms-end-slot--clickable') || ev.target.closest('.wms-planta-cell--clickable') || ev.target.closest('.wms-ultra-cell--clickable');
+        var slotEl = ev.target.closest('.wms-layout-cell--clickable') || ev.target.closest('.wms-end-slot--clickable') || ev.target.closest('.wms-planta-cell--clickable');
         if (slotEl) {
             ev.preventDefault();
             ev.stopPropagation();
@@ -6085,9 +5979,8 @@ function _wmsEndBind2dEvents() {
         planta._wmsEnd2dBound = true;
         planta.addEventListener('click', function(ev) {
             if (onPosClick(ev)) return;
-            var card = ev.target.closest('.wms-ultra-cam--clickable') || ev.target.closest('.wms-planta-cam--clickable') || ev.target.closest('.wms-end-2d-cam-card--clickable');
+            var card = ev.target.closest('.wms-layout-camara--clickable') || ev.target.closest('.wms-planta-cam--clickable') || ev.target.closest('.wms-end-2d-cam-card--clickable');
             if (!card) return;
-            if (ev.target.closest('.wms-ultra-cell--clickable')) return;
             _wmsEndState.selectedSlot = null;
             _wmsEndHighlightSlot2d(null);
             var cam = parseInt(card.getAttribute('data-camara'), 10);
@@ -6097,7 +5990,7 @@ function _wmsEndBind2dEvents() {
         planta.addEventListener('keydown', function(ev) {
             if (ev.key !== 'Enter' && ev.key !== ' ') return;
             if (onPosClick(ev)) return;
-            var card = ev.target.closest('.wms-ultra-cam--clickable') || ev.target.closest('.wms-planta-cam--clickable') || ev.target.closest('.wms-end-2d-cam-card--clickable');
+            var card = ev.target.closest('.wms-layout-camara--clickable') || ev.target.closest('.wms-planta-cam--clickable') || ev.target.closest('.wms-end-2d-cam-card--clickable');
             if (!card) return;
             ev.preventDefault();
             var cam = parseInt(card.getAttribute('data-camara'), 10);
@@ -6137,29 +6030,28 @@ function _wmsRenderEnderecoSecao(titulo, grupos) {
         + grupos.map(_wmsRenderEnderecoRow).join('');
 }
 
-async function loadWmsEnderecamento(opcoes) {
-    opcoes = opcoes || {};
-    var sincronizar = !!opcoes.sync;
+async function loadWmsEnderecamento() {
     var grid = document.getElementById('wms-enderecamento-grid');
-    if (grid) {
-        grid.innerHTML = '<p class="loading" style="padding:14px;">' + (sincronizar ? 'Sincronizando layout e ocupação…' : 'Carregando endereçamento…') + '</p>';
-    }
+    if (grid) grid.innerHTML = '<p class="loading" style="padding:14px;">Carregando endereçamento…</p>';
     var acc2d = document.getElementById('wms-end-acc-2d');
     var acc3d = document.getElementById('wms-end-acc-3d');
-    if (!sincronizar) {
-        if (acc2d) acc2d.open = false;
-        if (acc3d) acc3d.open = false;
-        _wmsEndState.selectedCamara = null;
-        _wmsEndHighlightRow(null);
-    }
+    if (acc2d) acc2d.open = false;
+    if (acc3d) acc3d.open = false;
+    _wmsEndState.selectedCamara = null;
+    _wmsEndHighlightRow(null);
     try {
-        var path = '/wms/enderecamento?resumo=1' + (sincronizar ? '&sync=1' : '');
-        var data = await _wmsFetchGet(path, sincronizar ? 120000 : 90000);
+        var results = await Promise.all([
+            _wmsFetchGet('/wms/enderecamento', 45000),
+            _wmsFetchGet('/wms/mapa-3d', 90000)
+        ]);
+        var data = results[0];
+        var mapa3d = results[1];
         if (!data || data.erro) {
             if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;padding:14px;">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar.')) + '</p>';
             return;
         }
         _wmsEndState.data = data;
+        _wmsEndState.mapa3d = mapa3d && !mapa3d.erro ? mapa3d : null;
         var html = '';
         var df = data.destinos_fixos || {};
         var gruposDf = (df.grupos || []).map(function(g) {
@@ -6374,7 +6266,7 @@ function initWmsEnderecamento() {
     if (bInv) bInv.addEventListener('click', wmsCriarInventario);
     wmsInitInventarioUi();
     var bEnd = document.getElementById('btn-wms-enderecamento-atualizar');
-    if (bEnd) bEnd.addEventListener('click', function() { loadWmsEnderecamento({ sync: true }); });
+    if (bEnd) bEnd.addEventListener('click', loadWmsEnderecamento);
     var bEndVoltar = document.getElementById('btn-wms-end-voltar-2d');
     if (bEndVoltar) bEndVoltar.addEventListener('click', _wmsEndFechar3d);
     var bEnd3dReset = document.getElementById('btn-wms-end-3d-reset');
@@ -10021,7 +9913,7 @@ async function loadPainelDevolucoes() {
         if (el) el.textContent = '…';
     });
     try {
-    const data = await _modFetchGet('/devolucoes/painel' + qs, 90000);
+    const data = await _modFetchGet('/devolucoes/painel' + qs, 60000);
     if (!data) {
         var msgFalha = 'Não foi possível carregar o painel. Use «Atualizar aba» e tente novamente.';
         statIds.forEach(function(sid) {
@@ -18111,9 +18003,7 @@ async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
     var ultimo = null;
     for (var t = 0; t < maxTent; t++) {
         ultimo = await _fetchAPIComTimeoutUma(endpoint, options, timeoutMs);
-        if (!ultimo || (!ultimo._falhaGateway && !ultimo._timeout)) return ultimo;
-        if (ultimo._timeout && t >= 1) return ultimo;
-        if (t >= maxTent - 1) return ultimo;
+        if (!ultimo || !ultimo._falhaGateway || t >= maxTent - 1) return ultimo;
         await new Promise(function(resolve) { setTimeout(resolve, 1800 * (t + 1)); });
     }
     return ultimo;
@@ -18122,17 +18012,14 @@ async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
 async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
     timeoutMs = timeoutMs == null || timeoutMs < 5000 ? 35000 : timeoutMs;
     var ac = new AbortController();
-    var abortInfo = { reason: null };
     var externalSignal = options && options.signal;
     if (externalSignal) {
         if (externalSignal.aborted) {
-            abortInfo.reason = 'cancel';
             try {
                 ac.abort();
             } catch (e) {}
         } else if (typeof externalSignal.addEventListener === 'function') {
             externalSignal.addEventListener('abort', function() {
-                if (!abortInfo.reason) abortInfo.reason = 'cancel';
                 try {
                     ac.abort();
                 } catch (e) {}
@@ -18140,13 +18027,12 @@ async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
         }
     }
     var tid = window.setTimeout(function() {
-        abortInfo.reason = 'timeout';
         try {
             ac.abort();
         } catch (e) {}
     }, timeoutMs);
     try {
-        var merged = Object.assign({}, options || {}, { signal: ac.signal, _abortInfo: abortInfo });
+        var merged = Object.assign({}, options || {}, { signal: ac.signal });
         if (merged.method && String(merged.method).toUpperCase() !== 'GET' && String(merged.method).toUpperCase() !== 'HEAD') {
             merged.keepalive = false;
         }
@@ -18192,14 +18078,12 @@ async function fetchAPI(endpoint, options = {}) {
         };
     } catch (error) {
         if (error && error.name === 'AbortError') {
-            var abortInfo = options && options._abortInfo;
-            var timeout = abortInfo && abortInfo.reason === 'timeout';
-            var cancelado = !timeout && !!(options && options.signal && options.signal.aborted);
+            var cancelado = !!(options && options.signal && options.signal.aborted);
             return {
                 ok: false,
-                erro: timeout ? 'Tempo esgotado ao contactar o servidor.' : (cancelado ? 'Operação cancelada.' : 'Tempo esgotado ao contactar o servidor.'),
+                erro: cancelado ? 'Operação cancelada.' : 'Tempo esgotado ao contactar o servidor.',
                 _cancelado: cancelado,
-                _timeout: timeout
+                _timeout: !cancelado
             };
         }
         console.error('Erro na API:', error);
