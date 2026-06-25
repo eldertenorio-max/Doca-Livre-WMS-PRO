@@ -4928,43 +4928,6 @@ function _wmsEndRenderPosicoesPorNiveis(posicoes, maxNiveis, camara) {
     return html;
 }
 
-function _wmsRenderEnderecoRow(grupo) {
-    var slots = grupo.slots || grupo.total_slots || grupo.total || 0;
-    var ocup = grupo.ocupadas || 0;
-    var livres = grupo.livres != null ? grupo.livres : Math.max(0, slots - ocup);
-    var pct = grupo.percentual_ocupacao != null ? grupo.percentual_ocupacao : (slots ? Math.round(1000 * ocup / slots) / 10 : 0);
-    var sub = grupo.subtitulo || '';
-    if (!sub && grupo.camara) {
-        sub = 'câmara ' + grupo.camara;
-        if (grupo.rua) sub += ' · rua ' + grupo.rua;
-        else if (grupo.ruas && grupo.ruas.length) sub += ' · ruas ' + grupo.ruas.join(' / ');
-    } else if (!sub && grupo.rua) {
-        sub = 'rua ' + grupo.rua;
-    }
-    var rowCls = 'wms-end-row';
-    var dataAttr = '';
-    if (grupo.camara && grupo.camara !== 98) {
-        rowCls += ' wms-end-row--clickable';
-        dataAttr = ' data-camara="' + escHtml(String(grupo.camara)) + '" data-label="' + escHtml(grupo.label || '') + '" role="button" tabindex="0" title="Clique para ver em 3D"';
-    }
-    if (_wmsEndPosicoesTemNiveis(grupo.posicoes)) {
-        rowCls += ' wms-end-row--rack';
-    }
-    var posHtml;
-    if (_wmsEndPosicoesTemNiveis(grupo.posicoes)) {
-        posHtml = _wmsEndRenderPosicoesPorNiveis(grupo.posicoes, grupo.niveis || 5, grupo.camara);
-    } else {
-        posHtml = (grupo.posicoes || []).map(function(p) { return _wmsEndSlotHtml(p, grupo.camara); }).join('');
-    }
-    return '<div class="' + rowCls + '"' + dataAttr + '>'
-        + '<div class="wms-end-row-titulo">' + escHtml(grupo.label || grupo.descricao || '—')
-        + (sub ? '<span class="wms-end-row-sub">' + escHtml(sub) + '</span>' : '')
-        + (grupo.camara && grupo.camara !== 98 ? '<span class="wms-end-row-sub" style="color:#1565c0;">Clique para 3D</span>' : '') + '</div>'
-        + '<div class="wms-end-row-slots">' + (posHtml || '<span class="wms-end-row-sub">Sem posições</span>') + '</div>'
-        + '<div class="wms-end-row-stats">' + escHtml(ocup) + '/' + escHtml(slots) + ' ocupadas · '
-        + escHtml(livres) + ' livres · ' + escHtml(pct) + '%</div></div>';
-}
-
 var _wmsEndState = { data: null, mapa3d: null, regions: [], selectedCamara: null, selectedSlot: null };
 
 var _WMS_END2D_LEGENDA = [
@@ -5738,9 +5701,6 @@ function _wmsEndDraw2D() {
 }
 
 function _wmsEndHighlightRow(camara) {
-    document.querySelectorAll('.wms-end-row--ativo').forEach(function(el) {
-        el.classList.remove('wms-end-row--ativo');
-    });
     document.querySelectorAll('.wms-end-2d-cam-card--clickable').forEach(function(el) {
         el.classList.remove('wms-end-2d-cam-card--ativo');
     });
@@ -5751,9 +5711,6 @@ function _wmsEndHighlightRow(camara) {
         el.classList.remove('wms-layout-camara--ativo');
     });
     if (!camara) return;
-    document.querySelectorAll('.wms-end-row--clickable[data-camara="' + camara + '"]').forEach(function(el) {
-        el.classList.add('wms-end-row--ativo');
-    });
     document.querySelectorAll('.wms-end-2d-cam-card--clickable[data-camara="' + camara + '"]').forEach(function(el) {
         el.classList.add('wms-end-2d-cam-card--ativo');
     });
@@ -5995,41 +5952,9 @@ function _wmsEndBind2dEvents() {
             if (cam && cam !== 98) wmsEndAbrir3d({ camara: cam, label: label });
         });
     }
-    var grid = document.getElementById('wms-enderecamento-grid');
-    if (grid && !grid._wmsEndRowBound) {
-        grid._wmsEndRowBound = true;
-        grid.addEventListener('click', function(ev) {
-            if (onPosClick(ev)) return;
-            var row = ev.target.closest('.wms-end-row--clickable');
-            if (!row) return;
-            _wmsEndState.selectedSlot = null;
-            _wmsEndHighlightSlot2d(null);
-            var cam = parseInt(row.getAttribute('data-camara'), 10);
-            var label = row.getAttribute('data-label') || '';
-            if (cam && cam !== 98) wmsEndAbrir3d({ camara: cam, label: label });
-        });
-        grid.addEventListener('keydown', function(ev) {
-            if (ev.key !== 'Enter' && ev.key !== ' ') return;
-            if (onPosClick(ev)) return;
-            var row = ev.target.closest('.wms-end-row--clickable');
-            if (!row) return;
-            ev.preventDefault();
-            var cam = parseInt(row.getAttribute('data-camara'), 10);
-            var label = row.getAttribute('data-label') || '';
-            if (cam && cam !== 98) wmsEndAbrir3d({ camara: cam, label: label });
-        });
-    }
-}
-
-function _wmsRenderEnderecoSecao(titulo, grupos) {
-    if (!grupos || !grupos.length) return '';
-    return '<div class="wms-end-secao">' + escHtml(titulo) + '</div>'
-        + grupos.map(_wmsRenderEnderecoRow).join('');
 }
 
 async function loadWmsEnderecamento() {
-    var grid = document.getElementById('wms-enderecamento-grid');
-    if (grid) grid.innerHTML = '<p class="loading" style="padding:14px;">Carregando endereçamento…</p>';
     var acc2d = document.getElementById('wms-end-acc-2d');
     var acc3d = document.getElementById('wms-end-acc-3d');
     if (acc2d) acc2d.open = false;
@@ -6044,69 +5969,16 @@ async function loadWmsEnderecamento() {
         var data = results[0];
         var mapa3d = results[1];
         if (!data || data.erro) {
-            if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;padding:14px;">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar.')) + '</p>';
+            showMessage(_wmsErroMsg(data, 'Erro ao carregar endereçamento.'), 'error');
             return;
         }
         _wmsEndState.data = data;
         _wmsEndState.mapa3d = mapa3d && !mapa3d.erro ? mapa3d : null;
-        var html = '';
-        var df = data.destinos_fixos || {};
-        var gruposDf = (df.grupos || []).map(function(g) {
-            var ruasTxt = g.rua || (g.ruas || []).join(' / ');
-            return {
-                label: g.label || g.area,
-                camara: g.camara,
-                subtitulo: 'câmara ' + g.camara + (ruasTxt ? ' · rua ' + ruasTxt : ''),
-                slots: g.slots || g.total,
-                ocupadas: g.ocupadas,
-                livres: g.livres,
-                percentual_ocupacao: g.percentual_ocupacao,
-                niveis: g.niveis || 5,
-                posicoes: g.posicoes || []
-            };
-        });
-        html += _wmsRenderEnderecoSecao('Destinos fixos — finalidade × câmara', gruposDf);
-
-        var en = data.estoque_normal || {};
-        var gruposEn = (en.camaras || []).map(function(c) {
-            var ruasTxt = (c.ruas || []).join(' / ');
-            return {
-                label: c.label || ('Estoque normal — ' + (c.descricao || ('câmara ' + c.camara))),
-                camara: c.camara,
-                subtitulo: (ruasTxt ? 'ruas ' + ruasTxt : '') + (c.niveis ? (ruasTxt ? ' · ' : '') + c.niveis + ' níveis' : ''),
-                slots: c.slots || c.total_slots,
-                ocupadas: c.ocupadas,
-                livres: c.livres,
-                percentual_ocupacao: c.percentual_ocupacao,
-                niveis: c.niveis || 5,
-                posicoes: c.posicoes || []
-            };
-        });
-        html += _wmsRenderEnderecoSecao('Estoque normal — câmaras 11, 12, 13 e 21', gruposEn);
-
-        var areas98 = (data.areas || []).map(function(a) {
-            return {
-                label: a.label || a.area,
-                camara: 98,
-                subtitulo: 'câmara 98 · rua ' + (a.rua || ''),
-                slots: a.slots,
-                ocupadas: a.ocupadas,
-                livres: a.livres,
-                percentual_ocupacao: a.percentual_ocupacao,
-                posicoes: a.posicoes || []
-            };
-        });
-        html += _wmsRenderEnderecoSecao('Quarentena e fluxos especiais — câmara 98', areas98);
-
-        if (grid) {
-            grid.innerHTML = html || '<p style="padding:14px;">Nenhum endereço configurado.</p>';
-        }
-        _wmsLayoutFitGrids(document.getElementById('wms-enderecamento-grid'));
         _wmsEndBindAccordion();
         _wmsEndBind2dEvents();
         if (acc2d && acc2d.open) _wmsEndRender2DPlanta();
     } catch (e) {
-        if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;padding:14px;">' + escHtml((e && e.message) || 'Erro.') + '</p>';
+        showMessage((e && e.message) || 'Erro ao carregar endereçamento.', 'error');
     }
 }
 
