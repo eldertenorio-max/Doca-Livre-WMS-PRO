@@ -815,18 +815,22 @@ def adicionar_usuario_ao_config(usuario, senha):
         pass
 
 
-def get_db():
+def get_db(connect_timeout=15):
     """Retorna conexão com o banco de dados. Timeout para suportar 4 docas bipando ao mesmo tempo."""
     db_url = (os.environ.get('DATABASE_URL') or '').strip()
     if db_url:
         if psycopg is None:
             raise RuntimeError('psycopg não instalado. Instale as dependências do requirements.txt.')
         # Supabase Postgres normalmente exige SSL
+        try:
+            connect_timeout = int(connect_timeout or 15)
+        except (TypeError, ValueError):
+            connect_timeout = 15
         return CompatConn(
             psycopg.connect(
                 db_url,
                 sslmode=os.environ.get('PGSSLMODE', 'require'),
-                connect_timeout=15,
+                connect_timeout=connect_timeout,
                 row_factory=dict_row,
             ),
             kind='pg',
@@ -2048,7 +2052,7 @@ def _requer_login():
     return 'usuario' not in session
 
 
-_USUARIO_SESSAO_OK_TTL = 120  # segundos — evita ida ao banco a cada clique/navegação
+_USUARIO_SESSAO_OK_TTL = 600  # segundos — evita ida ao banco a cada clique/navegação
 
 
 def _usuario_ainda_existe(usuario):
@@ -2063,8 +2067,15 @@ def _usuario_ainda_existe(usuario):
                 return True
         except (TypeError, ValueError):
             pass
-    conn = get_db()
+    # Validação de sessão não pode travar navegação quando o Postgres está lento/fora:
+    # usa timeout curto e statement_timeout.
+    conn = get_db(connect_timeout=4)
     try:
+        try:
+            if getattr(conn, 'kind', None) == 'pg':
+                conn.execute('SET statement_timeout TO 3000')
+        except Exception:
+            pass
         row = conn.execute('SELECT 1 FROM usuarios WHERE usuario = ?', (usuario,)).fetchone()
         existe = row is not None
     finally:
