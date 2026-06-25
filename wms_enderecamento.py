@@ -8423,6 +8423,23 @@ def _pagina_zebra_longarina(conn, camara=None, rua=None, posicao=None, codigo=No
     return html, None
 
 
+@bp.route('/etiqueta/numeros-coluna', methods=['GET'])
+def api_wms_etiqueta_numeros_coluna():
+    """Etiquetas 1–15 — número grande para colunas (impressão imediata)."""
+    inicio = max(1, int(request.args.get('de') or 1))
+    fim = min(99, int(request.args.get('ate') or 15))
+    if fim < inicio:
+        inicio, fim = 1, 15
+    auto_print = (request.args.get('auto_print') or '').strip().lower() in ('1', 'true', 'sim')
+    html = render_template(
+        'wms/etiquetas_numeros_coluna.html',
+        numeros=list(range(inicio, fim + 1)),
+        auto_print=auto_print,
+        **ctx_etiqueta_zebra(),
+    )
+    return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+
+
 @bp.route('/etiqueta/zebra/teste/zpl', methods=['GET'])
 def api_wms_etiqueta_zebra_teste_zpl():
     """Etiqueta teste — borda deve encostar nos 4 lados. ?swap=1 testa 40×60 (rótulo na impressora)."""

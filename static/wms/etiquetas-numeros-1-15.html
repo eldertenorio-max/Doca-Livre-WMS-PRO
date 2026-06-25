@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Etiquetas coluna 1–15 — imprimir agora</title>
+<style>
+  :root {
+    --lw: 4.02in;
+    --lh: 2.87in;
+    --ink: #000;
+    --paper: #fff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  @page { size: 4.02in 2.87in; size: 102mm 73mm; margin: 0; }
+  html { background: #e0e0e0; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    color: var(--ink);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .toolbar {
+    position: sticky; top: 0; z-index: 9;
+    background: #fff; border: 1px solid #ccc; border-radius: 8px;
+    padding: 10px 14px; margin: 8px;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    max-width: calc(var(--lw) + 16px);
+  }
+  .toolbar button {
+    padding: 10px 18px; font-size: 15px; cursor: pointer;
+    border: none; border-radius: 6px; background: #1565c0; color: #fff; font-weight: 700;
+  }
+  .toolbar p { flex-basis: 100%; font-size: 12px; color: #555; margin: 4px 0 0; }
+  .lista-etq { margin: 0 0 12px 8px; }
+  .etq-page {
+    width: var(--lw); height: var(--lh); margin: 0 0 10px;
+    overflow: hidden; background: var(--paper); border: 1px dashed #bbb;
+    position: relative; container-type: size; container-name: etq;
+  }
+  .etq-numero {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; font-variant-numeric: tabular-nums; line-height: 0.85;
+    font-size: min(92cqw, 88cqh); letter-spacing: -0.04em;
+  }
+  @media print {
+    @page { size: 4.02in 2.87in; size: 102mm 73mm; margin: 0; }
+    html, body { width: var(--lw) !important; margin: 0 !important; padding: 0 !important; background: #fff !important; }
+    .toolbar { display: none !important; }
+    .lista-etq { margin: 0 !important; }
+    .etq-page { border: none !important; margin: 0 !important; page-break-after: always; }
+    .etq-page:last-child { page-break-after: auto; }
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <button type="button" onclick="window.print()">Imprimir agora</button>
+    <p><strong>15 etiquetas</strong> · números 1 a 15 · 102×73 mm · margens Nenhuma · escala 100%</p>
+  </div>
+  <div class="lista-etq" id="lista"></div>
+  <script>
+    var html = '';
+    for (var n = 1; n <= 15; n++) {
+      html += '<div class="etq-page"><div class="etq-numero">' + n + '</div></div>';
+    }
+    document.getElementById('lista').innerHTML = html;
+  </script>
+</body>
+</html>
