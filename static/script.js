@@ -4989,6 +4989,15 @@ var _WMS_END2D_LEGENDA = [
 var _WMS_ULTRA_ZONAS_LAYOUT = {
     '11:B': [
         { tipo: 'porta', cols: [2, 3], niveis: [1, 2], label: 'porta' }
+    ],
+    '12:C': [
+        { tipo: 'porta', cols: [2, 3], niveis: [1, 2], label: 'porta' }
+    ],
+    '12:D': [
+        { tipo: 'porta', cols: [2, 4], niveis: [1, 2], label: 'porta' }
+    ],
+    '13:E': [
+        { tipo: 'porta', cols: [2, 3], niveis: [1, 2], label: 'porta' }
     ]
 };
 
