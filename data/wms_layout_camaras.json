@@ -740,7 +740,7 @@
         "D"
       ],
       "niveis": 5,
-      "total_posicoes": 134,
+      "total_posicoes": 133,
       "enderecos": [
         {
           "rua": "C",
@@ -1051,15 +1051,15 @@
           "rua": "C",
           "posicao": 14,
           "nivel": 1,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "C",
           "posicao": 14,
           "nivel": 2,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "C",
@@ -1079,15 +1079,15 @@
           "rua": "C",
           "posicao": 15,
           "nivel": 1,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "C",
           "posicao": 15,
           "nivel": 2,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "C",
@@ -1142,11 +1142,6 @@
           "rua": "D",
           "posicao": 2,
           "nivel": 5
-        },
-        {
-          "rua": "D",
-          "posicao": 4,
-          "nivel": 1
         },
         {
           "rua": "D",
@@ -1392,22 +1387,22 @@
           "rua": "D",
           "posicao": 14,
           "nivel": 1,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "D",
           "posicao": 14,
           "nivel": 2,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "D",
           "posicao": 14,
           "nivel": 3,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "D",
@@ -1420,22 +1415,22 @@
           "rua": "D",
           "posicao": 15,
           "nivel": 1,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "D",
           "posicao": 15,
           "nivel": 2,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "D",
           "posicao": 15,
           "nivel": 3,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "D",

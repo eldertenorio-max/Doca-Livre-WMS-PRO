@@ -383,7 +383,7 @@ def _sync_layout_metadata_destinos(conn):
     atualizadas = 0
     for bloco in (_layout_camaras_config().get('camaras') or []):
         cod_cam = int(bloco.get('codigo') or 0)
-        if cod_cam not in (11, 12, 13, 21):
+        if cod_cam != 11:
             continue
         for _cam, rua, pos, nivel, dest_acao, _dest_lbl in _coords_from_bloco_layout(bloco):
             cod_end = _codigo_endereco(cod_cam, rua, pos, nivel)
@@ -5894,12 +5894,15 @@ def api_wms_mapa_3d():
                 lbl = dest_lbl
                 if not lbl and dest:
                     lbl = _destinos_acao_labels().get(dest)
-                if dest_acao:
-                    tipo_slot = tipo if tipo == 'destino_fixo' else 'destino_fixo'
-                elif tipo == 'destino_fixo':
-                    tipo_slot = 'estoque'
+                if cod_cam == 11:
+                    if dest_acao:
+                        tipo_slot = 'destino_fixo'
+                    elif tipo == 'destino_fixo':
+                        tipo_slot = 'estoque'
+                    else:
+                        tipo_slot = tipo or 'estoque'
                 else:
-                    tipo_slot = tipo or 'estoque'
+                    tipo_slot = tipo or ('destino_fixo' if dest else 'estoque')
                 slots.append({
                     'rua': rua,
                     'posicao': pos,

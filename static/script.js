@@ -4989,14 +4989,6 @@ var _WMS_END2D_LEGENDA = [
 var _WMS_ULTRA_ZONAS_LAYOUT = {
     '11:B': [
         { tipo: 'porta', cols: [2, 3], niveis: [1, 2], label: 'porta' }
-    ],
-    '12:C': [
-        { tipo: 'porta', cols: [2, 2], niveis: [1, 2], label: 'porta' },
-        { tipo: 'retrabalho', cols: [14, 15], niveis: [1, 4], label: 'retrabalho' }
-    ],
-    '12:D': [
-        { tipo: 'porta', cols: [2, 3], niveis: [1, 2], label: 'porta' },
-        { tipo: 'retrabalho', cols: [14, 15], niveis: [1, 4], label: 'retrabalho' }
     ]
 };
 
@@ -5099,12 +5091,13 @@ function _wmsUltraSemNivel5Ausente(col, nivel, totalCols, maxNiv) {
     return maxNiv >= 5 && nivel === 5 && totalCols >= 2 && col >= totalCols - 1;
 }
 
-function _wmsUltraCellClass(slot, hasAddress, col, nivel, totalCols, maxNiv, porta) {
+function _wmsUltraCellClass(slot, hasAddress, col, nivel, totalCols, maxNiv, porta, camCod) {
     if (_wmsUltraCelulaPorta(porta, col, nivel)) return 'cell--porta';
     if (_wmsUltraSemNivel5Ausente(col, nivel, totalCols, maxNiv)) return 'cell--sem-nivel5';
     if (!hasAddress) return 'cell--sem-nivel5';
     if (!slot) return 'cell--sem-nivel5';
-    if (slot.destino_acao) return 'cell--bloqueado';
+    var cam = parseInt(camCod, 10) || 0;
+    if (slot.destino_acao || (cam !== 11 && (slot.tipo || '') === 'destino_fixo')) return 'cell--bloqueado';
     if ((slot.status || '') === 'ocupada') return 'cell--ocupado';
     return 'cell--disponivel';
 }
@@ -5143,7 +5136,7 @@ function _wmsUltraRenderRuaGrid(camCod, rua, slots, maxNiv, cellSize) {
         for (var col = 1; col <= colunas; col++) {
             var slot = (posMap[col] || {})[nivel] || null;
             var hasAddress = !!slot || _wmsUltraColunaTemAlgumNivel(posMap, col);
-            var kind = _wmsUltraCellClass(slot, hasAddress, col, nivel, colunas, maxNiv, porta);
+            var kind = _wmsUltraCellClass(slot, hasAddress, col, nivel, colunas, maxNiv, porta, camCod);
             var clickable = _wmsUltraCellClickable(kind);
             var tit = slot
                 ? (slot.codigo_endereco || ('Câmara ' + camCod + ' · Rua ' + rua + ' · Col ' + col + ' · Nív ' + nivel))
