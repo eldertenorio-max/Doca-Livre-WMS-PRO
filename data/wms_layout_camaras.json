@@ -18,7 +18,7 @@
         "B"
       ],
       "niveis": 5,
-      "total_posicoes": 144,
+      "total_posicoes": 142,
       "enderecos": [
         {
           "rua": "A",
@@ -424,16 +424,6 @@
           "rua": "B",
           "posicao": 2,
           "nivel": 5
-        },
-        {
-          "rua": "B",
-          "posicao": 3,
-          "nivel": 1
-        },
-        {
-          "rua": "B",
-          "posicao": 3,
-          "nivel": 2
         },
         {
           "rua": "B",

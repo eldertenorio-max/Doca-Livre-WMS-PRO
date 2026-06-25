@@ -4979,9 +4979,42 @@ var _WMS_ULTRA_CELL_MAX = 48;
 var _WMS_END2D_LEGENDA = [
     { swatch: 'swatch--disp', label: 'Disponível' },
     { swatch: 'swatch--ocup', label: 'Ocupado' },
+    { swatch: 'swatch--porta', label: 'Porta' },
     { swatch: 'swatch--bloq', label: 'Destino fixo / indisponível' },
     { swatch: 'swatch--nv5', label: 'Sem posição neste nível' }
 ];
+
+/** Portas no layout 2D — chave "câmara:rua". */
+var _WMS_ULTRA_PORTAS = {
+    '11:B': { cols: [2, 3], niveis: [1, 2] }
+};
+
+function _wmsUltraPortaConfig(camCod, rua) {
+    var key = String(parseInt(camCod, 10) || '') + ':' + String(rua || '').toUpperCase();
+    return _WMS_ULTRA_PORTAS[key] || null;
+}
+
+function _wmsUltraCelulaPorta(porta, col, nivel) {
+    if (!porta) return false;
+    return col >= porta.cols[0] && col <= porta.cols[1]
+        && nivel >= porta.niveis[0] && nivel <= porta.niveis[1];
+}
+
+function _wmsUltraPortaOverlayStyle(porta, cellSize, niveisVisiveis) {
+    var c0 = porta.cols[0];
+    var c1 = porta.cols[1];
+    var n0 = porta.niveis[0];
+    var n1 = porta.niveis[1];
+    var idxTop = niveisVisiveis.indexOf(Math.max(n0, n1));
+    if (idxTop < 0) idxTop = 0;
+    var rowCount = n1 - n0 + 1;
+    return {
+        left: (c0 - 1) * cellSize,
+        top: idxTop * cellSize,
+        width: (c1 - c0 + 1) * cellSize,
+        height: rowCount * cellSize
+    };
+}
 
 function _wmsEndRenderLegenda2d() {
     var el = document.getElementById('wms-end-2d-legenda');
@@ -5037,7 +5070,8 @@ function _wmsUltraSemNivel5Ausente(col, nivel, totalCols, maxNiv) {
     return maxNiv >= 5 && nivel === 5 && totalCols >= 2 && col >= totalCols - 1;
 }
 
-function _wmsUltraCellClass(slot, hasAddress, col, nivel, totalCols, maxNiv) {
+function _wmsUltraCellClass(slot, hasAddress, col, nivel, totalCols, maxNiv, porta) {
+    if (_wmsUltraCelulaPorta(porta, col, nivel)) return 'cell--porta';
     if (_wmsUltraSemNivel5Ausente(col, nivel, totalCols, maxNiv)) return 'cell--sem-nivel5';
     if (!hasAddress) return 'cell--sem-nivel5';
     if (!slot) return 'cell--sem-nivel5';
@@ -5054,6 +5088,7 @@ function _wmsUltraRenderRuaGrid(camCod, rua, slots, maxNiv, cellSize) {
     var posMap = _wmsUltraSlotsPorRua(slots, rua);
     var colunas = _wmsUltraMaxColunas(posMap);
     if (!colunas) return '';
+    var porta = _wmsUltraPortaConfig(camCod, rua);
     var labelW = _wmsUltraRowLabelWidth(cellSize);
     var headerH = Math.max(14, Math.round(cellSize * 0.72));
     var axisFont = cellSize >= 36 ? 11 : 9;
@@ -5078,12 +5113,13 @@ function _wmsUltraRenderRuaGrid(camCod, rua, slots, maxNiv, cellSize) {
         for (var col = 1; col <= colunas; col++) {
             var slot = (posMap[col] || {})[nivel] || null;
             var hasAddress = !!slot || _wmsUltraColunaTemAlgumNivel(posMap, col);
-            var kind = _wmsUltraCellClass(slot, hasAddress, col, nivel, colunas, maxNiv);
+            var kind = _wmsUltraCellClass(slot, hasAddress, col, nivel, colunas, maxNiv, porta);
             var clickable = _wmsUltraCellClickable(kind);
             var tit = slot
                 ? (slot.codigo_endereco || ('Câmara ' + camCod + ' · Rua ' + rua + ' · Col ' + col + ' · Nív ' + nivel))
                 : ('Câmara ' + camCod + ' · Rua ' + rua + ' · Col ' + col + ' · Nív ' + nivel);
-            if (_wmsUltraSemNivel5Ausente(col, nivel, colunas, maxNiv)) tit += ' — Sem nível 5 nesta coluna';
+            if (_wmsUltraCelulaPorta(porta, col, nivel)) tit += ' — Porta';
+            else if (_wmsUltraSemNivel5Ausente(col, nivel, colunas, maxNiv)) tit += ' — Sem nível 5 nesta coluna';
             if (slot && slot.destino_label) tit += ' — ' + slot.destino_label;
             else if (slot && (slot.status || '') === 'ocupada') tit += ' — Ocupado';
             else if (clickable) tit += ' — Disponível';
@@ -5098,6 +5134,12 @@ function _wmsUltraRenderRuaGrid(camCod, rua, slots, maxNiv, cellSize) {
         }
         html += '</div>';
     });
+    html += '</div>';
+    if (porta) {
+        var po = _wmsUltraPortaOverlayStyle(porta, cellSize, niveisVisiveis);
+        var pFont = cellSize >= 36 ? 11 : 9;
+        html += '<div class="porta-label" style="left:' + po.left + 'px;top:' + po.top + 'px;width:' + po.width + 'px;height:' + po.height + 'px;font-size:' + pFont + 'px">PORTA</div>';
+    }
     html += '</div></div></div></div></div></div></div>';
     return html;
 }
