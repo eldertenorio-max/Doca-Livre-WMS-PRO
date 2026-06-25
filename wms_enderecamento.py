@@ -6064,9 +6064,8 @@ def api_wms_mapa_3d():
     try:
         _ensure_wms_schema_safe(conn)
         _seed_wms_defaults(conn)
-        _ensure_layout_enderecos(conn)
+        _ensure_layout_enderecos_atualizado(conn)
         if _query_flag_sync():
-            _ensure_layout_enderecos_atualizado(conn)
             _sync_wms_camara_layout(conn)
         camara_filtro = request.args.get('camara', type=int)
         t = _tbl(conn, 'wms_localizacao')

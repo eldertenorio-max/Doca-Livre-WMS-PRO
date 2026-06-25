@@ -4973,8 +4973,8 @@ function _wmsRenderEnderecoRow(grupo) {
 var _wmsEndState = { data: null, mapa3d: null, regions: [], selectedCamara: null, selectedSlot: null };
 
 var _WMS_ULTRA_NIVEIS = [5, 4, 3, 2, 1];
-var _WMS_ULTRA_CELL_MIN = 28;
-var _WMS_ULTRA_CELL_MAX = 48;
+var _WMS_ULTRA_CELL_MIN = 32;
+var _WMS_ULTRA_CELL_MAX = 52;
 
 var _WMS_END2D_LEGENDA = [
     { swatch: 'swatch--disp', label: 'Disponível' },
@@ -5180,7 +5180,7 @@ function _wmsUltraRenderRuaGrid(camCod, rua, slots, maxNiv, cellSize) {
     return html;
 }
 
-function _wmsUltraRenderCamaraSection(cam, selCam, cellSize) {
+function _wmsUltraRenderCamaraSection(cam, selCam, cellSize, containerW) {
     var cod = parseInt(cam.codigo, 10);
     var ruas = cam.ruas || [];
     var maxNiv = parseInt(cam.niveis, 10) || _wmsEndPlantaMaxNivel(cod);
@@ -5195,8 +5195,10 @@ function _wmsUltraRenderCamaraSection(cam, selCam, cellSize) {
         if (m > maxCols) maxCols = m;
     });
     if (cellSize == null) {
-        var wrap = document.getElementById('wms-end-2d-wrap');
-        var w = wrap ? wrap.clientWidth : 900;
+        var w = containerW || (function() {
+            var wrap = document.getElementById('wms-end-2d-wrap');
+            return wrap ? wrap.clientWidth : 900;
+        }());
         cellSize = _wmsUltraComputeCellSize(w, maxCols, ruas.length);
     }
     var html = '<section class="camara-section wms-ultra-cam--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-label="Câmara ' + escHtml(String(cod)) + '" tabindex="0" title="Clique para abrir 3D">';
@@ -5795,24 +5797,12 @@ function _wmsEndRender2DPlanta() {
     var selCam = _wmsEndState.selectedCamara;
     var wrap = document.getElementById('wms-end-2d-wrap');
     var wrapW = wrap ? wrap.clientWidth : 900;
-    var maxColsAll = 1;
-    var maxRuasCam = 1;
-    camOrder.forEach(function(cod) {
-        var cam = camByCod[cod];
-        var nRuas = (cam.ruas || []).length;
-        if (nRuas > maxRuasCam) maxRuasCam = nRuas;
-        (cam.ruas || []).forEach(function(rua) {
-            var m = _wmsUltraMaxColunas(_wmsUltraSlotsPorRua(cam.slots || [], rua));
-            if (m > maxColsAll) maxColsAll = m;
-        });
-    });
-    var cellSize = _wmsUltraComputeCellSize(wrapW, maxColsAll, maxRuasCam);
     var html = '<div class="wms-ultra-layout layout-panel">';
 
     if (camOrder.length) {
         html += '<div class="camaras-stack">';
         camOrder.forEach(function(cod) {
-            html += _wmsUltraRenderCamaraSection(camByCod[cod], selCam, cellSize);
+            html += _wmsUltraRenderCamaraSection(camByCod[cod], selCam, null, wrapW);
         });
         html += '</div>';
     } else {
