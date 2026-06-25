@@ -4972,28 +4972,160 @@ function _wmsRenderEnderecoRow(grupo) {
 
 var _wmsEndState = { data: null, mapa3d: null, regions: [], selectedCamara: null, selectedSlot: null };
 
+var _WMS_ULTRA_NIVEIS = [5, 4, 3, 2, 1];
+var _WMS_ULTRA_CELL_MIN = 28;
+var _WMS_ULTRA_CELL_MAX = 48;
+
 var _WMS_END2D_LEGENDA = [
-    { cls: '', color: '#90caf9', border: '#f57c00', label: 'Posição livre (vazia)' },
-    { cls: '', color: '#c62828', border: '#f57c00', label: 'Posição ocupada (palete)' },
-    { cls: 'wms-end-2d-legenda-swatch--estrutura', color: '', border: '', label: 'Borda laranja — estrutura do rack' },
-    { cls: '', color: '#42a5f5', border: '#f57c00', label: 'ENVIO P/ MINAS' },
-    { cls: '', color: '#ffca28', border: '#f57c00', label: 'RETRABALHO' },
-    { cls: '', color: '#8d6e63', border: '#f57c00', label: 'DESCARTE' },
-    { cls: '', color: '#ab47bc', border: '#f57c00', label: 'AVARIA' },
-    { cls: '', color: '#7e57c2', border: '#f57c00', label: 'REENTREGAS' },
-    { cls: '', color: '#ffc107', border: '#f9a825', label: 'Entrada da câmara' },
-    { cls: '', color: '#eceff1', border: '#90a4ae', label: 'Cada coluna = posição · quadrados 1–5 = níveis (1 embaixo, 5 em cima)' }
+    { swatch: 'swatch--disp', label: 'Disponível' },
+    { swatch: 'swatch--ocup', label: 'Ocupado' },
+    { swatch: 'swatch--bloq', label: 'Destino fixo / indisponível' },
+    { swatch: 'swatch--nv5', label: 'Sem posição neste nível' }
 ];
 
 function _wmsEndRenderLegenda2d() {
     var el = document.getElementById('wms-end-2d-legenda');
     if (!el) return;
+    el.className = 'wms-end-2d-legenda layout-legend';
     el.innerHTML = _WMS_END2D_LEGENDA.map(function(it) {
-        var sw = it.cls === 'wms-end-2d-legenda-swatch--estrutura'
-            ? '<span class="wms-end-2d-legenda-swatch wms-end-2d-legenda-swatch--estrutura"></span>'
-            : '<span class="wms-end-2d-legenda-swatch" style="background:' + it.color + ';border-color:' + (it.border || '#f57c00') + ';"></span>';
-        return '<span class="wms-end-2d-legenda-item">' + sw + escHtml(it.label) + '</span>';
+        return '<span><i class="swatch ' + escHtml(it.swatch) + '" aria-hidden="true"></i>' + escHtml(it.label) + '</span>';
     }).join('');
+}
+
+function _wmsUltraRowLabelWidth(cellSize) {
+    return Math.max(22, Math.round(cellSize * 0.82));
+}
+
+function _wmsUltraComputeCellSize(containerWidth, maxCols) {
+    if (!containerWidth || containerWidth <= 0) return _WMS_ULTRA_CELL_MIN;
+    maxCols = Math.max(1, maxCols || 1);
+    var pad = 24;
+    var labelArea = 30;
+    var perRua = Math.max(180, containerWidth * 0.46) - pad - labelArea;
+    var size = Math.floor(perRua / maxCols);
+    return Math.min(_WMS_ULTRA_CELL_MAX, Math.max(_WMS_ULTRA_CELL_MIN, size));
+}
+
+function _wmsUltraSlotsPorRua(slots, rua) {
+    var map = {};
+    (slots || []).forEach(function(s) {
+        if (String(s.rua || '').toUpperCase() !== String(rua || '').toUpperCase()) return;
+        var p = parseInt(s.posicao, 10) || 0;
+        var n = parseInt(s.nivel, 10) || 1;
+        if (!p) return;
+        if (!map[p]) map[p] = {};
+        map[p][n] = s;
+    });
+    return map;
+}
+
+function _wmsUltraMaxColunas(posMap) {
+    var max = 0;
+    Object.keys(posMap || {}).forEach(function(k) {
+        var p = parseInt(k, 10) || 0;
+        if (p > max) max = p;
+    });
+    return max;
+}
+
+function _wmsUltraColunaTemAlgumNivel(posMap, col) {
+    var niveisMap = posMap[col] || {};
+    return Object.keys(niveisMap).length > 0;
+}
+
+function _wmsUltraCellClass(slot, hasAddress) {
+    if (!hasAddress) return 'cell--sem-nivel5';
+    if (!slot) return 'cell--sem-nivel5';
+    if (slot.destino_acao || (slot.tipo || '') === 'destino_fixo') return 'cell--bloqueado';
+    if ((slot.status || '') === 'ocupada') return 'cell--ocupado';
+    return 'cell--disponivel';
+}
+
+function _wmsUltraCellClickable(kind) {
+    return kind === 'cell--disponivel' || kind === 'cell--ocupado';
+}
+
+function _wmsUltraRenderRuaGrid(camCod, rua, slots, maxNiv, cellSize) {
+    var posMap = _wmsUltraSlotsPorRua(slots, rua);
+    var colunas = _wmsUltraMaxColunas(posMap);
+    if (!colunas) return '';
+    var labelW = _wmsUltraRowLabelWidth(cellSize);
+    var headerH = Math.max(14, Math.round(cellSize * 0.72));
+    var axisFont = cellSize >= 36 ? 11 : 9;
+    var gridWidth = labelW + 6 + colunas * cellSize;
+    var niveisVisiveis = _WMS_ULTRA_NIVEIS.filter(function(n) { return n <= maxNiv; });
+    var colTpl = 'repeat(' + colunas + ', ' + cellSize + 'px)';
+    var html = '<div class="rua-block">';
+    html += '<div class="rua-title">Rua ' + escHtml(String(rua)) + '</div>';
+    html += '<div class="rua-grid-scroll"><div class="rua-grid-inner" style="min-width:' + gridWidth + 'px">';
+    html += '<div class="rua-grid-wrap" style="padding-top:' + (headerH + 4) + 'px">';
+    html += '<div class="col-headers" style="margin-left:' + labelW + 'px;grid-template-columns:' + colTpl + '">';
+    for (var c = 1; c <= colunas; c++) {
+        html += '<span class="axis-label" style="width:' + cellSize + 'px;font-size:' + axisFont + 'px">' + c + '</span>';
+    }
+    html += '</div><div class="rua-body"><div class="row-labels" style="width:' + labelW + 'px">';
+    niveisVisiveis.forEach(function(nivel) {
+        html += '<span class="axis-label row-axis" style="height:' + cellSize + 'px;line-height:' + cellSize + 'px;font-size:' + axisFont + 'px">' + nivel + '</span>';
+    });
+    html += '</div><div class="cells-area" style="position:relative"><div class="cells-stack">';
+    niveisVisiveis.forEach(function(nivel) {
+        html += '<div class="cells-row" style="grid-template-columns:' + colTpl + '">';
+        for (var col = 1; col <= colunas; col++) {
+            var slot = (posMap[col] || {})[nivel] || null;
+            var hasAddress = !!slot || _wmsUltraColunaTemAlgumNivel(posMap, col);
+            var kind = _wmsUltraCellClass(slot, hasAddress);
+            var clickable = _wmsUltraCellClickable(kind);
+            var tit = slot
+                ? (slot.codigo_endereco || ('Câmara ' + camCod + ' · Rua ' + rua + ' · Col ' + col + ' · Nív ' + nivel))
+                : ('Câmara ' + camCod + ' · Rua ' + rua + ' · Col ' + col + ' · Nív ' + nivel);
+            if (slot && slot.destino_label) tit += ' — ' + slot.destino_label;
+            else if (slot && (slot.status || '') === 'ocupada') tit += ' — Ocupado';
+            else if (clickable) tit += ' — Disponível';
+            var cls = 'cell ' + kind + (clickable ? ' wms-ultra-cell--clickable' : '');
+            var attrs = ' type="button" class="' + cls + '" style="width:' + cellSize + 'px;height:' + cellSize + 'px"';
+            attrs += ' title="' + escHtml(tit) + '" aria-label="' + escHtml(tit) + '"';
+            if (clickable) {
+                attrs += ' data-camara="' + escHtml(String(camCod)) + '" data-rua="' + escHtml(String(rua).toUpperCase()) + '"';
+                attrs += ' data-posicao="' + escHtml(String(col)) + '" data-nivel="' + escHtml(String(nivel)) + '"';
+            }
+            html += '<button' + attrs + '></button>';
+        }
+        html += '</div>';
+    });
+    html += '</div></div></div></div></div></div></div>';
+    return html;
+}
+
+function _wmsUltraRenderCamaraSection(cam, selCam, cellSize) {
+    var cod = parseInt(cam.codigo, 10);
+    var ruas = cam.ruas || [];
+    var maxNiv = parseInt(cam.niveis, 10) || _wmsEndPlantaMaxNivel(cod);
+    var total = cam._total != null ? cam._total : (cam.slots || []).length;
+    var ocup = cam._ocup != null ? cam._ocup : 0;
+    var pct = cam._pct != null ? cam._pct : 0;
+    var meta = _wmsEndCamaraPlantaMeta(cod);
+    var act = selCam === cod ? ' camara-section--ativo' : '';
+    var maxCols = 1;
+    ruas.forEach(function(rua) {
+        var m = _wmsUltraMaxColunas(_wmsUltraSlotsPorRua(cam.slots || [], rua));
+        if (m > maxCols) maxCols = m;
+    });
+    if (cellSize == null) {
+        var wrap = document.getElementById('wms-end-2d-wrap');
+        var w = wrap ? wrap.clientWidth : 900;
+        cellSize = _wmsUltraComputeCellSize(w, maxCols);
+    }
+    var html = '<section class="camara-section wms-ultra-cam--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-label="Câmara ' + escHtml(String(cod)) + '" tabindex="0" title="Clique para abrir 3D">';
+    html += '<header class="camara-header"><h2>Câmara ' + escHtml(String(cod)) + '</h2>';
+    html += '<span>' + escHtml(meta.tipo) + (meta.temp ? ' · ' + escHtml(meta.temp) + '°' : '') + '</span></header>';
+    html += '<div class="ruas-row">';
+    ruas.forEach(function(rua) {
+        html += _wmsUltraRenderRuaGrid(cod, rua, cam.slots || [], maxNiv, cellSize);
+    });
+    html += '</div>';
+    html += '<p class="wms-ultra-cam-stats">' + escHtml(ocup) + '/' + escHtml(total) + ' ocupadas · ' + escHtml(pct) + '% · clique no cabeçalho para 3D</p>';
+    html += '</section>';
+    return html;
 }
 
 function _wmsEndCellStyle(slot) {
@@ -5525,65 +5657,6 @@ function _wmsEndSlotsNivel15(slots) {
     return _wmsEndSlotsPorNivel(slots, 5);
 }
 
-function _wmsEndRenderPlantaRackSide(rua, slots, maxNiv, camCod) {
-    maxNiv = maxNiv || 5;
-    camCod = camCod || 0;
-    slots = _wmsEndSlotsPorNivel(slots, maxNiv);
-    var posMap = _wmsEndSlotsPorRua(slots, rua);
-    var colunas = _wmsEndColunasExistentes(posMap);
-    if (!colunas.length) return '';
-    var html = '';
-    colunas.forEach(function(p) {
-        var niveisMap = posMap[p] || {};
-        html += '<div class="wms-planta-row-pos" title="Rua ' + escHtml(String(rua)) + ' · pos ' + p + '">';
-        html += '<div class="wms-planta-row-pos-lbl">' + escHtml(String(p)) + '</div>';
-        html += '<div class="wms-planta-row-pos-cells">';
-        for (var n = maxNiv; n >= 1; n--) {
-            var slot = niveisMap[n];
-            var st = slot ? _wmsEndCellStylePlanta(slot) : _wmsEndCellStylePlantaEmpty(n);
-            var tit = slot
-                ? (slot.codigo_endereco || ('Rua ' + rua + ' · pos ' + p + ' · nív ' + n))
-                : ('Rua ' + rua + ' · pos ' + p + ' · nív ' + n + ' (vazio)');
-            html += '<div class="wms-planta-cell wms-planta-cell--clickable" style="background:' + st.fill + ';border-color:' + st.stroke + ';" title="' + escHtml(tit) + '" data-camara="' + escHtml(String(camCod)) + '" data-rua="' + escHtml(String(rua).toUpperCase()) + '" data-posicao="' + escHtml(String(p)) + '" data-nivel="' + escHtml(String(n)) + '" role="button" tabindex="0"></div>';
-        }
-        html += '</div></div>';
-    });
-    return html;
-}
-
-function _wmsEndRenderPlantaCamaraHtml(cam, selCam) {
-    var cod = cam.codigo;
-    var ruas = cam.ruas || [];
-    var maxNiv = _wmsEndPlantaMaxNivel(cod);
-    var slots = _wmsEndSlotsPorNivel(cam.slots || [], maxNiv);
-    var total = cam._total != null ? cam._total : slots.length;
-    var ocup = cam._ocup != null ? cam._ocup : 0;
-    var pct = cam._pct != null ? cam._pct : 0;
-    var meta = _wmsEndCamaraPlantaMeta(cod);
-    var act = selCam === cod ? ' wms-planta-cam--ativo' : '';
-    var ruaEsq = ruas[0] || 'A';
-    var ruaDir = ruas[1] || ruas[0] || 'B';
-    var rackEsq = _wmsEndRenderPlantaRackSide(ruaEsq, cam.slots || [], maxNiv, cod);
-    var rackDir = ruas.length > 1 ? _wmsEndRenderPlantaRackSide(ruaDir, cam.slots || [], maxNiv, cod) : '';
-    var html = '<div class="wms-planta-cam wms-planta-cam--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-label="Câmara ' + escHtml(String(cod)) + '" role="button" tabindex="0" title="Clique para abrir 3D">';
-    html += '<div class="wms-planta-cam-top">' + escHtml(total) + ' Posições · níveis ' + escHtml(_wmsEndPlantaNivelLabel(cod)) + '</div>';
-    html += '<div class="wms-planta-cam-body wms-planta-cam-body--n' + maxNiv + '">';
-    html += '<div class="wms-planta-rack-side wms-planta-rack-side--esq">' + (rackEsq || '<span style="font-size:8px;color:#999;">—</span>') + '</div>';
-    html += '<div class="wms-planta-corredor">';
-    html += '<div class="wms-planta-corredor-meta">CÂMARA FRIA<br>ruas ' + escHtml(ruas.join('/') || '—') + '</div>';
-    html += '<div class="wms-planta-corredor-mid">';
-    html += '<div class="wms-planta-corredor-num">' + escHtml(String(cod)) + '</div>';
-    html += '<div class="wms-planta-corredor-tipo">' + escHtml(meta.tipo) + '</div>';
-    html += '</div>';
-    html += '<div class="wms-planta-porta" title="Entrada"></div>';
-    html += '</div>';
-    html += '<div class="wms-planta-rack-side wms-planta-rack-side--dir">' + (rackDir || '<span style="font-size:8px;color:#999;">—</span>') + '</div>';
-    html += '</div>';
-    html += '<div class="wms-planta-cam-stats">' + escHtml(ocup) + '/' + escHtml(total) + ' ocup. · ' + escHtml(pct) + '% · clique p/ 3D</div>';
-    html += '</div>';
-    return html;
-}
-
 function _wmsEndEnsureMapa3dParaPlanta() {
     if (_wmsEndState.mapa3d && (_wmsEndState.mapa3d.camaras || []).length) return Promise.resolve(_wmsEndState.mapa3d);
     if (_wmsEndState._mapa3dPlantaLoading) {
@@ -5598,6 +5671,22 @@ function _wmsEndEnsureMapa3dParaPlanta() {
         return null;
     });
     return _wmsEndState._mapa3dPlantaLoading;
+}
+
+function _wmsEndBindUltraLayoutResize() {
+    var wrap = document.getElementById('wms-end-2d-wrap');
+    if (!wrap || wrap._wmsUltraRo) return;
+    if (typeof ResizeObserver === 'undefined') return;
+    var timer = null;
+    wrap._wmsUltraRo = new ResizeObserver(function() {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function() {
+            if (document.getElementById('wms-end-acc-2d') && document.getElementById('wms-end-acc-2d').open) {
+                _wmsEndRender2DPlanta();
+            }
+        }, 120);
+    });
+    wrap._wmsUltraRo.observe(wrap);
 }
 
 function _wmsEndRender2DPlanta() {
@@ -5620,12 +5709,23 @@ function _wmsEndRender2DPlanta() {
     });
     var camOrder = [11, 12, 13, 21].filter(function(cod) { return !!camByCod[cod]; });
     var selCam = _wmsEndState.selectedCamara;
-    var html = '';
+    var wrap = document.getElementById('wms-end-2d-wrap');
+    var wrapW = wrap ? wrap.clientWidth : 900;
+    var maxColsAll = 1;
+    camOrder.forEach(function(cod) {
+        var cam = camByCod[cod];
+        (cam.ruas || []).forEach(function(rua) {
+            var m = _wmsUltraMaxColunas(_wmsUltraSlotsPorRua(cam.slots || [], rua));
+            if (m > maxColsAll) maxColsAll = m;
+        });
+    });
+    var cellSize = _wmsUltraComputeCellSize(wrapW, maxColsAll);
+    var html = '<div class="wms-ultra-layout layout-panel">';
 
     if (camOrder.length) {
-        html += '<div class="wms-planta-row-cams">';
+        html += '<div class="camaras-stack">';
         camOrder.forEach(function(cod) {
-            html += _wmsEndRenderPlantaCamaraHtml(camByCod[cod], selCam);
+            html += _wmsUltraRenderCamaraSection(camByCod[cod], selCam, cellSize);
         });
         html += '</div>';
     } else {
@@ -5639,7 +5739,7 @@ function _wmsEndRender2DPlanta() {
 
     var areas98 = (data.areas_especiais && data.areas_especiais.areas) || data.areas || [];
     if (areas98.length) {
-        html += '<div class="wms-planta-row-98">';
+        html += '<div class="wms-ultra-areas98">';
         html += '<div class="wms-planta-row-98-titulo">Quarentena e fluxos especiais — câmara 98</div>';
         areas98.forEach(function(a) {
             html += '<div class="wms-end-2d-area98" style="flex:1;min-width:200px;">';
@@ -5654,7 +5754,9 @@ function _wmsEndRender2DPlanta() {
         });
         html += '</div>';
     }
+    html += '</div>';
     root.innerHTML = html || '<p class="wms-end-2d-vazio">Nenhuma câmara no layout.</p>';
+    _wmsEndBindUltraLayoutResize();
 }
 
 function _wmsEndDraw2D() {
@@ -5671,6 +5773,9 @@ function _wmsEndHighlightRow(camara) {
     document.querySelectorAll('.wms-planta-cam--clickable').forEach(function(el) {
         el.classList.remove('wms-planta-cam--ativo');
     });
+    document.querySelectorAll('.wms-ultra-cam--clickable').forEach(function(el) {
+        el.classList.remove('camara-section--ativo');
+    });
     if (!camara) return;
     document.querySelectorAll('.wms-end-row--clickable[data-camara="' + camara + '"]').forEach(function(el) {
         el.classList.add('wms-end-row--ativo');
@@ -5680,6 +5785,9 @@ function _wmsEndHighlightRow(camara) {
     });
     document.querySelectorAll('.wms-planta-cam--clickable[data-camara="' + camara + '"]').forEach(function(el) {
         el.classList.add('wms-planta-cam--ativo');
+    });
+    document.querySelectorAll('.wms-ultra-cam--clickable[data-camara="' + camara + '"]').forEach(function(el) {
+        el.classList.add('camara-section--ativo');
     });
 }
 
@@ -5742,13 +5850,17 @@ function _wmsEndPosFromEl(el) {
 }
 
 function _wmsEndHighlightSlot2d(slot) {
-    document.querySelectorAll('.wms-end-slot--ativo, .wms-planta-cell--ativo').forEach(function(el) {
-        el.classList.remove('wms-end-slot--ativo', 'wms-planta-cell--ativo');
+    document.querySelectorAll('.wms-end-slot--ativo, .wms-planta-cell--ativo, .wms-ultra-cell--ativo').forEach(function(el) {
+        el.classList.remove('wms-end-slot--ativo', 'wms-planta-cell--ativo', 'wms-ultra-cell--ativo');
     });
     if (!slot) return;
     var sel = '[data-camara="' + slot.camara + '"][data-rua="' + slot.rua + '"][data-posicao="' + slot.posicao + '"][data-nivel="' + slot.nivel + '"]';
-    document.querySelectorAll('.wms-end-slot--clickable' + sel + ', .wms-planta-cell--clickable' + sel).forEach(function(el) {
-        el.classList.add(el.classList.contains('wms-planta-cell--clickable') ? 'wms-planta-cell--ativo' : 'wms-end-slot--ativo');
+    document.querySelectorAll('.wms-end-slot--clickable' + sel + ', .wms-planta-cell--clickable' + sel + ', .wms-ultra-cell--clickable' + sel).forEach(function(el) {
+        if (el.classList.contains('wms-ultra-cell--clickable') || el.classList.contains('wms-planta-cell--clickable')) {
+            el.classList.add(el.classList.contains('wms-ultra-cell--clickable') ? 'wms-ultra-cell--ativo' : 'wms-planta-cell--ativo');
+        } else {
+            el.classList.add('wms-end-slot--ativo');
+        }
     });
 }
 
@@ -5875,7 +5987,7 @@ function _wmsEndBindAccordion() {
 
 function _wmsEndBind2dEvents() {
     function onPosClick(ev) {
-        var slotEl = ev.target.closest('.wms-end-slot--clickable') || ev.target.closest('.wms-planta-cell--clickable');
+        var slotEl = ev.target.closest('.wms-end-slot--clickable') || ev.target.closest('.wms-planta-cell--clickable') || ev.target.closest('.wms-ultra-cell--clickable');
         if (slotEl) {
             ev.preventDefault();
             ev.stopPropagation();
@@ -5890,8 +6002,9 @@ function _wmsEndBind2dEvents() {
         planta._wmsEnd2dBound = true;
         planta.addEventListener('click', function(ev) {
             if (onPosClick(ev)) return;
-            var card = ev.target.closest('.wms-planta-cam--clickable') || ev.target.closest('.wms-end-2d-cam-card--clickable');
+            var card = ev.target.closest('.wms-ultra-cam--clickable') || ev.target.closest('.wms-planta-cam--clickable') || ev.target.closest('.wms-end-2d-cam-card--clickable');
             if (!card) return;
+            if (ev.target.closest('.wms-ultra-cell--clickable')) return;
             _wmsEndState.selectedSlot = null;
             _wmsEndHighlightSlot2d(null);
             var cam = parseInt(card.getAttribute('data-camara'), 10);
@@ -5901,7 +6014,7 @@ function _wmsEndBind2dEvents() {
         planta.addEventListener('keydown', function(ev) {
             if (ev.key !== 'Enter' && ev.key !== ' ') return;
             if (onPosClick(ev)) return;
-            var card = ev.target.closest('.wms-planta-cam--clickable') || ev.target.closest('.wms-end-2d-cam-card--clickable');
+            var card = ev.target.closest('.wms-ultra-cam--clickable') || ev.target.closest('.wms-planta-cam--clickable') || ev.target.closest('.wms-end-2d-cam-card--clickable');
             if (!card) return;
             ev.preventDefault();
             var cam = parseInt(card.getAttribute('data-camara'), 10);
