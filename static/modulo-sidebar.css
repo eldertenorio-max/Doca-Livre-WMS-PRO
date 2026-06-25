@@ -126,10 +126,10 @@
     width: 100%;
     min-height: 44px;
     padding: 10px 14px;
-    margin: 0 6px;
-    width: calc(100% - 12px);
+    margin: 0;
+    box-sizing: border-box;
     border: none;
-    border-radius: 8px;
+    border-radius: 0;
     border-left: 3px solid transparent;
     border-bottom: none;
     background: transparent;
@@ -193,9 +193,9 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    width: calc(100% - 12px);
+    width: 100%;
     min-height: 44px;
-    margin: 0 6px;
+    margin: 0;
     padding: 10px 14px;
     box-sizing: border-box;
     border: none;
