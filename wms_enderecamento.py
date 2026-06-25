@@ -5820,7 +5820,7 @@ def api_wms_mapa_3d():
                 loc = por_codigo.get(cod_end, {})
                 tipo = (loc.get('tipo') or '').strip().lower()
                 area = (loc.get('area') or '').strip().lower()
-                dest = dest_acao or (area if tipo == 'destino_fixo' else None)
+                dest = dest_acao
                 lbl = dest_lbl
                 if not lbl and dest:
                     lbl = _destinos_acao_labels().get(dest)

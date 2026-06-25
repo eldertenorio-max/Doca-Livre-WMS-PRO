@@ -5033,7 +5033,12 @@ function _wmsUltraColunaTemAlgumNivel(posMap, col) {
     return Object.keys(niveisMap).length > 0;
 }
 
-function _wmsUltraCellClass(slot, hasAddress) {
+function _wmsUltraSemNivel5Ausente(col, nivel, totalCols, maxNiv) {
+    return maxNiv >= 5 && nivel === 5 && totalCols >= 2 && col >= totalCols - 1;
+}
+
+function _wmsUltraCellClass(slot, hasAddress, col, nivel, totalCols, maxNiv) {
+    if (_wmsUltraSemNivel5Ausente(col, nivel, totalCols, maxNiv)) return 'cell--sem-nivel5';
     if (!hasAddress) return 'cell--sem-nivel5';
     if (!slot) return 'cell--sem-nivel5';
     if (slot.destino_acao || (slot.tipo || '') === 'destino_fixo') return 'cell--bloqueado';
@@ -5073,11 +5078,12 @@ function _wmsUltraRenderRuaGrid(camCod, rua, slots, maxNiv, cellSize) {
         for (var col = 1; col <= colunas; col++) {
             var slot = (posMap[col] || {})[nivel] || null;
             var hasAddress = !!slot || _wmsUltraColunaTemAlgumNivel(posMap, col);
-            var kind = _wmsUltraCellClass(slot, hasAddress);
+            var kind = _wmsUltraCellClass(slot, hasAddress, col, nivel, colunas, maxNiv);
             var clickable = _wmsUltraCellClickable(kind);
             var tit = slot
                 ? (slot.codigo_endereco || ('Câmara ' + camCod + ' · Rua ' + rua + ' · Col ' + col + ' · Nív ' + nivel))
                 : ('Câmara ' + camCod + ' · Rua ' + rua + ' · Col ' + col + ' · Nív ' + nivel);
+            if (_wmsUltraSemNivel5Ausente(col, nivel, colunas, maxNiv)) tit += ' — Sem nível 5 nesta coluna';
             if (slot && slot.destino_label) tit += ' — ' + slot.destino_label;
             else if (slot && (slot.status || '') === 'ocupada') tit += ' — Ocupado';
             else if (clickable) tit += ' — Disponível';
