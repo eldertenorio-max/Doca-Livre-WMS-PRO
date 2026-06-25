@@ -4889,47 +4889,42 @@ function _wmsEndPosicoesTemNiveis(posicoes) {
     return posicoes.some(function(p) { return p.nivel != null && p.coluna != null; });
 }
 
+function _wmsEndPosicaoToSlot(p) {
+    return {
+        rua: String(p.rua || '').toUpperCase(),
+        posicao: parseInt(p.coluna, 10) || parseInt(p.posicao, 10) || 0,
+        nivel: parseInt(p.nivel, 10) || 1,
+        status: (p.status || '').toLowerCase(),
+        destino_acao: p.destino_acao || p.area || '',
+        tipo: p.tipo || '',
+        codigo_endereco: p.codigo_endereco || '',
+        palete_etiqueta: p.etiqueta || p.palete_etiqueta || ''
+    };
+}
+
 function _wmsEndRenderPosicoesPorNiveis(posicoes, maxNiveis, camara) {
     maxNiveis = maxNiveis || 5;
-    var porRua = {};
-    var ruaOrder = [];
-    (posicoes || []).forEach(function(p) {
-        var rua = String(p.rua || '').toUpperCase() || '—';
-        var col = parseInt(p.coluna, 10);
-        if (!col) col = parseInt(p.posicao, 10) || 0;
-        if (!porRua[rua]) {
-            porRua[rua] = {};
-            ruaOrder.push(rua);
-        }
-        if (!porRua[rua][col]) porRua[rua][col] = {};
-        var n = parseInt(p.nivel, 10) || 1;
-        porRua[rua][col][n] = p;
+    camara = camara || 0;
+    var slots = (posicoes || []).map(_wmsEndPosicaoToSlot);
+    var ruas = [];
+    slots.forEach(function(s) {
+        if (s.rua && ruas.indexOf(s.rua) < 0) ruas.push(s.rua);
     });
-    ruaOrder.sort();
-
-    var html = '<div class="wms-end-rack">';
-    ruaOrder.forEach(function(rua) {
-        var cols = porRua[rua];
-        var colNums = Object.keys(cols).map(function(k) { return parseInt(k, 10); }).sort(function(a, b) { return a - b; });
-        html += '<div class="wms-end-rack-rua">';
-        html += '<div class="wms-end-rack-rua-label">Rua ' + escHtml(rua) + '</div>';
-        html += '<div class="wms-end-rack-cols">';
-        colNums.forEach(function(colNum) {
-            var niveisMap = cols[colNum];
-            var niveisExistentes = Object.keys(niveisMap)
-                .map(function(k) { return parseInt(k, 10); })
-                .filter(function(n) { return n > 0; })
-                .sort(function(a, b) { return b - a; });
-            html += '<div class="wms-end-rack-col">';
-            niveisExistentes.forEach(function(n) {
-                html += _wmsEndSlotHtml(niveisMap[n], camara);
-            });
-            html += '<div class="wms-end-rack-col-pos">' + escHtml(String(colNum)) + '</div>';
-            html += '</div>';
-        });
-        html += '</div></div>';
+    ruas.sort();
+    if (!ruas.length) return '';
+    var maxCols = 1;
+    ruas.forEach(function(rua) {
+        var c = _wmsEndColunasExistentes(_wmsEndSlotsPorRua(slots, rua)).length;
+        if (c > maxCols) maxCols = c;
     });
-    html += '</div>';
+    var cellHint = _wmsLayoutComputeCellSize(640, maxCols);
+    var html = '<div class="wms-layout-panel wms-layout-panel--embed">';
+    html += '<div class="wms-layout-camara wms-layout-camara--inline" data-max-cols="' + maxCols + '">';
+    html += '<div class="wms-layout-ruas-row">';
+    ruas.forEach(function(rua) {
+        html += _wmsLayoutRenderRuaGrid(camara, rua, slots, maxNiveis, cellHint);
+    });
+    html += '</div></div></div>';
     return html;
 }
 
@@ -5545,11 +5540,13 @@ function _wmsLayoutComputeCellSize(containerWidth, maxCols) {
 }
 
 function _wmsLayoutFitGrids(root) {
-    root = root || document.getElementById('wms-end-2d-planta');
-    if (!root) return;
-    root.querySelectorAll('.wms-layout-camara').forEach(function(sec) {
+    var scope = root || document.getElementById('wms-end-2d-planta') || document;
+    var nodes = scope.querySelectorAll
+        ? scope.querySelectorAll('.wms-layout-camara')
+        : document.querySelectorAll('.wms-layout-camara');
+    nodes.forEach(function(sec) {
         var maxCols = parseInt(sec.getAttribute('data-max-cols') || '1', 10);
-        var cellSize = _wmsLayoutComputeCellSize(sec.clientWidth, maxCols);
+        var cellSize = _wmsLayoutComputeCellSize(sec.clientWidth || sec.parentElement && sec.parentElement.clientWidth || 640, maxCols);
         sec.style.setProperty('--wms-layout-cell', cellSize + 'px');
         sec.style.setProperty('--wms-layout-label-w', Math.max(22, Math.round(cellSize * 0.82)) + 'px');
         sec.style.setProperty('--wms-layout-header-h', Math.max(14, Math.round(cellSize * 0.72)) + 'px');
@@ -6104,6 +6101,7 @@ async function loadWmsEnderecamento() {
         if (grid) {
             grid.innerHTML = html || '<p style="padding:14px;">Nenhum endereço configurado.</p>';
         }
+        _wmsLayoutFitGrids(document.getElementById('wms-enderecamento-grid'));
         _wmsEndBindAccordion();
         _wmsEndBind2dEvents();
         if (acc2d && acc2d.open) _wmsEndRender2DPlanta();

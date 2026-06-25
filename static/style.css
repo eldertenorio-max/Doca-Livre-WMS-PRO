@@ -839,6 +839,22 @@ body.hub-modulos-aberto .container {
 .wms-swatch--avaria { background: #ab47bc; }
 .wms-swatch--reentregas { background: #7e57c2; }
 
+.wms-layout-panel--embed {
+    padding: 0;
+    margin-top: 8px;
+}
+
+.wms-layout-camara--inline {
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+.wms-layout-camara--inline .wms-layout-ruas-row {
+    padding-bottom: 0;
+}
+
 .wms-layout-camaras-stack {
     display: flex;
     flex-direction: column;
