@@ -5480,10 +5480,49 @@ function _wmsEndSlotsNivel15(slots) {
     return _wmsEndSlotsPorNivel(slots, 5);
 }
 
-function _wmsLayoutCellInfo(slot) {
+function _wmsLayoutPortaDaRua(portas, rua) {
+    rua = String(rua || '').toUpperCase();
+    return (portas || []).find(function(p) { return String(p.rua || '').toUpperCase() === rua; }) || null;
+}
+
+function _wmsLayoutCelulaPorta(porta, col, niv) {
+    if (!porta) return false;
+    var cols = porta.colunas || porta.cols || [];
+    var nivs = porta.niveis || [];
+    if (cols.length < 2 || nivs.length < 2) return false;
+    return col >= cols[0] && col <= cols[1] && niv >= nivs[0] && niv <= nivs[1];
+}
+
+function _wmsLayoutPortaOverlayStyle(porta, colunas, nivs) {
+    if (!porta) return null;
+    var cols = porta.colunas || porta.cols || [];
+    var pn = porta.niveis || [];
+    if (cols.length < 2 || pn.length < 2) return null;
+    var colIdx = colunas.indexOf(cols[0]);
+    if (colIdx < 0) return null;
+    var topRow = nivs.indexOf(pn[1]);
+    if (topRow < 0) return null;
+    var colCount = cols[1] - cols[0] + 1;
+    var rowCount = pn[1] - pn[0] + 1;
+    return {
+        left: 'calc(' + colIdx + ' * var(--wms-layout-cell, 28px))',
+        top: 'calc(' + topRow + ' * var(--wms-layout-cell, 28px))',
+        width: 'calc(' + colCount + ' * var(--wms-layout-cell, 28px))',
+        height: 'calc(' + rowCount + ' * var(--wms-layout-cell, 28px))'
+    };
+}
+
+function _wmsLayoutCellInfo(slot, opts) {
+    opts = opts || {};
+    var porta = opts.porta;
+    var col = parseInt(opts.col, 10);
+    var niv = parseInt(opts.niv, 10);
+    if (_wmsLayoutCelulaPorta(porta, col, niv)) {
+        return { kind: 'porta', className: 'wms-layout-cell--porta' };
+    }
     if (!slot) return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
     var tipo = (slot.tipo || '').toLowerCase();
-    if (tipo === 'porta_palete') return { kind: 'porta', className: 'wms-layout-cell--porta' };
+    if (tipo === 'porta') return { kind: 'porta', className: 'wms-layout-cell--porta' };
     var dest = (slot.destino_acao || '').toLowerCase();
     if (dest) {
         if (dest === 'palete_bloqueado') return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
@@ -5538,10 +5577,11 @@ function _wmsLayoutCellLabel(slot, cellSize) {
     return txt.length > 4 ? txt.slice(-4) : txt;
 }
 
-function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint) {
+function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint, portas) {
     var posMap = _wmsEndSlotsPorRua(slots, rua);
     var colunas = _wmsEndColunasExistentes(posMap);
     if (!colunas.length) return '';
+    var portaRua = _wmsLayoutPortaDaRua(portas, rua);
     var nivs = [];
     for (var n = maxNiv; n >= 1; n--) nivs.push(n);
     var html = '<div class="wms-layout-rua-block">';
@@ -5564,10 +5604,12 @@ function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint) {
         html += '<div class="wms-layout-cells-row" style="grid-template-columns:repeat(' + colunas.length + ', var(--wms-layout-cell, 28px))">';
         colunas.forEach(function(p) {
             var slot = (posMap[p] || {})[niv];
-            var info = _wmsLayoutCellInfo(slot);
-            var tit = slot
-                ? (slot.codigo_endereco || ('Rua ' + rua + ' · pos ' + p + ' · nív ' + niv))
-                : ('Rua ' + rua + ' · pos ' + p + ' · nív ' + niv);
+            var info = _wmsLayoutCellInfo(slot, { porta: portaRua, col: p, niv: niv });
+            var tit = _wmsLayoutCelulaPorta(portaRua, p, niv)
+                ? ('Rua ' + rua + ' · porta · col ' + p + ' · nív ' + niv)
+                : (slot
+                    ? (slot.codigo_endereco || ('Rua ' + rua + ' · pos ' + p + ' · nív ' + niv))
+                    : ('Rua ' + rua + ' · pos ' + p + ' · nív ' + niv));
             if (slot && (slot.status || '') === 'ocupada') tit += ' — ocupada';
             var clickable = info.kind === 'disponivel' || info.kind === 'ocupado' || info.kind === 'destino';
             var cls = 'wms-layout-cell ' + info.className;
@@ -5581,7 +5623,12 @@ function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint) {
         });
         html += '</div>';
     });
-    html += '</div></div></div></div></div></div></div>';
+    html += '</div>';
+    var ov = _wmsLayoutPortaOverlayStyle(portaRua, colunas, nivs);
+    if (ov) {
+        html += '<div class="wms-layout-porta-label" style="left:' + ov.left + ';top:' + ov.top + ';width:' + ov.width + ';height:' + ov.height + '">PORTA</div>';
+    }
+    html += '</div></div></div></div></div></div>';
     return html;
 }
 
@@ -5607,7 +5654,7 @@ function _wmsLayoutRenderCamaraSection(cam, selCam) {
     html += '<span>' + escHtml(meta.tipo) + (meta.temp ? ' ' + escHtml(meta.temp) + '°' : '') + ' · ' + escHtml(String(ocup)) + '/' + escHtml(String(total)) + ' ocup. (' + escHtml(String(pct)) + '%)</span></header>';
     html += '<div class="wms-layout-ruas-row">';
     ruas.forEach(function(rua) {
-        html += _wmsLayoutRenderRuaGrid(cod, rua, cam.slots || [], maxNiv, cellHint);
+        html += _wmsLayoutRenderRuaGrid(cod, rua, cam.slots || [], maxNiv, cellHint, cam.portas || []);
     });
     html += '</div></section>';
     return html;

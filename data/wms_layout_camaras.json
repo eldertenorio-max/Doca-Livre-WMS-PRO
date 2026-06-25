@@ -18,7 +18,14 @@
         "B"
       ],
       "niveis": 5,
-      "total_posicoes": 142,
+      "total_posicoes": 146,
+      "portas": [
+        {
+          "rua": "B",
+          "colunas": [2, 3],
+          "niveis": [1, 2]
+        }
+      ],
       "enderecos": [
         {
           "rua": "A",
@@ -348,42 +355,72 @@
         {
           "rua": "A",
           "posicao": 14,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 14,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 14,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 14,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
+        },
+        {
+          "rua": "A",
+          "posicao": 14,
+          "nivel": 5,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 15,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 15,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 15,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "A",
           "posicao": 15,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
+        },
+        {
+          "rua": "A",
+          "posicao": 15,
+          "nivel": 5,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
@@ -693,42 +730,72 @@
         {
           "rua": "B",
           "posicao": 14,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 14,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 14,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 14,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
+        },
+        {
+          "rua": "B",
+          "posicao": 14,
+          "nivel": 5,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 15,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 15,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 15,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         },
         {
           "rua": "B",
           "posicao": 15,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
+        },
+        {
+          "rua": "B",
+          "posicao": 15,
+          "nivel": 5,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS"
         }
       ]
     },
@@ -1050,42 +1117,58 @@
         {
           "rua": "C",
           "posicao": 14,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "C",
           "posicao": 14,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "C",
           "posicao": 14,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "C",
           "posicao": 14,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "C",
           "posicao": 15,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "C",
           "posicao": 15,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "C",
           "posicao": 15,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "C",
           "posicao": 15,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "D",
@@ -1370,42 +1453,58 @@
         {
           "rua": "D",
           "posicao": 14,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "D",
           "posicao": 14,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "D",
           "posicao": 14,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "D",
           "posicao": 14,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "D",
           "posicao": 15,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "D",
           "posicao": 15,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "D",
           "posicao": 15,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "envio_mg",
+          "destino_label": "ENVIO P/ MINAS"
         },
         {
           "rua": "D",
           "posicao": 15,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         }
       ]
     },
@@ -1727,42 +1826,58 @@
         {
           "rua": "E",
           "posicao": 14,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
         },
         {
           "rua": "E",
           "posicao": 14,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
         },
         {
           "rua": "E",
           "posicao": 14,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
         },
         {
           "rua": "E",
           "posicao": 14,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "avaria",
+          "destino_label": "AVARIA"
         },
         {
           "rua": "E",
           "posicao": 15,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
         },
         {
           "rua": "E",
           "posicao": 15,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
         },
         {
           "rua": "E",
           "posicao": 15,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
         },
         {
           "rua": "E",
           "posicao": 15,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "avaria",
+          "destino_label": "AVARIA"
         },
         {
           "rua": "F",
@@ -2092,42 +2207,58 @@
         {
           "rua": "F",
           "posicao": 14,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
         },
         {
           "rua": "F",
           "posicao": 14,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
         },
         {
           "rua": "F",
           "posicao": 14,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
         },
         {
           "rua": "F",
           "posicao": 14,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
         },
         {
           "rua": "F",
           "posicao": 15,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
         },
         {
           "rua": "F",
           "posicao": 15,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
         },
         {
           "rua": "F",
           "posicao": 15,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
         },
         {
           "rua": "F",
           "posicao": 15,
-          "nivel": 4
+          "nivel": 4,
+          "destino_acao": "descarte_perdas",
+          "destino_label": "DESCARTE"
         }
       ]
     },

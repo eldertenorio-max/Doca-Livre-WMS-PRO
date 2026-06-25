@@ -306,10 +306,7 @@ def _campos_etiqueta_palete_endereco(sug=None, codigo_wms=None, endereco_texto=N
     }
 
 
-_WMS_CAMARA_TOTAIS_PADRAO = {11: 142, 12: 133, 13: 142, 21: 28}
-_WMS_AREAS_DESTINO_LAYOUT = frozenset({
-    'envio_mg', 'retrabalho', 'descarte_perdas', 'palete_bloqueado', 'avaria', 'reentregas',
-})
+_WMS_CAMARA_TOTAIS_PADRAO = {11: 148, 12: 133, 13: 142, 21: 28}
 _WMS_CAMARA_STAGE = 99
 _WMS_CAMARA_ESPECIAL = 98
 _WMS_STAGE_SLOTS_POR_DOCA = 40
@@ -332,7 +329,7 @@ def _layout_camaras_config():
     if not os.path.isfile(path):
         return {
             'camaras': [
-                {'codigo': 11, 'ruas': ['A', 'B'], 'niveis': 5, 'total_posicoes': 142},
+                {'codigo': 11, 'ruas': ['A', 'B'], 'niveis': 5, 'total_posicoes': 148},
                 {'codigo': 12, 'ruas': ['C', 'D'], 'niveis': 5, 'total_posicoes': 133},
                 {'codigo': 13, 'ruas': ['E', 'F'], 'niveis': 5, 'total_posicoes': 142},
                 {'codigo': 21, 'ruas': ['G', 'H'], 'niveis': 2, 'total_posicoes': 28},
@@ -375,66 +372,13 @@ def _limpar_localizacoes_orfas_vazias(conn, camara, codigos_validos):
     return int(getattr(cur, 'rowcount', 0) or 0)
 
 
-def _sync_layout_metadata_destinos(conn):
-    """Alinha tipo/area/zona do banco com destino_acao do layout JSON (câmaras 11, 12, 13)."""
-    if not _wms_tabelas_existem(conn):
-        return 0
-    t_loc = _tbl(conn, 'wms_localizacao')
-    areas_sql = ','.join(['?' for _ in _WMS_AREAS_DESTINO_LAYOUT])
-    atualizadas = 0
-    for bloco in (_layout_camaras_config().get('camaras') or []):
-        cod_cam = int(bloco.get('codigo') or 0)
-        if cod_cam not in (11, 12, 13):
-            continue
-        sem_destino = []
-        com_destino = []
-        for _cam, rua, pos, nivel, dest_acao, _dest_lbl in _coords_from_bloco_layout(bloco):
-            cod_end = _codigo_endereco(cod_cam, rua, pos, nivel)
-            if dest_acao:
-                com_destino.append((cod_end, dest_acao))
-            else:
-                sem_destino.append(cod_end)
-        for cod_end, area in com_destino:
-            cur = conn.execute(
-                f'''UPDATE {t_loc}
-                    SET tipo = 'destino_fixo', area = ?, categoria_zona = NULL, zona_armazenagem = ?
-                    WHERE codigo_endereco = ?
-                      AND (COALESCE(LOWER(TRIM(tipo)), '') <> 'destino_fixo'
-                           OR COALESCE(LOWER(TRIM(area)), '') <> ?)''',
-                (area, area, cod_end, area),
-            )
-            atualizadas += int(getattr(cur, 'rowcount', 0) or 0)
-        if sem_destino:
-            for i in range(0, len(sem_destino), 200):
-                batch = sem_destino[i:i + 200]
-                ph = ','.join(['?' for _ in batch])
-                cur = conn.execute(
-                    f'''UPDATE {t_loc}
-                        SET tipo = 'porta_palete',
-                            area = CASE
-                                WHEN UPPER(COALESCE(categoria_zona, '')) IN ('A', 'B', 'C', 'D')
-                                THEN UPPER(categoria_zona) ELSE 'C' END,
-                            categoria_zona = CASE
-                                WHEN UPPER(COALESCE(categoria_zona, '')) IN ('A', 'B', 'C', 'D')
-                                THEN UPPER(categoria_zona) ELSE 'C' END,
-                            zona_armazenagem = CASE
-                                WHEN COALESCE(nivel, 0) = 1 THEN 'picking' ELSE 'pulmao' END
-                        WHERE camara = ? AND codigo_endereco IN ({ph})
-                          AND (COALESCE(LOWER(TRIM(tipo)), '') = 'destino_fixo'
-                               OR LOWER(COALESCE(area, '')) IN ({areas_sql}))''',
-                    (cod_cam, *batch, *_WMS_AREAS_DESTINO_LAYOUT),
-                )
-                atualizadas += int(getattr(cur, 'rowcount', 0) or 0)
-    return atualizadas
-
-
 def _sync_wms_camara_layout(conn):
-    """Restaura total_posicoes de referência, metadata de destinos e remove órfãos vazios."""
+    """Restaura total_posicoes de referência e remove endereços vazios fora do layout."""
     if not _wms_tabelas_existem(conn):
         return
     t_cam = _tbl(conn, 'wms_camara')
+    refs = _map_totais_ref_camaras()
     removidas = 0
-    metadata = 0
     for bloco in (_layout_camaras_config().get('camaras') or []):
         cod = int(bloco['codigo'])
         total = _total_posicoes_ref(cod, bloco)
@@ -444,13 +388,12 @@ def _sync_wms_camara_layout(conn):
         coords = _coords_from_bloco_layout(bloco)
         codigos = {_codigo_endereco(c, r, p, n) for c, r, p, n, _da, _dl in coords}
         removidas += _limpar_localizacoes_orfas_vazias(conn, cod, codigos)
-    metadata = _sync_layout_metadata_destinos(conn)
     try:
         conn.commit()
     except Exception:
         conn.rollback()
         raise
-    return {'removidas': removidas, 'metadata': metadata}
+    return removidas
 
 
 def _ensure_categoria_zona_column(conn):
@@ -2110,6 +2053,37 @@ def _destinos_acao_labels():
     return labels
 
 
+def _portas_bloco(bloco):
+    """Portas físicas por rua — colunas e níveis inclusivos (1-based)."""
+    out = []
+    for p in bloco.get('portas') or []:
+        rua = str(p.get('rua') or '').strip().upper()
+        cols = p.get('colunas') or p.get('cols') or []
+        nivs = p.get('niveis') or []
+        if not rua or len(cols) < 2 or len(nivs) < 2:
+            continue
+        out.append({
+            'rua': rua,
+            'colunas': [int(cols[0]), int(cols[1])],
+            'niveis': [int(nivs[0]), int(nivs[1])],
+        })
+    return out
+
+
+def _celula_e_porta(bloco, rua, posicao, nivel):
+    rua = str(rua or '').strip().upper()
+    pos = int(posicao)
+    niv = int(nivel)
+    for p in _portas_bloco(bloco):
+        if p['rua'] != rua:
+            continue
+        c0, c1 = p['colunas']
+        n0, n1 = p['niveis']
+        if c0 <= pos <= c1 and n0 <= niv <= n1:
+            return True
+    return False
+
+
 def _coords_from_bloco_layout(bloco):
     """Retorna [(camara, rua, posicao, nivel, destino_acao, destino_label), ...]."""
     cod = int(bloco['codigo'])
@@ -2841,7 +2815,7 @@ def _seed_wms_defaults(conn):
         return
     now = _now_iso()
     camaras = [
-        (11, 'Câmara 11', 142),
+        (11, 'Câmara 11', 144),
         (12, 'Câmara 12', 133),
         (13, 'Câmara 13', 142),
         (21, 'Câmara 21', 28),
@@ -3381,18 +3355,11 @@ def _ensure_areas_especiais_localizacoes(conn):
     """Câmara 98 — posições fixas: descarte, avaria, retrabalho, bloqueado, MG, reentregas."""
     cfg = _load_areas_especiais_config()
     cam = int(cfg.get('camara') or _WMS_CAMARA_ESPECIAL)
-    t_loc = _tbl(conn, 'wms_localizacao')
-    if _wms_tabelas_existem(conn):
-        cnt = _int_col(
-            conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc} WHERE camara = ?', (cam,)).fetchone(),
-            'c',
-        )
-        if cnt > 0:
-            return
     desc = cfg.get('descricao') or 'Áreas especiais'
     areas = cfg.get('areas') or []
     total_slots = sum(int(a.get('slots') or 0) for a in areas)
     t_cam = _tbl(conn, 'wms_camara')
+    t_loc = _tbl(conn, 'wms_localizacao')
     now = _now_iso()
     if _is_pg(conn):
         conn.execute(
@@ -3521,15 +3488,7 @@ def _sugerir_destino_area_especial(conn, area_key):
     return _putaway_resposta(loc, motivo, '', 0, 0, None, 'area_especial')
 
 
-def _query_flag_resumo():
-    return (request.args.get('resumo') or '').strip().lower() in ('1', 'true', 'sim', 'yes')
-
-
-def _query_flag_sync():
-    return (request.args.get('sync') or '').strip().lower() in ('1', 'true', 'sim', 'yes')
-
-
-def _coletar_ocupacao_areas_especiais(conn, incluir_posicoes=True):
+def _coletar_ocupacao_areas_especiais(conn):
     _ensure_areas_especiais_localizacoes(conn)
     cfg = _load_areas_especiais_config()
     cam = int(cfg.get('camara') or _WMS_CAMARA_ESPECIAL)
@@ -3553,38 +3512,32 @@ def _coletar_ocupacao_areas_especiais(conn, incluir_posicoes=True):
         ).fetchall()
         posicoes = []
         ocupadas = 0
-        if incluir_posicoes:
-            for r in rows or []:
-                rd = _row_dict(r) or {}
-                st = (rd.get('status') or '').lower()
-                if st == 'ocupada':
-                    ocupadas += 1
-                posicoes.append({
-                    'posicao': rd.get('posicao'),
-                    'codigo_endereco': rd.get('codigo_endereco'),
-                    'status': st,
-                    'palete_id': rd.get('palete_id'),
-                    'etiqueta': rd.get('etiqueta'),
-                    'palete_status': rd.get('palete_status'),
-                    'qtd_caixas': int(rd.get('qtd_caixas') or 0),
-                })
-            while len(posicoes) < slots:
-                posicoes.append({
-                    'posicao': len(posicoes) + 1,
-                    'codigo_endereco': None,
-                    'status': 'nao_criada',
-                    'palete_id': None,
-                    'etiqueta': None,
-                    'palete_status': None,
-                    'qtd_caixas': 0,
-                })
-        else:
-            for r in rows or []:
-                rd = _row_dict(r) or {}
-                if (rd.get('status') or '').lower() == 'ocupada':
-                    ocupadas += 1
+        for r in rows or []:
+            rd = _row_dict(r) or {}
+            st = (rd.get('status') or '').lower()
+            if st == 'ocupada':
+                ocupadas += 1
+            posicoes.append({
+                'posicao': rd.get('posicao'),
+                'codigo_endereco': rd.get('codigo_endereco'),
+                'status': st,
+                'palete_id': rd.get('palete_id'),
+                'etiqueta': rd.get('etiqueta'),
+                'palete_status': rd.get('palete_status'),
+                'qtd_caixas': int(rd.get('qtd_caixas') or 0),
+            })
+        while len(posicoes) < slots:
+            posicoes.append({
+                'posicao': len(posicoes) + 1,
+                'codigo_endereco': None,
+                'status': 'nao_criada',
+                'palete_id': None,
+                'etiqueta': None,
+                'palete_status': None,
+                'qtd_caixas': 0,
+            })
         livres = max(0, slots - ocupadas)
-        item = {
+        out.append({
             'area': area_key,
             'rua': meta.get('rua'),
             'label': meta.get('label') or area_key,
@@ -3592,10 +3545,8 @@ def _coletar_ocupacao_areas_especiais(conn, incluir_posicoes=True):
             'ocupadas': ocupadas,
             'livres': livres,
             'percentual_ocupacao': round(100.0 * ocupadas / slots, 1) if slots else 0,
-        }
-        if incluir_posicoes:
-            item['posicoes'] = posicoes
-        out.append(item)
+            'posicoes': posicoes,
+        })
     return {
         'camara': cam,
         'descricao': cfg.get('descricao'),
@@ -3606,7 +3557,7 @@ def _coletar_ocupacao_areas_especiais(conn, incluir_posicoes=True):
     }
 
 
-def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
+def _coletar_ocupacao_estoque_normal(conn):
     """Ocupação do estoque normal (câmaras 11–21), excluindo destino_fixo e câm. 98/99."""
     t_loc = _tbl(conn, 'wms_localizacao')
     t_pal = _tbl(conn, 'wms_palete')
@@ -3650,72 +3601,71 @@ def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
         base = cad if cad > 0 else total_ref
         livres = vaz if cad else max(base - ocup, 0)
 
+        cat_rows = conn.execute(
+            f'''SELECT UPPER(TRIM(COALESCE(l.categoria_zona, ''))) AS categoria,
+                       COUNT(*) AS total,
+                       SUM(CASE WHEN l.status = 'ocupada' THEN 1 ELSE 0 END) AS ocupadas,
+                       SUM(CASE WHEN l.status = 'vazia' THEN 1 ELSE 0 END) AS vazias
+                FROM {t_loc} l
+                WHERE l.camara = ? AND {filtro_tipo}
+                GROUP BY UPPER(TRIM(COALESCE(l.categoria_zona, '')))
+                ORDER BY categoria''',
+            (cod,),
+        ).fetchall()
         por_categoria = []
+        for r in cat_rows or []:
+            rd = _row_dict(r) or {}
+            cat = (rd.get('categoria') or '').strip().upper() or '—'
+            por_categoria.append({
+                'categoria': cat,
+                'total': int(rd.get('total') or 0),
+                'ocupadas': int(rd.get('ocupadas') or 0),
+                'vazias': int(rd.get('vazias') or 0),
+            })
+
+        pos_rows = conn.execute(
+            f'''SELECT l.codigo_endereco, l.rua, l.posicao, l.nivel, l.status, l.categoria_zona,
+                       p.etiqueta, p.id AS palete_id,
+                       (SELECT COALESCE(SUM(i.quantidade_caixas), 0) FROM {t_item} i WHERE i.palete_id = p.id) AS qtd_caixas
+                FROM {t_loc} l
+                LEFT JOIN {t_pal} p ON p.localizacao_id = l.id
+                    AND p.status IN ('armazenado', 'bloqueado', 'em_stage', 'separado')
+                WHERE l.camara = ? AND {filtro_tipo}
+                ORDER BY l.rua, l.posicao, l.nivel''',
+            (cod,),
+        ).fetchall()
         posicoes = []
         ocupadas_lista = []
-        if incluir_posicoes:
-            cat_rows = conn.execute(
-                f'''SELECT UPPER(TRIM(COALESCE(l.categoria_zona, ''))) AS categoria,
-                           COUNT(*) AS total,
-                           SUM(CASE WHEN l.status = 'ocupada' THEN 1 ELSE 0 END) AS ocupadas,
-                           SUM(CASE WHEN l.status = 'vazia' THEN 1 ELSE 0 END) AS vazias
-                    FROM {t_loc} l
-                    WHERE l.camara = ? AND {filtro_tipo}
-                    GROUP BY UPPER(TRIM(COALESCE(l.categoria_zona, '')))
-                    ORDER BY categoria''',
-                (cod,),
-            ).fetchall()
-            for r in cat_rows or []:
-                rd = _row_dict(r) or {}
-                cat = (rd.get('categoria') or '').strip().upper() or '—'
-                por_categoria.append({
-                    'categoria': cat,
-                    'total': int(rd.get('total') or 0),
-                    'ocupadas': int(rd.get('ocupadas') or 0),
-                    'vazias': int(rd.get('vazias') or 0),
-                })
-
-            pos_rows = conn.execute(
-                f'''SELECT l.codigo_endereco, l.rua, l.posicao, l.nivel, l.status, l.categoria_zona,
-                           p.etiqueta, p.id AS palete_id,
-                           (SELECT COALESCE(SUM(i.quantidade_caixas), 0) FROM {t_item} i WHERE i.palete_id = p.id) AS qtd_caixas
-                    FROM {t_loc} l
-                    LEFT JOIN {t_pal} p ON p.localizacao_id = l.id
-                        AND p.status IN ('armazenado', 'bloqueado', 'em_stage', 'separado')
-                    WHERE l.camara = ? AND {filtro_tipo}
-                    ORDER BY l.rua, l.posicao, l.nivel''',
-                (cod,),
-            ).fetchall()
-            for idx, r in enumerate(pos_rows or [], start=1):
-                rd = _row_dict(r) or {}
-                st = (rd.get('status') or '').strip().lower()
-                posicoes.append({
-                    'posicao': idx,
+        for idx, r in enumerate(pos_rows or [], start=1):
+            rd = _row_dict(r) or {}
+            st = (rd.get('status') or '').strip().lower()
+            posicoes.append({
+                'posicao': idx,
+                'codigo_endereco': rd.get('codigo_endereco'),
+                'rua': rd.get('rua'),
+                'coluna': rd.get('posicao'),
+                'nivel': rd.get('nivel'),
+                'status': st or 'vazia',
+                'categoria_zona': (rd.get('categoria_zona') or '').strip().upper() or None,
+                'etiqueta': rd.get('etiqueta'),
+                'palete_id': rd.get('palete_id'),
+                'qtd_caixas': int(rd.get('qtd_caixas') or 0),
+            })
+            if st == 'ocupada':
+                ocupadas_lista.append({
                     'codigo_endereco': rd.get('codigo_endereco'),
                     'rua': rd.get('rua'),
-                    'coluna': rd.get('posicao'),
+                    'posicao': rd.get('posicao'),
                     'nivel': rd.get('nivel'),
-                    'status': st or 'vazia',
                     'categoria_zona': (rd.get('categoria_zona') or '').strip().upper() or None,
                     'etiqueta': rd.get('etiqueta'),
                     'palete_id': rd.get('palete_id'),
                     'qtd_caixas': int(rd.get('qtd_caixas') or 0),
                 })
-                if st == 'ocupada':
-                    ocupadas_lista.append({
-                        'codigo_endereco': rd.get('codigo_endereco'),
-                        'rua': rd.get('rua'),
-                        'posicao': rd.get('posicao'),
-                        'nivel': rd.get('nivel'),
-                        'categoria_zona': (rd.get('categoria_zona') or '').strip().upper() or None,
-                        'etiqueta': rd.get('etiqueta'),
-                        'palete_id': rd.get('palete_id'),
-                        'qtd_caixas': int(rd.get('qtd_caixas') or 0),
-                    })
 
         pct = round(100.0 * ocup / base, 1) if base else 0
         ruas_txt = ' / '.join(bloco.get('ruas') or [])
-        cam_item = {
+        camaras_out.append({
             'camara': cod,
             'descricao': _nome_camara_label(conn, cod, nomes) or cr.get('descricao') or f'Câmara {cod}',
             'label': f'Estoque normal — câmara {cod}',
@@ -3728,12 +3678,10 @@ def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
             'ocupadas': ocup,
             'livres': livres,
             'percentual_ocupacao': pct,
-        }
-        if incluir_posicoes:
-            cam_item['por_categoria'] = por_categoria
-            cam_item['ocupadas_lista'] = ocupadas_lista
-            cam_item['posicoes'] = posicoes
-        camaras_out.append(cam_item)
+            'por_categoria': por_categoria,
+            'ocupadas_lista': ocupadas_lista,
+            'posicoes': posicoes,
+        })
         total_slots += base
         total_ocup += ocup
         total_livre += livres
@@ -3745,197 +3693,6 @@ def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
         'total_ocupadas': total_ocup,
         'total_livres': total_livre,
     }
-
-
-def _coletar_areas_especiais_resumo(conn):
-    """Resumo rápido câmara 98 — sem criar/sincronizar slots no banco."""
-    cfg = _load_areas_especiais_config()
-    cam = int(cfg.get('camara') or _WMS_CAMARA_ESPECIAL)
-    t_loc = _tbl(conn, 'wms_localizacao')
-    ocup_por_area = {}
-    if _wms_tabelas_existem(conn):
-        rows = conn.execute(
-            f'''SELECT LOWER(COALESCE(area, '')) AS area_key,
-                       SUM(CASE WHEN status = 'ocupada' THEN 1 ELSE 0 END) AS ocupadas
-                FROM {t_loc} WHERE camara = ? GROUP BY LOWER(COALESCE(area, ''))''',
-            (cam,),
-        ).fetchall()
-        for r in rows or []:
-            rd = _row_dict(r) or {}
-            k = (rd.get('area_key') or '').strip().lower()
-            if k:
-                ocup_por_area[k] = int(rd.get('ocupadas') or 0)
-    out = []
-    for meta in cfg.get('areas') or []:
-        area_key = (meta.get('area') or '').strip().lower()
-        slots = int(meta.get('slots') or 0)
-        ocupadas = min(slots, ocup_por_area.get(area_key, 0))
-        livres = max(0, slots - ocupadas)
-        out.append({
-            'area': area_key,
-            'rua': meta.get('rua'),
-            'label': meta.get('label') or area_key,
-            'slots': slots,
-            'ocupadas': ocupadas,
-            'livres': livres,
-            'percentual_ocupacao': round(100.0 * ocupadas / slots, 1) if slots else 0,
-        })
-    return {
-        'camara': cam,
-        'descricao': cfg.get('descricao'),
-        'areas': out,
-        'total_slots': sum(x['slots'] for x in out),
-        'total_ocupadas': sum(x['ocupadas'] for x in out),
-        'total_livres': sum(x['livres'] for x in out),
-    }
-
-
-def _coletar_enderecamento_resumo_rapido(conn):
-    """Ocupação resumida com poucas consultas — para aba Endereçamento (resumo=1)."""
-    t_loc = _tbl(conn, 'wms_localizacao')
-    cfg = _layout_camaras_config()
-    nomes = _map_nomes_camaras(conn)
-    labels = _destinos_acao_labels()
-    filtro_tipo = "COALESCE(LOWER(TRIM(l.tipo)), 'estoque') <> 'destino_fixo'"
-    camaras_normais = (11, 12, 13, 21)
-    blocos = {
-        int(b['codigo']): b
-        for b in (cfg.get('camaras') or [])
-        if int(b.get('codigo') or 0) in camaras_normais
-    }
-
-    ocup_estoque = {}
-    if _wms_tabelas_existem(conn):
-        rows = conn.execute(
-            f'''SELECT l.camara,
-                       COUNT(*) AS cadastradas,
-                       SUM(CASE WHEN l.status = 'ocupada' THEN 1 ELSE 0 END) AS ocupadas,
-                       SUM(CASE WHEN l.status = 'vazia' THEN 1 ELSE 0 END) AS vazias
-                FROM {t_loc} l
-                WHERE l.camara IN (11, 12, 13, 21) AND {filtro_tipo}
-                GROUP BY l.camara''',
-        ).fetchall()
-        for r in rows or []:
-            rd = _row_dict(r) or {}
-            ocup_estoque[int(rd.get('camara') or 0)] = rd
-
-    camaras_out = []
-    total_slots = total_ocup = total_livre = 0
-    for cod in sorted(camaras_normais):
-        bloco = blocos.get(cod) or {}
-        coords = _coords_from_bloco_layout(bloco) if bloco else []
-        slots_layout = sum(1 for _c, _r, _p, _n, da, _dl in coords if not da)
-        total_ref = slots_layout or _total_posicoes_ref(cod, bloco)
-        st = ocup_estoque.get(cod) or {}
-        cad = int(st.get('cadastradas') or 0)
-        ocup = int(st.get('ocupadas') or 0)
-        vaz = int(st.get('vazias') or 0)
-        base = cad if cad > 0 else total_ref
-        livres = vaz if cad else max(base - ocup, 0)
-        pct = round(100.0 * ocup / base, 1) if base else 0
-        ruas_txt = ' / '.join(bloco.get('ruas') or [])
-        camaras_out.append({
-            'camara': cod,
-            'descricao': _nome_camara_label(conn, cod, nomes) or f'Câmara {cod}',
-            'label': f'Estoque normal — câmara {cod}',
-            'rua': ruas_txt,
-            'ruas': list(bloco.get('ruas') or []),
-            'niveis': int(bloco.get('niveis') or 5),
-            'slots': base,
-            'total_slots': base,
-            'cadastradas': cad,
-            'ocupadas': ocup,
-            'livres': livres,
-            'percentual_ocupacao': pct,
-        })
-        total_slots += base
-        total_ocup += ocup
-        total_livre += livres
-
-    ocup_dest = {}
-    if _wms_tabelas_existem(conn):
-        rows = conn.execute(
-            f'''SELECT UPPER(TRIM(l.codigo_endereco)) AS codigo_endereco, l.status
-                FROM {t_loc} l
-                WHERE l.camara IN (11, 12, 13, 21)
-                  AND (
-                    COALESCE(LOWER(TRIM(l.tipo)), '') = 'destino_fixo'
-                    OR LOWER(COALESCE(l.area, '')) IN (
-                        'envio_mg', 'retrabalho', 'descarte_perdas', 'palete_bloqueado', 'avaria', 'reentregas'
-                    )
-                  )''',
-        ).fetchall()
-        for r in rows or []:
-            rd = _row_dict(r) or {}
-            cod = (rd.get('codigo_endereco') or '').strip().upper()
-            if cod:
-                ocup_dest[cod] = (rd.get('status') or '').strip().lower() == 'ocupada'
-
-    grupos_map = {}
-    ordem_area = list(labels.keys())
-    for bloco in cfg.get('camaras') or []:
-        cod_cam = int(bloco.get('codigo') or 0)
-        if cod_cam not in camaras_normais:
-            continue
-        for _c, rua, pos, niv, dest_acao, dest_lbl in _coords_from_bloco_layout(bloco):
-            if not dest_acao:
-                continue
-            key = (dest_acao, cod_cam)
-            g = grupos_map.setdefault(key, {
-                'area': dest_acao,
-                'label': dest_lbl or labels.get(dest_acao, dest_acao.upper()),
-                'camara': cod_cam,
-                'camara_nome': _nome_camara_label(conn, cod_cam, nomes) or f'Câmara {cod_cam}',
-                'ruas': list(bloco.get('ruas') or []),
-                'total': 0,
-                'ocupadas': 0,
-            })
-            g['total'] += 1
-            cod_end = _codigo_endereco(cod_cam, rua, pos, niv).upper()
-            if ocup_dest.get(cod_end):
-                g['ocupadas'] += 1
-
-    grupos = []
-    for key in sorted(grupos_map.keys(), key=lambda k: (
-        ordem_area.index(k[0]) if k[0] in ordem_area else 99,
-        k[1],
-    )):
-        g = grupos_map[key]
-        total_g = g['total']
-        ocup_g = g['ocupadas']
-        livres_g = max(0, total_g - ocup_g)
-        grupos.append({
-            'area': g['area'],
-            'label': g['label'],
-            'camara': g['camara'],
-            'camara_nome': g['camara_nome'],
-            'ruas': g['ruas'],
-            'rua': ' / '.join(g.get('ruas') or []),
-            'total': total_g,
-            'slots': total_g,
-            'ocupadas': ocup_g,
-            'livres': livres_g,
-            'percentual_ocupacao': round(100.0 * ocup_g / total_g, 1) if total_g else 0,
-        })
-
-    data = _coletar_areas_especiais_resumo(conn)
-    data['estoque_normal'] = {
-        'descricao': 'Estoque normal — câmaras 11, 12, 13 e 21 (posições de armazenagem por categoria)',
-        'camaras': camaras_out,
-        'total_slots': total_slots,
-        'total_ocupadas': total_ocup,
-        'total_livres': total_livre,
-    }
-    data['destinos_fixos'] = {
-        'descricao': 'Endereços com finalidade fixa nas câmaras frias (definidos no layout)',
-        'grupos': grupos,
-        'total_enderecos': sum(g['total'] for g in grupos),
-        'total_ocupadas': sum(g['ocupadas'] for g in grupos),
-        'total_livres': sum(g['livres'] for g in grupos),
-        'labels': labels,
-    }
-    data['resumo'] = True
-    return data
 
 
 def _parse_data_iso_br(val):
@@ -4286,7 +4043,7 @@ def _listar_visao_cruzada_wms(conn, categoria=None, sync=False):
     }
 
 
-def _coletar_mapa_destinos_fixos(conn, incluir_posicoes=True):
+def _coletar_mapa_destinos_fixos(conn):
     """Mapa câmara → finalidade (área) → endereços reservados no layout."""
     cfg = _layout_camaras_config()
     labels = _destinos_acao_labels()
@@ -4367,22 +4124,21 @@ def _coletar_mapa_destinos_fixos(conn, incluir_posicoes=True):
         g['livres'] = max(0, len(ends) - ocup)
         g['percentual_ocupacao'] = round(100.0 * ocup / len(ends), 1) if ends else 0
         g['rua'] = ' / '.join(g.get('ruas') or [])
-        if incluir_posicoes:
-            g['posicoes'] = [
-                {
-                    'posicao': i + 1,
-                    'codigo_endereco': e.get('codigo_endereco'),
-                    'barcode_longarina': e.get('barcode_longarina'),
-                    'rua': e.get('rua'),
-                    'coluna': e.get('posicao'),
-                    'nivel': e.get('nivel'),
-                    'status': (e.get('status') or 'vazia').strip().lower(),
-                    'etiqueta': e.get('etiqueta'),
-                    'palete_id': e.get('palete_id'),
-                    'qtd_caixas': int(e.get('qtd_caixas') or 0),
-                }
-                for i, e in enumerate(ends)
-            ]
+        g['posicoes'] = [
+            {
+                'posicao': i + 1,
+                'codigo_endereco': e.get('codigo_endereco'),
+                'barcode_longarina': e.get('barcode_longarina'),
+                'rua': e.get('rua'),
+                'coluna': e.get('posicao'),
+                'nivel': e.get('nivel'),
+                'status': (e.get('status') or 'vazia').strip().lower(),
+                'etiqueta': e.get('etiqueta'),
+                'palete_id': e.get('palete_id'),
+                'qtd_caixas': int(e.get('qtd_caixas') or 0),
+            }
+            for i, e in enumerate(ends)
+        ]
         grupos.append(g)
 
     return {
@@ -6064,9 +5820,6 @@ def api_wms_mapa_3d():
     try:
         _ensure_wms_schema_safe(conn)
         _seed_wms_defaults(conn)
-        _ensure_layout_enderecos_atualizado(conn)
-        if _query_flag_sync():
-            _sync_wms_camara_layout(conn)
         camara_filtro = request.args.get('camara', type=int)
         t = _tbl(conn, 'wms_localizacao')
         sql = (
@@ -6098,19 +5851,10 @@ def api_wms_mapa_3d():
                 loc = por_codigo.get(cod_end, {})
                 tipo = (loc.get('tipo') or '').strip().lower()
                 area = (loc.get('area') or '').strip().lower()
-                dest = dest_acao
+                dest = dest_acao or (area if tipo == 'destino_fixo' else None)
                 lbl = dest_lbl
                 if not lbl and dest:
                     lbl = _destinos_acao_labels().get(dest)
-                if cod_cam == 11:
-                    if dest_acao:
-                        tipo_slot = 'destino_fixo'
-                    elif tipo == 'destino_fixo':
-                        tipo_slot = 'estoque'
-                    else:
-                        tipo_slot = tipo or 'estoque'
-                else:
-                    tipo_slot = tipo or ('destino_fixo' if dest else 'estoque')
                 slots.append({
                     'rua': rua,
                     'posicao': pos,
@@ -6122,13 +5866,14 @@ def api_wms_mapa_3d():
                     'zona_armazenagem': (loc.get('zona_armazenagem') or _zona_por_nivel(niv)).lower(),
                     'destino_acao': dest,
                     'destino_label': lbl,
-                    'tipo': tipo_slot,
+                    'tipo': tipo or ('destino_fixo' if dest else 'estoque'),
                 })
             camaras_out.append({
                 'codigo': cod_cam,
                 'descricao': bloco.get('descricao') or f'Câmara {cod_cam}',
                 'ruas': list(bloco.get('ruas') or []),
                 'niveis': int(bloco.get('niveis') or 5),
+                'portas': _portas_bloco(bloco),
                 'slots': slots,
             })
         conn.close()
@@ -8710,23 +8455,6 @@ def _pagina_zebra_longarina(conn, camara=None, rua=None, posicao=None, codigo=No
     return html, None
 
 
-@bp.route('/etiqueta/numeros-coluna', methods=['GET'])
-def api_wms_etiqueta_numeros_coluna():
-    """Etiquetas 1–15 — número grande para colunas (impressão imediata)."""
-    inicio = max(1, int(request.args.get('de') or 1))
-    fim = min(99, int(request.args.get('ate') or 15))
-    if fim < inicio:
-        inicio, fim = 1, 15
-    auto_print = (request.args.get('auto_print') or '').strip().lower() in ('1', 'true', 'sim')
-    html = render_template(
-        'wms/etiquetas_numeros_coluna.html',
-        numeros=list(range(inicio, fim + 1)),
-        auto_print=auto_print,
-        **ctx_etiqueta_zebra(),
-    )
-    return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
-
-
 @bp.route('/etiqueta/zebra/teste/zpl', methods=['GET'])
 def api_wms_etiqueta_zebra_teste_zpl():
     """Etiqueta teste — borda deve encostar nos 4 lados. ?swap=1 testa 40×60 (rótulo na impressora)."""
@@ -9163,23 +8891,9 @@ def api_wms_areas_especiais():
     conn = _db()
     try:
         _ensure_wms_schema_safe(conn)
-        resumo = _query_flag_resumo()
-        sync = _query_flag_sync()
-        if sync:
-            _ensure_layout_enderecos(conn)
-            _ensure_layout_enderecos_atualizado(conn)
-            _sync_wms_camara_layout(conn)
-        if resumo and not sync:
-            data = _coletar_enderecamento_resumo_rapido(conn)
-        else:
-            if not resumo:
-                _ensure_layout_enderecos(conn)
-            incluir_pos = not resumo
-            data = _coletar_ocupacao_areas_especiais(conn, incluir_posicoes=incluir_pos)
-            data['estoque_normal'] = _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=incluir_pos)
-            data['destinos_fixos'] = _coletar_mapa_destinos_fixos(conn, incluir_posicoes=incluir_pos)
-            if resumo:
-                data['resumo'] = True
+        data = _coletar_ocupacao_areas_especiais(conn)
+        data['estoque_normal'] = _coletar_ocupacao_estoque_normal(conn)
+        data['destinos_fixos'] = _coletar_mapa_destinos_fixos(conn)
         conn.close()
         return jsonify(_sanitize_json(data))
     except Exception as e:

@@ -992,6 +992,7 @@ body.hub-modulos-aberto .container {
     border-bottom: var(--wms-rack-beam-w) solid var(--wms-rack-beam);
     border-radius: 2px;
     overflow: hidden;
+    position: relative;
 }
 
 .wms-layout-cells-stack {
@@ -1055,6 +1056,20 @@ body.hub-modulos-aberto .container {
 
 .wms-layout-cell--porta {
     background: var(--wms-cell-porta);
+}
+
+.wms-layout-porta-label {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    font-size: 9px;
+    font-weight: 700;
+    color: #24292f;
+    letter-spacing: 0.5px;
+    z-index: 4;
+    box-sizing: border-box;
 }
 
 .wms-layout-cell--bloqueado {
