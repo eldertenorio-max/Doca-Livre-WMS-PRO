@@ -4980,18 +4980,43 @@ var _WMS_END2D_LEGENDA = [
     { swatch: 'swatch--disp', label: 'Disponível' },
     { swatch: 'swatch--ocup', label: 'Ocupado' },
     { swatch: 'swatch--porta', label: 'Porta' },
+    { swatch: 'swatch--retrab', label: 'Retrabalho' },
     { swatch: 'swatch--bloq', label: 'Destino fixo / indisponível' },
     { swatch: 'swatch--nv5', label: 'Sem posição neste nível' }
 ];
 
-/** Portas no layout 2D — chave "câmara:rua". */
-var _WMS_ULTRA_PORTAS = {
-    '11:B': { cols: [2, 3], niveis: [1, 2] }
+/** Zonas especiais no layout 2D — chave "câmara:rua". */
+var _WMS_ULTRA_ZONAS_LAYOUT = {
+    '11:B': [
+        { tipo: 'porta', cols: [2, 3], niveis: [1, 2], label: 'porta' }
+    ],
+    '12:C': [
+        { tipo: 'porta', cols: [2, 2], niveis: [1, 2], label: 'porta' },
+        { tipo: 'retrabalho', cols: [14, 15], niveis: [1, 4], label: 'retrabalho' }
+    ]
 };
 
-function _wmsUltraPortaConfig(camCod, rua) {
+function _wmsUltraZonasLayout(camCod, rua) {
     var key = String(parseInt(camCod, 10) || '') + ':' + String(rua || '').toUpperCase();
-    return _WMS_ULTRA_PORTAS[key] || null;
+    return _WMS_ULTRA_ZONAS_LAYOUT[key] || [];
+}
+
+function _wmsUltraCelulaNaZona(zonas, col, nivel) {
+    for (var i = 0; i < (zonas || []).length; i++) {
+        var z = zonas[i];
+        if (col >= z.cols[0] && col <= z.cols[1] && nivel >= z.niveis[0] && nivel <= z.niveis[1]) {
+            return z;
+        }
+    }
+    return null;
+}
+
+function _wmsUltraPortaConfig(camCod, rua) {
+    var zonas = _wmsUltraZonasLayout(camCod, rua);
+    for (var i = 0; i < zonas.length; i++) {
+        if (zonas[i].tipo === 'porta') return zonas[i];
+    }
+    return null;
 }
 
 function _wmsUltraCelulaPorta(porta, col, nivel) {
@@ -5000,11 +5025,11 @@ function _wmsUltraCelulaPorta(porta, col, nivel) {
         && nivel >= porta.niveis[0] && nivel <= porta.niveis[1];
 }
 
-function _wmsUltraPortaOverlayStyle(porta, cellSize, niveisVisiveis) {
-    var c0 = porta.cols[0];
-    var c1 = porta.cols[1];
-    var n0 = porta.niveis[0];
-    var n1 = porta.niveis[1];
+function _wmsUltraZonaOverlayStyle(zona, cellSize, niveisVisiveis) {
+    var c0 = zona.cols[0];
+    var c1 = zona.cols[1];
+    var n0 = zona.niveis[0];
+    var n1 = zona.niveis[1];
     var idxTop = niveisVisiveis.indexOf(Math.max(n0, n1));
     if (idxTop < 0) idxTop = 0;
     var rowCount = n1 - n0 + 1;
@@ -5089,6 +5114,7 @@ function _wmsUltraRenderRuaGrid(camCod, rua, slots, maxNiv, cellSize) {
     var colunas = _wmsUltraMaxColunas(posMap);
     if (!colunas) return '';
     var porta = _wmsUltraPortaConfig(camCod, rua);
+    var zonas = _wmsUltraZonasLayout(camCod, rua);
     var labelW = _wmsUltraRowLabelWidth(cellSize);
     var headerH = Math.max(14, Math.round(cellSize * 0.72));
     var axisFont = cellSize >= 36 ? 11 : 9;
@@ -5135,11 +5161,13 @@ function _wmsUltraRenderRuaGrid(camCod, rua, slots, maxNiv, cellSize) {
         html += '</div>';
     });
     html += '</div>';
-    if (porta) {
-        var po = _wmsUltraPortaOverlayStyle(porta, cellSize, niveisVisiveis);
-        var pFont = cellSize >= 36 ? 11 : 9;
-        html += '<div class="porta-label" style="left:' + po.left + 'px;top:' + po.top + 'px;width:' + po.width + 'px;height:' + po.height + 'px;font-size:' + pFont + 'px">PORTA</div>';
-    }
+    zonas.forEach(function(zona) {
+        var zo = _wmsUltraZonaOverlayStyle(zona, cellSize, niveisVisiveis);
+        var zFont = Math.max(8, Math.min(cellSize >= 36 ? 11 : 9, Math.floor(zo.width / 6)));
+        if (zona.tipo === 'retrabalho') zFont = Math.max(7, Math.min(10, Math.floor(zo.width / 8)));
+        var zCls = zona.tipo === 'porta' ? 'porta-label' : ('destino-zona-label destino-zona--' + zona.tipo);
+        html += '<div class="' + zCls + '" style="left:' + zo.left + 'px;top:' + zo.top + 'px;width:' + zo.width + 'px;height:' + zo.height + 'px;font-size:' + zFont + 'px">' + escHtml(zona.label || zona.tipo) + '</div>';
+    });
     html += '</div></div></div></div></div></div></div>';
     return html;
 }

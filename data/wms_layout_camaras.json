@@ -1051,15 +1051,15 @@
           "rua": "C",
           "posicao": 14,
           "nivel": 1,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "C",
           "posicao": 14,
           "nivel": 2,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "C",
@@ -1079,15 +1079,15 @@
           "rua": "C",
           "posicao": 15,
           "nivel": 1,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "C",
           "posicao": 15,
           "nivel": 2,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO"
         },
         {
           "rua": "C",
