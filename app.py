@@ -902,7 +902,10 @@ try:
             except Exception:
                 pass
 
-    threading.Thread(target=_init_wms_em_background, daemon=True, name='init_wms').start()
+    # Em produção (Render free tier), inicializações em background podem degradar o boot/healthcheck.
+    # Por padrão, não iniciar; habilite via env var WMS_INIT_BG=1 se necessário.
+    if (os.environ.get('WMS_INIT_BG') or '').strip().lower() in ('1', 'true', 'sim', 'yes'):
+        threading.Thread(target=_init_wms_em_background, daemon=True, name='init_wms').start()
 except Exception as _wms_import_err:
     print('Aviso: módulo WMS endereçamento não carregado:', _wms_import_err)
 
