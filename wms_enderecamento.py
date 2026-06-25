@@ -376,58 +376,55 @@ def _limpar_localizacoes_orfas_vazias(conn, camara, codigos_validos):
 
 
 def _sync_layout_metadata_destinos(conn):
-    """Alinha tipo/area/zona do banco com destino_acao do layout JSON (câmara 11)."""
+    """Alinha tipo/area/zona do banco com destino_acao do layout JSON (câmaras 11, 12, 13)."""
     if not _wms_tabelas_existem(conn):
         return 0
     t_loc = _tbl(conn, 'wms_localizacao')
-    bloco_11 = None
-    for bloco in (_layout_camaras_config().get('camaras') or []):
-        if int(bloco.get('codigo') or 0) == 11:
-            bloco_11 = bloco
-            break
-    if not bloco_11:
-        return 0
-    sem_destino = []
-    com_destino = []
-    for _cam, rua, pos, nivel, dest_acao, _dest_lbl in _coords_from_bloco_layout(bloco_11):
-        cod_end = _codigo_endereco(11, rua, pos, nivel)
-        if dest_acao:
-            com_destino.append((cod_end, dest_acao))
-        else:
-            sem_destino.append(cod_end)
+    areas_sql = ','.join(['?' for _ in _WMS_AREAS_DESTINO_LAYOUT])
     atualizadas = 0
-    for cod_end, area in com_destino:
-        cur = conn.execute(
-            f'''UPDATE {t_loc}
-                SET tipo = 'destino_fixo', area = ?, categoria_zona = NULL, zona_armazenagem = ?
-                WHERE codigo_endereco = ?
-                  AND (COALESCE(LOWER(TRIM(tipo)), '') <> 'destino_fixo'
-                       OR COALESCE(LOWER(TRIM(area)), '') <> ?)''',
-            (area, area, cod_end, area),
-        )
-        atualizadas += int(getattr(cur, 'rowcount', 0) or 0)
-    if sem_destino:
-        areas_sql = ','.join(['?' for _ in _WMS_AREAS_DESTINO_LAYOUT])
-        for i in range(0, len(sem_destino), 200):
-            batch = sem_destino[i:i + 200]
-            ph = ','.join(['?' for _ in batch])
+    for bloco in (_layout_camaras_config().get('camaras') or []):
+        cod_cam = int(bloco.get('codigo') or 0)
+        if cod_cam not in (11, 12, 13):
+            continue
+        sem_destino = []
+        com_destino = []
+        for _cam, rua, pos, nivel, dest_acao, _dest_lbl in _coords_from_bloco_layout(bloco):
+            cod_end = _codigo_endereco(cod_cam, rua, pos, nivel)
+            if dest_acao:
+                com_destino.append((cod_end, dest_acao))
+            else:
+                sem_destino.append(cod_end)
+        for cod_end, area in com_destino:
             cur = conn.execute(
                 f'''UPDATE {t_loc}
-                    SET tipo = 'porta_palete',
-                        area = CASE
-                            WHEN UPPER(COALESCE(categoria_zona, '')) IN ('A', 'B', 'C', 'D')
-                            THEN UPPER(categoria_zona) ELSE 'C' END,
-                        categoria_zona = CASE
-                            WHEN UPPER(COALESCE(categoria_zona, '')) IN ('A', 'B', 'C', 'D')
-                            THEN UPPER(categoria_zona) ELSE 'C' END,
-                        zona_armazenagem = CASE
-                            WHEN COALESCE(nivel, 0) = 1 THEN 'picking' ELSE 'pulmao' END
-                    WHERE camara = 11 AND codigo_endereco IN ({ph})
-                      AND (COALESCE(LOWER(TRIM(tipo)), '') = 'destino_fixo'
-                           OR LOWER(COALESCE(area, '')) IN ({areas_sql}))''',
-                (*batch, *_WMS_AREAS_DESTINO_LAYOUT),
+                    SET tipo = 'destino_fixo', area = ?, categoria_zona = NULL, zona_armazenagem = ?
+                    WHERE codigo_endereco = ?
+                      AND (COALESCE(LOWER(TRIM(tipo)), '') <> 'destino_fixo'
+                           OR COALESCE(LOWER(TRIM(area)), '') <> ?)''',
+                (area, area, cod_end, area),
             )
             atualizadas += int(getattr(cur, 'rowcount', 0) or 0)
+        if sem_destino:
+            for i in range(0, len(sem_destino), 200):
+                batch = sem_destino[i:i + 200]
+                ph = ','.join(['?' for _ in batch])
+                cur = conn.execute(
+                    f'''UPDATE {t_loc}
+                        SET tipo = 'porta_palete',
+                            area = CASE
+                                WHEN UPPER(COALESCE(categoria_zona, '')) IN ('A', 'B', 'C', 'D')
+                                THEN UPPER(categoria_zona) ELSE 'C' END,
+                            categoria_zona = CASE
+                                WHEN UPPER(COALESCE(categoria_zona, '')) IN ('A', 'B', 'C', 'D')
+                                THEN UPPER(categoria_zona) ELSE 'C' END,
+                            zona_armazenagem = CASE
+                                WHEN COALESCE(nivel, 0) = 1 THEN 'picking' ELSE 'pulmao' END
+                        WHERE camara = ? AND codigo_endereco IN ({ph})
+                          AND (COALESCE(LOWER(TRIM(tipo)), '') = 'destino_fixo'
+                               OR LOWER(COALESCE(area, '')) IN ({areas_sql}))''',
+                    (cod_cam, *batch, *_WMS_AREAS_DESTINO_LAYOUT),
+                )
+                atualizadas += int(getattr(cur, 'rowcount', 0) or 0)
     return atualizadas
 
 

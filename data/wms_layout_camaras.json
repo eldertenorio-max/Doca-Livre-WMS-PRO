@@ -1050,58 +1050,42 @@
         {
           "rua": "C",
           "posicao": 14,
-          "nivel": 1,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "nivel": 1
         },
         {
           "rua": "C",
           "posicao": 14,
-          "nivel": 2,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "nivel": 2
         },
         {
           "rua": "C",
           "posicao": 14,
-          "nivel": 3,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "nivel": 3
         },
         {
           "rua": "C",
           "posicao": 14,
-          "nivel": 4,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "nivel": 4
         },
         {
           "rua": "C",
           "posicao": 15,
-          "nivel": 1,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "nivel": 1
         },
         {
           "rua": "C",
           "posicao": 15,
-          "nivel": 2,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "nivel": 2
         },
         {
           "rua": "C",
           "posicao": 15,
-          "nivel": 3,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "nivel": 3
         },
         {
           "rua": "C",
           "posicao": 15,
-          "nivel": 4,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "nivel": 4
         },
         {
           "rua": "D",
@@ -1386,58 +1370,42 @@
         {
           "rua": "D",
           "posicao": 14,
-          "nivel": 1,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "nivel": 1
         },
         {
           "rua": "D",
           "posicao": 14,
-          "nivel": 2,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "nivel": 2
         },
         {
           "rua": "D",
           "posicao": 14,
-          "nivel": 3,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "nivel": 3
         },
         {
           "rua": "D",
           "posicao": 14,
-          "nivel": 4,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "nivel": 4
         },
         {
           "rua": "D",
           "posicao": 15,
-          "nivel": 1,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "nivel": 1
         },
         {
           "rua": "D",
           "posicao": 15,
-          "nivel": 2,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "nivel": 2
         },
         {
           "rua": "D",
           "posicao": 15,
-          "nivel": 3,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "nivel": 3
         },
         {
           "rua": "D",
           "posicao": 15,
-          "nivel": 4,
-          "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "nivel": 4
         }
       ]
     },
@@ -1759,58 +1727,42 @@
         {
           "rua": "E",
           "posicao": 14,
-          "nivel": 1,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "nivel": 1
         },
         {
           "rua": "E",
           "posicao": 14,
-          "nivel": 2,
-          "destino_acao": "palete_bloqueado",
-          "destino_label": "BLOQUEADOS"
+          "nivel": 2
         },
         {
           "rua": "E",
           "posicao": 14,
-          "nivel": 3,
-          "destino_acao": "palete_bloqueado",
-          "destino_label": "BLOQUEADOS"
+          "nivel": 3
         },
         {
           "rua": "E",
           "posicao": 14,
-          "nivel": 4,
-          "destino_acao": "avaria",
-          "destino_label": "AVARIA"
+          "nivel": 4
         },
         {
           "rua": "E",
           "posicao": 15,
-          "nivel": 1,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "nivel": 1
         },
         {
           "rua": "E",
           "posicao": 15,
-          "nivel": 2,
-          "destino_acao": "palete_bloqueado",
-          "destino_label": "BLOQUEADOS"
+          "nivel": 2
         },
         {
           "rua": "E",
           "posicao": 15,
-          "nivel": 3,
-          "destino_acao": "palete_bloqueado",
-          "destino_label": "BLOQUEADOS"
+          "nivel": 3
         },
         {
           "rua": "E",
           "posicao": 15,
-          "nivel": 4,
-          "destino_acao": "avaria",
-          "destino_label": "AVARIA"
+          "nivel": 4
         },
         {
           "rua": "F",
@@ -2140,58 +2092,42 @@
         {
           "rua": "F",
           "posicao": 14,
-          "nivel": 1,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "nivel": 1
         },
         {
           "rua": "F",
           "posicao": 14,
-          "nivel": 2,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "nivel": 2
         },
         {
           "rua": "F",
           "posicao": 14,
-          "nivel": 3,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "nivel": 3
         },
         {
           "rua": "F",
           "posicao": 14,
-          "nivel": 4,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "nivel": 4
         },
         {
           "rua": "F",
           "posicao": 15,
-          "nivel": 1,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "nivel": 1
         },
         {
           "rua": "F",
           "posicao": 15,
-          "nivel": 2,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "nivel": 2
         },
         {
           "rua": "F",
           "posicao": 15,
-          "nivel": 3,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "nivel": 3
         },
         {
           "rua": "F",
           "posicao": 15,
-          "nivel": 4,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "nivel": 4
         }
       ]
     },
