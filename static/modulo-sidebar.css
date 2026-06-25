@@ -122,10 +122,10 @@
     flex: none;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
     min-height: 44px;
-    padding: 10px 14px;
+    padding: 10px 12px;
     margin: 0;
     box-sizing: border-box;
     border: none;
@@ -158,14 +158,16 @@
 
 .modulo-sidebar .sidebar-icon {
     flex-shrink: 0;
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    font-size: 1.15rem;
+    font-size: 1rem;
     line-height: 1;
+    overflow: hidden;
 }
 
 .modulo-sidebar .sidebar-label {
@@ -192,11 +194,11 @@
 .sidebar-footer-btn {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
     min-height: 44px;
     margin: 0;
-    padding: 10px 14px;
+    padding: 10px 12px;
     box-sizing: border-box;
     border: none;
     border-radius: 8px;
