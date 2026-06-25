@@ -376,48 +376,56 @@ def _limpar_localizacoes_orfas_vazias(conn, camara, codigos_validos):
 
 
 def _sync_layout_metadata_destinos(conn):
-    """Alinha tipo/area/zona do banco com destino_acao do layout JSON."""
+    """Alinha tipo/area/zona do banco com destino_acao do layout JSON (câmara 11)."""
     if not _wms_tabelas_existem(conn):
         return 0
     t_loc = _tbl(conn, 'wms_localizacao')
-    atualizadas = 0
+    bloco_11 = None
     for bloco in (_layout_camaras_config().get('camaras') or []):
-        cod_cam = int(bloco.get('codigo') or 0)
-        if cod_cam != 11:
-            continue
-        for _cam, rua, pos, nivel, dest_acao, _dest_lbl in _coords_from_bloco_layout(bloco):
-            cod_end = _codigo_endereco(cod_cam, rua, pos, nivel)
-            row = conn.execute(
-                f'SELECT tipo, area, categoria_zona FROM {t_loc} WHERE codigo_endereco = ?',
-                (cod_end,),
-            ).fetchone()
-            if not row:
-                continue
-            rd = _row_dict(row) or {}
-            tipo_atual = (rd.get('tipo') or '').strip().lower()
-            area_atual = (rd.get('area') or '').strip().lower()
-            cat_z = (rd.get('categoria_zona') or '').strip().upper() or None
-            if dest_acao:
-                novo_tipo = 'destino_fixo'
-                novo_area = dest_acao
-                novo_cat = None
-                novo_zona = dest_acao
-                precisa = tipo_atual != novo_tipo or area_atual != novo_area
-            elif tipo_atual == 'destino_fixo' or area_atual in _WMS_AREAS_DESTINO_LAYOUT:
-                novo_tipo = 'porta_palete'
-                novo_area = cat_z if cat_z in ('A', 'B', 'C', 'D') else 'C'
-                novo_cat = cat_z or novo_area
-                novo_zona = _zona_por_nivel(nivel)
-                precisa = True
-            else:
-                continue
-            if not precisa:
-                continue
+        if int(bloco.get('codigo') or 0) == 11:
+            bloco_11 = bloco
+            break
+    if not bloco_11:
+        return 0
+    sem_destino = []
+    com_destino = []
+    for _cam, rua, pos, nivel, dest_acao, _dest_lbl in _coords_from_bloco_layout(bloco_11):
+        cod_end = _codigo_endereco(11, rua, pos, nivel)
+        if dest_acao:
+            com_destino.append((cod_end, dest_acao))
+        else:
+            sem_destino.append(cod_end)
+    atualizadas = 0
+    for cod_end, area in com_destino:
+        cur = conn.execute(
+            f'''UPDATE {t_loc}
+                SET tipo = 'destino_fixo', area = ?, categoria_zona = NULL, zona_armazenagem = ?
+                WHERE codigo_endereco = ?
+                  AND (COALESCE(LOWER(TRIM(tipo)), '') <> 'destino_fixo'
+                       OR COALESCE(LOWER(TRIM(area)), '') <> ?)''',
+            (area, area, cod_end, area),
+        )
+        atualizadas += int(getattr(cur, 'rowcount', 0) or 0)
+    if sem_destino:
+        areas_sql = ','.join(['?' for _ in _WMS_AREAS_DESTINO_LAYOUT])
+        for i in range(0, len(sem_destino), 200):
+            batch = sem_destino[i:i + 200]
+            ph = ','.join(['?' for _ in batch])
             cur = conn.execute(
                 f'''UPDATE {t_loc}
-                    SET tipo = ?, area = ?, categoria_zona = ?, zona_armazenagem = ?
-                    WHERE codigo_endereco = ?''',
-                (novo_tipo, novo_area, novo_cat, novo_zona, cod_end),
+                    SET tipo = 'porta_palete',
+                        area = CASE
+                            WHEN UPPER(COALESCE(categoria_zona, '')) IN ('A', 'B', 'C', 'D')
+                            THEN UPPER(categoria_zona) ELSE 'C' END,
+                        categoria_zona = CASE
+                            WHEN UPPER(COALESCE(categoria_zona, '')) IN ('A', 'B', 'C', 'D')
+                            THEN UPPER(categoria_zona) ELSE 'C' END,
+                        zona_armazenagem = CASE
+                            WHEN COALESCE(nivel, 0) = 1 THEN 'picking' ELSE 'pulmao' END
+                    WHERE camara = 11 AND codigo_endereco IN ({ph})
+                      AND (COALESCE(LOWER(TRIM(tipo)), '') = 'destino_fixo'
+                           OR LOWER(COALESCE(area, '')) IN ({areas_sql}))''',
+                (*batch, *_WMS_AREAS_DESTINO_LAYOUT),
             )
             atualizadas += int(getattr(cur, 'rowcount', 0) or 0)
     return atualizadas
@@ -3513,6 +3521,10 @@ def _query_flag_resumo():
     return (request.args.get('resumo') or '').strip().lower() in ('1', 'true', 'sim', 'yes')
 
 
+def _query_flag_sync():
+    return (request.args.get('sync') or '').strip().lower() in ('1', 'true', 'sim', 'yes')
+
+
 def _coletar_ocupacao_areas_especiais(conn, incluir_posicoes=True):
     _ensure_areas_especiais_localizacoes(conn)
     cfg = _load_areas_especiais_config()
@@ -5857,8 +5869,10 @@ def api_wms_mapa_3d():
     try:
         _ensure_wms_schema_safe(conn)
         _seed_wms_defaults(conn)
-        _ensure_layout_enderecos_atualizado(conn)
-        _sync_wms_camara_layout(conn)
+        _ensure_layout_enderecos(conn)
+        if _query_flag_sync():
+            _ensure_layout_enderecos_atualizado(conn)
+            _sync_wms_camara_layout(conn)
         camara_filtro = request.args.get('camara', type=int)
         t = _tbl(conn, 'wms_localizacao')
         sql = (
@@ -8955,8 +8969,9 @@ def api_wms_areas_especiais():
     conn = _db()
     try:
         _ensure_wms_schema_safe(conn)
-        _ensure_layout_enderecos_atualizado(conn)
-        _sync_wms_camara_layout(conn)
+        if _query_flag_sync():
+            _ensure_layout_enderecos_atualizado(conn)
+            _sync_wms_camara_layout(conn)
         resumo = _query_flag_resumo()
         incluir_pos = not resumo
         data = _coletar_ocupacao_areas_especiais(conn, incluir_posicoes=incluir_pos)

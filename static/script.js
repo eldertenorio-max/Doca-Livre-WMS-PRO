@@ -6139,17 +6139,24 @@ function _wmsRenderEnderecoSecao(titulo, grupos) {
         + grupos.map(_wmsRenderEnderecoRow).join('');
 }
 
-async function loadWmsEnderecamento() {
+async function loadWmsEnderecamento(opcoes) {
+    opcoes = opcoes || {};
+    var sincronizar = !!opcoes.sync;
     var grid = document.getElementById('wms-enderecamento-grid');
-    if (grid) grid.innerHTML = '<p class="loading" style="padding:14px;">Carregando endereçamento…</p>';
+    if (grid) {
+        grid.innerHTML = '<p class="loading" style="padding:14px;">' + (sincronizar ? 'Sincronizando layout e ocupação…' : 'Carregando endereçamento…') + '</p>';
+    }
     var acc2d = document.getElementById('wms-end-acc-2d');
     var acc3d = document.getElementById('wms-end-acc-3d');
-    if (acc2d) acc2d.open = false;
-    if (acc3d) acc3d.open = false;
-    _wmsEndState.selectedCamara = null;
-    _wmsEndHighlightRow(null);
+    if (!sincronizar) {
+        if (acc2d) acc2d.open = false;
+        if (acc3d) acc3d.open = false;
+        _wmsEndState.selectedCamara = null;
+        _wmsEndHighlightRow(null);
+    }
     try {
-        var data = await _wmsFetchGet('/wms/enderecamento?resumo=1', 30000);
+        var path = '/wms/enderecamento?resumo=1' + (sincronizar ? '&sync=1' : '');
+        var data = await _wmsFetchGet(path, sincronizar ? 120000 : 45000);
         if (!data || data.erro) {
             if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;padding:14px;">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar.')) + '</p>';
             return;
@@ -6369,7 +6376,7 @@ function initWmsEnderecamento() {
     if (bInv) bInv.addEventListener('click', wmsCriarInventario);
     wmsInitInventarioUi();
     var bEnd = document.getElementById('btn-wms-enderecamento-atualizar');
-    if (bEnd) bEnd.addEventListener('click', loadWmsEnderecamento);
+    if (bEnd) bEnd.addEventListener('click', function() { loadWmsEnderecamento({ sync: true }); });
     var bEndVoltar = document.getElementById('btn-wms-end-voltar-2d');
     if (bEndVoltar) bEndVoltar.addEventListener('click', _wmsEndFechar3d);
     var bEnd3dReset = document.getElementById('btn-wms-end-3d-reset');
@@ -18115,14 +18122,17 @@ async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
 async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
     timeoutMs = timeoutMs == null || timeoutMs < 5000 ? 35000 : timeoutMs;
     var ac = new AbortController();
+    var abortInfo = { reason: null };
     var externalSignal = options && options.signal;
     if (externalSignal) {
         if (externalSignal.aborted) {
+            abortInfo.reason = 'cancel';
             try {
                 ac.abort();
             } catch (e) {}
         } else if (typeof externalSignal.addEventListener === 'function') {
             externalSignal.addEventListener('abort', function() {
+                if (!abortInfo.reason) abortInfo.reason = 'cancel';
                 try {
                     ac.abort();
                 } catch (e) {}
@@ -18130,12 +18140,13 @@ async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
         }
     }
     var tid = window.setTimeout(function() {
+        abortInfo.reason = 'timeout';
         try {
             ac.abort();
         } catch (e) {}
     }, timeoutMs);
     try {
-        var merged = Object.assign({}, options || {}, { signal: ac.signal });
+        var merged = Object.assign({}, options || {}, { signal: ac.signal, _abortInfo: abortInfo });
         if (merged.method && String(merged.method).toUpperCase() !== 'GET' && String(merged.method).toUpperCase() !== 'HEAD') {
             merged.keepalive = false;
         }
@@ -18181,12 +18192,14 @@ async function fetchAPI(endpoint, options = {}) {
         };
     } catch (error) {
         if (error && error.name === 'AbortError') {
-            var cancelado = !!(options && options.signal && options.signal.aborted);
+            var abortInfo = options && options._abortInfo;
+            var timeout = abortInfo && abortInfo.reason === 'timeout';
+            var cancelado = !timeout && !!(options && options.signal && options.signal.aborted);
             return {
                 ok: false,
-                erro: cancelado ? 'Operação cancelada.' : 'Tempo esgotado ao contactar o servidor.',
+                erro: timeout ? 'Tempo esgotado ao contactar o servidor.' : (cancelado ? 'Operação cancelada.' : 'Tempo esgotado ao contactar o servidor.'),
                 _cancelado: cancelado,
-                _timeout: !cancelado
+                _timeout: timeout
             };
         }
         console.error('Erro na API:', error);
