@@ -3384,11 +3384,18 @@ def _ensure_areas_especiais_localizacoes(conn):
     """Câmara 98 — posições fixas: descarte, avaria, retrabalho, bloqueado, MG, reentregas."""
     cfg = _load_areas_especiais_config()
     cam = int(cfg.get('camara') or _WMS_CAMARA_ESPECIAL)
+    t_loc = _tbl(conn, 'wms_localizacao')
+    if _wms_tabelas_existem(conn):
+        cnt = _int_col(
+            conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc} WHERE camara = ?', (cam,)).fetchone(),
+            'c',
+        )
+        if cnt > 0:
+            return
     desc = cfg.get('descricao') or 'Áreas especiais'
     areas = cfg.get('areas') or []
     total_slots = sum(int(a.get('slots') or 0) for a in areas)
     t_cam = _tbl(conn, 'wms_camara')
-    t_loc = _tbl(conn, 'wms_localizacao')
     now = _now_iso()
     if _is_pg(conn):
         conn.execute(
@@ -3741,6 +3748,197 @@ def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
         'total_ocupadas': total_ocup,
         'total_livres': total_livre,
     }
+
+
+def _coletar_areas_especiais_resumo(conn):
+    """Resumo rápido câmara 98 — sem criar/sincronizar slots no banco."""
+    cfg = _load_areas_especiais_config()
+    cam = int(cfg.get('camara') or _WMS_CAMARA_ESPECIAL)
+    t_loc = _tbl(conn, 'wms_localizacao')
+    ocup_por_area = {}
+    if _wms_tabelas_existem(conn):
+        rows = conn.execute(
+            f'''SELECT LOWER(COALESCE(area, '')) AS area_key,
+                       SUM(CASE WHEN status = 'ocupada' THEN 1 ELSE 0 END) AS ocupadas
+                FROM {t_loc} WHERE camara = ? GROUP BY LOWER(COALESCE(area, ''))''',
+            (cam,),
+        ).fetchall()
+        for r in rows or []:
+            rd = _row_dict(r) or {}
+            k = (rd.get('area_key') or '').strip().lower()
+            if k:
+                ocup_por_area[k] = int(rd.get('ocupadas') or 0)
+    out = []
+    for meta in cfg.get('areas') or []:
+        area_key = (meta.get('area') or '').strip().lower()
+        slots = int(meta.get('slots') or 0)
+        ocupadas = min(slots, ocup_por_area.get(area_key, 0))
+        livres = max(0, slots - ocupadas)
+        out.append({
+            'area': area_key,
+            'rua': meta.get('rua'),
+            'label': meta.get('label') or area_key,
+            'slots': slots,
+            'ocupadas': ocupadas,
+            'livres': livres,
+            'percentual_ocupacao': round(100.0 * ocupadas / slots, 1) if slots else 0,
+        })
+    return {
+        'camara': cam,
+        'descricao': cfg.get('descricao'),
+        'areas': out,
+        'total_slots': sum(x['slots'] for x in out),
+        'total_ocupadas': sum(x['ocupadas'] for x in out),
+        'total_livres': sum(x['livres'] for x in out),
+    }
+
+
+def _coletar_enderecamento_resumo_rapido(conn):
+    """Ocupação resumida com poucas consultas — para aba Endereçamento (resumo=1)."""
+    t_loc = _tbl(conn, 'wms_localizacao')
+    cfg = _layout_camaras_config()
+    nomes = _map_nomes_camaras(conn)
+    labels = _destinos_acao_labels()
+    filtro_tipo = "COALESCE(LOWER(TRIM(l.tipo)), 'estoque') <> 'destino_fixo'"
+    camaras_normais = (11, 12, 13, 21)
+    blocos = {
+        int(b['codigo']): b
+        for b in (cfg.get('camaras') or [])
+        if int(b.get('codigo') or 0) in camaras_normais
+    }
+
+    ocup_estoque = {}
+    if _wms_tabelas_existem(conn):
+        rows = conn.execute(
+            f'''SELECT l.camara,
+                       COUNT(*) AS cadastradas,
+                       SUM(CASE WHEN l.status = 'ocupada' THEN 1 ELSE 0 END) AS ocupadas,
+                       SUM(CASE WHEN l.status = 'vazia' THEN 1 ELSE 0 END) AS vazias
+                FROM {t_loc} l
+                WHERE l.camara IN (11, 12, 13, 21) AND {filtro_tipo}
+                GROUP BY l.camara''',
+        ).fetchall()
+        for r in rows or []:
+            rd = _row_dict(r) or {}
+            ocup_estoque[int(rd.get('camara') or 0)] = rd
+
+    camaras_out = []
+    total_slots = total_ocup = total_livre = 0
+    for cod in sorted(camaras_normais):
+        bloco = blocos.get(cod) or {}
+        coords = _coords_from_bloco_layout(bloco) if bloco else []
+        slots_layout = sum(1 for _c, _r, _p, _n, da, _dl in coords if not da)
+        total_ref = slots_layout or _total_posicoes_ref(cod, bloco)
+        st = ocup_estoque.get(cod) or {}
+        cad = int(st.get('cadastradas') or 0)
+        ocup = int(st.get('ocupadas') or 0)
+        vaz = int(st.get('vazias') or 0)
+        base = cad if cad > 0 else total_ref
+        livres = vaz if cad else max(base - ocup, 0)
+        pct = round(100.0 * ocup / base, 1) if base else 0
+        ruas_txt = ' / '.join(bloco.get('ruas') or [])
+        camaras_out.append({
+            'camara': cod,
+            'descricao': _nome_camara_label(conn, cod, nomes) or f'Câmara {cod}',
+            'label': f'Estoque normal — câmara {cod}',
+            'rua': ruas_txt,
+            'ruas': list(bloco.get('ruas') or []),
+            'niveis': int(bloco.get('niveis') or 5),
+            'slots': base,
+            'total_slots': base,
+            'cadastradas': cad,
+            'ocupadas': ocup,
+            'livres': livres,
+            'percentual_ocupacao': pct,
+        })
+        total_slots += base
+        total_ocup += ocup
+        total_livre += livres
+
+    ocup_dest = {}
+    if _wms_tabelas_existem(conn):
+        rows = conn.execute(
+            f'''SELECT UPPER(TRIM(l.codigo_endereco)) AS codigo_endereco, l.status
+                FROM {t_loc} l
+                WHERE l.camara IN (11, 12, 13, 21)
+                  AND (
+                    COALESCE(LOWER(TRIM(l.tipo)), '') = 'destino_fixo'
+                    OR LOWER(COALESCE(l.area, '')) IN (
+                        'envio_mg', 'retrabalho', 'descarte_perdas', 'palete_bloqueado', 'avaria', 'reentregas'
+                    )
+                  )''',
+        ).fetchall()
+        for r in rows or []:
+            rd = _row_dict(r) or {}
+            cod = (rd.get('codigo_endereco') or '').strip().upper()
+            if cod:
+                ocup_dest[cod] = (rd.get('status') or '').strip().lower() == 'ocupada'
+
+    grupos_map = {}
+    ordem_area = list(labels.keys())
+    for bloco in cfg.get('camaras') or []:
+        cod_cam = int(bloco.get('codigo') or 0)
+        if cod_cam not in camaras_normais:
+            continue
+        for _c, rua, pos, niv, dest_acao, dest_lbl in _coords_from_bloco_layout(bloco):
+            if not dest_acao:
+                continue
+            key = (dest_acao, cod_cam)
+            g = grupos_map.setdefault(key, {
+                'area': dest_acao,
+                'label': dest_lbl or labels.get(dest_acao, dest_acao.upper()),
+                'camara': cod_cam,
+                'camara_nome': _nome_camara_label(conn, cod_cam, nomes) or f'Câmara {cod_cam}',
+                'ruas': list(bloco.get('ruas') or []),
+                'total': 0,
+                'ocupadas': 0,
+            })
+            g['total'] += 1
+            cod_end = _codigo_endereco(cod_cam, rua, pos, niv).upper()
+            if ocup_dest.get(cod_end):
+                g['ocupadas'] += 1
+
+    grupos = []
+    for key in sorted(grupos_map.keys(), key=lambda k: (
+        ordem_area.index(k[0]) if k[0] in ordem_area else 99,
+        k[1],
+    )):
+        g = grupos_map[key]
+        total_g = g['total']
+        ocup_g = g['ocupadas']
+        livres_g = max(0, total_g - ocup_g)
+        grupos.append({
+            'area': g['area'],
+            'label': g['label'],
+            'camara': g['camara'],
+            'camara_nome': g['camara_nome'],
+            'ruas': g['ruas'],
+            'rua': ' / '.join(g.get('ruas') or []),
+            'total': total_g,
+            'slots': total_g,
+            'ocupadas': ocup_g,
+            'livres': livres_g,
+            'percentual_ocupacao': round(100.0 * ocup_g / total_g, 1) if total_g else 0,
+        })
+
+    data = _coletar_areas_especiais_resumo(conn)
+    data['estoque_normal'] = {
+        'descricao': 'Estoque normal — câmaras 11, 12, 13 e 21 (posições de armazenagem por categoria)',
+        'camaras': camaras_out,
+        'total_slots': total_slots,
+        'total_ocupadas': total_ocup,
+        'total_livres': total_livre,
+    }
+    data['destinos_fixos'] = {
+        'descricao': 'Endereços com finalidade fixa nas câmaras frias (definidos no layout)',
+        'grupos': grupos,
+        'total_enderecos': sum(g['total'] for g in grupos),
+        'total_ocupadas': sum(g['ocupadas'] for g in grupos),
+        'total_livres': sum(g['livres'] for g in grupos),
+        'labels': labels,
+    }
+    data['resumo'] = True
+    return data
 
 
 def _parse_data_iso_br(val):
@@ -8969,17 +9167,23 @@ def api_wms_areas_especiais():
     conn = _db()
     try:
         _ensure_wms_schema_safe(conn)
-        _ensure_layout_enderecos(conn)
-        if _query_flag_sync():
+        resumo = _query_flag_resumo()
+        sync = _query_flag_sync()
+        if sync:
+            _ensure_layout_enderecos(conn)
             _ensure_layout_enderecos_atualizado(conn)
             _sync_wms_camara_layout(conn)
-        resumo = _query_flag_resumo()
-        incluir_pos = not resumo
-        data = _coletar_ocupacao_areas_especiais(conn, incluir_posicoes=incluir_pos)
-        data['estoque_normal'] = _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=incluir_pos)
-        data['destinos_fixos'] = _coletar_mapa_destinos_fixos(conn, incluir_posicoes=incluir_pos)
-        if resumo:
-            data['resumo'] = True
+        if resumo and not sync:
+            data = _coletar_enderecamento_resumo_rapido(conn)
+        else:
+            if not resumo:
+                _ensure_layout_enderecos(conn)
+            incluir_pos = not resumo
+            data = _coletar_ocupacao_areas_especiais(conn, incluir_posicoes=incluir_pos)
+            data['estoque_normal'] = _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=incluir_pos)
+            data['destinos_fixos'] = _coletar_mapa_destinos_fixos(conn, incluir_posicoes=incluir_pos)
+            if resumo:
+                data['resumo'] = True
         conn.close()
         return jsonify(_sanitize_json(data))
     except Exception as e:

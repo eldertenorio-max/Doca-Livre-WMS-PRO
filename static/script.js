@@ -6156,7 +6156,7 @@ async function loadWmsEnderecamento(opcoes) {
     }
     try {
         var path = '/wms/enderecamento?resumo=1' + (sincronizar ? '&sync=1' : '');
-        var data = await _wmsFetchGet(path, sincronizar ? 120000 : 45000);
+        var data = await _wmsFetchGet(path, sincronizar ? 120000 : 90000);
         if (!data || data.erro) {
             if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;padding:14px;">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar.')) + '</p>';
             return;
@@ -10023,7 +10023,7 @@ async function loadPainelDevolucoes() {
         if (el) el.textContent = '…';
     });
     try {
-    const data = await _modFetchGet('/devolucoes/painel' + qs, 60000);
+    const data = await _modFetchGet('/devolucoes/painel' + qs, 90000);
     if (!data) {
         var msgFalha = 'Não foi possível carregar o painel. Use «Atualizar aba» e tente novamente.';
         statIds.forEach(function(sid) {
@@ -18113,7 +18113,9 @@ async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
     var ultimo = null;
     for (var t = 0; t < maxTent; t++) {
         ultimo = await _fetchAPIComTimeoutUma(endpoint, options, timeoutMs);
-        if (!ultimo || !ultimo._falhaGateway || t >= maxTent - 1) return ultimo;
+        if (!ultimo || (!ultimo._falhaGateway && !ultimo._timeout)) return ultimo;
+        if (ultimo._timeout && t >= 1) return ultimo;
+        if (t >= maxTent - 1) return ultimo;
         await new Promise(function(resolve) { setTimeout(resolve, 1800 * (t + 1)); });
     }
     return ultimo;
