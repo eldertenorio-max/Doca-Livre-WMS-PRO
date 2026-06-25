@@ -5104,7 +5104,7 @@ function _wmsUltraCellClass(slot, hasAddress, col, nivel, totalCols, maxNiv, por
     if (_wmsUltraSemNivel5Ausente(col, nivel, totalCols, maxNiv)) return 'cell--sem-nivel5';
     if (!hasAddress) return 'cell--sem-nivel5';
     if (!slot) return 'cell--sem-nivel5';
-    if (slot.destino_acao || (slot.tipo || '') === 'destino_fixo') return 'cell--bloqueado';
+    if (slot.destino_acao) return 'cell--bloqueado';
     if ((slot.status || '') === 'ocupada') return 'cell--ocupado';
     return 'cell--disponivel';
 }

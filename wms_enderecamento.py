@@ -306,7 +306,10 @@ def _campos_etiqueta_palete_endereco(sug=None, codigo_wms=None, endereco_texto=N
     }
 
 
-_WMS_CAMARA_TOTAIS_PADRAO = {11: 148, 12: 133, 13: 142, 21: 28}
+_WMS_CAMARA_TOTAIS_PADRAO = {11: 142, 12: 133, 13: 142, 21: 28}
+_WMS_AREAS_DESTINO_LAYOUT = frozenset({
+    'envio_mg', 'retrabalho', 'descarte_perdas', 'palete_bloqueado', 'avaria', 'reentregas',
+})
 _WMS_CAMARA_STAGE = 99
 _WMS_CAMARA_ESPECIAL = 98
 _WMS_STAGE_SLOTS_POR_DOCA = 40
@@ -329,7 +332,7 @@ def _layout_camaras_config():
     if not os.path.isfile(path):
         return {
             'camaras': [
-                {'codigo': 11, 'ruas': ['A', 'B'], 'niveis': 5, 'total_posicoes': 148},
+                {'codigo': 11, 'ruas': ['A', 'B'], 'niveis': 5, 'total_posicoes': 142},
                 {'codigo': 12, 'ruas': ['C', 'D'], 'niveis': 5, 'total_posicoes': 133},
                 {'codigo': 13, 'ruas': ['E', 'F'], 'niveis': 5, 'total_posicoes': 142},
                 {'codigo': 21, 'ruas': ['G', 'H'], 'niveis': 2, 'total_posicoes': 28},
@@ -372,13 +375,61 @@ def _limpar_localizacoes_orfas_vazias(conn, camara, codigos_validos):
     return int(getattr(cur, 'rowcount', 0) or 0)
 
 
+def _sync_layout_metadata_destinos(conn):
+    """Alinha tipo/area/zona do banco com destino_acao do layout JSON."""
+    if not _wms_tabelas_existem(conn):
+        return 0
+    t_loc = _tbl(conn, 'wms_localizacao')
+    atualizadas = 0
+    for bloco in (_layout_camaras_config().get('camaras') or []):
+        cod_cam = int(bloco.get('codigo') or 0)
+        if cod_cam not in (11, 12, 13, 21):
+            continue
+        for _cam, rua, pos, nivel, dest_acao, _dest_lbl in _coords_from_bloco_layout(bloco):
+            cod_end = _codigo_endereco(cod_cam, rua, pos, nivel)
+            row = conn.execute(
+                f'SELECT tipo, area, categoria_zona FROM {t_loc} WHERE codigo_endereco = ?',
+                (cod_end,),
+            ).fetchone()
+            if not row:
+                continue
+            rd = _row_dict(row) or {}
+            tipo_atual = (rd.get('tipo') or '').strip().lower()
+            area_atual = (rd.get('area') or '').strip().lower()
+            cat_z = (rd.get('categoria_zona') or '').strip().upper() or None
+            if dest_acao:
+                novo_tipo = 'destino_fixo'
+                novo_area = dest_acao
+                novo_cat = None
+                novo_zona = dest_acao
+                precisa = tipo_atual != novo_tipo or area_atual != novo_area
+            elif tipo_atual == 'destino_fixo' or area_atual in _WMS_AREAS_DESTINO_LAYOUT:
+                novo_tipo = 'porta_palete'
+                novo_area = cat_z if cat_z in ('A', 'B', 'C', 'D') else 'C'
+                novo_cat = cat_z or novo_area
+                novo_zona = _zona_por_nivel(nivel)
+                precisa = True
+            else:
+                continue
+            if not precisa:
+                continue
+            cur = conn.execute(
+                f'''UPDATE {t_loc}
+                    SET tipo = ?, area = ?, categoria_zona = ?, zona_armazenagem = ?
+                    WHERE codigo_endereco = ?''',
+                (novo_tipo, novo_area, novo_cat, novo_zona, cod_end),
+            )
+            atualizadas += int(getattr(cur, 'rowcount', 0) or 0)
+    return atualizadas
+
+
 def _sync_wms_camara_layout(conn):
-    """Restaura total_posicoes de referência e remove endereços vazios fora do layout."""
+    """Restaura total_posicoes de referência, metadata de destinos e remove órfãos vazios."""
     if not _wms_tabelas_existem(conn):
         return
     t_cam = _tbl(conn, 'wms_camara')
-    refs = _map_totais_ref_camaras()
     removidas = 0
+    metadata = 0
     for bloco in (_layout_camaras_config().get('camaras') or []):
         cod = int(bloco['codigo'])
         total = _total_posicoes_ref(cod, bloco)
@@ -388,12 +439,13 @@ def _sync_wms_camara_layout(conn):
         coords = _coords_from_bloco_layout(bloco)
         codigos = {_codigo_endereco(c, r, p, n) for c, r, p, n, _da, _dl in coords}
         removidas += _limpar_localizacoes_orfas_vazias(conn, cod, codigos)
+    metadata = _sync_layout_metadata_destinos(conn)
     try:
         conn.commit()
     except Exception:
         conn.rollback()
         raise
-    return removidas
+    return {'removidas': removidas, 'metadata': metadata}
 
 
 def _ensure_categoria_zona_column(conn):
@@ -2784,7 +2836,7 @@ def _seed_wms_defaults(conn):
         return
     now = _now_iso()
     camaras = [
-        (11, 'Câmara 11', 144),
+        (11, 'Câmara 11', 142),
         (12, 'Câmara 12', 133),
         (13, 'Câmara 13', 142),
         (21, 'Câmara 21', 28),
@@ -5805,6 +5857,8 @@ def api_wms_mapa_3d():
     try:
         _ensure_wms_schema_safe(conn)
         _seed_wms_defaults(conn)
+        _ensure_layout_enderecos_atualizado(conn)
+        _sync_wms_camara_layout(conn)
         camara_filtro = request.args.get('camara', type=int)
         t = _tbl(conn, 'wms_localizacao')
         sql = (
@@ -5840,6 +5894,12 @@ def api_wms_mapa_3d():
                 lbl = dest_lbl
                 if not lbl and dest:
                     lbl = _destinos_acao_labels().get(dest)
+                if dest_acao:
+                    tipo_slot = tipo if tipo == 'destino_fixo' else 'destino_fixo'
+                elif tipo == 'destino_fixo':
+                    tipo_slot = 'estoque'
+                else:
+                    tipo_slot = tipo or 'estoque'
                 slots.append({
                     'rua': rua,
                     'posicao': pos,
@@ -5851,7 +5911,7 @@ def api_wms_mapa_3d():
                     'zona_armazenagem': (loc.get('zona_armazenagem') or _zona_por_nivel(niv)).lower(),
                     'destino_acao': dest,
                     'destino_label': lbl,
-                    'tipo': tipo or ('destino_fixo' if dest else 'estoque'),
+                    'tipo': tipo_slot,
                 })
             camaras_out.append({
                 'codigo': cod_cam,
@@ -8892,6 +8952,8 @@ def api_wms_areas_especiais():
     conn = _db()
     try:
         _ensure_wms_schema_safe(conn)
+        _ensure_layout_enderecos_atualizado(conn)
+        _sync_wms_camara_layout(conn)
         resumo = _query_flag_resumo()
         incluir_pos = not resumo
         data = _coletar_ocupacao_areas_especiais(conn, incluir_posicoes=incluir_pos)
