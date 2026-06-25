@@ -5840,6 +5840,14 @@ function _wmsEndRender2DPlanta() {
 }
 
 function _wmsEndDraw2D() {
+    var root = document.getElementById('wms-end-2d-planta');
+    if (root) root.innerHTML = '<p class="loading" style="padding:16px;">Carregando planta 2D…</p>';
+    return _wmsEndEnsureMapa3dParaPlanta().then(function() {
+        _wmsEndRender2DPlanta();
+    });
+}
+
+function _wmsEndDraw2DPlantaSync() {
     _wmsEndRender2DPlanta();
 }
 
@@ -6019,9 +6027,7 @@ function _wmsEndBindAccordion() {
         acc2d._wmsBound = true;
         acc2d.addEventListener('toggle', function() {
             if (acc2d.open) {
-                requestAnimationFrame(function() {
-                    requestAnimationFrame(function() { _wmsEndDraw2D(); });
-                });
+                void _wmsEndDraw2D();
             }
         });
     }
@@ -6144,18 +6150,12 @@ async function loadWmsEnderecamento() {
     _wmsEndState.selectedCamara = null;
     _wmsEndHighlightRow(null);
     try {
-        var results = await Promise.all([
-            _wmsFetchGet('/wms/enderecamento', 45000),
-            _wmsFetchGet('/wms/mapa-3d', 90000)
-        ]);
-        var data = results[0];
-        var mapa3d = results[1];
+        var data = await _wmsFetchGet('/wms/enderecamento?resumo=1', 30000);
         if (!data || data.erro) {
             if (grid) grid.innerHTML = '<p class="loading" style="color:#c62828;padding:14px;">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar.')) + '</p>';
             return;
         }
         _wmsEndState.data = data;
-        _wmsEndState.mapa3d = mapa3d && !mapa3d.erro ? mapa3d : null;
         var html = '';
         var df = data.destinos_fixos || {};
         var gruposDf = (df.grupos || []).map(function(g) {
