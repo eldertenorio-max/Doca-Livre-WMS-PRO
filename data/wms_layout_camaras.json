@@ -1801,16 +1801,12 @@
         {
           "rua": "E",
           "posicao": 13,
-          "nivel": 2,
-          "destino_acao": "palete_bloqueado",
-          "destino_label": "BLOQUEADOS"
+          "nivel": 2
         },
         {
           "rua": "E",
           "posicao": 13,
-          "nivel": 3,
-          "destino_acao": "palete_bloqueado",
-          "destino_label": "BLOQUEADOS"
+          "nivel": 3
         },
         {
           "rua": "E",
@@ -1848,9 +1844,8 @@
           "rua": "E",
           "posicao": 14,
           "nivel": 4,
-          "destino_acao": "avaria",
-          "destino_label": "AVARIA",
-          "destino_apenas_rotulo": true
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
         },
         {
           "rua": "E",
@@ -1878,9 +1873,8 @@
           "rua": "E",
           "posicao": 15,
           "nivel": 4,
-          "destino_acao": "avaria",
-          "destino_label": "AVARIA",
-          "destino_apenas_rotulo": true
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
         },
         {
           "rua": "F",
