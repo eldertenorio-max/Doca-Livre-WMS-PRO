@@ -3598,6 +3598,12 @@ def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
     t_pal = _tbl(conn, 'wms_palete')
     t_item = _tbl(conn, 'wms_palete_item')
     t_cam = _tbl(conn, 'wms_camara')
+    sku_sql = (
+        f'''(SELECT i.sku FROM {t_item} i
+              WHERE i.palete_id = p.id AND TRIM(COALESCE(i.sku, '')) <> ''
+              ORDER BY COALESCE(i.quantidade_caixas, 0) DESC, i.id
+              LIMIT 1)'''
+    )
     camaras_normais = (11, 12, 13, 21)
     cfg = _layout_camaras_config()
     blocos = {
@@ -3664,7 +3670,8 @@ def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
             pos_rows = conn.execute(
                 f'''SELECT l.codigo_endereco, l.rua, l.posicao, l.nivel, l.status, l.categoria_zona,
                            p.etiqueta, p.id AS palete_id,
-                           (SELECT COALESCE(SUM(i.quantidade_caixas), 0) FROM {t_item} i WHERE i.palete_id = p.id) AS qtd_caixas
+                           (SELECT COALESCE(SUM(i.quantidade_caixas), 0) FROM {t_item} i WHERE i.palete_id = p.id) AS qtd_caixas,
+                           {sku_sql} AS sku
                     FROM {t_loc} l
                     LEFT JOIN {t_pal} p ON p.localizacao_id = l.id
                         AND p.status IN ('armazenado', 'bloqueado', 'em_stage', 'separado')
@@ -3675,6 +3682,7 @@ def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
             for idx, r in enumerate(pos_rows or [], start=1):
                 rd = _row_dict(r) or {}
                 st = (rd.get('status') or '').strip().lower()
+                sku = (rd.get('sku') or '').strip() or None
                 posicoes.append({
                     'posicao': idx,
                     'codigo_endereco': rd.get('codigo_endereco'),
@@ -3686,6 +3694,8 @@ def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
                     'etiqueta': rd.get('etiqueta'),
                     'palete_id': rd.get('palete_id'),
                     'qtd_caixas': int(rd.get('qtd_caixas') or 0),
+                    'sku': sku,
+                    'codigo_produto': sku,
                 })
                 if st == 'ocupada':
                     ocupadas_lista.append({
@@ -3698,12 +3708,15 @@ def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
                         'etiqueta': rd.get('etiqueta'),
                         'palete_id': rd.get('palete_id'),
                         'qtd_caixas': int(rd.get('qtd_caixas') or 0),
+                        'sku': sku,
+                        'codigo_produto': sku,
                     })
         else:
             occ_rows = conn.execute(
                 f'''SELECT l.codigo_endereco, l.rua, l.posicao, l.nivel, l.status, l.categoria_zona,
                            p.etiqueta, p.id AS palete_id,
-                           (SELECT COALESCE(SUM(i.quantidade_caixas), 0) FROM {t_item} i WHERE i.palete_id = p.id) AS qtd_caixas
+                           (SELECT COALESCE(SUM(i.quantidade_caixas), 0) FROM {t_item} i WHERE i.palete_id = p.id) AS qtd_caixas,
+                           {sku_sql} AS sku
                     FROM {t_loc} l
                     LEFT JOIN {t_pal} p ON p.localizacao_id = l.id
                         AND p.status IN ('armazenado', 'bloqueado', 'em_stage', 'separado')
@@ -3714,6 +3727,7 @@ def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
             for r in occ_rows or []:
                 rd = _row_dict(r) or {}
                 st = (rd.get('status') or '').strip().lower()
+                sku = (rd.get('sku') or '').strip() or None
                 ocupadas_lista.append({
                     'codigo_endereco': rd.get('codigo_endereco'),
                     'rua': rd.get('rua'),
@@ -3724,6 +3738,8 @@ def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
                     'etiqueta': rd.get('etiqueta'),
                     'palete_id': rd.get('palete_id'),
                     'qtd_caixas': int(rd.get('qtd_caixas') or 0),
+                    'sku': sku,
+                    'codigo_produto': sku,
                 })
 
         pct = round(100.0 * ocup / base, 1) if base else 0

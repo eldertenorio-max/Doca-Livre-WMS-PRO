@@ -5797,11 +5797,12 @@ function _wmsLayoutInitResize() {
 
 function _wmsLayoutCellLabel(slot, cellSize) {
     if (!slot) return '';
-    var txt = (slot.palete_etiqueta || slot.codigo_endereco || '').trim();
+    var txt = String(slot.sku || slot.codigo_produto || '').trim();
     if (!txt) return '';
-    if (cellSize >= 36) return txt;
-    if (cellSize >= 28) return txt.length > 6 ? txt.slice(-6) : txt;
-    return txt.length > 4 ? txt.slice(-4) : txt;
+    if (cellSize >= 36) return txt.length > 10 ? txt.slice(0, 10) : txt;
+    if (cellSize >= 30) return txt.length > 8 ? txt.slice(-8) : txt;
+    if (cellSize >= 26) return txt.length > 6 ? txt.slice(-6) : txt;
+    return txt.length > 5 ? txt.slice(-5) : txt;
 }
 
 function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint, portas) {
@@ -5838,7 +5839,10 @@ function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint, porta
                     ? (slot.codigo_endereco || ('Rua ' + rua + ' · pos ' + p + ' · nív ' + niv))
                     : ('Rua ' + rua + ' · pos ' + p + ' · nív ' + niv));
             if (_wmsLayoutSlotReentregaOuEstoque(slot)) tit += ' · Reentregas ou estoque';
-            if (slot && (slot.status || '') === 'ocupada') tit += ' — ocupada';
+            if (slot && (slot.status || '') === 'ocupada') {
+                var skuTit = String(slot.sku || slot.codigo_produto || '').trim();
+                tit += skuTit ? (' — SKU ' + skuTit) : ' — ocupada';
+            }
             var clickable = info.kind === 'disponivel' || info.kind === 'ocupado' || info.kind === 'destino' || info.kind === 'rotulo' || info.kind === 'flex-reentrega';
             if (clickable) tit += ' — clique para ver rota no 3D';
             var cls = 'wms-layout-cell ' + info.className;
@@ -5846,12 +5850,16 @@ function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint, porta
             html += '<button type="button" class="' + cls + '" style="width:var(--wms-layout-cell,28px);height:var(--wms-layout-cell,28px)" title="' + escHtml(tit) + '" aria-label="' + escHtml(tit) + '" data-camara="' + escHtml(String(camCod)) + '" data-rua="' + escHtml(String(rua).toUpperCase()) + '" data-posicao="' + escHtml(String(p)) + '" data-nivel="' + escHtml(String(niv)) + '"' + (clickable ? '' : ' disabled') + '>';
             if (info.kind === 'ocupado' && slot) {
                 var lbl = _wmsLayoutCellLabel(slot, cellSizeHint || 28);
-                if (lbl) html += '<span class="wms-layout-cell-label" style="font-size:' + (cellSizeHint >= 36 ? '11px' : (cellSizeHint >= 28 ? '10px' : '9px')) + '">' + escHtml(lbl) + '</span>';
+                if (lbl) {
+                    var lblFs = cellSizeHint >= 36 ? '10px' : (cellSizeHint >= 30 ? '9px' : (cellSizeHint >= 26 ? '8px' : '7px'));
+                    html += '<span class="wms-layout-cell-label wms-layout-cell-label--sku" style="font-size:' + lblFs + '">' + escHtml(lbl) + '</span>';
+                }
             } else if (info.kind === 'flex-reentrega' && slot) {
                 if ((slot.status || '') === 'ocupada') {
                     var flexLbl = _wmsLayoutCellLabel(slot, cellSizeHint || 28);
                     if (flexLbl) {
-                        html += '<span class="wms-layout-cell-label" style="font-size:' + (cellSizeHint >= 36 ? '11px' : (cellSizeHint >= 28 ? '10px' : '9px')) + '">' + escHtml(flexLbl) + '</span>';
+                        var flexLblFs = cellSizeHint >= 36 ? '10px' : (cellSizeHint >= 30 ? '9px' : (cellSizeHint >= 26 ? '8px' : '7px'));
+                        html += '<span class="wms-layout-cell-label wms-layout-cell-label--sku" style="font-size:' + flexLblFs + '">' + escHtml(flexLbl) + '</span>';
                     }
                 } else {
                     var flexFs = cellSizeHint >= 36 ? '8px' : (cellSizeHint >= 30 ? '7px' : '6px');
@@ -6024,6 +6032,8 @@ function _wmsEndMergeOcupacaoNoMapa(mapa3d, data) {
             if (!oc) return;
             if (oc.status) slot.status = String(oc.status).toLowerCase();
             if (oc.etiqueta) slot.palete_etiqueta = oc.etiqueta;
+            if (oc.sku) slot.sku = String(oc.sku).trim();
+            if (oc.codigo_produto) slot.codigo_produto = String(oc.codigo_produto).trim();
             if (oc.categoria_zona) slot.categoria_zona = oc.categoria_zona;
         });
     });
