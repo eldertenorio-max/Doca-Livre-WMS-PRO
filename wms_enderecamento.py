@@ -5839,6 +5839,68 @@ def api_wms_localizacoes():
         return jsonify({'erro': str(e)}), 500
 
 
+def _build_mapa_layout_payload(por_codigo=None, camara_filtro=None):
+    """Monta JSON de layout (câmaras + slots). por_codigo opcional: status do banco."""
+    por_codigo = por_codigo or {}
+    cfg = _layout_camaras_config()
+    camaras_out = []
+    for bloco in (cfg.get('camaras') or []):
+        cod_cam = int(bloco.get('codigo') or 0)
+        if cod_cam not in (11, 12, 13, 21):
+            continue
+        if camara_filtro and cod_cam != camara_filtro:
+            continue
+        slots = []
+        for c, rua, pos, niv, dest_acao, dest_lbl, apenas_rotulo in _coords_from_bloco_layout(bloco):
+            cod_end = _codigo_endereco(c, rua, pos, niv)
+            loc = por_codigo.get(cod_end, {})
+            dest = dest_acao
+            lbl = dest_lbl
+            if cod_cam == 11 and pos in (14, 15) and 1 <= niv <= 4:
+                dest = None
+                lbl = None
+                apenas_rotulo = False
+            if not lbl and dest:
+                lbl = _destinos_acao_labels().get(dest)
+            slots.append({
+                'rua': rua,
+                'posicao': pos,
+                'nivel': niv,
+                'codigo_endereco': cod_end,
+                'barcode_longarina': _barcode_longarina(cod_cam, pos, niv),
+                'status': (loc.get('status') or 'vazia').strip().lower(),
+                'categoria_zona': (loc.get('categoria_zona') or '').strip().upper() or None,
+                'zona_armazenagem': (loc.get('zona_armazenagem') or _zona_por_nivel(niv)).lower(),
+                'destino_acao': dest,
+                'destino_label': lbl,
+                'destino_apenas_rotulo': bool(apenas_rotulo and dest),
+                'tipo': 'destino_fixo' if dest else 'porta_palete',
+            })
+        camaras_out.append({
+            'codigo': cod_cam,
+            'descricao': bloco.get('descricao') or f'Câmara {cod_cam}',
+            'ruas': list(bloco.get('ruas') or []),
+            'niveis': int(bloco.get('niveis') or 5),
+            'portas': _portas_bloco(bloco),
+            'slots': slots,
+        })
+    return {
+        'camaras': camaras_out,
+        'destinos_acao': cfg.get('destinos_acao') or _destinos_acao_labels(),
+        'bloqueios_fisicos': cfg.get('bloqueios_fisicos') or _layout_bloqueios_fisicos(),
+    }
+
+
+@bp.route('/mapa-3d/layout', methods=['GET'])
+def api_wms_mapa_3d_layout():
+    """Layout físico sem banco — resposta rápida para planta 2D (status vazia até merge)."""
+    try:
+        camara_filtro = request.args.get('camara', type=int)
+        return jsonify(_sanitize_json(_build_mapa_layout_payload(camara_filtro=camara_filtro)))
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+
 @bp.route('/mapa-3d', methods=['GET'])
 def api_wms_mapa_3d():
     """Layout físico + ocupação para visualização 3D (JSON + merge com banco)."""
@@ -5863,54 +5925,8 @@ def api_wms_mapa_3d():
             cod = (d.get('codigo_endereco') or '').strip()
             if cod:
                 por_codigo[cod] = d
-        cfg = _layout_camaras_config()
-        camaras_out = []
-        for bloco in (cfg.get('camaras') or []):
-            cod_cam = int(bloco.get('codigo') or 0)
-            if cod_cam not in (11, 12, 13, 21):
-                continue
-            if camara_filtro and cod_cam != camara_filtro:
-                continue
-            slots = []
-            for c, rua, pos, niv, dest_acao, dest_lbl, apenas_rotulo in _coords_from_bloco_layout(bloco):
-                cod_end = _codigo_endereco(c, rua, pos, niv)
-                loc = por_codigo.get(cod_end, {})
-                dest = dest_acao
-                lbl = dest_lbl
-                if cod_cam == 11 and pos in (14, 15) and 1 <= niv <= 4:
-                    dest = None
-                    lbl = None
-                    apenas_rotulo = False
-                if not lbl and dest:
-                    lbl = _destinos_acao_labels().get(dest)
-                slots.append({
-                    'rua': rua,
-                    'posicao': pos,
-                    'nivel': niv,
-                    'codigo_endereco': cod_end,
-                    'barcode_longarina': _barcode_longarina(cod_cam, pos, niv),
-                    'status': (loc.get('status') or 'vazia').strip().lower(),
-                    'categoria_zona': (loc.get('categoria_zona') or '').strip().upper() or None,
-                    'zona_armazenagem': (loc.get('zona_armazenagem') or _zona_por_nivel(niv)).lower(),
-                    'destino_acao': dest,
-                    'destino_label': lbl,
-                    'destino_apenas_rotulo': bool(apenas_rotulo and dest),
-                    'tipo': 'destino_fixo' if dest else 'porta_palete',
-                })
-            camaras_out.append({
-                'codigo': cod_cam,
-                'descricao': bloco.get('descricao') or f'Câmara {cod_cam}',
-                'ruas': list(bloco.get('ruas') or []),
-                'niveis': int(bloco.get('niveis') or 5),
-                'portas': _portas_bloco(bloco),
-                'slots': slots,
-            })
         conn.close()
-        return jsonify(_sanitize_json({
-            'camaras': camaras_out,
-            'destinos_acao': cfg.get('destinos_acao') or _destinos_acao_labels(),
-            'bloqueios_fisicos': cfg.get('bloqueios_fisicos') or _layout_bloqueios_fisicos(),
-        }))
+        return jsonify(_sanitize_json(_build_mapa_layout_payload(por_codigo, camara_filtro)))
     except Exception as e:
         try:
             conn.rollback()

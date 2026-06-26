@@ -5888,12 +5888,48 @@ function _wmsEndRenderPlantaCamaraHtml(cam, selCam) {
     return _wmsLayoutRenderCamaraSection(cam, selCam);
 }
 
+function _wmsEndMergeOcupacaoNoMapa(mapa3d, data) {
+    if (!mapa3d || !data) return mapa3d;
+    var porCod = {};
+    var en = data.estoque_normal || {};
+    (en.camaras || []).forEach(function(cam) {
+        (cam.posicoes || []).forEach(function(p) {
+            var cod = (p.codigo_endereco || '').trim();
+            if (cod) porCod[cod] = p;
+        });
+        (cam.ocupadas_lista || []).forEach(function(p) {
+            var cod = (p.codigo_endereco || '').trim();
+            if (cod) porCod[cod] = p;
+        });
+    });
+    (mapa3d.camaras || []).forEach(function(cam) {
+        (cam.slots || []).forEach(function(slot) {
+            var cod = (slot.codigo_endereco || '').trim();
+            var oc = porCod[cod];
+            if (!oc) return;
+            if (oc.status) slot.status = String(oc.status).toLowerCase();
+            if (oc.etiqueta) slot.palete_etiqueta = oc.etiqueta;
+            if (oc.categoria_zona) slot.categoria_zona = oc.categoria_zona;
+        });
+    });
+    return mapa3d;
+}
+
+function _wmsEndGarantirPlantaVisivel() {
+    var root = document.getElementById('wms-end-2d-planta');
+    if (!root) return;
+    var temConteudo = root.querySelector('.wms-layout-panel, .wms-planta-row-98, .wms-end-2d-vazio');
+    if (!temConteudo) {
+        root.innerHTML = _wmsEndPlantaMsgHtml('Não foi possível exibir a planta. Clique em «Atualizar ocupação».');
+    }
+}
+
 function _wmsEndEnsureMapa3dParaPlanta() {
     if (_wmsEndState.mapa3d && (_wmsEndState.mapa3d.camaras || []).length) return Promise.resolve(_wmsEndState.mapa3d);
     if (_wmsEndState._mapa3dPlantaLoading) {
         return _wmsEndState._mapa3dPlantaLoading;
     }
-    _wmsEndState._mapa3dPlantaLoading = _wmsEndFetchGet('/wms/mapa-3d', 90000).then(function(mapa) {
+    _wmsEndState._mapa3dPlantaLoading = _wmsEndFetchGet('/wms/mapa-3d/layout', 25000).then(function(mapa) {
         _wmsEndState._mapa3dPlantaLoading = null;
         if (mapa && !mapa.erro) _wmsEndState.mapa3d = mapa;
         return _wmsEndState.mapa3d;
@@ -6324,45 +6360,42 @@ async function loadWmsEnderecamento() {
     var btn = document.getElementById('btn-wms-enderecamento-atualizar');
     if (btn) btn.disabled = true;
     _wmsEndShowLoading('panel', { on: true, msg: 'Atualizando ocupação…', sub: 'Conectando ao servidor…', pct: 4 });
-    _wmsEndProgressStart('panel', 'panel', gen, 4, 96);
+    _wmsEndProgressStart('panel', 'panel', gen, 4, 99);
     _wmsEndSetAccBadge('wms-end-acc-2d', true);
     _wmsEndSetAccBadge('wms-end-acc-3d', false);
     _wmsEndBindLoadingUi();
     try {
-        _wmsEndProgressBump('panel', 'panel', gen, 12, { sub: 'Baixando endereçamento…' });
-        var promEnd = _wmsEndFetchGet('/wms/enderecamento', 30000, signal).then(function(data) {
-            _wmsEndProgressBump('panel', 'panel', gen, 48, { sub: 'Endereçamento recebido — carregando layout 3D…' });
-            return data;
-        });
-        _wmsEndProgressBump('panel', 'panel', gen, 22, { sub: 'Baixando layout 3D e ocupação…' });
-        var promMapa = _wmsEndFetchGet('/wms/mapa-3d', 90000, signal).then(function(data) {
-            _wmsEndProgressBump('panel', 'panel', gen, 78, { sub: 'Layout 3D recebido — montando planta…' });
-            return data;
-        });
-        var results = await Promise.all([promEnd, promMapa]);
+        _wmsEndProgressBump('panel', 'panel', gen, 12, { sub: 'Carregando layout das câmaras…' });
+        var layout = await _wmsEndFetchGet('/wms/mapa-3d/layout', 25000, signal);
         if (_wmsEndLoadCancelled('panel', gen)) return;
-        _wmsEndProgressBump('panel', 'panel', gen, 86, { sub: 'Processando ocupação por câmara…' });
-        var data = results[0];
-        var mapa3d = results[1];
-        if (!data || data.erro) {
-            var errEnd = _wmsErroMsg(data, 'Erro ao carregar endereçamento.');
-            _wmsEndShowLoading('panel', { on: true, msg: 'Falha ao carregar', sub: errEnd, pct: 100, done: true });
-            showMessage(errEnd, 'error');
+        if (!layout || layout.erro) {
+            var errLayout = _wmsErroMsg(layout, 'Erro ao carregar layout das câmaras.');
+            _wmsEndShowLoading('panel', { on: true, msg: 'Falha ao carregar', sub: errLayout, pct: 100, done: true });
+            showMessage(errLayout, 'error');
             return;
         }
-        if (!mapa3d || mapa3d.erro) {
-            var errMapa = _wmsErroMsg(mapa3d, 'Erro ao carregar layout 3D das câmaras.');
-            showMessage(errMapa, 'error');
-            _wmsEndState.mapa3d = null;
-        } else {
-            _wmsEndState.mapa3d = mapa3d;
-        }
-        _wmsEndState.data = data;
+        _wmsEndState.mapa3d = layout;
         _wmsEndBindAccordion();
         _wmsEndBind2dEvents();
         var acc2d = document.getElementById('wms-end-acc-2d');
         if (acc2d && !acc2d.open) acc2d.open = true;
-        _wmsEndProgressBump('panel', 'panel', gen, 94, { sub: 'Atualizando visualizações 2D…' });
+        _wmsEndProgressBump('panel', 'panel', gen, 52, { sub: 'Montando planta 2D…' });
+        _wmsEndRender2DPlanta();
+
+        _wmsEndProgressBump('panel', 'panel', gen, 62, { sub: 'Baixando ocupação do armazém…' });
+        var data = await _wmsEndFetchGet('/wms/enderecamento', 90000, signal);
+        if (_wmsEndLoadCancelled('panel', gen)) return;
+        _wmsEndProgressBump('panel', 'panel', gen, 88, { sub: 'Atualizando ocupação nas câmaras…' });
+        if (!data || data.erro) {
+            var errEnd = _wmsErroMsg(data, 'Erro ao carregar ocupação.');
+            showMessage(errEnd + ' A planta 2D foi exibida sem dados de ocupação.', 'error');
+            _wmsEndProgressFinish('panel', 'panel', gen, { sub: 'Planta exibida (ocupação indisponível).' });
+            await new Promise(function(r) { setTimeout(r, 420); });
+            return;
+        }
+        _wmsEndState.data = data;
+        _wmsEndMergeOcupacaoNoMapa(_wmsEndState.mapa3d, data);
+        _wmsEndProgressBump('panel', 'panel', gen, 96, { sub: 'Finalizando visualização…' });
         _wmsEndRender2DPlanta();
         _wmsEndProgressFinish('panel', 'panel', gen, { sub: 'Concluído.' });
         await new Promise(function(r) { setTimeout(r, 420); });
@@ -6379,6 +6412,7 @@ async function loadWmsEnderecamento() {
             _wmsEndSetAccBadge('wms-end-acc-3d', false);
             if (btn) btn.disabled = false;
             _wmsEndLoadCtrl.panel.abort = null;
+            _wmsEndGarantirPlantaVisivel();
         }
     }
 }
