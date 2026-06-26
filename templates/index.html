@@ -3291,8 +3291,11 @@
                         <div id="wms-end-panel-loading" class="wms-end-panel-loading" hidden role="status" aria-live="polite">
                             <div class="wms-end-loading-box">
                                 <p id="wms-end-panel-loading-text" class="wms-end-loading-text">Atualizando ocupação…</p>
-                                <div class="wms-end-loading-bar-track" aria-hidden="true">
-                                    <div id="wms-end-panel-loading-bar" class="wms-end-loading-bar wms-end-loading-bar--indeterminate"></div>
+                                <div class="wms-end-loading-bar-row">
+                                    <div id="wms-end-panel-loading-track" class="wms-end-loading-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                                        <div id="wms-end-panel-loading-bar" class="wms-end-loading-bar wms-end-loading-bar--indeterminate"></div>
+                                    </div>
+                                    <span id="wms-end-panel-loading-pct" class="wms-end-loading-pct">0%</span>
                                 </div>
                                 <p id="wms-end-panel-loading-sub" class="wms-end-loading-sub">Buscando dados do armazém…</p>
                                 <button type="button" class="btn btn-secondary btn-sm wms-end-loading-cancel" id="btn-wms-end-panel-loading-cancel">Cancelar</button>
@@ -3306,8 +3309,11 @@
                                     <div id="wms-end-2d-loading" class="wms-end-section-loading" hidden role="status" aria-live="polite">
                                         <div class="wms-end-loading-box">
                                             <p id="wms-end-2d-loading-text" class="wms-end-loading-text">Carregando planta 2D…</p>
-                                            <div class="wms-end-loading-bar-track" aria-hidden="true">
-                                                <div id="wms-end-2d-loading-bar" class="wms-end-loading-bar wms-end-loading-bar--indeterminate"></div>
+                                            <div class="wms-end-loading-bar-row">
+                                                <div id="wms-end-2d-loading-track" class="wms-end-loading-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                                                    <div id="wms-end-2d-loading-bar" class="wms-end-loading-bar wms-end-loading-bar--indeterminate"></div>
+                                                </div>
+                                                <span id="wms-end-2d-loading-pct" class="wms-end-loading-pct">0%</span>
                                             </div>
                                             <p id="wms-end-2d-loading-sub" class="wms-end-loading-sub">Montando layout das câmaras…</p>
                                             <button type="button" class="btn btn-secondary btn-sm wms-end-loading-cancel" id="btn-wms-end-2d-loading-cancel">Cancelar</button>
@@ -3342,8 +3348,11 @@
                                     <div id="wms-end-3d-loading" class="wms-end-section-loading" hidden role="status" aria-live="polite">
                                         <div class="wms-end-loading-box">
                                             <p id="wms-end-3d-loading-text" class="wms-end-loading-text">Carregando mapa 3D…</p>
-                                            <div class="wms-end-loading-bar-track" aria-hidden="true">
-                                                <div id="wms-end-3d-loading-bar" class="wms-end-loading-bar wms-end-loading-bar--indeterminate"></div>
+                                            <div class="wms-end-loading-bar-row">
+                                                <div id="wms-end-3d-loading-track" class="wms-end-loading-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                                                    <div id="wms-end-3d-loading-bar" class="wms-end-loading-bar wms-end-loading-bar--indeterminate"></div>
+                                                </div>
+                                                <span id="wms-end-3d-loading-pct" class="wms-end-loading-pct">0%</span>
                                             </div>
                                             <p id="wms-end-3d-loading-sub" class="wms-end-loading-sub">Preparando visualização…</p>
                                             <button type="button" class="btn btn-secondary btn-sm wms-end-loading-cancel" id="btn-wms-end-3d-loading-cancel">Cancelar</button>

@@ -4933,8 +4933,65 @@ var _wmsEndState = { data: null, mapa3d: null, regions: [], selectedCamara: null
 var _wmsEndLoadCtrl = {
     panel: { gen: 0, abort: null },
     '2d': { gen: 0 },
-    '3d': { gen: 0 }
+    '3d': { gen: 0 },
+    progress: { timer: null, section: null, kind: 'panel', gen: 0, current: 0, target: 0, cap: 92 }
 };
+
+function _wmsEndProgressStop() {
+    if (_wmsEndLoadCtrl.progress.timer) {
+        clearInterval(_wmsEndLoadCtrl.progress.timer);
+        _wmsEndLoadCtrl.progress.timer = null;
+    }
+}
+
+function _wmsEndProgressStart(section, kind, gen, startPct, cap) {
+    _wmsEndProgressStop();
+    var p = _wmsEndLoadCtrl.progress;
+    p.section = section;
+    p.kind = kind || 'panel';
+    p.gen = gen;
+    p.current = startPct || 0;
+    p.target = startPct || 0;
+    p.cap = cap != null ? cap : 92;
+    p.timer = setInterval(function() {
+        if (_wmsEndLoadCancelled(p.kind, p.gen)) {
+            _wmsEndProgressStop();
+            return;
+        }
+        var cur = p.current;
+        var tgt = p.target;
+        if (cur < tgt) {
+            cur += Math.max(1, (tgt - cur) * 0.18);
+        } else if (cur < p.cap) {
+            cur += 0.45;
+        }
+        p.current = Math.min(cur, p.cap);
+        _wmsEndShowLoading(p.section, { pct: p.current });
+    }, 55);
+}
+
+function _wmsEndProgressBump(section, kind, gen, pct, opts) {
+    if (_wmsEndLoadCancelled(kind, gen)) return;
+    var p = _wmsEndLoadCtrl.progress;
+    if (p.kind === kind && p.gen === gen) {
+        p.target = Math.max(p.target, pct);
+        if (pct > p.cap) p.cap = Math.min(99, pct + 8);
+    }
+    opts = opts || {};
+    opts.pct = opts.pct != null ? opts.pct : Math.max(p.current, pct);
+    _wmsEndShowLoading(section, opts);
+}
+
+function _wmsEndProgressFinish(section, kind, gen, opts) {
+    _wmsEndProgressStop();
+    var p = _wmsEndLoadCtrl.progress;
+    p.current = 100;
+    p.target = 100;
+    opts = opts || {};
+    opts.pct = 100;
+    opts.done = true;
+    _wmsEndShowLoading(section, opts);
+}
 
 function _wmsEndFetchGet(path, timeoutMs, signal) {
     var sep = path.indexOf('?') >= 0 ? '&' : '?';
@@ -4961,19 +5018,27 @@ function _wmsEndShowLoading(section, opts) {
     var textEl = document.getElementById(prefix + '-loading-text');
     var subEl = document.getElementById(prefix + '-loading-sub');
     var barEl = document.getElementById(prefix + '-loading-bar');
+    var trackEl = document.getElementById(prefix + '-loading-track');
+    var pctEl = document.getElementById(prefix + '-loading-pct');
     if (textEl && opts.msg) textEl.textContent = opts.msg;
     if (subEl && opts.sub) subEl.textContent = opts.sub;
     if (barEl) {
         if (opts.pct != null) {
+            var pct = Math.max(0, Math.min(100, opts.pct));
             barEl.classList.remove('wms-end-loading-bar--indeterminate');
             barEl.classList.add('wms-end-loading-bar--determinate');
-            barEl.style.width = Math.max(0, Math.min(100, opts.pct)) + '%';
+            barEl.classList.toggle('wms-end-loading-bar--done', !!opts.done || pct >= 100);
+            barEl.style.width = pct + '%';
             barEl.style.transform = '';
+            if (trackEl) trackEl.setAttribute('aria-valuenow', String(Math.round(pct)));
+            if (pctEl) pctEl.textContent = Math.round(pct) + '%';
         } else if (on) {
             barEl.classList.add('wms-end-loading-bar--indeterminate');
-            barEl.classList.remove('wms-end-loading-bar--determinate');
+            barEl.classList.remove('wms-end-loading-bar--determinate', 'wms-end-loading-bar--done');
             barEl.style.width = '';
             barEl.style.transform = '';
+            if (trackEl) trackEl.setAttribute('aria-valuenow', '0');
+            if (pctEl) pctEl.textContent = '…';
         }
     }
     if (overlay) {
@@ -4984,6 +5049,7 @@ function _wmsEndShowLoading(section, opts) {
 
 function _wmsEndCancelPanelLoad() {
     _wmsEndLoadCtrl.panel.gen++;
+    _wmsEndProgressStop();
     if (_wmsEndLoadCtrl.panel.abort) {
         try { _wmsEndLoadCtrl.panel.abort.abort(); } catch (e) {}
         _wmsEndLoadCtrl.panel.abort = null;
@@ -4997,12 +5063,14 @@ function _wmsEndCancelPanelLoad() {
 
 function _wmsEndCancel2dLoad() {
     _wmsEndLoadCtrl['2d'].gen++;
+    _wmsEndProgressStop();
     _wmsEndShowLoading('2d', { on: false });
     _wmsEndSetAccBadge('wms-end-acc-2d', false);
 }
 
 function _wmsEndCancel3dLoad() {
     _wmsEndLoadCtrl['3d'].gen++;
+    _wmsEndProgressStop();
     _wmsEndShowLoading('3d', { on: false });
     _wmsEndSetAccBadge('wms-end-acc-3d', false);
 }
@@ -5867,17 +5935,23 @@ function _wmsEndRender2DPlanta() {
     } else {
         _wmsEndLoadCtrl['2d'].gen++;
         var gen2d = _wmsEndLoadCtrl['2d'].gen;
-        _wmsEndShowLoading('2d', { on: true, msg: 'Carregando planta 2D…', sub: 'Buscando layout das câmaras…' });
+        _wmsEndProgressStart('2d', '2d', gen2d, 6, 90);
+        _wmsEndProgressBump('2d', '2d', gen2d, 10, { on: true, msg: 'Carregando planta 2D…', sub: 'Buscando layout das câmaras…' });
         _wmsEndSetAccBadge('wms-end-acc-2d', true);
         _wmsEndEnsureMapa3dParaPlanta().then(function() {
             if (_wmsEndLoadCancelled('2d', gen2d)) return;
-            _wmsEndShowLoading('2d', { on: false });
-            _wmsEndSetAccBadge('wms-end-acc-2d', false);
+            _wmsEndProgressFinish('2d', '2d', gen2d, { sub: 'Planta montada.' });
+            setTimeout(function() {
+                if (_wmsEndLoadCancelled('2d', gen2d)) return;
+                _wmsEndShowLoading('2d', { on: false });
+                _wmsEndSetAccBadge('wms-end-acc-2d', false);
+            }, 320);
             if (_wmsEndState.mapa3d && (_wmsEndState.mapa3d.camaras || []).length) {
                 _wmsEndRender2DPlanta();
             }
         }).catch(function() {
             if (_wmsEndLoadCancelled('2d', gen2d)) return;
+            _wmsEndProgressStop();
             _wmsEndShowLoading('2d', { on: false });
             _wmsEndSetAccBadge('wms-end-acc-2d', false);
         });
@@ -6011,7 +6085,7 @@ async function wmsEndAbrir3d(opts) {
     var selCam = document.getElementById('wms-end-3d-camara');
     var titulo = document.getElementById('wms-end-3d-titulo');
     var acc3d = document.getElementById('wms-end-acc-3d');
-    function setLoad(on, msg, sub) {
+    function setLoad(on, msg, sub, pct) {
         if (_wmsEndLoadCancelled('3d', gen3d)) return;
         if (on) {
             _wmsEndLoadCtrl['3d'].lastMsg = msg || 'Carregando mapa 3D…';
@@ -6019,13 +6093,22 @@ async function wmsEndAbrir3d(opts) {
         }
         _wmsEndSetAccBadge('wms-end-acc-3d', !!on);
         if (!on) {
+            _wmsEndProgressStop();
             _wmsEndShowLoading('3d', { on: false });
             return;
         }
-        if (acc3d && acc3d.open) {
-            _wmsEndShowLoading('3d', { on: true, msg: _wmsEndLoadCtrl['3d'].lastMsg, sub: _wmsEndLoadCtrl['3d'].lastSub });
-        } else {
+        if (!(acc3d && acc3d.open)) {
             _wmsEndShowLoading('3d', { on: false });
+            return;
+        }
+        var opts = { on: true, msg: _wmsEndLoadCtrl['3d'].lastMsg, sub: _wmsEndLoadCtrl['3d'].lastSub };
+        if (pct != null) {
+            if (!_wmsEndLoadCtrl.progress.timer || _wmsEndLoadCtrl.progress.kind !== '3d' || _wmsEndLoadCtrl.progress.gen !== gen3d) {
+                _wmsEndProgressStart('3d', '3d', gen3d, pct, 94);
+            }
+            _wmsEndProgressBump('3d', '3d', gen3d, pct, opts);
+        } else {
+            _wmsEndShowLoading('3d', opts);
         }
     }
     try {
@@ -6044,13 +6127,13 @@ async function wmsEndAbrir3d(opts) {
         if (titulo) titulo.textContent = opts.label || (cam ? ('Câmara ' + cam) : 'Todas as câmaras (11–21)');
         _wmsEndState.selectedCamara = cam;
         _wmsEndHighlightRow(cam);
-        setLoad(true, 'Carregando mapa 3D…', 'Iniciando módulo de visualização…');
+        setLoad(true, 'Carregando mapa 3D…', 'Iniciando módulo de visualização…', 10);
         await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
         if (_wmsEndLoadCancelled('3d', gen3d)) return;
         await _wmsCarregarScriptMapa3d();
         if (_wmsEndLoadCancelled('3d', gen3d)) return;
         if (!window.WmsMapa3d) throw new Error('Módulo 3D indisponível');
-        setLoad(true, 'Iniciando renderizador 3D…', 'Aguarde, pode levar alguns segundos…');
+        setLoad(true, 'Iniciando renderizador 3D…', 'Aguarde, pode levar alguns segundos…', 32);
         await _wmsWithTimeout(
             WmsMapa3d.init({ prefix: 'wms-end-3d', force: true }),
             20000,
@@ -6059,7 +6142,7 @@ async function wmsEndAbrir3d(opts) {
         if (_wmsEndLoadCancelled('3d', gen3d)) return;
         var data = _wmsEndState.mapa3d;
         if (!data || data.erro) {
-            setLoad(true, 'Buscando layout 3D…', 'Carregando posições do armazém…');
+            setLoad(true, 'Buscando layout 3D…', 'Carregando posições do armazém…', 52);
             data = await _wmsEndFetchGet('/wms/mapa-3d', 90000);
             if (_wmsEndLoadCancelled('3d', gen3d)) return;
             if (!data || data.erro) throw new Error(_wmsErroMsg(data, 'Erro ao carregar mapa 3D'));
@@ -6070,7 +6153,7 @@ async function wmsEndAbrir3d(opts) {
         if (!totalSlots) throw new Error('Layout 3D sem posições. Clique em «Atualizar ocupação».');
         var wire = document.getElementById('wms-end-3d-wireframe');
         WmsMapa3d.setWireframe(wire && wire.checked);
-        setLoad(true, 'Montando posições…', 'Gerando malha 3D do armazém…');
+        setLoad(true, 'Montando posições…', 'Gerando malha 3D do armazém…', 72);
         if (window.WmsMapa3d.setCamaraFilter && !_wmsEndState.selectedSlot) WmsMapa3d.setCamaraFilter(cam);
         await Promise.resolve(WmsMapa3d.build(data));
         if (_wmsEndLoadCancelled('3d', gen3d)) return;
@@ -6088,7 +6171,12 @@ async function wmsEndAbrir3d(opts) {
         _wmsEndFechar3d();
     } finally {
         if (!_wmsEndLoadCancelled('3d', gen3d)) {
-            _wmsEndShowLoading('3d', { on: false });
+            if (acc3d && acc3d.open) {
+                _wmsEndProgressFinish('3d', '3d', gen3d, { msg: 'Mapa 3D pronto', sub: 'Concluído.' });
+                setTimeout(function() {
+                    if (!_wmsEndLoadCancelled('3d', gen3d)) _wmsEndShowLoading('3d', { on: false });
+                }, 350);
+            }
             _wmsEndSetAccBadge('wms-end-acc-3d', false);
         }
     }
@@ -6207,18 +6295,25 @@ async function loadWmsEnderecamento() {
     var signal = _wmsEndLoadCtrl.panel.abort ? _wmsEndLoadCtrl.panel.abort.signal : null;
     var btn = document.getElementById('btn-wms-enderecamento-atualizar');
     if (btn) btn.disabled = true;
-    _wmsEndShowLoading('panel', { on: true, msg: 'Atualizando ocupação…', sub: 'Buscando dados do armazém…', pct: 8 });
+    _wmsEndShowLoading('panel', { on: true, msg: 'Atualizando ocupação…', sub: 'Conectando ao servidor…', pct: 4 });
+    _wmsEndProgressStart('panel', 'panel', gen, 4, 88);
     _wmsEndSetAccBadge('wms-end-acc-2d', true);
     _wmsEndSetAccBadge('wms-end-acc-3d', false);
     _wmsEndBindLoadingUi();
     try {
-        _wmsEndShowLoading('panel', { pct: 18, sub: 'Carregando endereçamento e layout…' });
-        var results = await Promise.all([
-            _wmsEndFetchGet('/wms/enderecamento', 45000, signal),
-            _wmsEndFetchGet('/wms/mapa-3d', 90000, signal)
-        ]);
+        _wmsEndProgressBump('panel', 'panel', gen, 12, { sub: 'Baixando endereçamento…' });
+        var promEnd = _wmsEndFetchGet('/wms/enderecamento', 45000, signal).then(function(data) {
+            _wmsEndProgressBump('panel', 'panel', gen, 48, { sub: 'Endereçamento recebido — carregando layout 3D…' });
+            return data;
+        });
+        _wmsEndProgressBump('panel', 'panel', gen, 22, { sub: 'Baixando layout 3D e ocupação…' });
+        var promMapa = _wmsEndFetchGet('/wms/mapa-3d', 90000, signal).then(function(data) {
+            _wmsEndProgressBump('panel', 'panel', gen, 78, { sub: 'Layout 3D recebido — montando planta…' });
+            return data;
+        });
+        var results = await Promise.all([promEnd, promMapa]);
         if (_wmsEndLoadCancelled('panel', gen)) return;
-        _wmsEndShowLoading('panel', { pct: 72, sub: 'Processando ocupação…' });
+        _wmsEndProgressBump('panel', 'panel', gen, 86, { sub: 'Processando ocupação por câmara…' });
         var data = results[0];
         var mapa3d = results[1];
         if (!data || data.erro) {
@@ -6229,16 +6324,17 @@ async function loadWmsEnderecamento() {
         _wmsEndState.mapa3d = mapa3d && !mapa3d.erro ? mapa3d : null;
         _wmsEndBindAccordion();
         _wmsEndBind2dEvents();
-        _wmsEndShowLoading('panel', { pct: 92, sub: 'Atualizando visualizações…' });
+        _wmsEndProgressBump('panel', 'panel', gen, 94, { sub: 'Atualizando visualizações 2D…' });
         var acc2d = document.getElementById('wms-end-acc-2d');
         if (acc2d && acc2d.open) _wmsEndRender2DPlanta();
-        _wmsEndShowLoading('panel', { pct: 100, sub: 'Concluído.' });
-        await new Promise(function(r) { setTimeout(r, 280); });
+        _wmsEndProgressFinish('panel', 'panel', gen, { sub: 'Concluído.' });
+        await new Promise(function(r) { setTimeout(r, 420); });
     } catch (e) {
         if (_wmsEndLoadCancelled('panel', gen) || (e && e.name === 'AbortError')) return;
         showMessage((e && e.message) || 'Erro ao carregar endereçamento.', 'error');
     } finally {
         if (gen === _wmsEndLoadCtrl.panel.gen) {
+            _wmsEndProgressStop();
             _wmsEndShowLoading('panel', { on: false });
             _wmsEndSetAccBadge('wms-end-acc-2d', false);
             _wmsEndSetAccBadge('wms-end-acc-3d', false);

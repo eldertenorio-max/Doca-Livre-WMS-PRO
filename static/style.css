@@ -537,6 +537,26 @@ body.hub-modulos-aberto .container {
     line-height: 1.4;
 }
 
+.wms-end-loading-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.wms-end-loading-bar-row .wms-end-loading-bar-track {
+    flex: 1;
+    min-width: 0;
+}
+
+.wms-end-loading-pct {
+    flex: 0 0 auto;
+    min-width: 38px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #1565c0;
+    font-variant-numeric: tabular-nums;
+}
+
 .wms-end-loading-bar-track {
     height: 12px;
     background: #e3f2fd;
@@ -547,9 +567,26 @@ body.hub-modulos-aberto .container {
 
 .wms-end-loading-bar {
     height: 100%;
-    background: linear-gradient(90deg, #1565c0, #5c6bc0);
+    background: linear-gradient(90deg, #1565c0, #5c6bc0, #1565c0);
+    background-size: 200% 100%;
     border-radius: 6px;
-    transition: width 0.25s ease;
+    transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wms-end-loading-bar--determinate {
+    width: 0%;
+    animation: wms-end-bar-shimmer 1.4s linear infinite;
+}
+
+.wms-end-loading-bar--determinate.wms-end-loading-bar--done {
+    animation: none;
+    background: linear-gradient(90deg, #2e7d32, #43a047);
+    background-size: 100% 100%;
+}
+
+@keyframes wms-end-bar-shimmer {
+    0% { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
 }
 
 .wms-end-loading-bar--indeterminate {
