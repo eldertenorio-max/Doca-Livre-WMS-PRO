@@ -1869,14 +1869,16 @@
           "posicao": 15,
           "nivel": 2,
           "destino_acao": "palete_bloqueado",
-          "destino_label": "BLOQUEADOS"
+          "destino_label": "BLOQUEADO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "E",
           "posicao": 15,
           "nivel": 3,
           "destino_acao": "palete_bloqueado",
-          "destino_label": "BLOQUEADOS"
+          "destino_label": "BLOQUEADO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "E",
