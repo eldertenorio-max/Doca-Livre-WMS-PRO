@@ -815,22 +815,18 @@ def adicionar_usuario_ao_config(usuario, senha):
         pass
 
 
-def get_db(connect_timeout=15):
+def get_db():
     """Retorna conexão com o banco de dados. Timeout para suportar 4 docas bipando ao mesmo tempo."""
     db_url = (os.environ.get('DATABASE_URL') or '').strip()
     if db_url:
         if psycopg is None:
             raise RuntimeError('psycopg não instalado. Instale as dependências do requirements.txt.')
         # Supabase Postgres normalmente exige SSL
-        try:
-            connect_timeout = int(connect_timeout or 15)
-        except (TypeError, ValueError):
-            connect_timeout = 15
         return CompatConn(
             psycopg.connect(
                 db_url,
                 sslmode=os.environ.get('PGSSLMODE', 'require'),
-                connect_timeout=connect_timeout,
+                connect_timeout=15,
                 row_factory=dict_row,
             ),
             kind='pg',
@@ -906,10 +902,7 @@ try:
             except Exception:
                 pass
 
-    # Em produção (Render free tier), inicializações em background podem degradar o boot/healthcheck.
-    # Por padrão, não iniciar; habilite via env var WMS_INIT_BG=1 se necessário.
-    if (os.environ.get('WMS_INIT_BG') or '').strip().lower() in ('1', 'true', 'sim', 'yes'):
-        threading.Thread(target=_init_wms_em_background, daemon=True, name='init_wms').start()
+    threading.Thread(target=_init_wms_em_background, daemon=True, name='init_wms').start()
 except Exception as _wms_import_err:
     print('Aviso: módulo WMS endereçamento não carregado:', _wms_import_err)
 
@@ -2052,7 +2045,7 @@ def _requer_login():
     return 'usuario' not in session
 
 
-_USUARIO_SESSAO_OK_TTL = 600  # segundos — evita ida ao banco a cada clique/navegação
+_USUARIO_SESSAO_OK_TTL = 120  # segundos — evita ida ao banco a cada clique/navegação
 
 
 def _usuario_ainda_existe(usuario):
@@ -2067,15 +2060,8 @@ def _usuario_ainda_existe(usuario):
                 return True
         except (TypeError, ValueError):
             pass
-    # Validação de sessão não pode travar navegação quando o Postgres está lento/fora:
-    # usa timeout curto e statement_timeout.
-    conn = get_db(connect_timeout=4)
+    conn = get_db()
     try:
-        try:
-            if getattr(conn, 'kind', None) == 'pg':
-                conn.execute('SET statement_timeout TO 3000')
-        except Exception:
-            pass
         row = conn.execute('SELECT 1 FROM usuarios WHERE usuario = ?', (usuario,)).fetchone()
         existe = row is not None
     finally:
