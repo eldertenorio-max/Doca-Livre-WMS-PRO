@@ -5893,7 +5893,7 @@ function _wmsEndEnsureMapa3dParaPlanta() {
     if (_wmsEndState._mapa3dPlantaLoading) {
         return _wmsEndState._mapa3dPlantaLoading;
     }
-    _wmsEndState._mapa3dPlantaLoading = _wmsFetchGet('/wms/mapa-3d', 90000).then(function(mapa) {
+    _wmsEndState._mapa3dPlantaLoading = _wmsEndFetchGet('/wms/mapa-3d', 90000).then(function(mapa) {
         _wmsEndState._mapa3dPlantaLoading = null;
         if (mapa && !mapa.erro) _wmsEndState.mapa3d = mapa;
         return _wmsEndState.mapa3d;
@@ -5904,79 +5904,107 @@ function _wmsEndEnsureMapa3dParaPlanta() {
     return _wmsEndState._mapa3dPlantaLoading;
 }
 
+function _wmsEndPlantaMsgHtml(msg) {
+    return '<p class="wms-end-2d-vazio">' + escHtml(msg || 'Nenhuma câmara no layout.') + '</p>';
+}
+
 function _wmsEndRender2DPlanta() {
     var root = document.getElementById('wms-end-2d-planta');
     if (!root) return;
-    _wmsEndRenderLegenda2d();
-    var mapa = _wmsEndState.mapa3d || {};
-    var data = _wmsEndState.data || {};
-    var cams = mapa.camaras || [];
-    var camByCod = {};
-    cams.forEach(function(c) { camByCod[parseInt(c.codigo, 10)] = c; });
-    var en = data.estoque_normal || {};
-    (en.camaras || []).forEach(function(c) {
-        var cod = parseInt(c.camara, 10);
-        if (camByCod[cod]) {
-            camByCod[cod]._pct = c.percentual_ocupacao || 0;
-            camByCod[cod]._ocup = c.ocupadas || 0;
-            camByCod[cod]._total = c.slots || c.total_slots || (camByCod[cod].slots || []).length;
-        }
-    });
-    var camOrder = [11, 12, 13, 21].filter(function(cod) { return !!camByCod[cod]; });
-    var selCam = _wmsEndState.selectedCamara;
-    var html = '';
-
-    if (camOrder.length) {
-        html += '<div class="wms-layout-panel"><div class="wms-layout-camaras-stack">';
-        camOrder.forEach(function(cod) {
-            html += _wmsLayoutRenderCamaraSection(camByCod[cod], selCam);
+    try {
+        _wmsEndRenderLegenda2d();
+        var mapa = _wmsEndState.mapa3d || {};
+        var data = _wmsEndState.data || {};
+        var cams = mapa.camaras || [];
+        var camByCod = {};
+        cams.forEach(function(c) { camByCod[parseInt(c.codigo, 10)] = c; });
+        var en = data.estoque_normal || {};
+        (en.camaras || []).forEach(function(c) {
+            var cod = parseInt(c.camara, 10);
+            if (camByCod[cod]) {
+                camByCod[cod]._pct = c.percentual_ocupacao || 0;
+                camByCod[cod]._ocup = c.ocupadas || 0;
+                camByCod[cod]._total = c.slots || c.total_slots || (camByCod[cod].slots || []).length;
+            }
         });
-        html += '</div></div>';
-    } else {
-        _wmsEndLoadCtrl['2d'].gen++;
-        var gen2d = _wmsEndLoadCtrl['2d'].gen;
-        _wmsEndProgressStart('2d', '2d', gen2d, 6, 90);
-        _wmsEndProgressBump('2d', '2d', gen2d, 10, { on: true, msg: 'Carregando planta 2D…', sub: 'Buscando layout das câmaras…' });
-        _wmsEndSetAccBadge('wms-end-acc-2d', true);
-        _wmsEndEnsureMapa3dParaPlanta().then(function() {
-            if (_wmsEndLoadCancelled('2d', gen2d)) return;
-            _wmsEndProgressFinish('2d', '2d', gen2d, { sub: 'Planta montada.' });
-            setTimeout(function() {
+        var camOrder = [11, 12, 13, 21].filter(function(cod) { return !!camByCod[cod]; });
+        var selCam = _wmsEndState.selectedCamara;
+        var html = '';
+
+        if (!camOrder.length) {
+            var areas98Only = (data.areas_especiais && data.areas_especiais.areas) || data.areas || [];
+            if (!_wmsEndState._mapa3dPlantaLoading) {
+                root.innerHTML = _wmsEndPlantaMsgHtml('Carregando layout das câmaras…');
+            }
+            _wmsEndLoadCtrl['2d'].gen++;
+            var gen2d = _wmsEndLoadCtrl['2d'].gen;
+            _wmsEndProgressStart('2d', '2d', gen2d, 6, 90);
+            _wmsEndProgressBump('2d', '2d', gen2d, 10, { on: true, msg: 'Carregando planta 2D…', sub: 'Buscando layout das câmaras…' });
+            _wmsEndSetAccBadge('wms-end-acc-2d', true);
+            _wmsEndEnsureMapa3dParaPlanta().then(function() {
                 if (_wmsEndLoadCancelled('2d', gen2d)) return;
+                _wmsEndProgressFinish('2d', '2d', gen2d, { sub: 'Planta montada.' });
+                setTimeout(function() {
+                    if (_wmsEndLoadCancelled('2d', gen2d)) return;
+                    _wmsEndShowLoading('2d', { on: false });
+                    _wmsEndSetAccBadge('wms-end-acc-2d', false);
+                }, 320);
+                if (_wmsEndState.mapa3d && (_wmsEndState.mapa3d.camaras || []).length) {
+                    _wmsEndRender2DPlanta();
+                    return;
+                }
+                if (!areas98Only.length) {
+                    root.innerHTML = _wmsEndPlantaMsgHtml(
+                        _wmsEndState.mapa3d && _wmsEndState.mapa3d.erro
+                            ? _wmsErroMsg(_wmsEndState.mapa3d, 'Não foi possível carregar o layout das câmaras.')
+                            : 'Layout das câmaras indisponível. Clique em «Atualizar ocupação» para tentar de novo.'
+                    );
+                }
+            }).catch(function() {
+                if (_wmsEndLoadCancelled('2d', gen2d)) return;
+                _wmsEndProgressStop();
                 _wmsEndShowLoading('2d', { on: false });
                 _wmsEndSetAccBadge('wms-end-acc-2d', false);
-            }, 320);
-            if (_wmsEndState.mapa3d && (_wmsEndState.mapa3d.camaras || []).length) {
-                _wmsEndRender2DPlanta();
-            }
-        }).catch(function() {
-            if (_wmsEndLoadCancelled('2d', gen2d)) return;
-            _wmsEndProgressStop();
-            _wmsEndShowLoading('2d', { on: false });
-            _wmsEndSetAccBadge('wms-end-acc-2d', false);
-        });
-    }
+                if (!areas98Only.length) {
+                    root.innerHTML = _wmsEndPlantaMsgHtml('Erro ao carregar o layout. Tente atualizar novamente.');
+                }
+            });
+            if (!areas98Only.length) return;
+        }
 
-    var areas98 = (data.areas_especiais && data.areas_especiais.areas) || data.areas || [];
-    if (areas98.length) {
-        html += '<div class="wms-planta-row-98">';
-        html += '<div class="wms-planta-row-98-titulo">Quarentena e fluxos especiais — câmara 98</div>';
-        areas98.forEach(function(a) {
-            html += '<div class="wms-end-2d-area98" style="flex:1;min-width:200px;">';
-            html += '<div class="wms-end-2d-area98-tit">' + escHtml(a.label || a.area || 'Área') + '</div>';
-            var pos = a.posicoes || [];
-            if (pos.length && _wmsEndPosicoesTemNiveis(pos)) {
-                html += _wmsEndRenderPosicoesPorNiveis(pos, 5);
-            } else {
-                html += '<div class="wms-end-row-slots">' + pos.map(_wmsEndSlotHtml).join('') + '</div>';
-            }
+        if (camOrder.length) {
+            html += '<div class="wms-layout-panel"><div class="wms-layout-camaras-stack">';
+            camOrder.forEach(function(cod) {
+                html += _wmsLayoutRenderCamaraSection(camByCod[cod], selCam);
+            });
+            html += '</div></div>';
+        }
+
+        var areas98 = (data.areas_especiais && data.areas_especiais.areas) || data.areas || [];
+        if (areas98.length) {
+            html += '<div class="wms-planta-row-98">';
+            html += '<div class="wms-planta-row-98-titulo">Quarentena e fluxos especiais — câmara 98</div>';
+            areas98.forEach(function(a) {
+                html += '<div class="wms-end-2d-area98" style="flex:1;min-width:200px;">';
+                html += '<div class="wms-end-2d-area98-tit">' + escHtml(a.label || a.area || 'Área') + '</div>';
+                var pos = a.posicoes || [];
+                if (pos.length && _wmsEndPosicoesTemNiveis(pos)) {
+                    html += _wmsEndRenderPosicoesPorNiveis(pos, 5);
+                } else {
+                    html += '<div class="wms-end-row-slots">' + pos.map(_wmsEndSlotHtml).join('') + '</div>';
+                }
+                html += '</div>';
+            });
             html += '</div>';
-        });
-        html += '</div>';
+        }
+        root.innerHTML = html || _wmsEndPlantaMsgHtml('Nenhuma câmara no layout.');
+        _wmsLayoutInitResize();
+        _wmsLayoutFitGrids(root);
+    } catch (err) {
+        console.error('Erro ao montar planta 2D:', err);
+        root.innerHTML = _wmsEndPlantaMsgHtml('Erro ao montar a planta 2D. Atualize a página ou clique em «Atualizar ocupação».');
+        showMessage('Erro ao montar a planta 2D.', 'error');
     }
-    root.innerHTML = html || '<p class="wms-end-2d-vazio">Nenhuma câmara no layout.</p>';
-    _wmsLayoutInitResize();
-    _wmsLayoutFitGrids(root);
 }
 
 function _wmsEndDraw2D() {
@@ -6296,7 +6324,7 @@ async function loadWmsEnderecamento() {
     var btn = document.getElementById('btn-wms-enderecamento-atualizar');
     if (btn) btn.disabled = true;
     _wmsEndShowLoading('panel', { on: true, msg: 'Atualizando ocupação…', sub: 'Conectando ao servidor…', pct: 4 });
-    _wmsEndProgressStart('panel', 'panel', gen, 4, 88);
+    _wmsEndProgressStart('panel', 'panel', gen, 4, 96);
     _wmsEndSetAccBadge('wms-end-acc-2d', true);
     _wmsEndSetAccBadge('wms-end-acc-3d', false);
     _wmsEndBindLoadingUi();
@@ -6307,7 +6335,7 @@ async function loadWmsEnderecamento() {
             return data;
         });
         _wmsEndProgressBump('panel', 'panel', gen, 22, { sub: 'Baixando layout 3D e ocupação…' });
-        var promMapa = _wmsEndFetchGet('/wms/mapa-3d', 45000, signal).then(function(data) {
+        var promMapa = _wmsEndFetchGet('/wms/mapa-3d', 90000, signal).then(function(data) {
             _wmsEndProgressBump('panel', 'panel', gen, 78, { sub: 'Layout 3D recebido — montando planta…' });
             return data;
         });
@@ -6322,13 +6350,20 @@ async function loadWmsEnderecamento() {
             showMessage(errEnd, 'error');
             return;
         }
+        if (!mapa3d || mapa3d.erro) {
+            var errMapa = _wmsErroMsg(mapa3d, 'Erro ao carregar layout 3D das câmaras.');
+            showMessage(errMapa, 'error');
+            _wmsEndState.mapa3d = null;
+        } else {
+            _wmsEndState.mapa3d = mapa3d;
+        }
         _wmsEndState.data = data;
-        _wmsEndState.mapa3d = mapa3d && !mapa3d.erro ? mapa3d : null;
         _wmsEndBindAccordion();
         _wmsEndBind2dEvents();
-        _wmsEndProgressBump('panel', 'panel', gen, 94, { sub: 'Atualizando visualizações 2D…' });
         var acc2d = document.getElementById('wms-end-acc-2d');
-        if (acc2d && acc2d.open) _wmsEndRender2DPlanta();
+        if (acc2d && !acc2d.open) acc2d.open = true;
+        _wmsEndProgressBump('panel', 'panel', gen, 94, { sub: 'Atualizando visualizações 2D…' });
+        _wmsEndRender2DPlanta();
         _wmsEndProgressFinish('panel', 'panel', gen, { sub: 'Concluído.' });
         await new Promise(function(r) { setTimeout(r, 420); });
     } catch (e) {
