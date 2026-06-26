@@ -5048,6 +5048,12 @@ function _wmsEndShowLoading(section, opts) {
     if (section === 'panel') {
         var stack = overlay && overlay.closest('.wms-end-acc-stack');
         if (stack) stack.classList.toggle('wms-end-acc-stack--panel-loading', on);
+        if (on) {
+            var btnUpd = document.getElementById('btn-wms-enderecamento-atualizar');
+            if (btnUpd) {
+                try { btnUpd.scrollIntoView({ block: 'start', behavior: 'instant' }); } catch (e) { btnUpd.scrollIntoView(true); }
+            }
+        }
     }
 }
 

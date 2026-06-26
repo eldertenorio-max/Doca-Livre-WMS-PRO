@@ -492,17 +492,25 @@ body.hub-modulos-aberto .container {
     inset: 0;
     z-index: 40;
     display: none;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     background: rgba(248, 250, 252, 0.96);
     border-radius: 10px;
     pointer-events: none;
-    padding: 16px;
+    padding: 28px 16px 16px;
+    overflow-y: auto;
 }
 
 .wms-end-panel-loading:not([hidden]) {
     display: flex;
     pointer-events: auto;
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: clamp(72px, 14vh, 132px);
+    border-radius: 0;
 }
 
 .wms-end-section-loading {
