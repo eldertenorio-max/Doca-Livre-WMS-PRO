@@ -126,7 +126,35 @@
     function _levelHForCam(cod) {
         /* câmaras com poucos níveis ganham nível mais alto (armazenamento a granel) */
         var mn = _maxNivCam(cod);
+        if (parseInt(cod, 10) === 21) return LEVEL_H * 2.45;
         return mn <= 2 ? LEVEL_H * 2.1 : LEVEL_H;
+    }
+
+    function _rackGeomForCam(cod) {
+        var c = parseInt(cod, 10);
+        var lh = _levelHForCam(c);
+        var maxNiv = _maxNivCam(c);
+        var geom = {
+            uprW: UPR_W,
+            uprD: UPR_D,
+            beamH: BEAM_H,
+            shelfTh: SHELF_TH,
+            levelH: lh,
+            braceBands: maxNiv <= 2 ? [0, 0.52] : [0, 0.36, 0.68],
+            braceNodes: maxNiv <= 2 ? [0, 0.5, 1.0] : [0, 0.34, 0.68, 1.0]
+        };
+        if (c === 21) {
+            geom.uprW = 0.26;
+            geom.uprD = 0.24;
+            geom.beamH = 0.18;
+            geom.shelfTh = 0.12;
+        }
+        return geom;
+    }
+
+    function _slotYForGeom(niv, geom) {
+        geom = geom || { levelH: LEVEL_H, beamH: BEAM_H, shelfTh: SHELF_TH };
+        return (parseInt(niv, 10) - 1) * geom.levelH + geom.beamH + geom.shelfTh * 0.72;
     }
 
     function _camMeta(cod) {
@@ -780,37 +808,40 @@
         return m;
     }
 
-    function _addUprightHoles(THREE, parent, x, z, rackH, towardAisle, mats) {
-        var holeX = towardAisle > 0 ? x + UPR_W * 0.52 : x - UPR_W * 0.52;
-        var step = Math.max(LEVEL_H * 0.85, 0.55);
+    function _addUprightHoles(THREE, parent, x, z, rackH, towardAisle, mats, geom) {
+        geom = geom || _rackGeomForCam(0);
+        var holeX = towardAisle > 0 ? x + geom.uprW * 0.52 : x - geom.uprW * 0.52;
+        var step = Math.max(geom.levelH * 0.85, 0.55);
         for (var hy = step * 0.6; hy < rackH - 0.15; hy += step) {
             _addBox(THREE, parent, 0.012, 0.028, 0.012, holeX, hy, z, mats.blueDark);
         }
     }
 
-    function _addUprightPair(THREE, parent, xF, xB, z, rackH, mats, towardAisle) {
-        var foot = UPR_W * 2.8;
+    function _addUprightPair(THREE, parent, xF, xB, z, rackH, mats, towardAisle, geom) {
+        geom = geom || _rackGeomForCam(0);
+        var uprW = geom.uprW;
+        var uprD = geom.uprD;
+        var foot = uprW * 2.8;
         var baseY = 0.018;
         _addBox(THREE, parent, foot, 0.036, foot, xF, baseY, z, mats.blue);
         _addBox(THREE, parent, foot, 0.036, foot, xB, baseY, z, mats.blue);
         var cy = rackH / 2 + 0.036;
-        _addBox(THREE, parent, UPR_W, rackH, UPR_D, xF, cy, z, mats.blue);
-        _addBox(THREE, parent, UPR_W, rackH, UPR_D, xB, cy, z, mats.blue);
+        _addBox(THREE, parent, uprW, rackH, uprD, xF, cy, z, mats.blue);
+        _addBox(THREE, parent, uprW, rackH, uprD, xB, cy, z, mats.blue);
         /* perfil C nas costas dos montantes */
-        var flangeW = UPR_W * 0.55;
-        var flangeD = UPR_D * 0.28;
-        _addBox(THREE, parent, flangeW, rackH, flangeD, xF - (towardAisle > 0 ? 1 : -1) * (UPR_W * 0.72), cy, z, mats.blueDark);
-        _addBox(THREE, parent, flangeW, rackH, flangeD, xB - (towardAisle > 0 ? 1 : -1) * (UPR_W * 0.72), cy, z, mats.blueDark);
+        var flangeW = uprW * 0.55;
+        var flangeD = uprD * 0.28;
+        _addBox(THREE, parent, flangeW, rackH, flangeD, xF - (towardAisle > 0 ? 1 : -1) * (uprW * 0.72), cy, z, mats.blueDark);
+        _addBox(THREE, parent, flangeW, rackH, flangeD, xB - (towardAisle > 0 ? 1 : -1) * (uprW * 0.72), cy, z, mats.blueDark);
         var aisleX = towardAisle > 0 ? xF : xB;
-        _addUprightHoles(THREE, parent, aisleX, z, rackH, towardAisle, mats);
+        _addUprightHoles(THREE, parent, aisleX, z, rackH, towardAisle, mats, geom);
         var dx = xB - xF;
         var span = Math.abs(dx);
-        var bT = 0.030;
-        /* 3 bandas de X-brace ao longo da altura */
-        var bands = [0, 0.36, 0.68];
-        bands.forEach(function(start) {
+        var bT = uprW >= 0.22 ? 0.038 : 0.030;
+        geom.braceBands.forEach(function (start) {
             var y0 = rackH * start + 0.06;
-            var y1 = rackH * (start + 0.34) - 0.06;
+            var y1 = rackH * (start + (geom.braceBands.length <= 2 ? 0.44 : 0.34)) - 0.06;
+            if (y1 > rackH - 0.08) y1 = rackH - 0.08;
             var rise = y1 - y0;
             var lenD = Math.sqrt(span * span + rise * rise);
             var my = (y0 + y1) / 2;
@@ -819,44 +850,47 @@
             var bB = _addBox(THREE, parent, lenD, bT, bT, (xF + xB) / 2, my, z, mats.bracing);
             bB.rotation.z = -Math.atan2(rise, dx);
         });
-        /* barras horizontais em cada nó */
-        [0, 0.34, 0.68, 1.0].forEach(function(t) {
-            _addBox(THREE, parent, span * 0.92, 0.022, 0.025, (xF + xB) / 2, rackH * t + (t > 0 ? 0 : 0.04), z, mats.bracing);
+        geom.braceNodes.forEach(function (t) {
+            _addBox(THREE, parent, span * 0.92, bT * 0.72, bT * 0.85, (xF + xB) / 2, rackH * t + (t > 0 ? 0 : 0.04), z, mats.bracing);
         });
     }
 
-    function _addBeamRun(THREE, parent, xF, xB, z0, z1, y, mats, towardAisle) {
+    function _addBeamRun(THREE, parent, xF, xB, z0, z1, y, mats, towardAisle, geom) {
+        geom = geom || _rackGeomForCam(0);
+        var beamH = geom.beamH;
         var cx = (xF + xB) / 2;
         var cz = (z0 + z1) / 2;
-        var w = Math.abs(xF - xB) + UPR_W;
-        var d = Math.max(UPR_D, Math.abs(z1 - z0) + UPR_D * 0.5);
+        var w = Math.abs(xF - xB) + geom.uprW;
+        var d = Math.max(geom.uprD, Math.abs(z1 - z0) + geom.uprD * 0.5);
         /* alma da viga (horizontal) */
-        _addBox(THREE, parent, w, BEAM_H * 0.72, d, cx, y - BEAM_H * 0.08, cz, mats.orange);
+        _addBox(THREE, parent, w, beamH * 0.72, d, cx, y - beamH * 0.08, cz, mats.orange);
         /* aba superior */
-        _addBox(THREE, parent, w, BEAM_H * 0.16, d * 1.05, cx, y + BEAM_H * 0.30, cz, mats.orange);
+        _addBox(THREE, parent, w, beamH * 0.16, d * 1.05, cx, y + beamH * 0.30, cz, mats.orange);
         /* aba inferior */
-        _addBox(THREE, parent, w, BEAM_H * 0.12, d * 1.02, cx, y - BEAM_H * 0.44, cz, mats.orange);
+        _addBox(THREE, parent, w, beamH * 0.12, d * 1.02, cx, y - beamH * 0.44, cz, mats.orange);
         /* placa de reforço lateral (face do corredor) */
         var faceOff = towardAisle > 0 ? (w * 0.5 + 0.008) : -(w * 0.5 + 0.008);
-        _addBox(THREE, parent, 0.018, BEAM_H * 0.85, d * 0.9, cx + faceOff, y - BEAM_H * 0.05, cz, mats.orange);
+        _addBox(THREE, parent, 0.018, beamH * 0.85, d * 0.9, cx + faceOff, y - beamH * 0.05, cz, mats.orange);
     }
 
-    function _addBayDeck(THREE, parent, xF, xB, z0, z1, y, mat) {
+    function _addBayDeck(THREE, parent, xF, xB, z0, z1, y, mat, geom) {
+        geom = geom || _rackGeomForCam(0);
+        var shelfTh = geom.shelfTh;
         var cx = (xF + xB) / 2;
         var cz = (z0 + z1) / 2;
-        var w = Math.abs(xF - xB) - UPR_W * 0.30;
+        var w = Math.abs(xF - xB) - geom.uprW * 0.30;
         var d = Math.abs(z1 - z0) - 0.06;
         if (w < 0.12 || d < 0.12) return;
         /* piso principal (chapa) */
-        _addBox(THREE, parent, w, SHELF_TH, d, cx, y, cz, mat);
+        _addBox(THREE, parent, w, shelfTh, d, cx, y, cz, mat);
         /* vigotas longitudinais de reforço debaixo do piso */
         var nVigas = Math.max(2, Math.round(d / 0.38));
-        var vigaT = SHELF_TH * 0.55;
-        var vigaH = SHELF_TH * 1.8;
+        var vigaT = shelfTh * 0.55;
+        var vigaH = shelfTh * 1.8;
         var zStep = d / (nVigas + 1);
         for (var vi = 1; vi <= nVigas; vi++) {
             var vz = (z0 + zStep * vi);
-            _addBox(THREE, parent, w * 0.92, vigaH, vigaT, cx, y - vigaH * 0.5 - SHELF_TH * 0.1, vz, mat);
+            _addBox(THREE, parent, w * 0.92, vigaH, vigaT, cx, y - vigaH * 0.5 - shelfTh * 0.1, vz, mat);
         }
     }
 
@@ -878,24 +912,26 @@
         maxNiv = maxNiv || MAX_NIV;
         maxPos = Math.max(1, parseInt(maxPos, 10) || 1);
         if (!ruaSlots.length && maxPos < 1) return 0;
-        var lh = levelH || LEVEL_H;
+        var geom = _rackGeomForCam(camCod);
+        var lh = levelH || geom.levelH || LEVEL_H;
+        geom.levelH = lh;
         var mats = _rackMaterials(THREE);
         var xs = _rackXs(xBase, towardAisle);
         var xF = xs.front;
         var xB = xs.back;
-        var rackH = (maxNiv - 1) * lh + BEAM_H + SHELF_TH + (maxNiv >= MAX_NIV ? 0.55 : 0.28);
+        var rackH = (maxNiv - 1) * lh + geom.beamH + geom.shelfTh + (maxNiv >= MAX_NIV ? 0.55 : 0.28);
         var bayStep = SLOT_D + GAP_POS;
         var zMarks = _zMarksUniformes(maxPos, bayStep);
         zMarks.forEach(function (z) {
-            _addUprightPair(THREE, parent, xF, xB, z, rackH, mats, towardAisle);
+            _addUprightPair(THREE, parent, xF, xB, z, rackH, mats, towardAisle, geom);
         });
         for (var n = 1; n <= maxNiv; n++) {
-            var yBeam = (n - 1) * lh + BEAM_H * 0.5;
-            var yDeck = (n - 1) * lh + BEAM_H + SHELF_TH * 0.22;
+            var yBeam = (n - 1) * lh + geom.beamH * 0.5;
+            var yDeck = (n - 1) * lh + geom.beamH + geom.shelfTh * 0.22;
             var deckMat = n === maxNiv ? mats.deckMetal : mats.deck;
             for (var i = 0; i < zMarks.length - 1; i++) {
-                _addBeamRun(THREE, parent, xF, xB, zMarks[i], zMarks[i + 1], yBeam, mats, towardAisle);
-                _addBayDeck(THREE, parent, xF, xB, zMarks[i], zMarks[i + 1], yDeck, deckMat);
+                _addBeamRun(THREE, parent, xF, xB, zMarks[i], zMarks[i + 1], yBeam, mats, towardAisle, geom);
+                _addBayDeck(THREE, parent, xF, xB, zMarks[i], zMarks[i + 1], yDeck, deckMat, geom);
             }
         }
 
@@ -916,7 +952,7 @@
             var pos = parseInt(slot.posicao, 10) || 1;
             var niv = parseInt(slot.nivel, 10) || 1;
             var z = (pos - 1) * bayStep + SLOT_D / 2;
-            var y = (niv - 1) * LEVEL_H + BEAM_H + SHELF_TH * 0.72;
+            var y = _slotYForGeom(niv, geom);
             var cx = (xF + xB) / 2;
             dummy.position.set(cx, y, z);
             dummy.rotation.set(0, 0, 0);
@@ -1480,6 +1516,8 @@
         var maxPos = _camMaxPosicao(slots, ruas);
 
         var levelH = _levelHForCam(cod);
+        var geom = _rackGeomForCam(cod);
+        var shelfGeo = new THREE.BoxGeometry(BEAM_FACE * 1.02, geom.shelfTh, SLOT_D * 0.92);
         var camGroup = new THREE.Group();
         camGroup.name = 'camara-' + cod;
         var aisleLen = _aisleLenForMaxPos(maxPos);
@@ -2205,9 +2243,10 @@
         }
         var totalRuas = Math.max(ruas.length, 1);
         var xBase = _rackXBaseForCam(camCod, ri, totalRuas);
+        var geom = _rackGeomForCam(camCod);
         var bayStep = SLOT_D + GAP_POS;
         var localZ = (parseInt(posicao, 10) - 1) * bayStep + SLOT_D / 2;
-        var y = (parseInt(nivel, 10) - 1) * LEVEL_H + BEAM_H + SHELF_TH * 0.72;
+        var y = _slotYForGeom(parseInt(nivel, 10) || 1, geom);
         return new THREE.Vector3(camPos.x + xBase, y, camPos.z + localZ);
     }
 
