@@ -5949,7 +5949,33 @@ def api_wms_mapa_3d():
         return jsonify({'erro': str(e)}), 500
 
 
-def _listar_estoque_armazenado_wms(conn, categoria=None, q=None, limite=5000):
+def _vencimento_por_shelf(data_producao, shelf_dias):
+    """Calcula vencimento a partir da fabricação + shelf_dias quando não há data_validade."""
+    if not data_producao or shelf_dias is None:
+        return None
+    try:
+        dias = int(shelf_dias)
+    except (TypeError, ValueError):
+        return None
+    if dias <= 0:
+        return None
+    txt = str(data_producao).strip()[:10]
+    if not txt:
+        return None
+    try:
+        from datetime import datetime, timedelta
+        for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+            try:
+                base = datetime.strptime(txt, fmt)
+                return (base + timedelta(days=dias)).strftime('%Y-%m-%d')
+            except ValueError:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def _listar_estoque_armazenado_wms(conn, categoria=None, q=None, camara=None, limite=5000):
     """Linhas de estoque real: palete armazenado + item + endereço (câmara/rua/coluna/nível)."""
     _ensure_wms_palete_item_disposicao(conn)
     t_item = _tbl(conn, 'wms_palete_item')
@@ -5958,7 +5984,7 @@ def _listar_estoque_armazenado_wms(conn, categoria=None, q=None, limite=5000):
     t_prod = _tbl(conn, 'wms_produto_enderecamento')
     bloq_off = _bloqueio_off_sql(conn, 'l.bloqueio_saida')
     sql = f'''SELECT i.sku, i.descricao, i.lote, i.rg_caixa, i.data_producao, i.data_validade,
-                     i.quantidade_caixas,
+                     i.shelf_dias, i.quantidade_caixas,
                      l.camara, l.rua, l.posicao, l.nivel, l.codigo_endereco,
                      p.etiqueta AS palete_etiqueta,
                      pr.categoria
@@ -5972,6 +5998,9 @@ def _listar_estoque_armazenado_wms(conn, categoria=None, q=None, limite=5000):
                 AND {bloq_off}
                 AND COALESCE(i.quantidade_caixas, 0) > 0'''
     params = []
+    if camara is not None:
+        sql += ' AND l.camara = ?'
+        params.append(int(camara))
     cat = (categoria or '').strip().upper()
     if cat:
         sql += ' AND UPPER(TRIM(COALESCE(pr.categoria, \'\'))) = ?'
@@ -5993,23 +6022,53 @@ def _listar_estoque_armazenado_wms(conn, categoria=None, q=None, limite=5000):
     for r in rows or []:
         rd = _row_dict(r) or {}
         loc = _format_locacao(rd)
+        data_validade = rd.get('data_validade')
+        data_vencimento = data_validade or _vencimento_por_shelf(rd.get('data_producao'), rd.get('shelf_dias'))
+        pos = rd.get('posicao')
         out.append({
             'camara': rd.get('camara'),
             'rua': str(rd.get('rua') or '').upper(),
-            'coluna': rd.get('posicao'),
+            'posicao': pos,
+            'coluna': pos,
             'nivel': rd.get('nivel'),
             'codigo_endereco': loc.get('codigo_wms') or rd.get('codigo_endereco'),
             'sku': rd.get('sku') or '',
+            'codigo': rd.get('sku') or '',
             'descricao': rd.get('descricao') or '',
             'quantidade': int(rd.get('quantidade_caixas') or 0),
             'data_fabricacao': rd.get('data_producao'),
-            'data_validade': rd.get('data_validade'),
+            'data_validade': data_validade,
+            'data_vencimento': data_vencimento,
             'up': rd.get('rg_caixa') or '',
             'lote': rd.get('lote') or '',
             'categoria': rd.get('categoria') or '',
             'palete': rd.get('palete_etiqueta') or '',
         })
     return out
+
+
+@bp.route('/camara/<int:codigo>/itens', methods=['GET'])
+def api_wms_camara_itens(codigo):
+    """Itens armazenados em uma câmara (paletes armazenados com endereço)."""
+    conn = _db()
+    ensure_wms_schema(conn)
+    try:
+        itens = _listar_estoque_armazenado_wms(conn, camara=codigo, limite=10000)
+        total_qtd = sum(int(i.get('quantidade') or 0) for i in itens)
+        conn.close()
+        return jsonify({
+            'camara': codigo,
+            'itens': itens,
+            'total_linhas': len(itens),
+            'total_quantidade': total_qtd,
+            'fonte_estoque': 'wms',
+        })
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
 
 
 @bp.route('/produtos', methods=['GET'])

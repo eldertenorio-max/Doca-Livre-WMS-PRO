@@ -5892,7 +5892,8 @@ function _wmsLayoutRenderCamaraSection(cam, selCam) {
         if (c > maxCols) maxCols = c;
     });
     var cellHint = _wmsLayoutComputeCellSize(640, maxCols);
-    var html = '<section class="wms-layout-camara wms-layout-camara--clickable wms-planta-cam--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-max-cols="' + maxCols + '" data-label="Câmara ' + escHtml(String(cod)) + '" role="button" tabindex="0" title="Clique para abrir 3D">';
+    var html = '<div class="wms-layout-camara-wrap" data-camara="' + escHtml(String(cod)) + '">';
+    html += '<section class="wms-layout-camara wms-layout-camara--clickable wms-planta-cam--clickable' + act + '" data-camara="' + escHtml(String(cod)) + '" data-max-cols="' + maxCols + '" data-label="Câmara ' + escHtml(String(cod)) + '" role="button" tabindex="0" title="Clique para abrir 3D">';
     html += '<header class="wms-layout-camara-header"><h2>Câmara ' + escHtml(String(cod)) + '</h2>';
     html += '<span>' + escHtml(meta.tipo) + (meta.temp ? ' ' + escHtml(meta.temp) + '°' : '') + ' · ' + escHtml(String(ocup)) + '/' + escHtml(String(total)) + ' ocup. (' + escHtml(String(pct)) + '%)</span></header>';
     html += '<div class="wms-layout-ruas-row">';
@@ -5900,11 +5901,96 @@ function _wmsLayoutRenderCamaraSection(cam, selCam) {
         html += _wmsLayoutRenderRuaGrid(cod, rua, cam.slots || [], maxNiv, cellHint, cam.portas || []);
     });
     html += '</div></section>';
+    html += '<div class="wms-layout-camara-actions">';
+    html += '<button type="button" class="btn btn-secondary btn-sm wms-camara-itens-btn" data-camara="' + escHtml(String(cod)) + '" aria-expanded="false" aria-controls="wms-cam-itens-' + escHtml(String(cod)) + '">Mostrar itens armazenados na câmara</button>';
+    html += '</div>';
+    html += '<div id="wms-cam-itens-' + escHtml(String(cod)) + '" class="wms-camara-itens-panel" hidden></div>';
+    html += '</div>';
     return html;
 }
 
 function _wmsEndRenderPlantaRackSide(rua, slots, maxNiv, camCod) {
     return '';
+}
+
+function _wmsEndFmtDataItem(v) {
+    if (!v) return '—';
+    return formatarDataPtBR(v) || String(v).slice(0, 10) || '—';
+}
+
+function _wmsEndRenderItensCamaraHtml(rows, cam) {
+    if (!rows || !rows.length) {
+        return '<p class="wms-camara-itens-vazio">Nenhum item armazenado na câmara ' + escHtml(String(cam)) + '.</p>';
+    }
+    var totQtd = rows.reduce(function(acc, r) { return acc + (parseInt(r.quantidade, 10) || 0); }, 0);
+    var html = '<p class="wms-camara-itens-resumo">' + escHtml(String(rows.length)) + ' linha(s) · ' + escHtml(String(totQtd)) + ' caixa(s)</p>';
+    html += '<div class="wms-camara-itens-scroll"><table class="wms-camara-itens-table"><thead><tr>';
+    html += '<th>Rua</th><th>Posição</th><th>Nível</th><th>Código</th><th>Descrição</th><th>Qtd</th>';
+    html += '<th>Validade</th><th>Vencimento</th><th>UP</th><th>Lote</th>';
+    html += '</tr></thead><tbody>';
+    rows.forEach(function(r) {
+        html += '<tr>'
+            + '<td><strong>' + escHtml(r.rua || '—') + '</strong></td>'
+            + '<td>' + escHtml(r.posicao != null ? r.posicao : (r.coluna != null ? r.coluna : '—')) + '</td>'
+            + '<td>' + escHtml(r.nivel != null ? r.nivel : '—') + '</td>'
+            + '<td><strong>' + escHtml(r.codigo || r.sku || '—') + '</strong></td>'
+            + '<td>' + escHtml(r.descricao || '') + '</td>'
+            + '<td><strong>' + escHtml(r.quantidade != null ? r.quantidade : 0) + '</strong></td>'
+            + '<td>' + escHtml(_wmsEndFmtDataItem(r.data_validade)) + '</td>'
+            + '<td>' + escHtml(_wmsEndFmtDataItem(r.data_vencimento)) + '</td>'
+            + '<td>' + escHtml(r.up || '—') + '</td>'
+            + '<td>' + escHtml(r.lote || '—') + '</td>'
+            + '</tr>';
+    });
+    html += '</tbody></table></div>';
+    return html;
+}
+
+async function wmsEndToggleItensCamara(btn) {
+    if (!btn) return;
+    var cam = parseInt(btn.getAttribute('data-camara'), 10);
+    if (!cam) return;
+    var panel = document.getElementById('wms-cam-itens-' + cam);
+    if (!panel) return;
+    var aberto = btn.getAttribute('aria-expanded') === 'true' && !panel.hidden;
+    if (aberto) {
+        panel.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+        btn.textContent = 'Mostrar itens armazenados na câmara';
+        return;
+    }
+    panel.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    btn.textContent = 'Ocultar itens da câmara';
+    panel.innerHTML = '<p class="wms-camara-itens-loading">Carregando itens da câmara ' + escHtml(String(cam)) + '…</p>';
+    btn.disabled = true;
+    try {
+        var data = await _wmsEndFetchGet('/wms/camara/' + cam + '/itens', 45000);
+        if (!data || data.erro) {
+            panel.innerHTML = '<p class="wms-camara-itens-erro">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar itens.')) + '</p>';
+            return;
+        }
+        panel.innerHTML = _wmsEndRenderItensCamaraHtml(data.itens || [], cam);
+        panel.dataset.loaded = '1';
+    } catch (e) {
+        panel.innerHTML = '<p class="wms-camara-itens-erro">' + escHtml((e && e.message) || 'Erro ao carregar itens.') + '</p>';
+    } finally {
+        btn.disabled = false;
+    }
+}
+window.wmsEndToggleItensCamara = wmsEndToggleItensCamara;
+
+function _wmsEndBindCamaraItensBtns() {
+    var planta = document.getElementById('wms-end-2d-planta');
+    if (!planta || planta._wmsCamItensBound) return;
+    planta._wmsCamItensBound = true;
+    planta.addEventListener('click', function(ev) {
+        var btn = ev.target.closest('.wms-camara-itens-btn');
+        if (!btn) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        wmsEndToggleItensCamara(btn);
+    });
 }
 
 function _wmsEndRenderPlantaCamaraHtml(cam, selCam) {
@@ -6301,6 +6387,7 @@ async function wmsEndAbrir3d(opts) {
 function _wmsEndBindAccordion() {
     _wmsEndBindLoadingUi();
     _wmsEndBind2dEvents();
+    _wmsEndBindCamaraItensBtns();
     var acc2d = document.getElementById('wms-end-acc-2d');
     if (acc2d && !acc2d._wmsBound) {
         acc2d._wmsBound = true;

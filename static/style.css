@@ -1132,6 +1132,82 @@ body.hub-modulos-aberto .container {
     font-size: 0.85rem;
 }
 
+.wms-layout-camara-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.wms-layout-camara-actions {
+    display: flex;
+    justify-content: flex-start;
+    padding: 0 2px 4px;
+}
+
+.wms-camara-itens-btn {
+    font-size: 0.82rem;
+}
+
+.wms-camara-itens-panel {
+    border: 1px solid #d8dee4;
+    border-radius: 8px;
+    background: #f6f8fa;
+    padding: 10px 12px;
+    margin-bottom: 4px;
+}
+
+.wms-camara-itens-resumo {
+    margin: 0 0 8px;
+    font-size: 0.82rem;
+    color: #57606a;
+}
+
+.wms-camara-itens-loading,
+.wms-camara-itens-vazio,
+.wms-camara-itens-erro {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #57606a;
+}
+
+.wms-camara-itens-erro {
+    color: #cf222e;
+}
+
+.wms-camara-itens-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.wms-camara-itens-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    background: #fff;
+}
+
+.wms-camara-itens-table th,
+.wms-camara-itens-table td {
+    border: 1px solid #d8dee4;
+    padding: 5px 7px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.wms-camara-itens-table th {
+    background: #eaeef2;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.wms-camara-itens-table td:nth-child(5) {
+    white-space: normal;
+    min-width: 140px;
+    max-width: 220px;
+}
+
 .wms-layout-ruas-row {
     display: flex;
     flex-wrap: nowrap;
