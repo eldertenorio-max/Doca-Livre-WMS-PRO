@@ -2399,11 +2399,17 @@
         var meta = state.layoutMeta || {};
         var camPos = meta.positions[camCod];
         if (!camPos) return 0;
-        if (cam !== 21) return camPos.x;
 
-        var ruas = meta.camRuas[cam] || [];
+        var ruas = meta.camRuas[cam] || meta.camRuas[camCod] || [];
+        var ruaUp = String(rua || '').trim().toUpperCase();
+        var ruaDirIdx = 0;
+        for (var i = 0; i < ruas.length; i++) {
+            if (String(ruas[i]).trim().toUpperCase() === ruaUp) {
+                ruaDirIdx = i;
+                break;
+            }
+        }
         var totalRuas = Math.max(ruas.length, 2);
-        var ruaDirIdx = totalRuas - 1;
         var xBase = _rackXBaseForCam(cam, ruaDirIdx, totalRuas);
         var toward = ruaDirIdx === 0 ? 1 : -1;
         if (totalRuas <= 1) toward = 1;
@@ -2411,6 +2417,45 @@
         var faceLocal = toward > 0 ? xs.front : xs.back;
         var laneIn = toward > 0 ? -0.42 : 0.42;
         return camPos.x + faceLocal + laneIn;
+    }
+
+    function _camNavFootprint(camCod) {
+        var meta = state.layoutMeta || {};
+        var camPos = meta.positions[camCod];
+        if (!camPos) return null;
+        var cam = parseInt(camCod, 10);
+        var floorW = AISLE_W + SLOT_D * 1.28 + CAM_FLOOR_PAD;
+        var maxD = meta.maxDepthLeft || 18;
+        if (cam === 21) {
+            var fp21D = maxD * 0.55 + MAIN_AISLE_W * 0.35;
+            return {
+                minX: camPos.x - floorW / 2 + 0.45,
+                maxX: camPos.x + floorW / 2 - 0.45,
+                minZ: camPos.z + 0.3,
+                maxZ: camPos.z + fp21D
+            };
+        }
+        return {
+            minX: camPos.x - floorW / 2 + 0.4,
+            maxX: camPos.x + floorW / 2 - 0.4,
+            minZ: camPos.z + 0.3,
+            maxZ: camPos.z + maxD - 0.2
+        };
+    }
+
+    function _clampNavInsideCam(camCod, x, z) {
+        var fp = _camNavFootprint(camCod);
+        if (!fp) return { x: x, z: z };
+        return {
+            x: Math.max(fp.minX, Math.min(fp.maxX, x)),
+            z: Math.max(fp.minZ, Math.min(fp.maxZ, z))
+        };
+    }
+
+    function _navWpInsideCam(camCod, x, z, yFloor) {
+        var THREE = T();
+        var c = _clampNavInsideCam(camCod, x, z);
+        return new THREE.Vector3(c.x, yFloor, c.z);
     }
 
     function _passagem21NavX(meta, lado) {
@@ -2428,34 +2473,33 @@
         var dest = _worldSlotPos(camCod, rua, posicao, nivel);
         if (!camPos || !dest) return [];
 
+        var cam = parseInt(camCod, 10);
         var maxD = meta.maxDepthLeft || 18;
-        var corridorZ = meta.corridorMainZ || (maxD + MAIN_AISLE_W / 2);
-        var rightX = (meta.rightEdge || 0) + MAIN_AISLE_W * 0.52;
-        var entryZ = maxD + 0.28;
         var yFloor = 0.42;
         var aisleX = _aisleNavXForCam(camCod, rua);
         var slotZ = dest.z;
-        var pts = [
-            new THREE.Vector3(rightX + 3.4, yFloor, corridorZ),
-            new THREE.Vector3(rightX, yFloor, corridorZ)
-        ];
+        var fp = _camNavFootprint(camCod);
+        var frontZ = fp ? fp.maxZ - 0.55 : camPos.z + maxD - 0.55;
+        var pts = [];
 
-        if (parseInt(camCod, 10) === 21) {
+        if (cam === 21) {
             var passX = _passagem21NavX(meta, 'right') || aisleX;
-            pts.push(new THREE.Vector3(passX, yFloor, corridorZ));
-            var c21Z = meta.corridor21Z || (camPos.z + MAIN_AISLE_W * 0.45);
-            pts.push(new THREE.Vector3(passX, yFloor, c21Z));
-            pts.push(new THREE.Vector3(aisleX, yFloor, c21Z));
-            pts.push(new THREE.Vector3(aisleX, yFloor, camPos.z + 0.45));
+            var passZ = (meta.passagem21 && meta.passagem21.z != null)
+                ? meta.passagem21.z
+                : (meta.corridorMainZ || maxD + MAIN_AISLE_W / 2);
+            var c21Front = meta.corridor21Z || (camPos.z + MAIN_AISLE_W * 0.45);
+            pts.push(_navWpInsideCam(cam, passX, passZ, yFloor));
+            pts.push(_navWpInsideCam(cam, passX, c21Front, yFloor));
+            pts.push(_navWpInsideCam(cam, aisleX, c21Front, yFloor));
+            pts.push(_navWpInsideCam(cam, aisleX, camPos.z + 0.55, yFloor));
         } else {
-            pts.push(new THREE.Vector3(aisleX, yFloor, corridorZ));
-            pts.push(new THREE.Vector3(aisleX, yFloor, entryZ));
+            pts.push(_navWpInsideCam(cam, aisleX, frontZ, yFloor));
         }
 
-        if (Math.abs((pts[pts.length - 1].z) - slotZ) > 0.6) {
-            pts.push(new THREE.Vector3(aisleX, yFloor, slotZ + 2.0));
+        if (pts.length && Math.abs(pts[pts.length - 1].z - slotZ) > 0.6) {
+            pts.push(_navWpInsideCam(cam, aisleX, slotZ + 2.0, yFloor));
         }
-        pts.push(new THREE.Vector3(aisleX, yFloor, slotZ + 0.85));
+        pts.push(_navWpInsideCam(cam, aisleX, slotZ + 0.85, yFloor));
         return pts;
     }
 
