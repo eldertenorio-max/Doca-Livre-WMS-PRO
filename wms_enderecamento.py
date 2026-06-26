@@ -1949,28 +1949,235 @@ def _anchor_fifo_sku(conn, sku, cat):
     return _row_dict(row) or {}
 
 
-def _buscar_vaga_vazia_putaway(conn, cat, cam_list, zona, order_prefix, order_params, motivo, prioridade):
-    """Primeira posição vazia nas câmaras do zoneamento, com ordenação de prioridade."""
+_LAYOUT_META_CACHE = None
+
+
+def _layout_meta_cache():
+    global _LAYOUT_META_CACHE
+    if _LAYOUT_META_CACHE is None:
+        flex = set()
+        max_niv = {}
+        for bloco in (_layout_camaras_config().get('camaras') or []):
+            cod = int(bloco['codigo'])
+            max_niv[cod] = max(1, int(bloco.get('niveis') or 5))
+            for c, r, p, n, dest, _lbl, ar in _coords_from_bloco_layout(bloco):
+                if _slot_reentrega_ou_estoque_flexivel(dest, ar):
+                    flex.add(_codigo_endereco(c, r, p, n))
+        _LAYOUT_META_CACHE = {'flex_reentrega': flex, 'max_nivel': max_niv}
+    return _LAYOUT_META_CACHE
+
+
+def _parse_data_fifo(val):
+    if val is None or val == '':
+        return None
+    if isinstance(val, date):
+        return val
+    if hasattr(val, 'date') and callable(getattr(val, 'date', None)):
+        try:
+            return val.date()
+        except Exception:
+            pass
+    s = str(val).strip()[:10]
+    try:
+        return date.fromisoformat(s)
+    except ValueError:
+        return None
+
+
+def _sql_putaway_tipo_ok(alias='l'):
+    p = f'{alias}.'
+    return f"COALESCE(LOWER(TRIM({p}tipo)), 'porta_palete') NOT IN ('destino_fixo')"
+
+
+def _ocupacao_fifo_colunas(conn, camaras):
+    """{(cam, rua, pos): {nivel: data_producao_min}} para colunas ocupadas."""
+    if not camaras:
+        return {}
+    t_item = _tbl(conn, 'wms_palete_item')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_loc = _tbl(conn, 'wms_localizacao')
+    ph = ','.join(['?'] * len(camaras))
+    rows = conn.execute(
+        f'''SELECT l.camara, l.rua, l.posicao, l.nivel,
+                   MIN(i.data_producao) AS dp_min
+            FROM {t_loc} l
+            JOIN {t_pal} p ON p.localizacao_id = l.id
+            JOIN {t_item} i ON i.palete_id = p.id
+            WHERE l.camara IN ({ph})
+              AND l.status = 'ocupada'
+              AND p.status = 'armazenado'
+              AND (p.bloqueio_tipo IS NULL OR p.bloqueio_tipo = '')
+            GROUP BY l.camara, l.rua, l.posicao, l.nivel''',
+        tuple(camaras),
+    ).fetchall()
+    out = {}
+    for r in rows or []:
+        rd = _row_dict(r) or {}
+        key = (int(rd.get('camara') or 0), str(rd.get('rua') or '').upper(), int(rd.get('posicao') or 0))
+        niv = int(rd.get('nivel') or 0)
+        if not key[0] or not key[1] or not niv:
+            continue
+        out.setdefault(key, {})[niv] = rd.get('dp_min')
+    return out
+
+
+def _nivel_fifo_vertical(data_nova, ocup, vazios):
+    """Datas mais antigas nos níveis baixos; mais novas nos níveis altos."""
+    vazios = sorted({int(x) for x in (vazios or []) if int(x) > 0})
+    if not vazios:
+        return None
+    ocup = {int(k): v for k, v in (ocup or {}).items()}
+    d = _parse_data_fifo(data_nova)
+    if not ocup:
+        return vazios[0]
+
+    melhor = None
+    for n in vazios:
+        ok = True
+        if d is not None:
+            for on, od in ocup.items():
+                od_p = _parse_data_fifo(od)
+                if not od_p:
+                    continue
+                if on < n and d < od_p:
+                    ok = False
+                    break
+                if on > n and d > od_p:
+                    ok = False
+                    break
+        if ok:
+            melhor = n
+    if melhor is not None:
+        return melhor
+
+    datas_occ = [_parse_data_fifo(v) for v in ocup.values() if _parse_data_fifo(v)]
+    if d is not None and datas_occ:
+        if d >= max(datas_occ):
+            return max(vazios)
+        if d <= min(datas_occ):
+            return min(vazios)
+    return min(vazios)
+
+
+def _buscar_vaga_putaway_fifo(
+    conn, cat, cam_list, zona, order_prefix, order_params, data_producao, motivo, prioridade,
+    codigos_permitidos=None, codigos_excluir=None,
+):
+    """
+    Putaway com FIFO vertical por coluna, proximidade (order_prefix) e exclusão de destinos fixos.
+    """
     t_loc = _tbl(conn, 'wms_localizacao')
     zona_sql = _filtro_zona_sql(zona, 'l')
     prefix = (order_prefix + ', ') if order_prefix else ''
+    cam_list = [int(c) for c in (cam_list or []) if c]
+    if not cam_list:
+        return None, None
+
+    permitidos = set(codigos_permitidos or [])
+    excluir = set(codigos_excluir or [])
+    filtro_cod = ''
+    extra_params = []
+    if permitidos:
+        ph = ','.join(['?'] * len(permitidos))
+        filtro_cod = f' AND l.codigo_endereco IN ({ph})'
+        extra_params.extend(sorted(permitidos))
+
+    rows = []
     for cam in cam_list:
-        row = conn.execute(
+        params = [cam, cat, *order_params, *extra_params]
+        chunk = conn.execute(
             f'''SELECT l.id, l.codigo_endereco, l.camara, l.rua, l.posicao, l.nivel, l.zona_armazenagem
                 FROM {t_loc} l
-                WHERE l.camara = ? AND l.status = 'vazia'
+                WHERE l.camara = ?
+                  AND l.status = 'vazia'
                   AND UPPER(TRIM(COALESCE(l.categoria_zona, ''))) = ?
                   AND {zona_sql}
+                  AND {_sql_putaway_tipo_ok('l')}
                   AND {_bloqueio_off_sql(conn, 'l.bloqueio_entrada')}
-                ORDER BY {prefix}l.rua, l.posicao, l.nivel
+                  {filtro_cod}
+                ORDER BY {prefix}l.rua, l.posicao, l.nivel''',
+            tuple(params),
+        ).fetchall()
+        rows.extend(chunk or [])
+
+    if not rows:
+        return None, None
+
+    vazios_por_col = {}
+    slot_por_col_niv = {}
+    ordem_colunas = []
+    for r in rows:
+        rd = _row_dict(r) or {}
+        cod = (rd.get('codigo_endereco') or '').strip().upper()
+        if excluir and cod in excluir:
+            continue
+        cam = int(rd.get('camara') or 0)
+        rua = str(rd.get('rua') or '').upper()
+        pos = int(rd.get('posicao') or 0)
+        niv = int(rd.get('nivel') or 0)
+        if not cam or not rua or not pos or not niv:
+            continue
+        key = (cam, rua, pos)
+        if key not in vazios_por_col:
+            ordem_colunas.append(key)
+        vazios_por_col.setdefault(key, set()).add(niv)
+        slot_por_col_niv[(cam, rua, pos, niv)] = rd
+
+    if not ordem_colunas:
+        return None, None
+
+    ocup_cols = _ocupacao_fifo_colunas(conn, cam_list)
+    for key in ordem_colunas:
+        cam, rua, pos = key
+        niv_ideal = _nivel_fifo_vertical(
+            data_producao,
+            ocup_cols.get(key, {}),
+            vazios_por_col.get(key, set()),
+        )
+        if niv_ideal is None:
+            continue
+        rd = slot_por_col_niv.get((cam, rua, pos, niv_ideal))
+        if not rd:
+            continue
+        motivo.append(
+            f'Câmara {cam} · Rua {rua} · pos {pos} · nív {niv_ideal}'
+            f' (FIFO vertical, prioridade: {prioridade})'
+        )
+        if data_producao:
+            motivo.append(f'Data produção {str(data_producao)[:10]} — mais antiga embaixo')
+        return _format_locacao(rd), prioridade
+    return None, None
+
+
+def _buscar_vaga_vazia_putaway(conn, cat, cam_list, zona, order_prefix, order_params, motivo, prioridade):
+    """Compat: delega ao putaway FIFO vertical."""
+    return _buscar_vaga_putaway_fifo(
+        conn, cat, cam_list, zona, order_prefix, order_params, None, motivo, prioridade,
+    )
+
+
+def _camaras_putaway_expandidas(conn, cat, cam_list):
+    """Garante câmaras do layout no zoneamento + 21 quando aplicável."""
+    out = []
+    seen = set()
+    for c in cam_list or []:
+        ci = int(c)
+        if ci not in seen:
+            seen.add(ci)
+            out.append(ci)
+    for cam in (11, 12, 13, 21):
+        if cam in seen:
+            continue
+        row = conn.execute(
+            f'''SELECT 1 FROM {_tbl(conn, 'wms_zoneamento')}
+                WHERE categoria = ? AND camara = ? AND {_ativo_sql(conn)}
                 LIMIT 1''',
-            tuple([cam, cat, *order_params]),
+            (cat, cam),
         ).fetchone()
         if row:
-            motivo.append(f'Câmara {cam} — posição vazia (prioridade: {prioridade})')
-            loc = _format_locacao(row)
-            return loc, prioridade
-    return None, None
+            seen.add(cam)
+            out.append(cam)
+    return out or [11, 12, 13]
 
 
 def _putaway_resposta(loc, motivo, status, pos_wms, pos_med, alerta, prioridade):
@@ -3059,10 +3266,13 @@ def _sugerir_putaway(conn, sku, lote=None, data_producao=None, zona='pulmao'):
             order_parts.append('CASE WHEN l.camara = ? AND UPPER(TRIM(l.rua)) = ? THEN 0 ELSE 1 END')
             order_params.extend([ad.get('camara'), str(ad.get('rua') or '').upper()])
             if ad.get('posicao') is not None:
+                order_parts.append('CASE WHEN l.posicao = ? THEN 0 ELSE 1 END')
+                order_params.append(int(ad.get('posicao')))
                 order_parts.append('ABS(l.posicao - ?)')
                 order_params.append(int(ad.get('posicao')))
-            loc, pri = _buscar_vaga_vazia_putaway(
-                conn, cat, cam_list, zona, ', '.join(order_parts), order_params, motivo, 'adensamento_lote',
+            loc, pri = _buscar_vaga_putaway_fifo(
+                conn, cat, cam_list, zona, ', '.join(order_parts), order_params,
+                data_producao, motivo, 'adensamento_lote',
             )
             if loc:
                 return _putaway_resposta(loc, motivo, status, pos_wms, pos_med, alerta, pri)
@@ -3085,6 +3295,8 @@ def _sugerir_putaway(conn, sku, lote=None, data_producao=None, zona='pulmao'):
         order_parts.append('CASE WHEN l.camara = ? AND UPPER(TRIM(l.rua)) = ? THEN 0 ELSE 1 END')
         order_params.extend([fifo_anchor['camara'], str(fifo_anchor['rua']).upper()])
         if fifo_anchor.get('posicao') is not None:
+            order_parts.append('CASE WHEN l.posicao = ? THEN 0 ELSE 1 END')
+            order_params.append(int(fifo_anchor['posicao']))
             order_parts.append('ABS(l.posicao - ?)')
             order_params.append(int(fifo_anchor['posicao']))
     elif data_producao:
@@ -3098,13 +3310,44 @@ def _sugerir_putaway(conn, sku, lote=None, data_producao=None, zona='pulmao'):
         order_params.extend([cat_cluster['camara'], str(cat_cluster['rua']).upper()])
 
     order_prefix = ', '.join(order_parts)
-    loc, pri = _buscar_vaga_vazia_putaway(
-        conn, cat, cam_list, zona, order_prefix, order_params, motivo, 'zoneamento',
-    )
+    flex_cods = _layout_meta_cache().get('flex_reentrega') or set()
+    cam_exp = _camaras_putaway_expandidas(conn, cat, cam_list)
+
+    def _tentar(prefix, params, cameras, zona_busca, pri, excluir_flex=False):
+        return _buscar_vaga_putaway_fifo(
+            conn, cat, cameras, zona_busca, prefix, params, data_producao, motivo, pri,
+            codigos_excluir=flex_cods if excluir_flex else None,
+        )
+
+    # 5) Putaway padrão — perto do cluster/FIFO, FIFO vertical por coluna
+    loc, pri = _tentar(order_prefix, order_params, cam_list, zona, 'zoneamento', excluir_flex=True)
     if loc:
         return _putaway_resposta(loc, motivo, status, pos_wms, pos_med, alerta, pri)
 
-    motivo.append('Nenhuma posição vazia nas câmaras do zoneamento')
+    # 6) Overflow: posições flexíveis REENTREGAS/estoque (câm. 11) quando demais lotadas
+    if flex_cods:
+        motivo.append('Estendendo para posições flexíveis REENTREGAS/estoque do layout')
+        loc, pri = _buscar_vaga_putaway_fifo(
+            conn, cat, cam_list, zona, order_prefix, order_params, data_producao, motivo,
+            'flex_reentrega', codigos_permitidos=flex_cods,
+        )
+        if loc:
+            return _putaway_resposta(loc, motivo, status, pos_wms, pos_med, alerta, pri)
+
+    # 7) Expansão: qualquer vaga na categoria, sem excluir flex, câmaras ampliadas
+    motivo.append('Expandindo busca nas câmaras do zoneamento')
+    loc, pri = _tentar('', [], cam_exp, zona, 'expansao')
+    if loc:
+        return _putaway_resposta(loc, motivo, status, pos_wms, pos_med, alerta, pri)
+
+    # 8) Zona alternativa (picking ↔ pulmão)
+    alt_zona = 'picking' if zona == 'pulmao' else 'pulmao'
+    motivo.append(f'Tentando zona alternativa: {_zona_label(alt_zona)}')
+    loc, pri = _tentar(order_prefix, order_params, cam_exp, alt_zona, 'zona_alternativa')
+    if loc:
+        return _putaway_resposta(loc, motivo, status, pos_wms, pos_med, alerta, pri)
+
+    motivo.append('Nenhuma posição vazia nas câmaras do zoneamento (incl. flexíveis)')
     out = _putaway_resposta(None, motivo, status, pos_wms, pos_med, alerta, None)
     out['zona_label'] = _zona_label(zona)
     return out
@@ -3452,25 +3695,64 @@ def _ensure_areas_especiais_localizacoes(conn):
             pass
 
 
-def _obter_vaga_destino_fixo(conn, area_key):
+def _obter_vaga_destino_fixo(conn, area_key, data_producao=None):
     """Posição fixa no layout (câmaras 11–21) marcada na planilha de endereçamento."""
     key = (area_key or '').strip().lower()
     if not key:
         return None, 'Destino não informado.'
     t_loc = _tbl(conn, 'wms_localizacao')
-    row = conn.execute(
+    rows = conn.execute(
         f'''SELECT * FROM {t_loc}
             WHERE LOWER(COALESCE(area, '')) = ?
               AND COALESCE(tipo, '') = 'destino_fixo'
               AND status = 'vazia'
               AND {_bloqueio_off_sql(conn, 'bloqueio_entrada')}
-            ORDER BY camara, rua, posicao, nivel
-            LIMIT 1''',
+            ORDER BY camara, rua, posicao, nivel''',
         (key,),
-    ).fetchone()
-    if not row:
+    ).fetchall()
+    if not rows:
         return None, None
-    loc = _format_locacao(row)
+
+    vazios_por_col = {}
+    slot_por_col_niv = {}
+    ordem_colunas = []
+    for r in rows:
+        rd = _row_dict(r) or {}
+        cam = int(rd.get('camara') or 0)
+        rua = str(rd.get('rua') or '').upper()
+        pos = int(rd.get('posicao') or 0)
+        niv = int(rd.get('nivel') or 0)
+        if not cam or not rua or not pos or not niv:
+            continue
+        key_col = (cam, rua, pos)
+        if key_col not in vazios_por_col:
+            ordem_colunas.append(key_col)
+        vazios_por_col.setdefault(key_col, set()).add(niv)
+        slot_por_col_niv[(cam, rua, pos, niv)] = rd
+
+    camaras = sorted({k[0] for k in ordem_colunas})
+    ocup_cols = _ocupacao_fifo_colunas(conn, camaras)
+    for key_col in ordem_colunas:
+        cam, rua, pos = key_col
+        niv_ideal = _nivel_fifo_vertical(
+            data_producao,
+            ocup_cols.get(key_col, {}),
+            vazios_por_col.get(key_col, set()),
+        )
+        if niv_ideal is None:
+            continue
+        rd = slot_por_col_niv.get((cam, rua, pos, niv_ideal))
+        if not rd:
+            continue
+        loc = _format_locacao(rd)
+        labels = _destinos_acao_labels()
+        lbl = labels.get(key, key.replace('_', ' ').upper())
+        loc['texto'] = f'{lbl} · {loc.get("codigo_endereco")}'
+        loc['zona_label'] = lbl
+        return loc, None
+
+    rd0 = _row_dict(rows[0]) or {}
+    loc = _format_locacao(rd0)
     labels = _destinos_acao_labels()
     lbl = labels.get(key, key.replace('_', ' ').upper())
     loc['texto'] = f'{lbl} · {loc.get("codigo_endereco")}'
@@ -3504,8 +3786,8 @@ def _obter_vaga_area_especial(conn, area_key):
     return loc, None
 
 
-def _sugerir_destino_area_especial(conn, area_key):
-    loc_fixo, _err_fixo = _obter_vaga_destino_fixo(conn, area_key)
+def _sugerir_destino_area_especial(conn, area_key, data_producao=None):
+    loc_fixo, _err_fixo = _obter_vaga_destino_fixo(conn, area_key, data_producao)
     if loc_fixo:
         labels = _destinos_acao_labels()
         key = (area_key or '').strip().lower()
@@ -6773,7 +7055,7 @@ def api_wms_recebimentos():
                 (estado if disposicao else 'bom', pid),
             )
             if disposicao:
-                sug = _sugerir_destino_area_especial(conn, disposicao)
+                sug = _sugerir_destino_area_especial(conn, disposicao, dp)
             else:
                 sug = _sugerir_putaway(conn, sku, lote, dp, 'pulmao')
                 if not sug.get('codigo_endereco'):
