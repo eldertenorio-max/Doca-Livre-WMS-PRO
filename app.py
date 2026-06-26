@@ -828,6 +828,7 @@ def get_db():
                 sslmode=os.environ.get('PGSSLMODE', 'require'),
                 connect_timeout=15,
                 row_factory=dict_row,
+                options='-c statement_timeout=60000 -c lock_timeout=15000',
             ),
             kind='pg',
         )
@@ -890,19 +891,21 @@ try:
     def _inject_etiqueta_zebra_config():
         return ctx_etiqueta_zebra()
 
-    def _init_wms_em_background():
-        """Não bloqueia o boot do Gunicorn (schema WMS pode demorar no Postgres)."""
-        try:
-            init_wms_enderecamento(get_db)
-        except Exception as e:
-            import traceback
+    # Schema WMS é preparado sob demanda nas rotas /api/wms/* (_ensure_wms_schema_safe).
+    # Init em background competia com init_db no Postgres e podia travar o worker no Render.
+    if os.environ.get('WMS_INIT_BG', '').strip() == '1':
+        def _init_wms_em_background():
             try:
-                print('[controle-carregamento] init_wms_enderecamento falhou:', e, flush=True)
-                traceback.print_exc()
-            except Exception:
-                pass
+                init_wms_enderecamento(get_db)
+            except Exception as e:
+                import traceback
+                try:
+                    print('[controle-carregamento] init_wms_enderecamento falhou:', e, flush=True)
+                    traceback.print_exc()
+                except Exception:
+                    pass
 
-    threading.Thread(target=_init_wms_em_background, daemon=True, name='init_wms').start()
+        threading.Thread(target=_init_wms_em_background, daemon=True, name='init_wms').start()
 except Exception as _wms_import_err:
     print('Aviso: módulo WMS endereçamento não carregado:', _wms_import_err)
 

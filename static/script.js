@@ -4996,7 +4996,7 @@ function _wmsEndProgressFinish(section, kind, gen, opts) {
 function _wmsEndFetchGet(path, timeoutMs, signal) {
     var sep = path.indexOf('?') >= 0 ? '&' : '?';
     var opts = signal ? { signal: signal } : {};
-    return fetchAPIComTimeout(path + sep + '_=' + Date.now(), opts, timeoutMs || 45000);
+    return _fetchAPIComTimeoutUma(path + sep + '_=' + Date.now(), opts, timeoutMs || 30000);
 }
 
 function _wmsEndLoadCancelled(kind, gen) {
@@ -6302,12 +6302,12 @@ async function loadWmsEnderecamento() {
     _wmsEndBindLoadingUi();
     try {
         _wmsEndProgressBump('panel', 'panel', gen, 12, { sub: 'Baixando endereçamento…' });
-        var promEnd = _wmsEndFetchGet('/wms/enderecamento', 45000, signal).then(function(data) {
+        var promEnd = _wmsEndFetchGet('/wms/enderecamento', 30000, signal).then(function(data) {
             _wmsEndProgressBump('panel', 'panel', gen, 48, { sub: 'Endereçamento recebido — carregando layout 3D…' });
             return data;
         });
         _wmsEndProgressBump('panel', 'panel', gen, 22, { sub: 'Baixando layout 3D e ocupação…' });
-        var promMapa = _wmsEndFetchGet('/wms/mapa-3d', 90000, signal).then(function(data) {
+        var promMapa = _wmsEndFetchGet('/wms/mapa-3d', 45000, signal).then(function(data) {
             _wmsEndProgressBump('panel', 'panel', gen, 78, { sub: 'Layout 3D recebido — montando planta…' });
             return data;
         });
@@ -6317,7 +6317,9 @@ async function loadWmsEnderecamento() {
         var data = results[0];
         var mapa3d = results[1];
         if (!data || data.erro) {
-            showMessage(_wmsErroMsg(data, 'Erro ao carregar endereçamento.'), 'error');
+            var errEnd = _wmsErroMsg(data, 'Erro ao carregar endereçamento.');
+            _wmsEndShowLoading('panel', { on: true, msg: 'Falha ao carregar', sub: errEnd, pct: 100, done: true });
+            showMessage(errEnd, 'error');
             return;
         }
         _wmsEndState.data = data;
@@ -6331,7 +6333,9 @@ async function loadWmsEnderecamento() {
         await new Promise(function(r) { setTimeout(r, 420); });
     } catch (e) {
         if (_wmsEndLoadCancelled('panel', gen) || (e && e.name === 'AbortError')) return;
-        showMessage((e && e.message) || 'Erro ao carregar endereçamento.', 'error');
+        var errMsg = (e && e.message) || 'Erro ao carregar endereçamento.';
+        _wmsEndShowLoading('panel', { on: true, msg: 'Falha ao carregar', sub: errMsg, pct: 100, done: true });
+        showMessage(errMsg, 'error');
     } finally {
         if (gen === _wmsEndLoadCtrl.panel.gen) {
             _wmsEndProgressStop();
