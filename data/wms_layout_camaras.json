@@ -767,6 +767,11 @@
           "rua": "C",
           "colunas": [2, 3],
           "niveis": [1, 2]
+        },
+        {
+          "rua": "D",
+          "colunas": [2, 3],
+          "niveis": [1, 2]
         }
       ],
       "enderecos": [
@@ -1424,56 +1429,64 @@
           "posicao": 14,
           "nivel": 1,
           "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_label": "ENVIO MINAS",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "D",
           "posicao": 14,
           "nivel": 2,
           "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_label": "ENVIO MINAS",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "D",
           "posicao": 14,
           "nivel": 3,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "D",
           "posicao": 14,
           "nivel": 4,
           "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_label": "RETRABALHO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "D",
           "posicao": 15,
           "nivel": 1,
           "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_label": "ENVIO MINAS",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "D",
           "posicao": 15,
           "nivel": 2,
           "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_label": "ENVIO MINAS",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "D",
           "posicao": 15,
           "nivel": 3,
-          "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_acao": "retrabalho",
+          "destino_label": "RETRABALHO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "D",
           "posicao": 15,
           "nivel": 4,
           "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_label": "RETRABALHO",
+          "destino_apenas_rotulo": true
         }
       ]
     },
