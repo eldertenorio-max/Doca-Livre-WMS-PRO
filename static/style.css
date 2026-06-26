@@ -475,16 +475,26 @@ body.hub-modulos-aberto .container {
 
 .wms-end-acc-stack {
     position: relative;
+    isolation: isolate;
+}
+
+.wms-end-acc-stack--panel-loading .wms-end-accordion {
+    pointer-events: none;
+    user-select: none;
+}
+
+.wms-end-acc-stack--panel-loading #wms-end-2d-planta {
+    visibility: hidden;
 }
 
 .wms-end-panel-loading {
     position: absolute;
     inset: 0;
-    z-index: 4;
+    z-index: 40;
     display: none;
     align-items: center;
     justify-content: center;
-    background: rgba(248, 250, 252, 0.82);
+    background: rgba(248, 250, 252, 0.96);
     border-radius: 10px;
     pointer-events: none;
     padding: 16px;
@@ -492,12 +502,13 @@ body.hub-modulos-aberto .container {
 
 .wms-end-panel-loading:not([hidden]) {
     display: flex;
+    pointer-events: auto;
 }
 
 .wms-end-section-loading {
     position: absolute;
     inset: 0;
-    z-index: 3;
+    z-index: 30;
     display: none;
     align-items: center;
     justify-content: center;
@@ -1268,7 +1279,7 @@ body.hub-modulos-aberto .container {
     align-items: center;
     justify-content: center;
     pointer-events: none;
-    z-index: 5;
+    z-index: 2;
     box-sizing: border-box;
     padding: 1px;
 }

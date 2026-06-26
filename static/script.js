@@ -5045,6 +5045,10 @@ function _wmsEndShowLoading(section, opts) {
         overlay.hidden = !on;
         overlay.setAttribute('aria-busy', on ? 'true' : 'false');
     }
+    if (section === 'panel') {
+        var stack = overlay && overlay.closest('.wms-end-acc-stack');
+        if (stack) stack.classList.toggle('wms-end-acc-stack--panel-loading', on);
+    }
 }
 
 function _wmsEndCancelPanelLoad() {
