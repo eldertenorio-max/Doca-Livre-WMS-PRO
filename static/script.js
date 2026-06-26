@@ -5741,11 +5741,11 @@ function _wmsLayoutCellInfo(slot, opts) {
     if (tipo === 'porta') return { kind: 'porta', className: 'wms-layout-cell--porta' };
     var dest = (slot.destino_acao || '').toLowerCase();
     if (dest) {
-        if (dest === 'palete_bloqueado') return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
         if (slot.destino_apenas_rotulo) {
             if ((slot.status || '') === 'ocupada') return { kind: 'ocupado', className: 'wms-layout-cell--ocupado' };
             return { kind: 'rotulo', className: 'wms-layout-cell--rotulo' };
         }
+        if (dest === 'palete_bloqueado') return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
         return { kind: 'destino', className: 'wms-layout-cell--destino wms-layout-cell--dest-' + dest.replace(/[^a-z0-9_-]/g, '') };
     }
     if ((slot.status || '') === 'ocupada') return { kind: 'ocupado', className: 'wms-layout-cell--ocupado' };

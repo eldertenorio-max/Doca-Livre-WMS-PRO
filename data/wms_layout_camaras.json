@@ -1801,12 +1801,18 @@
         {
           "rua": "E",
           "posicao": 13,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "E",
           "posicao": 13,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "E",
@@ -1831,21 +1837,24 @@
           "posicao": 14,
           "nivel": 2,
           "destino_acao": "palete_bloqueado",
-          "destino_label": "BLOQUEADOS"
+          "destino_label": "BLOQUEADO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "E",
           "posicao": 14,
           "nivel": 3,
           "destino_acao": "palete_bloqueado",
-          "destino_label": "BLOQUEADOS"
+          "destino_label": "BLOQUEADO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "E",
           "posicao": 14,
           "nivel": 4,
-          "destino_acao": "palete_bloqueado",
-          "destino_label": "BLOQUEADOS"
+          "destino_acao": "avaria",
+          "destino_label": "AVARIA",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "E",
@@ -1873,8 +1882,9 @@
           "rua": "E",
           "posicao": 15,
           "nivel": 4,
-          "destino_acao": "palete_bloqueado",
-          "destino_label": "BLOQUEADOS"
+          "destino_acao": "avaria",
+          "destino_label": "AVARIA",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "F",
