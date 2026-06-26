@@ -5874,9 +5874,7 @@ def api_wms_mapa_3d():
             for c, rua, pos, niv, dest_acao, dest_lbl in _coords_from_bloco_layout(bloco):
                 cod_end = _codigo_endereco(c, rua, pos, niv)
                 loc = por_codigo.get(cod_end, {})
-                tipo = (loc.get('tipo') or '').strip().lower()
-                area = (loc.get('area') or '').strip().lower()
-                dest = dest_acao or (area if tipo == 'destino_fixo' else None)
+                dest = dest_acao
                 lbl = dest_lbl
                 if not lbl and dest:
                     lbl = _destinos_acao_labels().get(dest)
@@ -5891,7 +5889,7 @@ def api_wms_mapa_3d():
                     'zona_armazenagem': (loc.get('zona_armazenagem') or _zona_por_nivel(niv)).lower(),
                     'destino_acao': dest,
                     'destino_label': lbl,
-                    'tipo': tipo or ('destino_fixo' if dest else 'estoque'),
+                    'tipo': 'destino_fixo' if dest else 'porta_palete',
                 })
             camaras_out.append({
                 'codigo': cod_cam,
