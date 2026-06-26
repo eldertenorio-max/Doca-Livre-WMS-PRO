@@ -2325,6 +2325,33 @@
         };
     }
 
+    function _aisleNavXForCam(camCod, rua) {
+        var cam = parseInt(camCod, 10);
+        var meta = state.layoutMeta || {};
+        var camPos = meta.positions[camCod];
+        if (!camPos) return 0;
+        if (cam !== 21) return camPos.x;
+
+        var ruas = meta.camRuas[cam] || [];
+        var totalRuas = Math.max(ruas.length, 2);
+        var ruaDirIdx = totalRuas - 1;
+        var xBase = _rackXBaseForCam(cam, ruaDirIdx, totalRuas);
+        var toward = ruaDirIdx === 0 ? 1 : -1;
+        if (totalRuas <= 1) toward = 1;
+        var xs = _rackXs(xBase, toward);
+        var faceLocal = toward > 0 ? xs.front : xs.back;
+        var laneIn = toward > 0 ? -0.42 : 0.42;
+        return camPos.x + faceLocal + laneIn;
+    }
+
+    function _passagem21NavX(meta, lado) {
+        var p = meta.passagem21;
+        if (!p || p.x == null) return null;
+        var w = p.width || AISLE_W;
+        if (lado === 'right') return p.x + w * 0.34;
+        return p.x;
+    }
+
     function _buildNavWaypoints(camCod, rua, posicao, nivel) {
         var THREE = T();
         var meta = state.layoutMeta || {};
@@ -2337,7 +2364,7 @@
         var rightX = (meta.rightEdge || 0) + MAIN_AISLE_W * 0.52;
         var entryZ = maxD + 0.28;
         var yFloor = 0.42;
-        var aisleX = camPos.x;
+        var aisleX = _aisleNavXForCam(camCod, rua);
         var slotZ = dest.z;
         var pts = [
             new THREE.Vector3(rightX + 3.4, yFloor, corridorZ),
@@ -2345,8 +2372,10 @@
         ];
 
         if (parseInt(camCod, 10) === 21) {
-            pts.push(new THREE.Vector3(aisleX, yFloor, corridorZ));
+            var passX = _passagem21NavX(meta, 'right') || aisleX;
+            pts.push(new THREE.Vector3(passX, yFloor, corridorZ));
             var c21Z = meta.corridor21Z || (camPos.z + MAIN_AISLE_W * 0.45);
+            pts.push(new THREE.Vector3(passX, yFloor, c21Z));
             pts.push(new THREE.Vector3(aisleX, yFloor, c21Z));
             pts.push(new THREE.Vector3(aisleX, yFloor, camPos.z + 0.45));
         } else {
