@@ -21,6 +21,12 @@
       "camara": 12,
       "colunas": [14, 15],
       "niveis": [5]
+    },
+    {
+      "descricao": "Topo indisponível nas colunas 14 e 15 (estrutura do rack)",
+      "camara": 13,
+      "colunas": [14, 15],
+      "niveis": [5]
     }
   ],
   "camaras": [
@@ -1498,7 +1504,19 @@
         "F"
       ],
       "niveis": 5,
-      "total_posicoes": 142,
+      "total_posicoes": 138,
+      "portas": [
+        {
+          "rua": "E",
+          "colunas": [2, 3],
+          "niveis": [1, 2]
+        },
+        {
+          "rua": "F",
+          "colunas": [2, 3],
+          "niveis": [1, 2]
+        }
+      ],
       "enderecos": [
         {
           "rua": "E",
@@ -1889,16 +1907,6 @@
         {
           "rua": "F",
           "posicao": 2,
-          "nivel": 1
-        },
-        {
-          "rua": "F",
-          "posicao": 2,
-          "nivel": 2
-        },
-        {
-          "rua": "F",
-          "posicao": 2,
           "nivel": 3
         },
         {
@@ -1910,16 +1918,6 @@
           "rua": "F",
           "posicao": 2,
           "nivel": 5
-        },
-        {
-          "rua": "F",
-          "posicao": 3,
-          "nivel": 1
-        },
-        {
-          "rua": "F",
-          "posicao": 3,
-          "nivel": 2
         },
         {
           "rua": "F",
@@ -2197,22 +2195,22 @@
           "rua": "F",
           "posicao": 14,
           "nivel": 2,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
         },
         {
           "rua": "F",
           "posicao": 14,
           "nivel": 3,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
         },
         {
           "rua": "F",
           "posicao": 14,
           "nivel": 4,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "destino_acao": "avaria",
+          "destino_label": "AVARIA"
         },
         {
           "rua": "F",
@@ -2225,22 +2223,22 @@
           "rua": "F",
           "posicao": 15,
           "nivel": 2,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
         },
         {
           "rua": "F",
           "posicao": 15,
           "nivel": 3,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
         },
         {
           "rua": "F",
           "posicao": 15,
           "nivel": 4,
-          "destino_acao": "descarte_perdas",
-          "destino_label": "DESCARTE"
+          "destino_acao": "avaria",
+          "destino_label": "AVARIA"
         }
       ]
     },
