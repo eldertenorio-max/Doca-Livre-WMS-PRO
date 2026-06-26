@@ -3287,18 +3287,39 @@
                     <div id="wms-panel-enderecamento" class="wms-inner-panel" hidden>
                         <p class="info-text" style="margin: 0 0 12px 0;">Mapa de ocupação por <strong>câmara</strong> e <strong>endereço</strong>. Abra a planta 2D ou a visualização 3D abaixo. Clique numa célula ou câmara para abrir o 3D.</p>
                         <button type="button" class="btn btn-primary wms-end-btn-atualizar" id="btn-wms-enderecamento-atualizar">Atualizar ocupação</button>
+                        <div class="wms-end-acc-stack">
+                        <div id="wms-end-panel-loading" class="wms-end-panel-loading" hidden role="status" aria-live="polite">
+                            <div class="wms-end-loading-box">
+                                <p id="wms-end-panel-loading-text" class="wms-end-loading-text">Atualizando ocupação…</p>
+                                <div class="wms-end-loading-bar-track" aria-hidden="true">
+                                    <div id="wms-end-panel-loading-bar" class="wms-end-loading-bar wms-end-loading-bar--indeterminate"></div>
+                                </div>
+                                <p id="wms-end-panel-loading-sub" class="wms-end-loading-sub">Buscando dados do armazém…</p>
+                                <button type="button" class="btn btn-secondary btn-sm wms-end-loading-cancel" id="btn-wms-end-panel-loading-cancel">Cancelar</button>
+                            </div>
+                        </div>
                         <details id="wms-end-acc-2d" class="wms-end-accordion">
-                            <summary class="wms-end-accordion-titulo">Planta geral — vista 2D</summary>
+                            <summary class="wms-end-accordion-titulo">Planta geral — vista 2D<span id="wms-end-acc-2d-badge" class="wms-end-acc-badge" hidden>Carregando…</span></summary>
                             <div class="wms-end-acc-corpo">
                                 <div id="wms-end-2d-wrap" class="wms-end-2d-wrap">
                                     <div id="wms-end-2d-planta" class="wms-end-2d-planta" aria-label="Planta 2D das câmaras"></div>
+                                    <div id="wms-end-2d-loading" class="wms-end-section-loading" hidden role="status" aria-live="polite">
+                                        <div class="wms-end-loading-box">
+                                            <p id="wms-end-2d-loading-text" class="wms-end-loading-text">Carregando planta 2D…</p>
+                                            <div class="wms-end-loading-bar-track" aria-hidden="true">
+                                                <div id="wms-end-2d-loading-bar" class="wms-end-loading-bar wms-end-loading-bar--indeterminate"></div>
+                                            </div>
+                                            <p id="wms-end-2d-loading-sub" class="wms-end-loading-sub">Montando layout das câmaras…</p>
+                                            <button type="button" class="btn btn-secondary btn-sm wms-end-loading-cancel" id="btn-wms-end-2d-loading-cancel">Cancelar</button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div id="wms-end-2d-legenda" class="wms-end-2d-legenda" aria-label="Legenda de cores"></div>
                                 <p id="wms-end-2d-hint" class="wms-end-2d-hint">Grade por <strong>rua</strong>: colunas = posição, linhas = níveis (5 no topo, 1 embaixo). Clique numa célula para ir ao 3D ou na câmara para visão geral.</p>
                             </div>
                         </details>
                         <details id="wms-end-acc-3d" class="wms-end-accordion">
-                            <summary class="wms-end-accordion-titulo">Visualização 3D interativa</summary>
+                            <summary class="wms-end-accordion-titulo">Visualização 3D interativa<span id="wms-end-acc-3d-badge" class="wms-end-acc-badge" hidden>Carregando…</span></summary>
                             <div class="wms-end-acc-corpo">
                                 <div class="wms-end-3d-toolbar">
                                     <div class="form-group" style="margin:0;"><label>Câmara</label>
@@ -3318,13 +3339,23 @@
                                 </div>
                                 <div id="wms-end-3d-wrap" class="wms-mapa3d-wrap wms-end-3d-wrap-embed">
                                     <canvas id="wms-end-3d-canvas"></canvas>
-                                    <div id="wms-end-3d-loading" class="wms-mapa3d-loading" hidden>Carregando mapa 3D…</div>
+                                    <div id="wms-end-3d-loading" class="wms-end-section-loading" hidden role="status" aria-live="polite">
+                                        <div class="wms-end-loading-box">
+                                            <p id="wms-end-3d-loading-text" class="wms-end-loading-text">Carregando mapa 3D…</p>
+                                            <div class="wms-end-loading-bar-track" aria-hidden="true">
+                                                <div id="wms-end-3d-loading-bar" class="wms-end-loading-bar wms-end-loading-bar--indeterminate"></div>
+                                            </div>
+                                            <p id="wms-end-3d-loading-sub" class="wms-end-loading-sub">Preparando visualização…</p>
+                                            <button type="button" class="btn btn-secondary btn-sm wms-end-loading-cancel" id="btn-wms-end-3d-loading-cancel">Cancelar</button>
+                                        </div>
+                                    </div>
                                     <div id="wms-end-3d-tooltip" class="wms-mapa3d-tooltip" hidden></div>
                                 </div>
                                 <div id="wms-end-3d-legenda" class="wms-mapa3d-legenda"></div>
                                 <div id="wms-end-3d-detalhe" class="wms-mapa3d-detalhe" hidden></div>
                             </div>
                         </details>
+                        </div>
                     </div>
                     <div id="wms-panel-ocupacao" class="wms-inner-panel" hidden>
                         <div class="wms-analise-wrap" id="wms-ocupacao-root">
