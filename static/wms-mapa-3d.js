@@ -2496,34 +2496,31 @@
         var aisleX = waypoints[waypoints.length - 1].x;
 
         var pathLen = curve.getLength();
-        var duration = Math.min(4000, Math.max(1800, pathLen * 95));
+        var duration = Math.min(14000, Math.max(5500, pathLen * 280));
         var t0 = null;
+
+        if (state.controls) state.controls.enabled = true;
 
         var startTan = curve.getTangent(0).normalize();
         _orientNavArrow(leader, waypoints[0].x, waypoints[0].z, startTan.x, startTan.z);
 
         function _finishNav() {
-            var fromPos = state.camera.position.clone();
-            var fromTgt = state.controls.target.clone();
+            state._navAnimId = null;
             var labelY = dest.y + 1.0;
-            /* label colado à face da prateleira, ligeiramente à frente */
             labelPos.set(dest.x, labelY, dest.z + 0.22);
-            var toPos = new THREE.Vector3(aisleX, labelY + 0.15, dest.z - 2.8);
-            var toTgt = new THREE.Vector3(dest.x, dest.y + 0.5, dest.z);
             var arrowZ = dest.z - 0.9;
             _orientNavArrowToward(leader, aisleX, _navArrowFloorY(), arrowZ, dest.x, dest.y * 0.22, dest.z);
-            _animateCameraTo(fromPos, fromTgt, toPos, toTgt, 1100, function () {
-                if (addrLabel) {
-                    _navLabelFaceCamera(addrLabel, labelPos, state.camera.position);
-                    addrLabel.visible = true;
-                }
-                marker.visible = true;
-                ring.visible = true;
-                if (slotInfo) {
-                    _highlightSlot(slotInfo.camCod, slotInfo.rua, slotInfo.posicao, slotInfo.nivel);
-                }
-                renderFrame();
-            });
+            if (addrLabel && state.camera) {
+                _navLabelFaceCamera(addrLabel, labelPos, state.camera.position);
+                addrLabel.visible = true;
+            }
+            marker.visible = true;
+            ring.visible = true;
+            if (slotInfo) {
+                _highlightSlot(slotInfo.camCod, slotInfo.rua, slotInfo.posicao, slotInfo.nivel);
+            }
+            if (state.controls) state.controls.enabled = true;
+            renderFrame();
         }
 
         function step(ts) {
@@ -2535,19 +2532,6 @@
             var tangent = curve.getTangent(u).normalize();
 
             _orientNavArrow(leader, pt.x, pt.z, tangent.x, tangent.z);
-
-            var back = tangent.clone().multiplyScalar(-1);
-            var camX = pt.x + back.x * 3.4 - tangent.z * 0.8;
-            var camY = Math.max(pt.y, 0.28) + 2.55;
-            var camZ = pt.z + back.z * 3.4 + tangent.x * 0.8;
-            state.camera.position.set(camX, camY, camZ);
-            var lookAhead = curve.getPoint(Math.min(u + 0.04, 1));
-            state.controls.target.set(
-                lookAhead.x,
-                Math.max(lookAhead.y, 0.32) + 0.45,
-                lookAhead.z
-            );
-            state.controls.update();
             renderFrame();
 
             if (u < 1) {
