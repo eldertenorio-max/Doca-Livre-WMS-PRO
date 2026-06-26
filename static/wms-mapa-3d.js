@@ -265,6 +265,86 @@
         label.lookAt(camPos.x, camPos.y, camPos.z);
     }
 
+    function _faceOffsetTowardAisle(destX, aisleX, amount) {
+        amount = amount == null ? SLOT_D * 0.5 : amount;
+        if (Math.abs(destX - aisleX) < 0.08) return 0;
+        return destX > aisleX ? -amount : amount;
+    }
+
+    function _poseCameraViewSlot(dest, aisleX) {
+        var THREE = T();
+        var faceX = dest.x + _faceOffsetTowardAisle(dest.x, aisleX, SLOT_D * 0.35);
+        return {
+            pos: new THREE.Vector3(aisleX, dest.y + 1.65, dest.z - 2.35),
+            tgt: new THREE.Vector3(faceX, dest.y + 0.28, dest.z)
+        };
+    }
+
+    function _makeNavDestMarkers(THREE, dest, aisleX) {
+        var group = new THREE.Group();
+        group.name = 'nav-dest-markers';
+        var faceX = dest.x + _faceOffsetTowardAisle(dest.x, aisleX);
+
+        var box = new THREE.Mesh(
+            new THREE.BoxGeometry(SLOT_D * 0.9, SHELF_TH * 3.6, SLOT_D * 0.42),
+            new THREE.MeshPhongMaterial({
+                color: 0xff1744,
+                emissive: 0x880022,
+                shininess: 60,
+                transparent: true,
+                opacity: 0.94,
+                depthWrite: false
+            })
+        );
+        box.position.set(faceX, dest.y, dest.z);
+        box.renderOrder = 9;
+
+        var ringShelf = new THREE.Mesh(
+            new THREE.RingGeometry(SLOT_D * 0.18, SLOT_D * 0.5, 32),
+            new THREE.MeshBasicMaterial({
+                color: 0xff1744,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.95,
+                depthWrite: false
+            })
+        );
+        ringShelf.rotation.x = -Math.PI / 2;
+        ringShelf.position.set(dest.x, dest.y + SHELF_TH * 0.55, dest.z);
+        ringShelf.renderOrder = 8;
+
+        var ringFloor = new THREE.Mesh(
+            new THREE.RingGeometry(SLOT_D * 0.32, SLOT_D * 0.62, 32),
+            new THREE.MeshBasicMaterial({
+                color: 0xff5252,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.82,
+                depthWrite: false
+            })
+        );
+        ringFloor.rotation.x = -Math.PI / 2;
+        ringFloor.position.set(dest.x, _navArrowFloorY() + 0.005, dest.z);
+        ringFloor.renderOrder = 7;
+
+        var beamH = Math.max(0.2, dest.y - _navArrowFloorY() - 0.02);
+        var beam = new THREE.Mesh(
+            new THREE.BoxGeometry(0.1, beamH, 0.1),
+            new THREE.MeshBasicMaterial({
+                color: 0xff1744,
+                transparent: true,
+                opacity: 0.72,
+                depthWrite: false
+            })
+        );
+        beam.position.set(dest.x, _navArrowFloorY() + beamH / 2 + 0.01, dest.z);
+        beam.renderOrder = 6;
+
+        group.add(box, ringShelf, ringFloor, beam);
+        group.visible = false;
+        return group;
+    }
+
     function _makeNavArrowMesh(THREE) {
         var shape = new THREE.Shape();
         shape.moveTo(0, -0.58);
@@ -2577,28 +2657,10 @@
         }
 
         var curve = _buildNavCurve(waypoints);
+        var aisleX = _aisleNavXForCam(slotInfo.camCod, slotInfo.rua);
 
         var leader = _makeNavArrowMesh(THREE);
-
-        var marker = new THREE.Mesh(
-            new THREE.BoxGeometry(SLOT_D * 0.88, SHELF_TH * 2.4, SLOT_D * 0.88),
-            new THREE.MeshPhongMaterial({
-                color: 0xe53935,
-                transparent: true,
-                opacity: 0.9,
-                emissive: 0x550000
-            })
-        );
-        marker.position.copy(dest);
-        marker.visible = false;
-
-        var ring = new THREE.Mesh(
-            new THREE.RingGeometry(SLOT_D * 0.35, SLOT_D * 0.58, 28),
-            new THREE.MeshBasicMaterial({ color: 0xff1744, side: THREE.DoubleSide, transparent: true, opacity: 0.8 })
-        );
-        ring.rotation.x = -Math.PI / 2;
-        ring.position.set(dest.x, _navArrowFloorY() + 0.004, dest.z);
-        ring.visible = false;
+        var destMarkers = _makeNavDestMarkers(THREE, dest, aisleX);
 
         var addrLabel = _makeNavAddrLabel(THREE, slotInfo);
         var labelPos = new THREE.Vector3();
@@ -2606,10 +2668,8 @@
         state._navGroup = new THREE.Group();
         state._navGroup.name = 'nav-path';
         if (addrLabel) state._navGroup.add(addrLabel);
-        state._navGroup.add(leader, marker, ring);
+        state._navGroup.add(leader, destMarkers);
         state.rackGroup.add(state._navGroup);
-
-        var aisleX = waypoints[waypoints.length - 1].x;
 
         var pathLen = curve.getLength();
         var duration = Math.min(16000, Math.max(6500, pathLen * 300));
@@ -2630,15 +2690,14 @@
 
         function _finishNav() {
             state._navAnimId = null;
-            var labelY = dest.y + 1.0;
-            labelPos.set(dest.x, labelY, dest.z + 0.22);
-            var arrowZ = dest.z - 0.9;
-            _orientNavArrowToward(leader, aisleX, _navArrowFloorY(), arrowZ, dest.x, dest.y * 0.22, dest.z);
+            var faceX = dest.x + _faceOffsetTowardAisle(dest.x, aisleX);
+            var labelY = dest.y + 1.05;
+            labelPos.set(faceX, labelY, dest.z + 0.18);
+            var arrowZ = dest.z - 0.75;
+            _orientNavArrowToward(leader, aisleX, _navArrowFloorY(), arrowZ, faceX, dest.y * 0.35, dest.z);
             if (!state._navUserFlying && state.camera && state.controls) {
-                var pose = _navIdealCameraPose(dest, new THREE.Vector3(0, 0, 1), curve, 1);
-                pose.tgt.set(dest.x, dest.y + 0.5, dest.z);
-                pose.pos.set(aisleX, dest.y + 1.15, dest.z - 2.8);
-                _applyNavCameraPose(pose, 0.35);
+                var pose = _poseCameraViewSlot(dest, aisleX);
+                _applyNavCameraPose(pose, 0.48);
             }
             if (state.controls) {
                 state.controls.enableDamping = state._navSavedDamping !== false;
@@ -2647,8 +2706,7 @@
                 _navLabelFaceCamera(addrLabel, labelPos, state.camera.position);
                 addrLabel.visible = true;
             }
-            marker.visible = true;
-            ring.visible = true;
+            destMarkers.visible = true;
             if (slotInfo) {
                 _highlightSlot(slotInfo.camCod, slotInfo.rua, slotInfo.posicao, slotInfo.nivel);
             }
