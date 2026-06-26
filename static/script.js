@@ -4999,6 +4999,12 @@ function _wmsEndFetchGet(path, timeoutMs, signal) {
     return _fetchAPIComTimeoutUma(path + sep + '_=' + Date.now(), opts, timeoutMs || 30000);
 }
 
+function _wmsEndFetchGetRetry(path, timeoutMs, signal) {
+    var sep = path.indexOf('?') >= 0 ? '&' : '?';
+    var opts = signal ? { signal: signal } : {};
+    return fetchAPIComTimeout(path + sep + '_=' + Date.now(), opts, timeoutMs || 30000);
+}
+
 function _wmsEndLoadCancelled(kind, gen) {
     return gen !== (_wmsEndLoadCtrl[kind] && _wmsEndLoadCtrl[kind].gen);
 }
@@ -5965,7 +5971,7 @@ async function wmsEndToggleItensCamara(btn) {
     panel.innerHTML = '<p class="wms-camara-itens-loading">Carregando itens da câmara ' + escHtml(String(cam)) + '…</p>';
     btn.disabled = true;
     try {
-        var data = await _wmsEndFetchGet('/wms/camara/' + cam + '/itens', 45000);
+        var data = await _wmsEndFetchGetRetry('/wms/camara/' + cam + '/itens', 45000);
         if (!data || data.erro) {
             panel.innerHTML = '<p class="wms-camara-itens-erro">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar itens.')) + '</p>';
             return;
@@ -6532,7 +6538,7 @@ async function loadWmsEnderecamento() {
         _wmsEndRender2DPlanta();
 
         _wmsEndProgressBump('panel', 'panel', gen, 62, { sub: 'Baixando ocupação do armazém…' });
-        var data = await _wmsEndFetchGet('/wms/enderecamento', 90000, signal);
+        var data = await _wmsEndFetchGetRetry('/wms/enderecamento?leve=1', 90000, signal);
         if (_wmsEndLoadCancelled('panel', gen)) return;
         _wmsEndProgressBump('panel', 'panel', gen, 88, { sub: 'Atualizando ocupação nas câmaras…' });
         if (!data || data.erro) {

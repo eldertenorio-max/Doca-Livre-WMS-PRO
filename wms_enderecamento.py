@@ -3592,7 +3592,7 @@ def _coletar_ocupacao_areas_especiais(conn):
     }
 
 
-def _coletar_ocupacao_estoque_normal(conn):
+def _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=True):
     """Ocupação do estoque normal (câmaras 11–21), excluindo destino_fixo e câm. 98/99."""
     t_loc = _tbl(conn, 'wms_localizacao')
     t_pal = _tbl(conn, 'wms_palete')
@@ -3658,40 +3658,68 @@ def _coletar_ocupacao_estoque_normal(conn):
                 'vazias': int(rd.get('vazias') or 0),
             })
 
-        pos_rows = conn.execute(
-            f'''SELECT l.codigo_endereco, l.rua, l.posicao, l.nivel, l.status, l.categoria_zona,
-                       p.etiqueta, p.id AS palete_id,
-                       (SELECT COALESCE(SUM(i.quantidade_caixas), 0) FROM {t_item} i WHERE i.palete_id = p.id) AS qtd_caixas
-                FROM {t_loc} l
-                LEFT JOIN {t_pal} p ON p.localizacao_id = l.id
-                    AND p.status IN ('armazenado', 'bloqueado', 'em_stage', 'separado')
-                WHERE l.camara = ? AND {filtro_tipo}
-                ORDER BY l.rua, l.posicao, l.nivel''',
-            (cod,),
-        ).fetchall()
         posicoes = []
         ocupadas_lista = []
-        for idx, r in enumerate(pos_rows or [], start=1):
-            rd = _row_dict(r) or {}
-            st = (rd.get('status') or '').strip().lower()
-            posicoes.append({
-                'posicao': idx,
-                'codigo_endereco': rd.get('codigo_endereco'),
-                'rua': rd.get('rua'),
-                'coluna': rd.get('posicao'),
-                'nivel': rd.get('nivel'),
-                'status': st or 'vazia',
-                'categoria_zona': (rd.get('categoria_zona') or '').strip().upper() or None,
-                'etiqueta': rd.get('etiqueta'),
-                'palete_id': rd.get('palete_id'),
-                'qtd_caixas': int(rd.get('qtd_caixas') or 0),
-            })
-            if st == 'ocupada':
+        if incluir_posicoes:
+            pos_rows = conn.execute(
+                f'''SELECT l.codigo_endereco, l.rua, l.posicao, l.nivel, l.status, l.categoria_zona,
+                           p.etiqueta, p.id AS palete_id,
+                           (SELECT COALESCE(SUM(i.quantidade_caixas), 0) FROM {t_item} i WHERE i.palete_id = p.id) AS qtd_caixas
+                    FROM {t_loc} l
+                    LEFT JOIN {t_pal} p ON p.localizacao_id = l.id
+                        AND p.status IN ('armazenado', 'bloqueado', 'em_stage', 'separado')
+                    WHERE l.camara = ? AND {filtro_tipo}
+                    ORDER BY l.rua, l.posicao, l.nivel''',
+                (cod,),
+            ).fetchall()
+            for idx, r in enumerate(pos_rows or [], start=1):
+                rd = _row_dict(r) or {}
+                st = (rd.get('status') or '').strip().lower()
+                posicoes.append({
+                    'posicao': idx,
+                    'codigo_endereco': rd.get('codigo_endereco'),
+                    'rua': rd.get('rua'),
+                    'coluna': rd.get('posicao'),
+                    'nivel': rd.get('nivel'),
+                    'status': st or 'vazia',
+                    'categoria_zona': (rd.get('categoria_zona') or '').strip().upper() or None,
+                    'etiqueta': rd.get('etiqueta'),
+                    'palete_id': rd.get('palete_id'),
+                    'qtd_caixas': int(rd.get('qtd_caixas') or 0),
+                })
+                if st == 'ocupada':
+                    ocupadas_lista.append({
+                        'codigo_endereco': rd.get('codigo_endereco'),
+                        'rua': rd.get('rua'),
+                        'posicao': rd.get('posicao'),
+                        'nivel': rd.get('nivel'),
+                        'status': st,
+                        'categoria_zona': (rd.get('categoria_zona') or '').strip().upper() or None,
+                        'etiqueta': rd.get('etiqueta'),
+                        'palete_id': rd.get('palete_id'),
+                        'qtd_caixas': int(rd.get('qtd_caixas') or 0),
+                    })
+        else:
+            occ_rows = conn.execute(
+                f'''SELECT l.codigo_endereco, l.rua, l.posicao, l.nivel, l.status, l.categoria_zona,
+                           p.etiqueta, p.id AS palete_id,
+                           (SELECT COALESCE(SUM(i.quantidade_caixas), 0) FROM {t_item} i WHERE i.palete_id = p.id) AS qtd_caixas
+                    FROM {t_loc} l
+                    LEFT JOIN {t_pal} p ON p.localizacao_id = l.id
+                        AND p.status IN ('armazenado', 'bloqueado', 'em_stage', 'separado')
+                    WHERE l.camara = ? AND {filtro_tipo} AND l.status = 'ocupada'
+                    ORDER BY l.rua, l.posicao, l.nivel''',
+                (cod,),
+            ).fetchall()
+            for r in occ_rows or []:
+                rd = _row_dict(r) or {}
+                st = (rd.get('status') or '').strip().lower()
                 ocupadas_lista.append({
                     'codigo_endereco': rd.get('codigo_endereco'),
                     'rua': rd.get('rua'),
                     'posicao': rd.get('posicao'),
                     'nivel': rd.get('nivel'),
+                    'status': st or 'ocupada',
                     'categoria_zona': (rd.get('categoria_zona') or '').strip().upper() or None,
                     'etiqueta': rd.get('etiqueta'),
                     'palete_id': rd.get('palete_id'),
@@ -9006,12 +9034,15 @@ def api_wms_relatorios():
 @bp.route('/enderecamento', methods=['GET'])
 def api_wms_areas_especiais():
     """Ocupação do endereçamento: estoque normal, destinos fixos e câm. 98."""
+    leve = (request.args.get('leve') or '').strip().lower() in ('1', 'sim', 'true', 'yes')
     conn = _db()
     try:
         _ensure_wms_schema_safe(conn)
         data = _coletar_ocupacao_areas_especiais(conn)
-        data['estoque_normal'] = _coletar_ocupacao_estoque_normal(conn)
-        data['destinos_fixos'] = _coletar_mapa_destinos_fixos(conn)
+        data['estoque_normal'] = _coletar_ocupacao_estoque_normal(conn, incluir_posicoes=not leve)
+        if not leve:
+            data['destinos_fixos'] = _coletar_mapa_destinos_fixos(conn)
+        data['modo_leve'] = leve
         conn.close()
         return jsonify(_sanitize_json(data))
     except Exception as e:
