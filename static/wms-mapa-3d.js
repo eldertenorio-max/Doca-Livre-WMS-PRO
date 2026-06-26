@@ -126,8 +126,35 @@
     function _levelHForCam(cod) {
         /* câmaras com poucos níveis ganham nível mais alto (armazenamento a granel) */
         var mn = _maxNivCam(cod);
-        if (parseInt(cod, 10) === 21) return LEVEL_H * 2.45;
+        if (parseInt(cod, 10) === 21) return LEVEL_H * 1.38;
         return mn <= 2 ? LEVEL_H * 2.1 : LEVEL_H;
+    }
+
+    function _levelYOffset(geom, niv) {
+        niv = parseInt(niv, 10) || 1;
+        if (geom && geom.levelYs && geom.levelYs[niv - 1] != null) {
+            return geom.levelYs[niv - 1];
+        }
+        var lh = (geom && geom.levelH) || LEVEL_H;
+        return (niv - 1) * lh;
+    }
+
+    function _rackTotalHeight(geom, maxNiv) {
+        maxNiv = maxNiv || 1;
+        var topY = 0;
+        for (var i = 1; i <= maxNiv; i++) {
+            var y = _levelYOffset(geom, i);
+            if (y > topY) topY = y;
+        }
+        var beamH = geom.beamH || BEAM_H;
+        var shelfTh = geom.shelfTh || SHELF_TH;
+        var head = parseInt(geom.camCod, 10) === 21 ? LEVEL_H * 0.82 : (maxNiv >= MAX_NIV ? 0.55 : 0.28);
+        return topY + beamH + shelfTh + head;
+    }
+
+    function _beamLipYFromGeom(niv, geom, levelH) {
+        var beamH = (geom && geom.beamH) || BEAM_H;
+        return _levelYOffset(geom, niv) + beamH * 0.68;
     }
 
     function _rackGeomForCam(cod) {
@@ -135,26 +162,33 @@
         var lh = _levelHForCam(c);
         var maxNiv = _maxNivCam(c);
         var geom = {
+            camCod: c,
             uprW: UPR_W,
             uprD: UPR_D,
             beamH: BEAM_H,
             shelfTh: SHELF_TH,
             levelH: lh,
+            levelYs: null,
             braceBands: maxNiv <= 2 ? [0, 0.52] : [0, 0.36, 0.68],
             braceNodes: maxNiv <= 2 ? [0, 0.5, 1.0] : [0, 0.34, 0.68, 1.0]
         };
         if (c === 21) {
+            var midY = LEVEL_H * 1.38;
             geom.uprW = 0.26;
             geom.uprD = 0.24;
             geom.beamH = 0.18;
             geom.shelfTh = 0.12;
+            geom.levelH = lh;
+            geom.levelYs = [0, midY];
+            geom.braceBands = [0, 0.5];
+            geom.braceNodes = [0, 0.5, 1.0];
         }
         return geom;
     }
 
     function _slotYForGeom(niv, geom) {
         geom = geom || { levelH: LEVEL_H, beamH: BEAM_H, shelfTh: SHELF_TH };
-        return (parseInt(niv, 10) - 1) * geom.levelH + geom.beamH + geom.shelfTh * 0.72;
+        return _levelYOffset(geom, niv) + geom.beamH + geom.shelfTh * 0.72;
     }
 
     function _camMeta(cod) {
@@ -367,18 +401,18 @@
         parent.add(mesh);
     }
 
-    function _addLongarinaLabelsRack(THREE, parent, camCod, rua, maxPos, maxNiv, xF, xB, towardAisle, bayStep, levelH) {
-        var lh = levelH || LEVEL_H;
+    function _addLongarinaLabelsRack(THREE, parent, camCod, rua, maxPos, maxNiv, xF, xB, towardAisle, bayStep, levelH, geom) {
+        geom = geom || _rackGeomForCam(camCod);
         var xFace = _beamLipAisleX(xF, xB, towardAisle);
         var labelW = Math.min(SLOT_D * 0.82, bayStep * 0.9);
         for (var pos = 1; pos <= maxPos; pos++) {
             var z = (pos - 1) * bayStep + SLOT_D / 2;
             for (var niv = 1; niv <= maxNiv; niv++) {
-                _addLongarinaEtqOnBeam(THREE, parent, camCod, pos, niv, maxNiv, xFace, _beamLipY(niv, lh), z, towardAisle, labelW);
+                _addLongarinaEtqOnBeam(THREE, parent, camCod, pos, niv, maxNiv, xFace, _beamLipYFromGeom(niv, geom, levelH), z, towardAisle, labelW);
             }
         }
         var ruaLbl = _textPlane(THREE, 'Rua ' + String(rua || '').trim().toUpperCase(), 0.5, 0.12, 24, '#fff', null);
-        ruaLbl.position.set(xFace, _beamLipY(1, lh) + BEAM_H * 0.55, SLOT_D * 0.35);
+        ruaLbl.position.set(xFace, _beamLipYFromGeom(1, geom, levelH) + (geom.beamH || BEAM_H) * 0.55, SLOT_D * 0.35);
         ruaLbl.rotation.y = towardAisle > 0 ? -Math.PI / 2 : Math.PI / 2;
         ruaLbl.renderOrder = 2;
         parent.add(ruaLbl);
@@ -919,15 +953,16 @@
         var xs = _rackXs(xBase, towardAisle);
         var xF = xs.front;
         var xB = xs.back;
-        var rackH = (maxNiv - 1) * lh + geom.beamH + geom.shelfTh + (maxNiv >= MAX_NIV ? 0.55 : 0.28);
+        var rackH = _rackTotalHeight(geom, maxNiv);
         var bayStep = SLOT_D + GAP_POS;
         var zMarks = _zMarksUniformes(maxPos, bayStep);
         zMarks.forEach(function (z) {
             _addUprightPair(THREE, parent, xF, xB, z, rackH, mats, towardAisle, geom);
         });
         for (var n = 1; n <= maxNiv; n++) {
-            var yBeam = (n - 1) * lh + geom.beamH * 0.5;
-            var yDeck = (n - 1) * lh + geom.beamH + geom.shelfTh * 0.22;
+            var yOff = _levelYOffset(geom, n);
+            var yBeam = yOff + geom.beamH * 0.5;
+            var yDeck = yOff + geom.beamH + geom.shelfTh * 0.22;
             var deckMat = n === maxNiv ? mats.deckMetal : mats.deck;
             for (var i = 0; i < zMarks.length - 1; i++) {
                 _addBeamRun(THREE, parent, xF, xB, zMarks[i], zMarks[i + 1], yBeam, mats, towardAisle, geom);
@@ -935,7 +970,7 @@
             }
         }
 
-        _addLongarinaLabelsRack(THREE, parent, camCod, rua, maxPos, maxNiv, xF, xB, towardAisle, bayStep, lh);
+        _addLongarinaLabelsRack(THREE, parent, camCod, rua, maxPos, maxNiv, xF, xB, towardAisle, bayStep, lh, geom);
 
         if (!ruaSlots.length) {
             return zMarks[zMarks.length - 1] + 0.2;
