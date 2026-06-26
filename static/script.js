@@ -5715,8 +5715,8 @@ function _wmsLayoutCelulaBloqueadaFisica(camara, rua, posicao, nivel) {
     return false;
 }
 
-function _wmsLayoutForcarEstoqueCam11(camara, col, niv) {
-    return parseInt(camara, 10) === 11 && (col === 14 || col === 15) && niv >= 1 && niv <= 4;
+function _wmsLayoutSlotReentregaOuEstoque(slot) {
+    return !!(slot && slot.zona_reentrega_ou_estoque);
 }
 
 function _wmsLayoutCellInfo(slot, opts) {
@@ -5730,7 +5730,7 @@ function _wmsLayoutCellInfo(slot, opts) {
     if (opts.camara != null && _wmsLayoutCelulaBloqueadaFisica(opts.camara, opts.rua, col, niv)) {
         return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
     }
-    if (opts.camara != null && _wmsLayoutForcarEstoqueCam11(opts.camara, col, niv)) {
+    if (_wmsLayoutSlotReentregaOuEstoque(slot)) {
         if (slot && (slot.status || '') === 'ocupada') {
             return { kind: 'ocupado', className: 'wms-layout-cell--ocupado' };
         }

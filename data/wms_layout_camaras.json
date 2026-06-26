@@ -13,20 +13,35 @@
     {
       "descricao": "Topo indisponível nas colunas 14 e 15 (estrutura do rack)",
       "camara": 11,
-      "colunas": [14, 15],
-      "niveis": [5]
+      "colunas": [
+        14,
+        15
+      ],
+      "niveis": [
+        5
+      ]
     },
     {
       "descricao": "Topo indisponível nas colunas 14 e 15 (estrutura do rack)",
       "camara": 12,
-      "colunas": [14, 15],
-      "niveis": [5]
+      "colunas": [
+        14,
+        15
+      ],
+      "niveis": [
+        5
+      ]
     },
     {
       "descricao": "Topo indisponível nas colunas 14 e 15 (estrutura do rack)",
       "camara": 13,
-      "colunas": [14, 15],
-      "niveis": [5]
+      "colunas": [
+        14,
+        15
+      ],
+      "niveis": [
+        5
+      ]
     }
   ],
   "camaras": [
@@ -42,15 +57,25 @@
       "portas": [
         {
           "rua": "B",
-          "colunas": [2, 3],
-          "niveis": [1, 2]
+          "colunas": [
+            2,
+            3
+          ],
+          "niveis": [
+            1,
+            2
+          ]
         }
       ],
       "enderecos": [
         {
           "rua": "A",
           "posicao": 1,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -75,7 +100,11 @@
         {
           "rua": "A",
           "posicao": 2,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -100,7 +129,11 @@
         {
           "rua": "A",
           "posicao": 3,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -125,7 +158,11 @@
         {
           "rua": "A",
           "posicao": 4,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -150,7 +187,11 @@
         {
           "rua": "A",
           "posicao": 5,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -175,7 +216,11 @@
         {
           "rua": "A",
           "posicao": 6,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -200,12 +245,20 @@
         {
           "rua": "A",
           "posicao": 7,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
           "posicao": 7,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -225,12 +278,20 @@
         {
           "rua": "A",
           "posicao": 8,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
           "posicao": 8,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -250,12 +311,20 @@
         {
           "rua": "A",
           "posicao": 9,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
           "posicao": 9,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -275,12 +344,20 @@
         {
           "rua": "A",
           "posicao": 10,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
           "posicao": 10,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -300,12 +377,20 @@
         {
           "rua": "A",
           "posicao": 11,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
           "posicao": 11,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -325,12 +410,20 @@
         {
           "rua": "A",
           "posicao": 12,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
           "posicao": 12,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -350,12 +443,20 @@
         {
           "rua": "A",
           "posicao": 13,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
           "posicao": 13,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -375,12 +476,20 @@
         {
           "rua": "A",
           "posicao": 14,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
           "posicao": 14,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -395,12 +504,20 @@
         {
           "rua": "A",
           "posicao": 15,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
           "posicao": 15,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "A",
@@ -415,7 +532,11 @@
         {
           "rua": "B",
           "posicao": 1,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -470,7 +591,11 @@
         {
           "rua": "B",
           "posicao": 4,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -495,7 +620,11 @@
         {
           "rua": "B",
           "posicao": 5,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -520,7 +649,11 @@
         {
           "rua": "B",
           "posicao": 6,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -545,7 +678,11 @@
         {
           "rua": "B",
           "posicao": 7,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -570,12 +707,20 @@
         {
           "rua": "B",
           "posicao": 8,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
           "posicao": 8,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -595,12 +740,20 @@
         {
           "rua": "B",
           "posicao": 9,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
           "posicao": 9,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -620,12 +773,20 @@
         {
           "rua": "B",
           "posicao": 10,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
           "posicao": 10,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -645,12 +806,20 @@
         {
           "rua": "B",
           "posicao": 11,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
           "posicao": 11,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -670,12 +839,20 @@
         {
           "rua": "B",
           "posicao": 12,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
           "posicao": 12,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -695,12 +872,20 @@
         {
           "rua": "B",
           "posicao": 13,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
           "posicao": 13,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -720,12 +905,20 @@
         {
           "rua": "B",
           "posicao": 14,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
           "posicao": 14,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -740,12 +933,20 @@
         {
           "rua": "B",
           "posicao": 15,
-          "nivel": 1
+          "nivel": 1,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
           "posicao": 15,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "reentregas",
+          "destino_label": "REENTREGAS",
+          "destino_apenas_rotulo": true,
+          "uso_flexivel_estoque": true
         },
         {
           "rua": "B",
@@ -757,7 +958,15 @@
           "posicao": 15,
           "nivel": 4
         }
-      ]
+      ],
+      "pool_reentrega_ou_estoque": {
+        "quantidade": 45,
+        "preferir_niveis": [
+          1,
+          2
+        ],
+        "descricao": "Posicoes para reentregas ou estoque normal (prioridade niveis 1 e 2)"
+      }
     },
     {
       "codigo": 12,
@@ -771,13 +980,25 @@
       "portas": [
         {
           "rua": "C",
-          "colunas": [2, 3],
-          "niveis": [1, 2]
+          "colunas": [
+            2,
+            3
+          ],
+          "niveis": [
+            1,
+            2
+          ]
         },
         {
           "rua": "D",
-          "colunas": [2, 3],
-          "niveis": [1, 2]
+          "colunas": [
+            2,
+            3
+          ],
+          "niveis": [
+            1,
+            2
+          ]
         }
       ],
       "enderecos": [
@@ -1508,8 +1729,14 @@
       "portas": [
         {
           "rua": "E",
-          "colunas": [2, 3],
-          "niveis": [1, 2]
+          "colunas": [
+            2,
+            3
+          ],
+          "niveis": [
+            1,
+            2
+          ]
         }
       ],
       "enderecos": [

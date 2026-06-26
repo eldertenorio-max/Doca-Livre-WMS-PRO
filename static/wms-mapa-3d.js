@@ -641,6 +641,10 @@
     }
 
     function slotColor(slot) {
+        if (slot.zona_reentrega_ou_estoque && (slot.status || '') !== 'ocupada') {
+            if (parseInt(slot.nivel, 10) === 1) return hex('#90caf9');
+            return hex('#0d47a1');
+        }
         var dest = (slot.destino_acao || '').toLowerCase();
         if (dest === 'envio_mg') return hex('#42a5f5');
         if (dest === 'retrabalho') return hex('#ffca28');

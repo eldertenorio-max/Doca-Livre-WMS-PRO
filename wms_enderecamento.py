@@ -2078,6 +2078,15 @@ def _destinos_acao_labels():
     return labels
 
 
+def _slot_reentrega_ou_estoque_flexivel(dest_acao, apenas_rotulo):
+    """Rótulo REENTREGAS no layout, mas endereço aceita estoque normal quando vazio."""
+    return (dest_acao or '').strip().lower() == 'reentregas' and bool(apenas_rotulo)
+
+
+def _slot_destino_fixo_no_layout(dest_acao, apenas_rotulo):
+    return bool(dest_acao) and not _slot_reentrega_ou_estoque_flexivel(dest_acao, apenas_rotulo)
+
+
 def _portas_bloco(bloco):
     """Portas físicas por rua — colunas e níveis inclusivos (1-based)."""
     out = []
@@ -2217,12 +2226,12 @@ def gerar_layout_enderecos(conn, force=False):
         if total <= 0:
             continue
         cats = _categorias_camara_zoneamento(conn, cod)
-        slots_cat = [c for c in coords_full if not c[4]]
+        slots_cat = [c for c in coords_full if not _slot_destino_fixo_no_layout(c[4], c[6])]
         seq_cat = _distribuir_categorias_em_slots(len(slots_cat), cats, pesos) if slots_cat else []
         codigos_validos = []
         idx_cat = 0
         for cam, rua, pos, nivel, dest_acao, dest_lbl, _apenas_rotulo in coords_full:
-            if dest_acao:
+            if _slot_destino_fixo_no_layout(dest_acao, _apenas_rotulo):
                 cat_z = None
                 area = dest_acao
                 zona = dest_acao
@@ -5854,9 +5863,10 @@ def _build_mapa_layout_payload(por_codigo=None, camara_filtro=None):
         for c, rua, pos, niv, dest_acao, dest_lbl, apenas_rotulo in _coords_from_bloco_layout(bloco):
             cod_end = _codigo_endereco(c, rua, pos, niv)
             loc = por_codigo.get(cod_end, {})
+            flex_reent = _slot_reentrega_ou_estoque_flexivel(dest_acao, apenas_rotulo)
             dest = dest_acao
             lbl = dest_lbl
-            if cod_cam == 11 and pos in (14, 15) and 1 <= niv <= 4:
+            if flex_reent:
                 dest = None
                 lbl = None
                 apenas_rotulo = False
@@ -5874,14 +5884,17 @@ def _build_mapa_layout_payload(por_codigo=None, camara_filtro=None):
                 'destino_acao': dest,
                 'destino_label': lbl,
                 'destino_apenas_rotulo': bool(apenas_rotulo and dest),
+                'zona_reentrega_ou_estoque': flex_reent,
                 'tipo': 'destino_fixo' if dest else 'porta_palete',
             })
+        pool = bloco.get('pool_reentrega_ou_estoque')
         camaras_out.append({
             'codigo': cod_cam,
             'descricao': bloco.get('descricao') or f'Câmara {cod_cam}',
             'ruas': list(bloco.get('ruas') or []),
             'niveis': int(bloco.get('niveis') or 5),
             'portas': _portas_bloco(bloco),
+            'pool_reentrega_ou_estoque': pool,
             'slots': slots,
         })
     return {
