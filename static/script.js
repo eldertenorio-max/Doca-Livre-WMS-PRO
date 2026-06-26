@@ -5109,7 +5109,8 @@ var _WMS_END2D_LEGENDA = [
     { swatch: 'wms-swatch--retrabalho', label: 'RETRABALHO' },
     { swatch: 'wms-swatch--descarte', label: 'DESCARTE' },
     { swatch: 'wms-swatch--avaria', label: 'AVARIA' },
-    { swatch: 'wms-swatch--reentregas', label: 'REENTREGAS' }
+    { swatch: 'wms-swatch--flex-reentrega', label: 'REENTREGAS / ESTOQUE' },
+    { swatch: 'wms-swatch--reentregas', label: 'REENTREGAS (fixo)' }
 ];
 
 function _wmsEndRenderLegenda2d() {
@@ -5732,9 +5733,9 @@ function _wmsLayoutCellInfo(slot, opts) {
     }
     if (_wmsLayoutSlotReentregaOuEstoque(slot)) {
         if (slot && (slot.status || '') === 'ocupada') {
-            return { kind: 'ocupado', className: 'wms-layout-cell--ocupado' };
+            return { kind: 'flex-reentrega', className: 'wms-layout-cell--flex-reentrega wms-layout-cell--flex-reentrega--ocupada' };
         }
-        return { kind: 'disponivel', className: 'wms-layout-cell--disponivel' };
+        return { kind: 'flex-reentrega', className: 'wms-layout-cell--flex-reentrega' };
     }
     if (!slot) return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
     var tipo = (slot.tipo || '').toLowerCase();
@@ -5830,14 +5831,25 @@ function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint, porta
                 : (slot
                     ? (slot.codigo_endereco || ('Rua ' + rua + ' · pos ' + p + ' · nív ' + niv))
                     : ('Rua ' + rua + ' · pos ' + p + ' · nív ' + niv));
+            if (_wmsLayoutSlotReentregaOuEstoque(slot)) tit += ' · Reentregas ou estoque';
             if (slot && (slot.status || '') === 'ocupada') tit += ' — ocupada';
-            var clickable = info.kind === 'disponivel' || info.kind === 'ocupado' || info.kind === 'destino' || info.kind === 'rotulo';
+            var clickable = info.kind === 'disponivel' || info.kind === 'ocupado' || info.kind === 'destino' || info.kind === 'rotulo' || info.kind === 'flex-reentrega';
             var cls = 'wms-layout-cell ' + info.className;
             if (clickable) cls += ' wms-layout-cell--clickable wms-planta-cell--clickable';
             html += '<button type="button" class="' + cls + '" style="width:var(--wms-layout-cell,28px);height:var(--wms-layout-cell,28px)" title="' + escHtml(tit) + '" aria-label="' + escHtml(tit) + '" data-camara="' + escHtml(String(camCod)) + '" data-rua="' + escHtml(String(rua).toUpperCase()) + '" data-posicao="' + escHtml(String(p)) + '" data-nivel="' + escHtml(String(niv)) + '"' + (clickable ? '' : ' disabled') + '>';
             if (info.kind === 'ocupado' && slot) {
                 var lbl = _wmsLayoutCellLabel(slot, cellSizeHint || 28);
                 if (lbl) html += '<span class="wms-layout-cell-label" style="font-size:' + (cellSizeHint >= 36 ? '11px' : (cellSizeHint >= 28 ? '10px' : '9px')) + '">' + escHtml(lbl) + '</span>';
+            } else if (info.kind === 'flex-reentrega' && slot) {
+                if ((slot.status || '') === 'ocupada') {
+                    var flexLbl = _wmsLayoutCellLabel(slot, cellSizeHint || 28);
+                    if (flexLbl) {
+                        html += '<span class="wms-layout-cell-label" style="font-size:' + (cellSizeHint >= 36 ? '11px' : (cellSizeHint >= 28 ? '10px' : '9px')) + '">' + escHtml(flexLbl) + '</span>';
+                    }
+                } else {
+                    var flexFs = cellSizeHint >= 36 ? '8px' : (cellSizeHint >= 30 ? '7px' : '6px');
+                    html += '<span class="wms-layout-cell-rotulo wms-layout-cell-rotulo--reent" style="font-size:' + flexFs + '">REENT.</span>';
+                }
             } else if (info.kind === 'rotulo' && slot) {
                 var rotLbl = (slot.destino_label || '').trim();
                 if (rotLbl) {

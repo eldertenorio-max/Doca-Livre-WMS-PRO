@@ -1023,6 +1023,50 @@ body.hub-modulos-aberto .container {
 .wms-swatch--avaria { background: #ab47bc; }
 .wms-swatch--reentregas { background: #7e57c2; }
 
+.wms-swatch--flex-reentrega {
+    background: #ffffff;
+    border: 2px solid #7e57c2;
+    box-sizing: border-box;
+}
+
+.wms-layout-cell--flex-reentrega {
+    background: #ffffff !important;
+    cursor: pointer;
+    padding: 2px;
+}
+
+.wms-layout-cell--flex-reentrega::before {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    background: #ffffff;
+    border: 1px solid #b39ddb;
+    border-radius: 1px;
+    box-shadow: inset 0 0 0 1px rgba(126, 87, 194, 0.15);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.wms-layout-cell--flex-reentrega:hover {
+    background: #ffffff !important;
+    box-shadow: inset 0 0 0 2px #7e57c2;
+}
+
+.wms-layout-cell--flex-reentrega--ocupada {
+    background: var(--wms-cell-ocup) !important;
+    box-shadow: inset 0 0 0 2px #7e57c2;
+}
+
+.wms-layout-cell--flex-reentrega--ocupada::before {
+    display: none;
+}
+
+.wms-layout-cell-rotulo--reent {
+    color: #5e35b1;
+    position: relative;
+    z-index: 1;
+}
+
 .wms-layout-panel--embed {
     padding: 0;
     margin-top: 8px;
