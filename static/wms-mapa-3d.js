@@ -83,6 +83,7 @@
         _highlightPrev: null,
         _onPointerMove: null,
         _onClick: null,
+        _onNavUserInput: null,
         _onWindowResize: null
     };
 
@@ -318,6 +319,59 @@
 
     function _smoothNavStep(u) {
         return u * u * (3 - 2 * u);
+    }
+
+    function _smoothNavEase(u) {
+        return u * u * u * (u * (u * 6 - 15) + 10);
+    }
+
+    function _lerpAngle(a, b, t) {
+        var d = b - a;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        return a + d * t;
+    }
+
+    function _navIdealCameraPose(pt, tangent, curve, u) {
+        var back = tangent.clone().multiplyScalar(-1);
+        var camPos = new THREE.Vector3(
+            pt.x + back.x * 3.4 - tangent.z * 0.8,
+            Math.max(pt.y, 0.28) + 2.55,
+            pt.z + back.z * 3.4 + tangent.x * 0.8
+        );
+        var lookAhead = curve.getPoint(Math.min(u + 0.04, 1));
+        var camTgt = new THREE.Vector3(
+            lookAhead.x,
+            Math.max(lookAhead.y, 0.32) + 0.45,
+            lookAhead.z
+        );
+        return { pos: camPos, tgt: camTgt };
+    }
+
+    function _syncOrbitSpherical() {
+        if (!state.camera || !state.controls) return;
+        var ctl = state.controls;
+        var offset = new THREE.Vector3().subVectors(state.camera.position, ctl.target);
+        if (ctl.spherical && typeof ctl.spherical.setFromVector3 === 'function') {
+            ctl.spherical.setFromVector3(offset);
+        }
+        if (ctl.sphericalDelta && typeof ctl.sphericalDelta.set === 'function') {
+            ctl.sphericalDelta.set(0, 0, 0);
+        }
+    }
+
+    function _applyNavCameraPose(pose, alpha) {
+        if (!state.camera || !state.controls || !pose) return;
+        if (alpha == null) alpha = 1;
+        if (alpha >= 0.999) {
+            state.camera.position.copy(pose.pos);
+            state.controls.target.copy(pose.tgt);
+        } else {
+            state.camera.position.lerp(pose.pos, alpha);
+            state.controls.target.lerp(pose.tgt, alpha);
+        }
+        _syncOrbitSpherical();
+        state.controls.update();
     }
 
     function _animateCameraTo(fromPos, fromTgt, toPos, toTgt, duration, onDone) {
@@ -2079,6 +2133,10 @@
             state._canvas.removeEventListener('pointermove', state._onPointerMove);
             state._canvas.removeEventListener('click', state._onClick);
             if (state._onDblClick) state._canvas.removeEventListener('dblclick', state._onDblClick);
+            if (state._onNavUserInput) {
+                state._canvas.removeEventListener('pointerdown', state._onNavUserInput);
+                state._canvas.removeEventListener('wheel', state._onNavUserInput);
+            }
         }
         if (state.resizeObs) {
             try { state.resizeObs.disconnect(); } catch (e) { /* ignore */ }
@@ -2205,13 +2263,24 @@
                 state.raycaster = new THREE.Raycaster();
                 state.mouse = new THREE.Vector2();
 
+                function onNavUserInput() {
+                    if (!state._navGroup && !state._navAnimId) return;
+                    state._navUserFlying = true;
+                    if (state.controls) {
+                        state.controls.enableDamping = state._navSavedDamping !== false;
+                    }
+                }
+
                 state._canvas = canvas;
                 state._onPointerMove = onPointerMove;
                 state._onClick = onClick;
                 state._onDblClick = onDblClick;
+                state._onNavUserInput = onNavUserInput;
                 canvas.addEventListener('pointermove', onPointerMove);
                 canvas.addEventListener('click', onClick);
                 canvas.addEventListener('dblclick', onDblClick);
+                canvas.addEventListener('pointerdown', onNavUserInput);
+                canvas.addEventListener('wheel', onNavUserInput, { passive: true });
 
                 state._onWindowResize = onResize;
                 if (typeof ResizeObserver !== 'undefined') {
@@ -2425,6 +2494,9 @@
             cancelAnimationFrame(state._navAnimId);
             state._navAnimId = null;
         }
+        if (state.controls && state._navSavedDamping != null) {
+            state.controls.enableDamping = state._navSavedDamping !== false;
+        }
         if (state._navGroup && state.rackGroup) {
             state.rackGroup.remove(state._navGroup);
             state._navGroup.traverse(function (ch) {
@@ -2496,13 +2568,21 @@
         var aisleX = waypoints[waypoints.length - 1].x;
 
         var pathLen = curve.getLength();
-        var duration = Math.min(14000, Math.max(5500, pathLen * 280));
+        var duration = Math.min(16000, Math.max(6500, pathLen * 300));
         var t0 = null;
+        var lastTs = null;
+        var arrowYaw = null;
 
-        if (state.controls) state.controls.enabled = true;
+        state._navUserFlying = false;
+        state._navSavedDamping = state.controls ? state.controls.enableDamping : true;
+        if (state.controls) {
+            state.controls.enabled = true;
+            state.controls.enableDamping = false;
+        }
 
         var startTan = curve.getTangent(0).normalize();
         _orientNavArrow(leader, waypoints[0].x, waypoints[0].z, startTan.x, startTan.z);
+        arrowYaw = leader.rotation.y;
 
         function _finishNav() {
             state._navAnimId = null;
@@ -2510,6 +2590,15 @@
             labelPos.set(dest.x, labelY, dest.z + 0.22);
             var arrowZ = dest.z - 0.9;
             _orientNavArrowToward(leader, aisleX, _navArrowFloorY(), arrowZ, dest.x, dest.y * 0.22, dest.z);
+            if (!state._navUserFlying && state.camera && state.controls) {
+                var pose = _navIdealCameraPose(dest, new THREE.Vector3(0, 0, 1), curve, 1);
+                pose.tgt.set(dest.x, dest.y + 0.5, dest.z);
+                pose.pos.set(aisleX, dest.y + 1.15, dest.z - 2.8);
+                _applyNavCameraPose(pose, 0.35);
+            }
+            if (state.controls) {
+                state.controls.enableDamping = state._navSavedDamping !== false;
+            }
             if (addrLabel && state.camera) {
                 _navLabelFaceCamera(addrLabel, labelPos, state.camera.position);
                 addrLabel.visible = true;
@@ -2526,12 +2615,25 @@
         function step(ts) {
             if (!state.camera || !state.controls) return;
             if (!t0) t0 = ts;
+            var dt = lastTs == null ? 16 : Math.min(48, Math.max(8, ts - lastTs));
+            lastTs = ts;
             var u = Math.min((ts - t0) / duration, 1);
-            u = _smoothNavStep(u);
+            u = _smoothNavEase(u);
             var pt = curve.getPoint(u);
             var tangent = curve.getTangent(u).normalize();
 
-            _orientNavArrow(leader, pt.x, pt.z, tangent.x, tangent.z);
+            var targetYaw = Math.atan2(tangent.x, tangent.z);
+            if (arrowYaw == null) arrowYaw = targetYaw;
+            var yawBlend = 1 - Math.exp(-dt * 0.011);
+            arrowYaw = _lerpAngle(arrowYaw, targetYaw, yawBlend);
+            leader.position.set(pt.x, _navArrowFloorY(), pt.z);
+            leader.rotation.set(0, arrowYaw, 0);
+
+            if (!state._navUserFlying) {
+                var pose = _navIdealCameraPose(pt, tangent, curve, u);
+                _applyNavCameraPose(pose, 1);
+            }
+            if (state.controls) state.controls.enabled = true;
             renderFrame();
 
             if (u < 1) {
