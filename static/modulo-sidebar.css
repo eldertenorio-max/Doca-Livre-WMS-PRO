@@ -96,6 +96,22 @@
     overflow-y: auto;
     overflow-x: hidden;
     scroll-padding-bottom: 12px;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.modulo-sidebar-nav::-webkit-scrollbar {
+    width: 4px;
+}
+
+.modulo-sidebar-nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.modulo-sidebar-nav::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
 }
 
 .modulo-sidebar-footer {
@@ -122,12 +138,12 @@
     flex: none;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
     min-height: 44px;
-    padding: 10px 14px;
-    margin: 0 6px;
-    width: calc(100% - 12px);
+    padding: 10px 12px;
+    margin: 0;
+    box-sizing: border-box;
     border: none;
     border-radius: 8px;
     border-left: 3px solid transparent;
@@ -144,6 +160,13 @@
     transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
+.modulo-sidebar:not(:hover) .tab-button {
+    justify-content: center;
+    padding-left: 6px;
+    padding-right: 6px;
+    gap: 0;
+}
+
 .modulo-sidebar .tab-button:hover {
     background: rgba(255, 255, 255, 0.08);
     color: #fff;
@@ -158,14 +181,16 @@
 
 .modulo-sidebar .sidebar-icon {
     flex-shrink: 0;
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    font-size: 1.15rem;
+    font-size: 1rem;
     line-height: 1;
+    overflow: hidden;
 }
 
 .modulo-sidebar .sidebar-label {
@@ -192,11 +217,11 @@
 .sidebar-footer-btn {
     display: flex;
     align-items: center;
-    gap: 12px;
-    width: calc(100% - 12px);
+    gap: 10px;
+    width: 100%;
     min-height: 44px;
-    margin: 0 6px;
-    padding: 10px 14px;
+    margin: 0;
+    padding: 10px 12px;
     box-sizing: border-box;
     border: none;
     border-radius: 8px;
@@ -207,6 +232,13 @@
     text-decoration: none;
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
+}
+
+.modulo-sidebar:not(:hover) .sidebar-footer-btn {
+    justify-content: center;
+    padding-left: 6px;
+    padding-right: 6px;
+    gap: 0;
 }
 
 .sidebar-footer-btn:hover {
