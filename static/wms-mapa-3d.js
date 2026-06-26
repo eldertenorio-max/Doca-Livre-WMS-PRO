@@ -1970,6 +1970,12 @@
             return;
         }
         var slot = rec.slot;
+        navigateToPosicao({
+            camara: rec.camara,
+            rua: slot.rua,
+            posicao: slot.posicao,
+            nivel: slot.nivel
+        });
         var bcLong = slot.barcode_longarina || _barcodeLongarina(rec.camara, slot.posicao, slot.nivel);
         det.hidden = false;
         det.innerHTML = '<strong>' + escapeHtml(slot.codigo_endereco) + '</strong>'

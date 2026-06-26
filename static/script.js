@@ -5834,6 +5834,7 @@ function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint, porta
             if (_wmsLayoutSlotReentregaOuEstoque(slot)) tit += ' · Reentregas ou estoque';
             if (slot && (slot.status || '') === 'ocupada') tit += ' — ocupada';
             var clickable = info.kind === 'disponivel' || info.kind === 'ocupado' || info.kind === 'destino' || info.kind === 'rotulo' || info.kind === 'flex-reentrega';
+            if (clickable) tit += ' — clique para ver rota no 3D';
             var cls = 'wms-layout-cell ' + info.className;
             if (clickable) cls += ' wms-layout-cell--clickable wms-planta-cell--clickable';
             html += '<button type="button" class="' + cls + '" style="width:var(--wms-layout-cell,28px);height:var(--wms-layout-cell,28px)" title="' + escHtml(tit) + '" aria-label="' + escHtml(tit) + '" data-camara="' + escHtml(String(camCod)) + '" data-rua="' + escHtml(String(rua).toUpperCase()) + '" data-posicao="' + escHtml(String(p)) + '" data-nivel="' + escHtml(String(niv)) + '"' + (clickable ? '' : ' disabled') + '>';
@@ -6110,6 +6111,32 @@ function _wmsEndAbrirPainel3d() {
     }
 }
 
+function _wmsEndApply3dNavigation(slot, attempt) {
+    attempt = attempt || 0;
+    if (!slot || !window.WmsMapa3d || typeof WmsMapa3d.navigateToPosicao !== 'function') return;
+    var stats = WmsMapa3d.getBuildStats ? WmsMapa3d.getBuildStats() : null;
+    if (!stats || !stats.inited || !stats.racks) {
+        if (attempt < 15) {
+            setTimeout(function() { _wmsEndApply3dNavigation(slot, attempt + 1); }, 100);
+        }
+        return;
+    }
+    _wmsEndState.skip3dResetView = true;
+    requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+            if (WmsMapa3d.onResize) WmsMapa3d.onResize();
+            WmsMapa3d.navigateToPosicao({
+                camara: slot.camara,
+                rua: slot.rua,
+                posicao: slot.posicao,
+                nivel: slot.nivel
+            });
+            if (WmsMapa3d.renderFrame) WmsMapa3d.renderFrame();
+            setTimeout(function() { _wmsEndState.skip3dResetView = false; }, 600);
+        });
+    });
+}
+
 function _wmsEndPrimeiraCamara3d() {
     var mapa = _wmsEndState.mapa3d || {};
     var cams = (mapa.camaras || [])
@@ -6127,15 +6154,14 @@ async function wmsEndNavigateToPosicao(opts) {
     var niv = parseInt(opts.nivel, 10) || 1;
     if (!cam || cam === 98 || !rua || !pos) return;
     _wmsEndState.selectedSlot = { camara: cam, rua: rua, posicao: pos, nivel: niv };
+    _wmsEndState.skip3dResetView = true;
     _wmsEndHighlightSlot2d(_wmsEndState.selectedSlot);
     await wmsEndAbrir3d({
         camara: cam,
         label: String(cam).padStart(2, '0') + '-' + rua + '-' + String(pos).padStart(2, '0') + '-' + niv
             + ' · Câmara ' + cam + ' · Rua ' + rua + ' · Col ' + String(pos).padStart(2, '0') + ' · Nív ' + niv
     });
-    if (window.WmsMapa3d && WmsMapa3d.navigateToPosicao) {
-        WmsMapa3d.navigateToPosicao({ camara: cam, rua: rua, posicao: pos, nivel: niv });
-    }
+    _wmsEndApply3dNavigation(_wmsEndState.selectedSlot);
 }
 window.wmsEndNavigateToPosicao = wmsEndNavigateToPosicao;
 
@@ -6246,10 +6272,14 @@ async function wmsEndAbrir3d(opts) {
         await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
         if (WmsMapa3d.onResize) WmsMapa3d.onResize();
         if (WmsMapa3d.renderFrame) WmsMapa3d.renderFrame();
+        if (_wmsEndState.selectedSlot) {
+            _wmsEndApply3dNavigation(_wmsEndState.selectedSlot);
+        }
         setTimeout(function() {
             if (_wmsEndLoadCancelled('3d', gen3d)) return;
             if (WmsMapa3d.onResize) WmsMapa3d.onResize();
             if (WmsMapa3d.renderFrame) WmsMapa3d.renderFrame();
+            if (_wmsEndState.selectedSlot) _wmsEndApply3dNavigation(_wmsEndState.selectedSlot);
         }, 150);
     } catch (e) {
         if (_wmsEndLoadCancelled('3d', gen3d)) return;
@@ -6270,6 +6300,7 @@ async function wmsEndAbrir3d(opts) {
 
 function _wmsEndBindAccordion() {
     _wmsEndBindLoadingUi();
+    _wmsEndBind2dEvents();
     var acc2d = document.getElementById('wms-end-acc-2d');
     if (acc2d && !acc2d._wmsBound) {
         acc2d._wmsBound = true;
@@ -6321,6 +6352,15 @@ function _wmsEndBindAccordion() {
                 return;
             }
             if (acc3d.open && window.WmsMapa3d && WmsMapa3d.getPrefix && WmsMapa3d.getPrefix() === 'wms-end-3d') {
+                if (_wmsEndState.selectedSlot || _wmsEndState.skip3dResetView) {
+                    requestAnimationFrame(function() {
+                        requestAnimationFrame(function() {
+                            if (WmsMapa3d.onResize) WmsMapa3d.onResize();
+                            if (WmsMapa3d.renderFrame) WmsMapa3d.renderFrame();
+                        });
+                    });
+                    return;
+                }
                 requestAnimationFrame(function() {
                     requestAnimationFrame(function() {
                         if (WmsMapa3d.onResize) WmsMapa3d.onResize();
