@@ -339,6 +339,31 @@ def _layout_camaras_config():
         return json.load(f)
 
 
+def _layout_bloqueios_fisicos():
+    return (_layout_camaras_config().get('bloqueios_fisicos') or [])
+
+
+def _celula_bloqueada_fisica(camara, rua, posicao, nivel):
+    """Posições inexistentes fisicamente (ex.: topo bloqueado em colunas 14–15)."""
+    cam = int(camara)
+    pos = int(posicao)
+    niv = int(nivel)
+    rua_u = str(rua or '').strip().upper()
+    for bloco in _layout_bloqueios_fisicos():
+        if int(bloco.get('camara') or 0) != cam:
+            continue
+        ruas = bloco.get('ruas')
+        if ruas:
+            ruas_ok = {str(r).strip().upper() for r in ruas}
+            if rua_u not in ruas_ok:
+                continue
+        colunas = [int(c) for c in (bloco.get('colunas') or [])]
+        niveis = [int(n) for n in (bloco.get('niveis') or [])]
+        if pos in colunas and niv in niveis:
+            return True
+    return False
+
+
 def _total_posicoes_ref(camara, bloco=None):
     """Capacidade física de referência — não usar COUNT(*) do banco."""
     if bloco and bloco.get('total_posicoes'):
@@ -2102,7 +2127,7 @@ def _coords_from_bloco_layout(bloco):
                 dest,
                 lbl,
             ))
-        return out
+        return [c for c in out if not _celula_bloqueada_fisica(c[0], c[1], c[2], c[3])]
     total = _total_posicoes_ref(cod, bloco)
     coords = _gerar_coordenadas_camara(cod, bloco.get('ruas'), bloco.get('niveis', 5), total)
     return [(c, r, p, n, None, None) for c, r, p, n in coords]
@@ -5880,6 +5905,7 @@ def api_wms_mapa_3d():
         return jsonify(_sanitize_json({
             'camaras': camaras_out,
             'destinos_acao': cfg.get('destinos_acao') or _destinos_acao_labels(),
+            'bloqueios_fisicos': cfg.get('bloqueios_fisicos') or _layout_bloqueios_fisicos(),
         }))
     except Exception as e:
         try:

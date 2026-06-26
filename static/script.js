@@ -5604,6 +5604,39 @@ function _wmsLayoutPortaOverlayStyle(porta, colunas, nivs) {
     };
 }
 
+function _wmsLayoutBloqueiosFisicos() {
+    var mapa = (_wmsEndState && _wmsEndState.mapa3d) || {};
+    return mapa.bloqueios_fisicos || [];
+}
+
+function _wmsLayoutCelulaBloqueadaFisica(camara, rua, posicao, nivel) {
+    var cam = parseInt(camara, 10);
+    var pos = parseInt(posicao, 10);
+    var niv = parseInt(nivel, 10);
+    var ruaU = String(rua || '').trim().toUpperCase();
+    var bloqs = _wmsLayoutBloqueiosFisicos();
+    for (var i = 0; i < bloqs.length; i++) {
+        var b = bloqs[i];
+        if (parseInt(b.camara, 10) !== cam) continue;
+        if (b.ruas && b.ruas.length) {
+            var okRua = false;
+            for (var r = 0; r < b.ruas.length; r++) {
+                if (String(b.ruas[r]).trim().toUpperCase() === ruaU) { okRua = true; break; }
+            }
+            if (!okRua) continue;
+        }
+        var cols = b.colunas || [];
+        var nivs = b.niveis || [];
+        for (var c = 0; c < cols.length; c++) {
+            if (parseInt(cols[c], 10) !== pos) continue;
+            for (var n = 0; n < nivs.length; n++) {
+                if (parseInt(nivs[n], 10) === niv) return true;
+            }
+        }
+    }
+    return false;
+}
+
 function _wmsLayoutCellInfo(slot, opts) {
     opts = opts || {};
     var porta = opts.porta;
@@ -5611,6 +5644,9 @@ function _wmsLayoutCellInfo(slot, opts) {
     var niv = parseInt(opts.niv, 10);
     if (_wmsLayoutCelulaPorta(porta, col, niv)) {
         return { kind: 'porta', className: 'wms-layout-cell--porta' };
+    }
+    if (opts.camara != null && _wmsLayoutCelulaBloqueadaFisica(opts.camara, opts.rua, col, niv)) {
+        return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
     }
     if (!slot) return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
     var tipo = (slot.tipo || '').toLowerCase();
@@ -5696,7 +5732,7 @@ function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint, porta
         html += '<div class="wms-layout-cells-row" style="grid-template-columns:repeat(' + colunas.length + ', var(--wms-layout-cell, 28px))">';
         colunas.forEach(function(p) {
             var slot = (posMap[p] || {})[niv];
-            var info = _wmsLayoutCellInfo(slot, { porta: portaRua, col: p, niv: niv });
+            var info = _wmsLayoutCellInfo(slot, { porta: portaRua, col: p, niv: niv, camara: camCod, rua: rua });
             var tit = _wmsLayoutCelulaPorta(portaRua, p, niv)
                 ? ('Rua ' + rua + ' · porta · col ' + p + ' · nív ' + niv)
                 : (slot
