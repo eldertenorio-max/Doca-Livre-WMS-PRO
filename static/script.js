@@ -5664,6 +5664,10 @@ function _wmsLayoutCellInfo(slot, opts) {
     var dest = (slot.destino_acao || '').toLowerCase();
     if (dest) {
         if (dest === 'palete_bloqueado') return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
+        if (slot.destino_apenas_rotulo) {
+            if ((slot.status || '') === 'ocupada') return { kind: 'ocupado', className: 'wms-layout-cell--ocupado' };
+            return { kind: 'rotulo', className: 'wms-layout-cell--rotulo' };
+        }
         return { kind: 'destino', className: 'wms-layout-cell--destino wms-layout-cell--dest-' + dest.replace(/[^a-z0-9_-]/g, '') };
     }
     if ((slot.status || '') === 'ocupada') return { kind: 'ocupado', className: 'wms-layout-cell--ocupado' };
@@ -5749,13 +5753,19 @@ function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint, porta
                     ? (slot.codigo_endereco || ('Rua ' + rua + ' · pos ' + p + ' · nív ' + niv))
                     : ('Rua ' + rua + ' · pos ' + p + ' · nív ' + niv));
             if (slot && (slot.status || '') === 'ocupada') tit += ' — ocupada';
-            var clickable = info.kind === 'disponivel' || info.kind === 'ocupado' || info.kind === 'destino';
+            var clickable = info.kind === 'disponivel' || info.kind === 'ocupado' || info.kind === 'destino' || info.kind === 'rotulo';
             var cls = 'wms-layout-cell ' + info.className;
             if (clickable) cls += ' wms-layout-cell--clickable wms-planta-cell--clickable';
             html += '<button type="button" class="' + cls + '" style="width:var(--wms-layout-cell,28px);height:var(--wms-layout-cell,28px)" title="' + escHtml(tit) + '" aria-label="' + escHtml(tit) + '" data-camara="' + escHtml(String(camCod)) + '" data-rua="' + escHtml(String(rua).toUpperCase()) + '" data-posicao="' + escHtml(String(p)) + '" data-nivel="' + escHtml(String(niv)) + '"' + (clickable ? '' : ' disabled') + '>';
             if (info.kind === 'ocupado' && slot) {
                 var lbl = _wmsLayoutCellLabel(slot, cellSizeHint || 28);
                 if (lbl) html += '<span class="wms-layout-cell-label" style="font-size:' + (cellSizeHint >= 36 ? '11px' : (cellSizeHint >= 28 ? '10px' : '9px')) + '">' + escHtml(lbl) + '</span>';
+            } else if (info.kind === 'rotulo' && slot) {
+                var rotLbl = (slot.destino_label || '').trim();
+                if (rotLbl) {
+                    var rotFs = cellSizeHint >= 36 ? '9px' : (cellSizeHint >= 30 ? '8px' : '7px');
+                    html += '<span class="wms-layout-cell-rotulo" style="font-size:' + rotFs + '">' + escHtml(rotLbl) + '</span>';
+                }
             }
             html += '</button>';
         });

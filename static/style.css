@@ -1174,6 +1174,34 @@ body.hub-modulos-aberto .container {
     box-shadow: inset 0 0 0 2px #0969da;
 }
 
+.wms-layout-cell--rotulo {
+    background: #ffffff;
+    cursor: pointer;
+    padding: 1px;
+}
+
+.wms-layout-cell--rotulo:hover {
+    background: #f8fafc;
+    box-shadow: inset 0 0 0 1px #90a4ae;
+}
+
+.wms-layout-cell-rotulo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    font-weight: 700;
+    color: #455a64;
+    line-height: 1.05;
+    text-align: center;
+    word-break: break-word;
+    hyphens: auto;
+    padding: 1px;
+    pointer-events: none;
+    user-select: none;
+}
+
 .wms-layout-cell--ocupado {
     background: var(--wms-cell-ocup);
     cursor: pointer;

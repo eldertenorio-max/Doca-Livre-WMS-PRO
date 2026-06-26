@@ -411,7 +411,7 @@ def _sync_wms_camara_layout(conn):
             continue
         conn.execute(f'UPDATE {t_cam} SET total_posicoes = ? WHERE codigo = ?', (total, cod))
         coords = _coords_from_bloco_layout(bloco)
-        codigos = {_codigo_endereco(c, r, p, n) for c, r, p, n, _da, _dl in coords}
+        codigos = {_codigo_endereco(c, r, p, n) for c, r, p, n, _da, _dl, _ar in coords}
         removidas += _limpar_localizacoes_orfas_vazias(conn, cod, codigos)
     try:
         conn.commit()
@@ -2110,7 +2110,7 @@ def _celula_e_porta(bloco, rua, posicao, nivel):
 
 
 def _coords_from_bloco_layout(bloco):
-    """Retorna [(camara, rua, posicao, nivel, destino_acao, destino_label), ...]."""
+    """Retorna [(camara, rua, posicao, nivel, destino_acao, destino_label, apenas_rotulo), ...]."""
     cod = int(bloco['codigo'])
     ends = bloco.get('enderecos') or []
     if ends:
@@ -2126,11 +2126,12 @@ def _coords_from_bloco_layout(bloco):
                 int(e['nivel']),
                 dest,
                 lbl,
+                bool(e.get('destino_apenas_rotulo')),
             ))
         return [c for c in out if not _celula_bloqueada_fisica(c[0], c[1], c[2], c[3])]
     total = _total_posicoes_ref(cod, bloco)
     coords = _gerar_coordenadas_camara(cod, bloco.get('ruas'), bloco.get('niveis', 5), total)
-    return [(c, r, p, n, None, None) for c, r, p, n in coords]
+    return [(c, r, p, n, None, None, False) for c, r, p, n in coords]
 
 
 def _layout_niveis_esperados():
@@ -2220,7 +2221,7 @@ def gerar_layout_enderecos(conn, force=False):
         seq_cat = _distribuir_categorias_em_slots(len(slots_cat), cats, pesos) if slots_cat else []
         codigos_validos = []
         idx_cat = 0
-        for cam, rua, pos, nivel, dest_acao, dest_lbl in coords_full:
+        for cam, rua, pos, nivel, dest_acao, dest_lbl, _apenas_rotulo in coords_full:
             if dest_acao:
                 cat_z = None
                 area = dest_acao
@@ -3603,7 +3604,7 @@ def _coletar_ocupacao_estoque_normal(conn):
     for cod in sorted(camaras_normais):
         bloco = blocos.get(cod) or {}
         coords = _coords_from_bloco_layout(bloco) if bloco else []
-        slots_layout = sum(1 for _c, _r, _p, _n, da, _dl in coords if not da)
+        slots_layout = sum(1 for _c, _r, _p, _n, da, _dl, _ar in coords if not da)
         cam_row = conn.execute(
             f'SELECT descricao, total_posicoes FROM {t_cam} WHERE codigo = ?',
             (cod,),
@@ -4105,7 +4106,7 @@ def _coletar_mapa_destinos_fixos(conn):
         cod_cam = int(bloco.get('codigo') or 0)
         if cod_cam not in (11, 12, 13, 21):
             continue
-        for _c, rua, pos, niv, dest_acao, dest_lbl in _coords_from_bloco_layout(bloco):
+        for _c, rua, pos, niv, dest_acao, dest_lbl, _apenas_rotulo in _coords_from_bloco_layout(bloco):
             if not dest_acao:
                 continue
             key = (dest_acao, cod_cam)
@@ -5871,7 +5872,7 @@ def api_wms_mapa_3d():
             if camara_filtro and cod_cam != camara_filtro:
                 continue
             slots = []
-            for c, rua, pos, niv, dest_acao, dest_lbl in _coords_from_bloco_layout(bloco):
+            for c, rua, pos, niv, dest_acao, dest_lbl, apenas_rotulo in _coords_from_bloco_layout(bloco):
                 cod_end = _codigo_endereco(c, rua, pos, niv)
                 loc = por_codigo.get(cod_end, {})
                 dest = dest_acao
@@ -5879,6 +5880,7 @@ def api_wms_mapa_3d():
                 if cod_cam == 11 and pos in (14, 15) and 1 <= niv <= 4:
                     dest = None
                     lbl = None
+                    apenas_rotulo = False
                 if not lbl and dest:
                     lbl = _destinos_acao_labels().get(dest)
                 slots.append({
@@ -5892,6 +5894,7 @@ def api_wms_mapa_3d():
                     'zona_armazenagem': (loc.get('zona_armazenagem') or _zona_por_nivel(niv)).lower(),
                     'destino_acao': dest,
                     'destino_label': lbl,
+                    'destino_apenas_rotulo': bool(apenas_rotulo and dest),
                     'tipo': 'destino_fixo' if dest else 'porta_palete',
                 })
             camaras_out.append({
@@ -7707,7 +7710,7 @@ def _opcoes_impressao_longarina(conn):
             continue
         niveis = max(1, int(bloco.get('niveis') or 5))
         ruas_map = {}
-        for _cam, rua, pos, _niv, dest_acao, _dest_lbl in _coords_from_bloco_layout(bloco):
+        for _cam, rua, pos, _niv, dest_acao, _dest_lbl, _apenas_rotulo in _coords_from_bloco_layout(bloco):
             if dest_acao:
                 continue
             rua = str(rua or '').strip().upper()

@@ -15,6 +15,12 @@
       "camara": 11,
       "colunas": [14, 15],
       "niveis": [5]
+    },
+    {
+      "descricao": "Topo indisponível nas colunas 14 e 15 (estrutura do rack)",
+      "camara": 12,
+      "colunas": [14, 15],
+      "niveis": [5]
     }
   ],
   "camaras": [
@@ -756,6 +762,13 @@
       ],
       "niveis": 5,
       "total_posicoes": 133,
+      "portas": [
+        {
+          "rua": "C",
+          "colunas": [2, 3],
+          "niveis": [1, 2]
+        }
+      ],
       "enderecos": [
         {
           "rua": "C",
@@ -1067,56 +1080,64 @@
           "posicao": 14,
           "nivel": 1,
           "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_label": "ENVIO MINAS",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "C",
           "posicao": 14,
           "nivel": 2,
           "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_label": "ENVIO MINAS",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "C",
           "posicao": 14,
           "nivel": 3,
           "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_label": "RETRABALHO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "C",
           "posicao": 14,
           "nivel": 4,
           "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_label": "RETRABALHO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "C",
           "posicao": 15,
           "nivel": 1,
           "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_label": "ENVIO MINAS",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "C",
           "posicao": 15,
           "nivel": 2,
           "destino_acao": "envio_mg",
-          "destino_label": "ENVIO P/ MINAS"
+          "destino_label": "ENVIO MINAS",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "C",
           "posicao": 15,
           "nivel": 3,
           "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_label": "RETRABALHO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "C",
           "posicao": 15,
           "nivel": 4,
           "destino_acao": "retrabalho",
-          "destino_label": "RETRABALHO"
+          "destino_label": "RETRABALHO",
+          "destino_apenas_rotulo": true
         },
         {
           "rua": "D",
