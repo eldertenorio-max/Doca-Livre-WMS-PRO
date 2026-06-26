@@ -1806,12 +1806,16 @@
         {
           "rua": "E",
           "posicao": 13,
-          "nivel": 2
+          "nivel": 2,
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
         },
         {
           "rua": "E",
           "posicao": 13,
-          "nivel": 3
+          "nivel": 3,
+          "destino_acao": "palete_bloqueado",
+          "destino_label": "BLOQUEADOS"
         },
         {
           "rua": "E",
