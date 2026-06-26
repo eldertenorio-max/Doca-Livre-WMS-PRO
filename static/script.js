@@ -5637,6 +5637,10 @@ function _wmsLayoutCelulaBloqueadaFisica(camara, rua, posicao, nivel) {
     return false;
 }
 
+function _wmsLayoutForcarEstoqueCam11(camara, col, niv) {
+    return parseInt(camara, 10) === 11 && (col === 14 || col === 15) && niv >= 1 && niv <= 4;
+}
+
 function _wmsLayoutCellInfo(slot, opts) {
     opts = opts || {};
     var porta = opts.porta;
@@ -5647,6 +5651,12 @@ function _wmsLayoutCellInfo(slot, opts) {
     }
     if (opts.camara != null && _wmsLayoutCelulaBloqueadaFisica(opts.camara, opts.rua, col, niv)) {
         return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
+    }
+    if (opts.camara != null && _wmsLayoutForcarEstoqueCam11(opts.camara, col, niv)) {
+        if (slot && (slot.status || '') === 'ocupada') {
+            return { kind: 'ocupado', className: 'wms-layout-cell--ocupado' };
+        }
+        return { kind: 'disponivel', className: 'wms-layout-cell--disponivel' };
     }
     if (!slot) return { kind: 'bloqueado', className: 'wms-layout-cell--bloqueado' };
     var tipo = (slot.tipo || '').toLowerCase();
@@ -5754,7 +5764,11 @@ function _wmsLayoutRenderRuaGrid(camCod, rua, slots, maxNiv, cellSizeHint, porta
     html += '</div>';
     var ov = _wmsLayoutPortaOverlayStyle(portaRua, colunas, nivs);
     if (ov) {
-        html += '<div class="wms-layout-porta-label" style="left:' + ov.left + ';top:' + ov.top + ';width:' + ov.width + ';height:' + ov.height + '">PORTA</div>';
+        html += '<div class="wms-layout-porta-banner" style="left:' + ov.left + ';top:' + ov.top + ';width:' + ov.width + ';height:' + ov.height + '" role="img" aria-label="Porta de acesso — colunas ' + escHtml(String((portaRua.colunas || [])[0])) + '–' + escHtml(String((portaRua.colunas || [])[1])) + '">';
+        html += '<div class="wms-layout-porta-banner-inner">';
+        html += '<div class="wms-layout-porta-icon" aria-hidden="true"></div>';
+        html += '<span class="wms-layout-porta-text">PORTA</span>';
+        html += '</div></div>';
     }
     html += '</div></div></div></div></div></div>';
     return html;

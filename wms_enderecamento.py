@@ -5876,6 +5876,9 @@ def api_wms_mapa_3d():
                 loc = por_codigo.get(cod_end, {})
                 dest = dest_acao
                 lbl = dest_lbl
+                if cod_cam == 11 and pos in (14, 15) and 1 <= niv <= 4:
+                    dest = None
+                    lbl = None
                 if not lbl and dest:
                     lbl = _destinos_acao_labels().get(dest)
                 slots.append({
