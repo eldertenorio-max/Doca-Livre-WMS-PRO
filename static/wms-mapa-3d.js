@@ -24,6 +24,8 @@
     var BEAM_H = 0.12;
     var BEAM_FACE = 0.16;
     var SHELF_TH = 0.075;
+    /** Paredes perimetrais e divisórias — desligado para vista aberta dos racks. */
+    var ENABLE_MAP_WALLS = false;
 
     var COL_BLUE = 0x1158b4;
     var COL_BLUE_DARK = 0x0a2e72;
@@ -463,9 +465,9 @@
     }
 
     function _setPerimeterWallsVisible(visible) {
-        if (!state.rackGroup) return;
+        if (!ENABLE_MAP_WALLS || !state.rackGroup) return;
         state.rackGroup.traverse(function (obj) {
-            if (obj.isGroup && obj.name === 'paredes-perimetro') {
+            if (obj.isGroup && (obj.name === 'paredes-perimetro' || obj.name === 'paredes-divisorias')) {
                 obj.visible = visible;
             }
         });
@@ -1609,33 +1611,35 @@
                 );
             });
             _addCamGapStripes(THREE, state.rackGroup, leftCodes, fpsLayout, layout.positions, maxDepthLeft);
-            var maxNivWall = MAX_NIV;
-            leftCodes.forEach(function (c) {
-                if (!camarasByCode[c]) return;
-                var cap = _maxNivCam(c);
-                var layoutNiv = parseInt(camarasByCode[c].niveis, 10);
-                var n = layoutNiv > 0 ? Math.min(layoutNiv, cap) : cap;
-                if (n > maxNivWall) maxNivWall = n;
-            });
-            var rackBounds113 = _computeRackBounds(camarasByCode, layout.positions, [11, 12, 13]);
-            _addChamberDividerWalls(
-                THREE,
-                state.rackGroup,
-                leftCodes,
-                fpsLayout,
-                layout.positions,
-                rackBounds113,
-                maxNivWall * LEVEL_H + 0.65
-            );
-            _addPerimeterWalls(
-                THREE,
-                state.rackGroup,
-                maxNivWall * LEVEL_H + 0.65,
-                layout.positions,
-                camarasByCode,
-                layout.corridors,
-                layout.passagem21
-            );
+            if (ENABLE_MAP_WALLS) {
+                var maxNivWall = MAX_NIV;
+                leftCodes.forEach(function (c) {
+                    if (!camarasByCode[c]) return;
+                    var cap = _maxNivCam(c);
+                    var layoutNiv = parseInt(camarasByCode[c].niveis, 10);
+                    var n = layoutNiv > 0 ? Math.min(layoutNiv, cap) : cap;
+                    if (n > maxNivWall) maxNivWall = n;
+                });
+                var rackBounds113 = _computeRackBounds(camarasByCode, layout.positions, [11, 12, 13]);
+                _addChamberDividerWalls(
+                    THREE,
+                    state.rackGroup,
+                    leftCodes,
+                    fpsLayout,
+                    layout.positions,
+                    rackBounds113,
+                    maxNivWall * LEVEL_H + 0.65
+                );
+                _addPerimeterWalls(
+                    THREE,
+                    state.rackGroup,
+                    maxNivWall * LEVEL_H + 0.65,
+                    layout.positions,
+                    camarasByCode,
+                    layout.corridors,
+                    layout.passagem21
+                );
+            }
 
             return new Promise(function (resolve, reject) {
                 function next() {
