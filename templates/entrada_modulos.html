@@ -10,8 +10,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705m">
-    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705n">
+    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705f">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
 </head>
 <body class="ss-hub-body doca-livre-pro ss-hub-sidebar-wide{% if is_homologacao %} app-env-homologacao{% endif %}" data-usuario="{{ usuario or '' }}">
@@ -21,6 +21,11 @@
 
     <div class="ss-hub">
         <aside class="ss-hub-sidebar ss-hub-sidebar--wide" aria-label="Menu lateral">
+            <div class="ss-hub-sidebar-head">
+                <button type="button" class="app-topbar-menu ss-hub-sidebar-toggle" id="btn-hub-sidebar-toggle" aria-label="Recolher menu lateral" aria-pressed="true" title="Recolher menu lateral">
+                    <span class="app-topbar-menu-icon" aria-hidden="true"></span>
+                </button>
+            </div>
             <nav class="ss-hub-sidebar-nav">
                 <p class="ss-hub-sidebar-label">Mais acessados</p>
                 <ul class="ss-hub-sidebar-list" id="sidebar-mais"></ul>
@@ -43,9 +48,6 @@
         <div class="ss-hub-shell">
             <header class="header app-topbar ss-hub-topbar" aria-label="Barra principal">
                 <div class="app-topbar-left ss-hub-topbar-left">
-                    <button type="button" class="app-topbar-menu ss-hub-topbar-menu" id="btn-hub-sidebar-toggle" aria-label="Recolher menu lateral" aria-pressed="true" title="Recolher menu lateral">
-                        <span class="app-topbar-menu-icon" aria-hidden="true"></span>
-                    </button>
                     <a href="/login?sair=1" class="app-topbar-back ss-hub-topbar-back header-link-voltar" title="Voltar ao login" aria-label="Voltar ao login">
                         <span class="app-topbar-back-icon" aria-hidden="true">←</span>
                         <span class="app-topbar-back-label">Voltar</span>

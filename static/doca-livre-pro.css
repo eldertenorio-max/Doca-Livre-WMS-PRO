@@ -431,6 +431,36 @@ body.doca-livre-pro .app-topbar-menu-icon {
     box-shadow: 0 -6px 0 currentColor, 0 6px 0 currentColor;
 }
 
+/* Módulos: hamburger sobre a sidebar preta (abaixo do header) */
+body.doca-livre-pro:not(.ss-hub-body) {
+    --env-banner-h: 0px;
+}
+
+body.doca-livre-pro:not(.ss-hub-body).app-env-homologacao {
+    --env-banner-h: 40px;
+}
+
+body.doca-livre-pro:not(.ss-hub-body) .header.app-topbar .app-topbar-menu {
+    position: fixed;
+    left: 0;
+    top: calc(var(--env-banner-h) + var(--app-topbar-h));
+    z-index: 131;
+    width: var(--sidebar-w-collapsed);
+    height: 52px;
+    border-radius: 0;
+    background: var(--sidebar-bg);
+    color: #ffffff;
+    border-bottom: 1px solid var(--sidebar-border);
+}
+
+body.doca-livre-pro:not(.ss-hub-body) .header.app-topbar .app-topbar-menu:hover {
+    background: rgb(255 255 255 / 0.08);
+}
+
+body.doca-livre-pro:not(.ss-hub-body) nav.modulo-sidebar.tabs {
+    padding-top: 52px !important;
+}
+
 body.doca-livre-pro .app-topbar-brand-row {
     display: flex;
     align-items: center;
@@ -802,6 +832,18 @@ body.ss-hub-body .ss-hub-sidebar-label {
     font-size: 0.72rem !important;
     letter-spacing: 0.08em !important;
     text-transform: uppercase !important;
+}
+
+body.ss-hub-body .ss-hub-sidebar-head {
+    border-bottom-color: #1f1f1f !important;
+}
+
+body.ss-hub-body .ss-hub-sidebar-head .app-topbar-menu {
+    color: #ffffff !important;
+}
+
+body.ss-hub-body .ss-hub-sidebar-head .app-topbar-menu:hover {
+    background: rgb(255 255 255 / 0.08) !important;
 }
 
 body.ss-hub-body .ss-hub-sidebar-link {
