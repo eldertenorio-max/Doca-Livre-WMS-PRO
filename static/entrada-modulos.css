@@ -298,7 +298,7 @@ body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar {
 
 .ss-hub-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
     gap: 14px;
     max-width: 720px;
 }
@@ -310,7 +310,7 @@ body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar {
     align-items: center;
     justify-content: flex-start;
     min-height: 118px;
-    padding: 18px 10px 14px;
+    padding: 18px 8px 14px;
     background: var(--ss-hub-card);
     border: 1px solid #e0e0e0;
     border-radius: 2px;
@@ -318,6 +318,8 @@ body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar {
     color: var(--ss-hub-text);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     transition: box-shadow 0.15s, border-color 0.15s, transform 0.15s;
+    overflow: hidden;
+    box-sizing: border-box;
 }
 
 .ss-hub-card:hover {
@@ -339,11 +341,15 @@ body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar {
 }
 
 .ss-hub-card-label {
+    width: 100%;
+    padding: 0 2px;
+    box-sizing: border-box;
     font-size: 12px;
     font-weight: 600;
     text-align: center;
     line-height: 1.35;
-    max-width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .ss-hub-card-star {
