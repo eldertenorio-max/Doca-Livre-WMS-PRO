@@ -75,6 +75,13 @@ body.doca-livre-pro {
     --app-topbar-h: 54px;
 }
 
+html.dl-splash-pending #doca-livre-splash,
+body.login-page-body.dl-splash-active #doca-livre-splash {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
 html.dl-splash-pending body.doca-livre-pro .container,
 html.dl-splash-pending body.ss-hub-body .ss-hub,
 html.dl-splash-pending body.login-page-body .login-page-root,

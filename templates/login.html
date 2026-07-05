@@ -9,9 +9,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705s">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705t">
     <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}?v=20260705c">
     <script>
+      try {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('sair') === '1') {
+          sessionStorage.removeItem('dl-wms-skip-intro');
+          sessionStorage.removeItem('dl-wms-intro-shown');
+          sessionStorage.removeItem('dl-splash-done');
+        }
+      } catch (e) {}
       try {
         var skipIntro = sessionStorage.getItem('dl-wms-skip-intro') === '1';
         if (!skipIntro) {
@@ -130,18 +138,12 @@
         </div>
     </div>
     </div>
-    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705j"></script>
+    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705k"></script>
     <script>
 (function () {
     if (window.location.search.indexOf('sair=1') !== -1) {
         var apiBase = window.API_BASE || '/api';
         fetch(apiBase + '/logout', { method: 'POST' }).catch(function() {});
-        if (window.dlClearIntroFlags) window.dlClearIntroFlags();
-        else try {
-            sessionStorage.removeItem('dl-wms-skip-intro');
-            sessionStorage.removeItem('dl-wms-intro-shown');
-            sessionStorage.removeItem('dl-splash-done');
-        } catch (e) {}
     }
 
     var btnAcessar = document.getElementById('btn-acessar-painel');

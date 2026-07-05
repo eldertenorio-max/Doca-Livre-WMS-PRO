@@ -17,7 +17,9 @@
 
     function shouldSkipIntro() {
         try {
-            return sessionStorage.getItem(INTRO_SKIP_KEY) === '1';
+            if (sessionStorage.getItem(INTRO_SKIP_KEY) === '1') return true;
+            /* chave legada — tratar como skip até logout */
+            if (sessionStorage.getItem(LEGACY_KEY) === '1') return true;
         } catch (e) { /* ignore */ }
         return false;
     }
@@ -113,12 +115,17 @@
         }, 60);
     }
 
+    function scheduleRunSplash() {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', runSplash);
+            return;
+        }
+        /* Defer 1 tick: scripts inline após intro.js (ex.: ?sair=1) rodam antes */
+        setTimeout(runSplash, 0);
+    }
+
     window.dlMarkSplashDone = markIntroSkipAfterAuth;
     window.dlClearIntroFlags = clearIntroFlags;
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', runSplash);
-    } else {
-        runSplash();
-    }
+    scheduleRunSplash();
 })();
