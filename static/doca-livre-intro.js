@@ -20,12 +20,12 @@
     function hideSplash(splash) {
         if (!splash) return;
         splash.classList.add('intro-splash--exit');
-        document.body.classList.remove('dl-splash-active');
-        clearPending();
         if (!isLoginPage) {
             try { sessionStorage.setItem(ENTRADA_SESSION_KEY, '1'); } catch (e) { /* ignore */ }
         }
         setTimeout(function () {
+            document.body.classList.remove('dl-splash-active');
+            clearPending();
             if (splash.parentNode) splash.parentNode.removeChild(splash);
         }, FADE_MS + 40);
     }
@@ -58,7 +58,6 @@
         var progressVal = 0;
 
         document.body.classList.add('dl-splash-active');
-        clearPending();
         startRef = Date.now();
 
         var tick = setInterval(function () {

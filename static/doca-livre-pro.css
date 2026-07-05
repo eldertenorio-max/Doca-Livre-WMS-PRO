@@ -25,7 +25,15 @@ body.doca-livre-pro {
 
 html.dl-splash-pending body.doca-livre-pro .container,
 html.dl-splash-pending body.ss-hub-body .ss-hub,
-html.dl-splash-pending body.login-page-body .login-page-root {
+html.dl-splash-pending body.login-page-body .login-page-root,
+body.doca-livre-pro.dl-splash-active .container,
+body.ss-hub-body.dl-splash-active .ss-hub,
+body.login-page-body.dl-splash-active .login-page-root {
+    visibility: hidden;
+}
+
+html.dl-splash-pending .app-env-banner,
+body.dl-splash-active .app-env-banner {
     visibility: hidden;
 }
 
