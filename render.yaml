@@ -1,14 +1,49 @@
+# Blueprint Render — Stock System WMS
+# Produção:  branch main    → https://sistema-wms.onrender.com
+# Homologação: branch homolog → https://sistema-wms-homologacao.onrender.com (após criar o serviço)
+#
+# IMPORTANTE: este app é Flask + PostgreSQL → use Web Service (Python), NÃO Static Site.
+
 services:
+  # ── Produção ──────────────────────────────────────────────────────────────
   - type: web
-    name: controle-de-carregamento
+    name: sistema-wms
     env: python
     plan: free
+    region: oregon
+    branch: main
     buildCommand: pip install -r requirements.txt
-    # 1 worker: app Flask grande (15k+ linhas) estourava RAM no free tier e derrubava o serviço
     startCommand: gunicorn -b 0.0.0.0:$PORT --workers 1 --timeout 120 --graceful-timeout 30 --worker-class gthread --threads 4 app:app
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      - key: APP_ENV
+        value: producao
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PGSSLMODE
+        value: require
+      - key: DATABASE_URL
+        sync: false
+      - key: RAVEX_USER
+        sync: false
+      - key: RAVEX_PASSWORD
+        sync: false
+
+  # ── Homologação (testes antes de ir para produção) ────────────────────────
+  - type: web
+    name: sistema-wms-homologacao
+    env: python
+    plan: free
+    region: oregon
+    branch: homolog
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -b 0.0.0.0:$PORT --workers 1 --timeout 120 --graceful-timeout 30 --worker-class gthread --threads 4 app:app
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: homologacao
       - key: SECRET_KEY
         generateValue: true
       - key: PGSSLMODE

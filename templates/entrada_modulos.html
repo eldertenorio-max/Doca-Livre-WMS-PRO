@@ -13,7 +13,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
 </head>
-<body class="hub-entrada-body">
+<body class="hub-entrada-body{% if is_homologacao %} app-env-homologacao{% endif %}">
+    {% include '_app_env_banner.html' %}
     {% from '_stock_system_logo.html' import stock_system_logo %}
     <div class="hub-entrada-topstripe" aria-hidden="true"></div>
 

@@ -20,7 +20,8 @@
       window.API_BASE = window.API_BASE || localStorage.getItem('api_base') || '/api';
     </script>
 </head>
-<body>
+<body{% if is_homologacao %} class="app-env-homologacao"{% endif %}>
+    {% include '_app_env_banner.html' %}
     {% from '_stock_system_logo.html' import stock_system_logo %}
     <div class="container">
         <!-- Cabeçalho -->

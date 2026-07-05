@@ -97,11 +97,30 @@ SYSTEM_NAME = 'Stock System'
 SYSTEM_TAGLINE = 'WMS · Gestão de estoque e armazenagem'
 
 
+def _app_env():
+    """producao | homologacao — controlado por APP_ENV ou nome do serviço no Render."""
+    raw = (os.environ.get('APP_ENV') or '').strip().lower()
+    if raw in ('homolog', 'homologacao', 'hml', 'staging', 'stg'):
+        return 'homologacao'
+    svc = (os.environ.get('RENDER_SERVICE_NAME') or '').strip().lower()
+    if 'homolog' in svc or svc.endswith('-hml'):
+        return 'homologacao'
+    return 'producao'
+
+
+def _app_env_url():
+    return (os.environ.get('RENDER_EXTERNAL_URL') or '').strip() or None
+
+
 @app.context_processor
 def _inject_stock_system_branding():
+    env = _app_env()
     return {
         'system_name': SYSTEM_NAME,
         'system_tagline': SYSTEM_TAGLINE,
+        'app_env': env,
+        'app_env_url': _app_env_url() if env == 'homologacao' else None,
+        'is_homologacao': env == 'homologacao',
     }
 
 # Atualização em tempo real: quando alguém bipa, todos os clientes (127.0.0.1 e 192.168.x.x) recebem e atualizam
@@ -2233,7 +2252,7 @@ def raiz():
 @app.route('/api/health')
 def api_health():
     """Health check leve para proxy/hospedagem (Render)."""
-    return jsonify({'ok': True}), 200
+    return jsonify({'ok': True, 'env': _app_env()}), 200
 
 
 @app.route('/manifest.webmanifest')

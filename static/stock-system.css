@@ -8,6 +8,45 @@
     --ss-muted: #64748b;
 }
 
+.app-env-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100001;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px 16px;
+    padding: 8px 14px;
+    background: linear-gradient(90deg, #e65100, #f57c00);
+    color: #fff;
+    font-size: 0.82rem;
+    font-weight: 500;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.app-env-banner strong {
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.app-env-banner__url {
+    opacity: 0.92;
+    font-size: 0.75rem;
+}
+
+body.app-env-homologacao {
+    padding-top: 40px;
+}
+
+body.app-env-homologacao .header {
+    top: 40px;
+}
+
 body.ss-splash-active {
     overflow: hidden;
 }

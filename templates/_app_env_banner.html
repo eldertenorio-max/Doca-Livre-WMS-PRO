@@ -1,0 +1,7 @@
+{% if app_env == 'homologacao' %}
+<div class="app-env-banner" role="status" aria-live="polite">
+    <strong>Homologação</strong>
+    <span>Ambiente de testes — alterações aqui não afetam a produção</span>
+    {% if app_env_url %}<span class="app-env-banner__url">{{ app_env_url }}</span>{% endif %}
+</div>
+{% endif %}
