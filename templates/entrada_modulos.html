@@ -8,35 +8,99 @@
     {{ app_head_icons() }}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
 </head>
-<body class="hub-entrada-body{% if is_homologacao %} app-env-homologacao{% endif %}">
+<body class="ss-hub-body{% if is_homologacao %} app-env-homologacao{% endif %}" data-usuario="{{ usuario or '' }}">
     {% include '_app_env_banner.html' %}
     {% from '_stock_system_logo.html' import stock_system_logo %}
-    <div class="hub-entrada-topstripe" aria-hidden="true"></div>
 
-    <div class="hub-entrada-wrap">
-        <div class="hub-entrada-logo">
-            {{ stock_system_logo(grad_id='ssg-hub') }}
+    <div class="ss-hub">
+        <aside class="ss-hub-sidebar" aria-label="Menu lateral">
+            <div class="ss-hub-sidebar-brand">
+                {{ stock_system_logo(class='ss-hub-sidebar-logo', grad_id='ssg-sidebar', width='140', height='38') }}
+            </div>
+
+            <nav class="ss-hub-sidebar-nav">
+                <p class="ss-hub-sidebar-label">Mais acessados</p>
+                <ul class="ss-hub-sidebar-list" id="sidebar-mais"></ul>
+
+                <p class="ss-hub-sidebar-label">Favoritos</p>
+                <ul class="ss-hub-sidebar-list" id="sidebar-fav"></ul>
+
+                <button type="button" class="ss-hub-sidebar-more" id="btn-menu-completo" aria-expanded="false">
+                    Menu completo <span class="ss-hub-sidebar-more-arrow">›</span>
+                </button>
+                <ul class="ss-hub-sidebar-list ss-hub-sidebar-list--all" id="sidebar-all" hidden></ul>
+            </nav>
+
+            <footer class="ss-hub-sidebar-foot">
+                <span class="ss-hub-sidebar-time" id="ss-hub-clock"></span>
+                <span>Versão: Stock System WMS</span>
+            </footer>
+        </aside>
+
+        <div class="ss-hub-shell">
+            <header class="ss-hub-topbar">
+                <div class="ss-hub-topbar-left">
+                    <span class="ss-hub-topbar-empresa">Ultrapão Transportes</span>
+                </div>
+                <div class="ss-hub-topbar-right">
+                    <span class="ss-hub-topbar-icon" title="Notificações" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+                    </span>
+                    <span class="ss-hub-topbar-icon" title="Relatórios" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+                    </span>
+                    <span class="ss-hub-topbar-user">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
+                        {{ usuario or 'Usuário' }}
+                    </span>
+                    <a class="ss-hub-topbar-sair" href="/login?sair=1" title="Sair">Sair</a>
+                </div>
+            </header>
+
+            <main class="ss-hub-main">
+                <div class="ss-hub-hero-logo">
+                    {{ stock_system_logo(class='ss-hub-hero-logo-svg', grad_id='ssg-hero', width='280', height='77') }}
+                </div>
+
+                <div class="ss-hub-search-wrap">
+                    <input type="search" class="ss-hub-search" id="hub-search" placeholder="Pesquisar no menu" autocomplete="off" aria-label="Pesquisar módulos">
+                    <span class="ss-hub-search-caret" aria-hidden="true">▾</span>
+                </div>
+
+                <section class="ss-hub-section" data-section="recentes">
+                    <h2 class="ss-hub-section-title">Recentes</h2>
+                    <div class="ss-hub-grid" id="grid-recentes"></div>
+                    <p class="ss-hub-empty" id="empty-recentes" hidden>Nenhum módulo acessado recentemente.</p>
+                </section>
+
+                <section class="ss-hub-section" data-section="mais">
+                    <h2 class="ss-hub-section-title">Mais acessados</h2>
+                    <div class="ss-hub-grid" id="grid-mais"></div>
+                </section>
+
+                <section class="ss-hub-section" data-section="favoritos">
+                    <h2 class="ss-hub-section-title">Favoritos</h2>
+                    <div class="ss-hub-grid" id="grid-favoritos"></div>
+                    <p class="ss-hub-empty" id="empty-favoritos" hidden>Clique na estrela de um módulo para favoritar.</p>
+                </section>
+            </main>
         </div>
-        <p class="hub-entrada-subtitulo">{{ system_tagline }}</p>
-
-        <div class="hub-entrada-botoes">
-            <a class="hub-entrada-btn hub-entrada-btn--1" href="{{ url_for('painel') }}?modulo=carregamento">Carga/Expedição</a>
-            <a class="hub-entrada-btn hub-entrada-btn--2" href="{{ url_for('painel') }}?modulo=devolucoes">Retorno</a>
-            <a class="hub-entrada-btn hub-entrada-btn--3" href="{{ url_for('painel') }}?modulo=terceiros">Descarga/Recebimento</a>
-            <a class="hub-entrada-btn hub-entrada-btn--4" href="{{ url_for('painel') }}?modulo=estoque-sp">Estoque</a>
-            <a class="hub-entrada-btn hub-entrada-btn--5" href="{{ url_for('painel') }}?modulo=enderecamento-wms">Endereçamento WMS</a>
-        </div>
-
-        <footer class="hub-entrada-rodape">
-            Logado como <strong>{{ usuario or '—' }}</strong>
-            ·
-            <a href="/login?sair=1">Sair</a>
-        </footer>
     </div>
+
+    <script>
+    window.SS_HUB_MODULOS = [
+        { id: 'carregamento', label: 'Carga/Expedição', href: {{ url_for('painel')|tojson }} + '?modulo=carregamento', icon: 'truck' },
+        { id: 'devolucoes', label: 'Retorno', href: {{ url_for('painel')|tojson }} + '?modulo=devolucoes', icon: 'return' },
+        { id: 'terceiros', label: 'Descarga/Recebimento', href: {{ url_for('painel')|tojson }} + '?modulo=terceiros', icon: 'inbound' },
+        { id: 'estoque-sp', label: 'Estoque', href: {{ url_for('painel')|tojson }} + '?modulo=estoque-sp', icon: 'stock' },
+        { id: 'enderecamento-wms', label: 'Endereçamento WMS', href: {{ url_for('painel')|tojson }} + '?modulo=enderecamento-wms', icon: 'wms' }
+    ];
+    </script>
+    <script src="{{ url_for('static', filename='entrada-modulos.js') }}?v=20260705"></script>
 </body>
 </html>
