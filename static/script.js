@@ -3011,6 +3011,20 @@ var _SIDEBAR_LABELS = {
     }
 };
 
+function _sidebarIconHtml(key, emojiFallback) {
+    if (document.body.classList.contains('doca-livre-pro') && typeof window.docaLivreSidebarIcon === 'function') {
+        return window.docaLivreSidebarIcon(key || 'default');
+    }
+    return emojiFallback || '📄';
+}
+
+function _sidebarDisplayLabel(label) {
+    if (document.body.classList.contains('doca-livre-pro') && typeof window.docaLivreSidebarLabel === 'function') {
+        return window.docaLivreSidebarLabel(label);
+    }
+    return label;
+}
+
 function _sidebarEnhanceButton(btn, attrKey, iconMap, moduloKey) {
     if (!btn || btn.querySelector('.sidebar-icon')) return;
     var key = btn.getAttribute(attrKey);
@@ -3021,7 +3035,8 @@ function _sidebarEnhanceButton(btn, attrKey, iconMap, moduloKey) {
         || (btn.textContent || '').trim()
         || btn.getAttribute('title')
         || '').trim();
-    var icon = btn.getAttribute('data-icon') || (iconMap && iconMap[key]) || '📄';
+    label = _sidebarDisplayLabel(label);
+    var icon = _sidebarIconHtml(key, btn.getAttribute('data-icon') || (iconMap && iconMap[key]) || '📄');
     btn.setAttribute('title', label);
     btn.setAttribute('aria-label', label);
     btn.innerHTML = '<span class="sidebar-icon" aria-hidden="true">' + icon + '</span><span class="sidebar-label">' + escapeHtml(label) + '</span>';
@@ -3032,11 +3047,11 @@ function _sidebarInjectHeaderFooter(nav, moduloKey) {
     var meta = _SIDEBAR_MODULO_META[moduloKey] || { icon: '📁', label: 'Módulo' };
     var header = document.createElement('div');
     header.className = 'modulo-sidebar-header';
-    header.innerHTML = '<span class="sidebar-icon" aria-hidden="true">' + meta.icon + '</span><span class="sidebar-label">' + escapeHtml(meta.label) + '</span>';
+    header.innerHTML = '<span class="sidebar-icon" aria-hidden="true">' + _sidebarIconHtml('modulo', meta.icon) + '</span><span class="sidebar-label">' + escapeHtml(_sidebarDisplayLabel(meta.label)) + '</span>';
     nav.insertBefore(header, nav.firstChild);
     var footer = document.createElement('div');
     footer.className = 'modulo-sidebar-footer';
-    footer.innerHTML = '<a href="/entrada" class="sidebar-footer-btn" title="Trocar módulo"><span class="sidebar-icon" aria-hidden="true">🏠</span><span class="sidebar-label">Trocar módulo</span></a>';
+    footer.innerHTML = '<a href="/entrada" class="sidebar-footer-btn" title="Trocar módulo"><span class="sidebar-icon" aria-hidden="true">' + _sidebarIconHtml('home', '🏠') + '</span><span class="sidebar-label">Trocar módulo</span></a>';
     nav.appendChild(footer);
 }
 
@@ -3047,6 +3062,9 @@ function _sidebarWrapContainer(container, nav, attrKey, iconMap, moduloKey) {
         container.insertBefore(nav, container.firstElementChild);
     }
     nav.classList.add('modulo-sidebar', 'modulo-sidebar-ready');
+    if (document.body.classList.contains('doca-livre-pro')) {
+        nav.classList.add('modulo-sidebar--doca');
+    }
 
     var botoes = Array.from(nav.querySelectorAll(':scope > .tab-button'));
     var navInner = document.createElement('div');

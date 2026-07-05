@@ -9,6 +9,9 @@ body.doca-livre-pro {
     --sidebar-border: #1f1f1f;
     --sidebar-text: #ffffff;
     --sidebar-text-muted: #b0b0b0;
+    --sidebar-w-collapsed: 72px;
+    --sidebar-w-expanded: 280px;
+    --sidebar-icon-size: 28px;
     --content-bg: #eef1f4;
     --border: #dde1e6;
     --text: #000000;
@@ -408,6 +411,7 @@ body.doca-livre-pro .header-alertas-btn {
 }
 
 /* ── Sidebar preta — estilo Ultrafrio / doca-theme.css ── */
+body.doca-livre-pro .modulo-sidebar.modulo-sidebar--doca,
 body.doca-livre-pro nav.modulo-sidebar.tabs {
     display: flex !important;
     flex-direction: column !important;
@@ -415,8 +419,12 @@ body.doca-livre-pro nav.modulo-sidebar.tabs {
     border-right: 1px solid var(--sidebar-border) !important;
     border-bottom: none !important;
     overflow-x: hidden !important;
-    padding: 0 !important;
+    padding: 8px 0 0 !important;
     box-shadow: none !important;
+    width: var(--sidebar-w-collapsed) !important;
+    min-width: var(--sidebar-w-collapsed) !important;
+    max-width: var(--sidebar-w-collapsed) !important;
+    flex: 0 0 var(--sidebar-w-collapsed) !important;
 }
 
 body.doca-livre-pro .modulo-sidebar,
@@ -425,39 +433,33 @@ body.doca-livre-pro .modulo-sidebar:hover,
 body.doca-livre-pro .modulo-sidebar:hover.tabs {
     background: var(--sidebar-bg) !important;
     border-right: 1px solid var(--sidebar-border) !important;
-    box-shadow: 4px 0 24px rgb(0 0 0 / 0.35) !important;
+}
+
+body.doca-livre-pro .modulo-sidebar:hover,
+body.doca-livre-pro .modulo-sidebar.modulo-sidebar--doca:hover {
+    width: var(--sidebar-w-expanded) !important;
+    min-width: var(--sidebar-w-expanded) !important;
+    max-width: var(--sidebar-w-expanded) !important;
+    flex: 0 0 var(--sidebar-w-expanded) !important;
+    box-shadow: 8px 0 28px rgb(0 0 0 / 0.45) !important;
 }
 
 body.doca-livre-pro .modulo-sidebar-header {
-    margin-bottom: 0 !important;
-    padding: 14px 12px 12px !important;
-    border-bottom: 1px solid var(--sidebar-border) !important;
-    background: transparent !important;
-}
-
-body.doca-livre-pro .modulo-sidebar-header .sidebar-label {
-    color: var(--sidebar-text) !important;
-    font-size: 0.72rem !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.1em !important;
-    text-transform: uppercase !important;
-}
-
-body.doca-livre-pro .modulo-sidebar-header .sidebar-icon {
-    color: var(--brand-yellow) !important;
+    display: none !important;
 }
 
 body.doca-livre-pro .modulo-sidebar-nav {
     padding: 0 !important;
     gap: 0 !important;
+    flex: 1 1 auto !important;
 }
 
 body.doca-livre-pro .modulo-sidebar .tab-button {
     flex: none !important;
     width: 100% !important;
-    min-height: 48px !important;
+    min-height: 52px !important;
     margin: 0 !important;
-    padding: 12px 14px !important;
+    padding: 14px 10px !important;
     border: none !important;
     border-top: 1px solid var(--sidebar-border) !important;
     border-left: 3px solid transparent !important;
@@ -465,13 +467,13 @@ body.doca-livre-pro .modulo-sidebar .tab-button {
     border-bottom: none !important;
     background: transparent !important;
     color: var(--sidebar-text) !important;
-    font-size: 0.92rem !important;
+    font-size: 0.95rem !important;
     font-weight: 700 !important;
     letter-spacing: 0.02em !important;
     text-align: left !important;
     text-transform: none !important;
     white-space: nowrap !important;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease !important;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, gap 0.22s ease, padding 0.22s ease !important;
 }
 
 body.doca-livre-pro .modulo-sidebar-nav > .tab-button:first-child {
@@ -487,13 +489,11 @@ body.doca-livre-pro .modulo-sidebar:not(:hover) .tab-button {
 
 body.doca-livre-pro .modulo-sidebar:hover .tab-button {
     justify-content: flex-start !important;
-    padding-left: 14px !important;
-    padding-right: 14px !important;
+    padding: 14px 12px !important;
     gap: 10px !important;
 }
 
-body.doca-livre-pro .modulo-sidebar .tab-button:hover,
-body.doca-livre-pro .sidebar-footer-btn:hover {
+body.doca-livre-pro .modulo-sidebar .tab-button:hover {
     background: rgb(255 255 255 / 0.05) !important;
     color: #fff !important;
 }
@@ -511,20 +511,40 @@ body.doca-livre-pro .modulo-sidebar .tab-button.active {
 }
 
 body.doca-livre-pro .modulo-sidebar .sidebar-icon {
-    width: 24px !important;
-    height: 24px !important;
-    min-width: 24px !important;
-    font-size: 1.05rem !important;
-    line-height: 1 !important;
+    width: var(--sidebar-icon-size) !important;
+    height: var(--sidebar-icon-size) !important;
+    min-width: var(--sidebar-icon-size) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     color: var(--sidebar-text-muted) !important;
     background: transparent !important;
     border: none !important;
     border-radius: 0 !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    overflow: visible !important;
+}
+
+body.doca-livre-pro .modulo-sidebar .sidebar-icon-svg {
+    display: block !important;
+    width: 18px !important;
+    height: 18px !important;
 }
 
 body.doca-livre-pro .modulo-sidebar .sidebar-label {
     color: inherit !important;
     font-weight: 700 !important;
+    font-size: 0.95rem !important;
+    opacity: 0 !important;
+    max-width: 0 !important;
+    visibility: hidden !important;
+}
+
+body.doca-livre-pro .modulo-sidebar:hover .sidebar-label {
+    opacity: 1 !important;
+    max-width: 220px !important;
+    visibility: visible !important;
 }
 
 body.doca-livre-pro .modulo-sidebar-footer {
@@ -536,14 +556,14 @@ body.doca-livre-pro .modulo-sidebar-footer {
 
 body.doca-livre-pro .sidebar-footer-btn {
     width: 100% !important;
-    min-height: 48px !important;
+    min-height: 52px !important;
     margin: 0 !important;
-    padding: 12px 14px !important;
+    padding: 14px 10px !important;
     border: none !important;
     border-radius: 0 !important;
     background: transparent !important;
     color: var(--sidebar-text-muted) !important;
-    font-size: 0.92rem !important;
+    font-size: 0.95rem !important;
     font-weight: 700 !important;
     text-align: left !important;
 }
@@ -557,15 +577,82 @@ body.doca-livre-pro .modulo-sidebar:not(:hover) .sidebar-footer-btn {
 
 body.doca-livre-pro .modulo-sidebar:hover .sidebar-footer-btn {
     justify-content: flex-start !important;
+    padding: 14px 12px !important;
     gap: 10px !important;
 }
 
 body.doca-livre-pro .sidebar-footer-btn:hover {
+    background: rgb(255 255 255 / 0.05) !important;
     color: var(--brand-yellow) !important;
 }
 
 body.doca-livre-pro .sidebar-footer-btn:hover .sidebar-icon {
     color: var(--brand-yellow) !important;
+}
+
+body.doca-livre-pro .sidebar-footer-btn .sidebar-label {
+    opacity: 0 !important;
+    max-width: 0 !important;
+    visibility: hidden !important;
+}
+
+body.doca-livre-pro .modulo-sidebar:hover .sidebar-footer-btn .sidebar-label {
+    opacity: 1 !important;
+    max-width: 220px !important;
+    visibility: visible !important;
+}
+
+/* Hub /entrada — sidebar preta DOCA LIVRE */
+body.ss-hub-body .ss-hub-sidebar {
+    background: #000 !important;
+    border-right-color: #1f1f1f !important;
+}
+
+body.ss-hub-body .ss-hub-sidebar-brand {
+    border-bottom-color: #1f1f1f !important;
+    padding: 16px 12px 14px !important;
+}
+
+body.ss-hub-body .ss-hub-sidebar-label {
+    color: #b0b0b0 !important;
+    font-size: 0.72rem !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+}
+
+body.ss-hub-body .ss-hub-sidebar-link {
+    color: #fff !important;
+    border-top: 1px solid #1f1f1f;
+    font-weight: 700;
+    min-height: 44px;
+}
+
+body.ss-hub-body .ss-hub-sidebar-list > li:first-child .ss-hub-sidebar-link {
+    border-top: none;
+}
+
+body.ss-hub-body .ss-hub-sidebar-link:hover {
+    background: rgb(255 255 255 / 0.05) !important;
+    color: #fff !important;
+}
+
+body.ss-hub-body .ss-hub-sidebar-link:hover .ss-hub-sidebar-link-ico {
+    color: #f9db00 !important;
+}
+
+body.ss-hub-body .ss-hub-sidebar-more {
+    color: #f9db00 !important;
+    border-top: 1px solid #1f1f1f;
+    margin-top: 8px;
+}
+
+body.ss-hub-body .ss-hub-sidebar-foot {
+    border-top: 1px solid #1f1f1f !important;
+    color: #b0b0b0 !important;
+}
+
+body.ss-hub-body .ss-hub-sidebar-link-ico {
+    color: #b0b0b0 !important;
 }
 
 /* ── Área principal + marca d'água (main-panel) ── */
