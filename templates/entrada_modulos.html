@@ -16,7 +16,6 @@
 </head>
 <body class="ss-hub-body doca-livre-pro ss-hub-sidebar-wide{% if is_homologacao %} app-env-homologacao{% endif %}" data-usuario="{{ usuario or '' }}">
     {% include '_app_env_banner.html' %}
-    {% include '_doca_livre_splash.html' %}
     {% from '_doca_livre_logo.html' import doca_livre_brand, doca_livre_logo %}
 
     <div class="ss-hub">
@@ -116,7 +115,6 @@
     </script>
     <script src="{{ url_for('static', filename='doca-livre-pro.js') }}?v=20260705d"></script>
     <script src="{{ url_for('static', filename='entrada-modulos.js') }}?v=20260705d"></script>
-    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705f"></script>
     {% include '_pwa_install.html' %}
 </body>
 </html>

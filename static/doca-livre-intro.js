@@ -1,17 +1,25 @@
 /**
- * Splash DOCA LIVRE — login (sempre) e /entrada (uma vez por sessão).
+ * Splash DOCA LIVRE — apenas na primeira abertura do login (uma vez por sessão).
  */
 (function () {
     'use strict';
 
     var MIN_INTRO_MS = 2200;
     var FADE_MS = 650;
-    var ENTRADA_SESSION_KEY = 'dl-splash-done';
+    var SPLASH_DONE_KEY = 'dl-splash-done';
     var startRef = Date.now();
     var finished = false;
     var isLoginPage = document.body.classList.contains('login-page-body');
 
     function qs(id) { return document.getElementById(id); }
+
+    function markSplashDone() {
+        try { sessionStorage.setItem(SPLASH_DONE_KEY, '1'); } catch (e) { /* ignore */ }
+    }
+
+    function isSplashDone() {
+        try { return sessionStorage.getItem(SPLASH_DONE_KEY) === '1'; } catch (e) { return false }
+    }
 
     function clearPending() {
         document.documentElement.classList.remove('dl-splash-pending');
@@ -20,9 +28,7 @@
     function hideSplash(splash) {
         if (!splash) return;
         splash.classList.add('intro-splash--exit');
-        if (!isLoginPage) {
-            try { sessionStorage.setItem(ENTRADA_SESSION_KEY, '1'); } catch (e) { /* ignore */ }
-        }
+        markSplashDone();
         setTimeout(function () {
             document.body.classList.remove('dl-splash-active');
             clearPending();
@@ -38,19 +44,20 @@
     }
 
     function runSplash() {
+        if (!isLoginPage) {
+            skipSplash();
+            return;
+        }
+
         var splash = qs('doca-livre-splash');
         if (!splash) {
             clearPending();
             return;
         }
 
-        if (!isLoginPage) {
-            try {
-                if (sessionStorage.getItem(ENTRADA_SESSION_KEY)) {
-                    skipSplash();
-                    return;
-                }
-            } catch (e) { /* ignore */ }
+        if (isSplashDone()) {
+            skipSplash();
+            return;
         }
 
         var bar = qs('dl-splash-bar-fill');
@@ -82,6 +89,8 @@
             }
         }, 60);
     }
+
+    window.dlMarkSplashDone = markSplashDone;
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', runSplash);

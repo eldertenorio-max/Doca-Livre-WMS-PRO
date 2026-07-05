@@ -11,7 +11,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705q">
     <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}?v=20260705b">
-    <script>document.documentElement.classList.add('dl-splash-pending');</script>
+    <script>
+      try {
+        if (!sessionStorage.getItem('dl-splash-done')) {
+          document.documentElement.classList.add('dl-splash-pending');
+        }
+      } catch (e) {}
+    </script>
     <style>
       html.dl-splash-pending body.login-page-body .login-page-root,
       body.login-page-body.dl-splash-active .login-page-root {
@@ -52,7 +58,7 @@
                 {% if usuario %}
                 <div class="login-ja-logado" style="margin-bottom:20px;padding:16px;background:#e3f2fd;border-radius:12px;text-align:center;">
                     <p style="margin-bottom:12px;color:#1565c0;">Você está logado como <strong>{{ usuario }}</strong>.</p>
-                    <a href="/entrada" class="btn btn-primary" style="display:inline-block;text-decoration:none;">Acessar painel</a>
+                    <a href="/entrada" class="btn btn-primary" id="btn-acessar-painel" style="display:inline-block;text-decoration:none;">Acessar painel</a>
                 </div>
                 {% endif %}
                 <form id="form-login" class="login-form" autocomplete="on">
@@ -123,13 +129,20 @@
         </div>
     </div>
     </div>
-    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705g"></script>
+    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705h"></script>
     <script>
 (function () {
     if (window.location.search.indexOf('sair=1') !== -1) {
         var apiBase = window.API_BASE || '/api';
         fetch(apiBase + '/logout', { method: 'POST' }).catch(function() {});
-        try { sessionStorage.removeItem('dl-splash-done'); } catch (e) { /* ignore */ }
+    }
+
+    var btnAcessar = document.getElementById('btn-acessar-painel');
+    if (btnAcessar) {
+        btnAcessar.addEventListener('click', function () {
+            if (window.dlMarkSplashDone) window.dlMarkSplashDone();
+            else try { sessionStorage.setItem('dl-splash-done', '1'); } catch (e) {}
+        });
     }
 
     var cardLogin = document.getElementById('card-login');
@@ -204,6 +217,8 @@
                     try { localStorage.setItem('access_token', data.access_token); } catch (e) {}
                     try { localStorage.setItem('usuario', data.usuario || document.getElementById('usuario').value.trim()); } catch (e) {}
                 }
+                if (window.dlMarkSplashDone) window.dlMarkSplashDone();
+                else try { sessionStorage.setItem('dl-splash-done', '1'); } catch (e) {}
                 window.location.href = (data.redirect || '/painel');
                 return;
             }
