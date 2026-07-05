@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ system_name }} — WMS</title>
+    <title>WMS DOCA LIVRE PRO</title>
     {% from '_app_head_icons.html' import app_head_icons %}
     {{ app_head_icons() }}
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=20260626s">
@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='modulo-sidebar.css') }}?v=20260626h">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705">
     <link rel="stylesheet" href="{{ url_for('static', filename='wms-mapa-3d.css') }}?v=20260619a">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -20,17 +21,21 @@
       window.API_BASE = window.API_BASE || localStorage.getItem('api_base') || '/api';
     </script>
 </head>
-<body{% if is_homologacao %} class="app-env-homologacao"{% endif %}>
+<body class="doca-livre-pro{% if is_homologacao %} app-env-homologacao{% endif %}">
     {% include '_app_env_banner.html' %}
     {% from '_stock_system_logo.html' import stock_system_logo %}
+    {% from '_doca_livre_logo.html' import doca_livre_logo %}
+    {% include '_doca_livre_splash.html' %}
     <div class="container">
-        <!-- Cabeçalho -->
-        <header class="header">
-            <a href="/entrada" class="header-link-inicio" title="Voltar à tela inicial de módulos">← Tela inicial</a>
-            <div class="header-brand">
-                {{ stock_system_logo(class='ss-brand-logo ss-brand-logo--header', grad_id='ssg-header', width='145', height='40') }}
+        <!-- Topbar estilo DOCA LIVRE PRO -->
+        <header class="header dl-topbar">
+            <a href="/entrada" class="dl-topbar-home header-link-inicio" title="Voltar à tela inicial de módulos" aria-label="Menu">☰</a>
+            <div class="dl-topbar-brand">
+                {{ doca_livre_logo(class='dl-logo--compact', compact=true) }}
             </div>
-            <div class="header-actions">
+            <span class="dl-topbar-product">WMS <span class="dl-badge">PRO</span></span>
+            <div class="dl-topbar-spacer"></div>
+            <div class="header-actions dl-topbar-actions">
             <div class="header-alertas-terceiros" id="header-alertas-terceiros">
                 <button type="button" class="header-alertas-btn" id="btn-terceiros-alertas" title="Alertas de NFs paradas">
                     <span class="header-alertas-icone" aria-hidden="true">🔔</span>
@@ -49,6 +54,10 @@
                 <span class="perfil-usuario" id="perfil-usuario">{{ usuario or '—' }}</span>
             </div>
             <a href="/login?sair=1" class="btn-sair" id="btn-sair" title="Sair">Sair</a>
+            <div class="dl-topbar-datetime">
+                <span id="dl-clock-time">--:--</span>
+                <span id="dl-clock-date">--/--/----</span>
+            </div>
             </div>
         </header>
 
@@ -3992,11 +4001,13 @@
         </div>
     </div>
 
+    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705"></script>
     <script src="{{ url_for('static', filename='script.js') }}?v=20260626s"></script>
     <script src="{{ url_for('static', filename='wms-analise.js') }}?v=20260604"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" crossorigin="anonymous"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
     <script defer src="{{ url_for('static', filename='wms-mapa-3d.js') }}?v=20260626v"></script>
+    <script src="{{ url_for('static', filename='doca-livre-pro.js') }}?v=20260705"></script>
     <script defer>
         (function () {
             function sinalizar() {

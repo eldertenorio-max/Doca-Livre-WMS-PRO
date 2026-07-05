@@ -1,0 +1,351 @@
+/* WMS DOCA LIVRE PRO — interior dos módulos (#F9DB00 · #000000) */
+
+:root {
+    --dl-yellow: #F9DB00;
+    --dl-black: #000000;
+    --dl-gray-bg: #f0f0f0;
+    --dl-topbar-h: 52px;
+}
+
+body.doca-livre-pro {
+    --app-header-h: 52px;
+}
+
+html.dl-splash-pending body.doca-livre-pro .container {
+    visibility: hidden;
+}
+
+body.doca-livre-pro.dl-splash-active {
+    overflow: hidden;
+}
+
+body.doca-livre-pro.dl-splash-active .container {
+    visibility: hidden;
+}
+
+/* ── Splash inicial ── */
+.dl-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 100002;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.45s ease, visibility 0.45s ease;
+}
+
+.dl-splash--out {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.dl-splash-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    width: min(420px, 92vw);
+    text-align: center;
+}
+
+.dl-splash-logo {
+    width: min(320px, 88vw);
+    height: auto;
+}
+
+.dl-splash-title {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #555;
+    letter-spacing: 0.04em;
+}
+
+.dl-splash-bar {
+    width: 100%;
+    height: 4px;
+    background: #e8e8e8;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.dl-splash-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: #888;
+    border-radius: 2px;
+    transition: width 0.08s linear;
+}
+
+.dl-splash-status {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #888;
+}
+
+/* ── Logo ── */
+.dl-logo {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+.dl-logo--compact {
+    max-height: 40px;
+    width: auto;
+}
+
+/* ── Topbar ── */
+body.doca-livre-pro .container {
+    background: var(--dl-gray-bg);
+    box-shadow: none;
+}
+
+body.doca-livre-pro .header.dl-topbar {
+    background: #fff;
+    color: var(--dl-black);
+    border-bottom: 1px solid #ddd;
+    min-height: var(--dl-topbar-h);
+    padding: 0 16px 0 8px;
+    justify-content: flex-start;
+    gap: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+body.doca-livre-pro.app-env-homologacao .header.dl-topbar {
+    top: 40px;
+}
+
+body.doca-livre-pro .dl-topbar-home {
+    position: static;
+    transform: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--dl-black);
+    font-size: 22px;
+    line-height: 1;
+    text-decoration: none;
+    flex-shrink: 0;
+}
+
+body.doca-livre-pro .dl-topbar-home:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+body.doca-livre-pro .header-link-inicio {
+    display: none;
+}
+
+body.doca-livre-pro .dl-topbar-brand {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+body.doca-livre-pro .dl-topbar-brand .dl-logo--compact {
+    height: 38px;
+    width: auto;
+}
+
+body.doca-livre-pro .header-brand {
+    display: none;
+}
+
+body.doca-livre-pro .dl-topbar-product {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--dl-black);
+    letter-spacing: -0.02em;
+    flex-shrink: 0;
+}
+
+body.doca-livre-pro .dl-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 8px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #666;
+    background: #eee;
+    border-radius: 999px;
+    vertical-align: middle;
+    letter-spacing: 0.02em;
+}
+
+body.doca-livre-pro .dl-topbar-spacer {
+    flex: 1;
+}
+
+body.doca-livre-pro .dl-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+body.doca-livre-pro .dl-topbar-datetime {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 11px;
+    color: #555;
+    line-height: 1.25;
+    margin-left: 8px;
+    min-width: 72px;
+}
+
+body.doca-livre-pro .dl-topbar-datetime #dl-clock-time {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--dl-black);
+}
+
+body.doca-livre-pro .header-perfil .perfil-label {
+    color: #666;
+}
+
+body.doca-livre-pro .header-perfil .perfil-usuario {
+    color: var(--dl-black);
+}
+
+body.doca-livre-pro .btn-sair {
+    color: var(--dl-black);
+    border-color: #ccc;
+    background: #fafafa;
+}
+
+body.doca-livre-pro .btn-sair:hover {
+    background: var(--dl-yellow);
+    border-color: var(--dl-yellow);
+}
+
+body.doca-livre-pro .btn-atualizar-aba {
+    color: var(--dl-black);
+    border-color: #ccc;
+    background: #fff;
+}
+
+body.doca-livre-pro .header-alertas-btn {
+    color: var(--dl-black);
+}
+
+/* ── Sidebar escura DOCA ── */
+body.doca-livre-pro .modulo-sidebar {
+    background: var(--dl-black) !important;
+    border-right: 1px solid #222 !important;
+}
+
+body.doca-livre-pro .modulo-sidebar.tabs {
+    background: var(--dl-black) !important;
+}
+
+body.doca-livre-pro .modulo-sidebar-header {
+    border-bottom-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+body.doca-livre-pro .modulo-sidebar-header .sidebar-label {
+    color: var(--dl-yellow) !important;
+}
+
+body.doca-livre-pro .modulo-sidebar .tab-button:hover,
+body.doca-livre-pro .sidebar-footer-btn:hover {
+    background: rgba(249, 219, 0, 0.1) !important;
+    color: #fff !important;
+}
+
+body.doca-livre-pro .modulo-sidebar .tab-button.active {
+    background: rgba(249, 219, 0, 0.15) !important;
+    color: var(--dl-yellow) !important;
+    border-left-color: var(--dl-yellow) !important;
+}
+
+body.doca-livre-pro .modulo-sidebar-footer {
+    background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.5)) !important;
+    border-top-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* ── Área principal + marca d'água ── */
+body.doca-livre-pro .modulo-main {
+    background: var(--dl-gray-bg) !important;
+    position: relative;
+}
+
+body.doca-livre-pro .modulo-welcome-watermark {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 0;
+}
+
+body.doca-livre-pro .modulo-welcome-watermark-inner {
+    text-align: center;
+    opacity: 0.14;
+}
+
+body.doca-livre-pro .modulo-welcome-logo svg {
+    width: min(360px, 70vw);
+    height: auto;
+    margin: 0 auto 12px;
+}
+
+body.doca-livre-pro .modulo-welcome-text {
+    margin: 0;
+    font-size: clamp(1.1rem, 2.5vw, 1.6rem);
+    font-weight: 600;
+    color: var(--dl-black);
+    letter-spacing: 0.06em;
+}
+
+body.doca-livre-pro .modulo-main > .content,
+body.doca-livre-pro .modulo-main > .devolucoes-conteudo,
+body.doca-livre-pro .modulo-main > *:not(.modulo-welcome-watermark) {
+    position: relative;
+    z-index: 1;
+}
+
+body.doca-livre-pro .modulo-main > .content {
+    background: transparent;
+}
+
+body.doca-livre-pro .content {
+    background: rgba(255, 255, 255, 0.92);
+}
+
+/* Tabs antigas escondidas no carregamento direto */
+body.doca-livre-pro #modulo-carregamento > nav.tabs:not(.modulo-sidebar) {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    body.doca-livre-pro .dl-topbar-product {
+        display: none;
+    }
+
+    body.doca-livre-pro .dl-topbar-datetime {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dl-splash {
+        transition: none;
+    }
+
+    .dl-splash-bar-fill {
+        transition: none;
+    }
+}

@@ -1,0 +1,12 @@
+{% from '_doca_livre_logo.html' import doca_livre_logo %}
+<script>document.documentElement.classList.add('dl-splash-pending');</script>
+<div id="doca-livre-splash" class="dl-splash" role="dialog" aria-label="Carregando WMS DOCA LIVRE PRO" aria-live="polite">
+    <div class="dl-splash-inner">
+        {{ doca_livre_logo(class='dl-splash-logo') }}
+        <p class="dl-splash-title">WMS DOCA LIVRE PRO</p>
+        <div class="dl-splash-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="dl-splash-bar-fill" id="dl-splash-bar-fill"></div>
+        </div>
+        <p class="dl-splash-status">Carregando... <span id="dl-splash-pct">0</span>%</p>
+    </div>
+</div>
