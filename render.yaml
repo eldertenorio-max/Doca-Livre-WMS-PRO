@@ -15,7 +15,8 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -b 0.0.0.0:$PORT --workers 1 --timeout 120 --graceful-timeout 30 --worker-class gthread --threads 4 app:app
     healthCheckPath: /api/health
-    autoDeploy: true
+    # Produção: deploy manual no Render após merge homolog → main validado
+    autoDeploy: false
     envVars:
       - key: APP_ENV
         value: producao

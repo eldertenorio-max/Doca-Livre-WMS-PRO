@@ -16,12 +16,12 @@ No Render isso exige **Web Service**, não **Static Site** (que só serve HTML/C
 
 ---
 
-## Passo 1 — Banco de homologação (recomendado)
+## Passo 1 — Banco de homologação (obrigatório)
 
-Use um **projeto Supabase separado** (ou schema isolado) para homologação.
+Use um **projeto Supabase separado** para homologação.
 
 - **Nunca** use a mesma `DATABASE_URL` da produção na homologação.
-- Rode o mesmo `supabase/schema.sql` (e scripts WMS) no banco de homolog.
+- Guia completo: **`supabase/SUPABASE_HOMOLOG.md`** (schema, migrations WMS, usuários, URL para o Render).
 
 ---
 
@@ -72,14 +72,21 @@ Fluxo de trabalho:
 
 ---
 
-## Passo 4 — Deploy automático
+## Passo 4 — Deploy (homolog automático, produção manual)
 
-| Push em | Deploy em |
-|---------|-----------|
-| `homolog` | Homologação |
-| `main` | Produção |
+| Push em | Deploy em | Como |
+|---------|-----------|------|
+| `homolog` | **Homologação** | Automático (`autoDeploy: true`) |
+| `main` | **Produção** | **Manual** no Render (`autoDeploy: false`) |
 
-Regra do projeto: alterações vão primeiro para **`homolog`**; produção só após validação.
+### Fluxo recomendado
+
+1. Commit + push na branch **`homolog`**
+2. Testar em https://sistema-wms-homologacao.onrender.com
+3. Merge `homolog` → `main` e push
+4. No [Render Dashboard](https://dashboard.render.com) → serviço **`sistema-wms`** → **Manual Deploy** → **Deploy latest commit**
+
+Assim a produção **só sobe quando você confirmar** no painel, mesmo após merge na `main`.
 
 ---
 
