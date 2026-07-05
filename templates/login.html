@@ -9,8 +9,23 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705m">
-    <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}?v=20260705">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705o">
+    <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}?v=20260705b">
+    <script>document.documentElement.classList.add('dl-splash-pending');</script>
+    <style>
+      html.dl-splash-pending body.login-page-body .login-page-root,
+      body.login-page-body.dl-splash-active .login-page-root {
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+      }
+      html.dl-splash-pending .app-env-banner,
+      body.login-page-body.dl-splash-active .app-env-banner {
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+      }
+    </style>
     <script>
       window.API_BASE = window.API_BASE || localStorage.getItem('api_base') || '/api';
     </script>
@@ -108,7 +123,7 @@
         </div>
     </div>
     </div>
-    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705f"></script>
+    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705g"></script>
     <script>
 (function () {
     if (window.location.search.indexOf('sair=1') !== -1) {

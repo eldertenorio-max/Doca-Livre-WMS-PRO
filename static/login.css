@@ -149,7 +149,6 @@ body {
 }
 .login-card-visible {
     opacity: 1;
-    visibility: visible;
     transform: scale(1) translateY(0);
     pointer-events: auto;
     animation: cardEnter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;

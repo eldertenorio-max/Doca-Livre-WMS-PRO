@@ -31,6 +31,7 @@
     }
 
     function skipSplash() {
+        document.body.classList.remove('dl-splash-active');
         clearPending();
         var splash = qs('doca-livre-splash');
         if (splash && splash.parentNode) splash.parentNode.removeChild(splash);

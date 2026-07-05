@@ -29,12 +29,16 @@ html.dl-splash-pending body.login-page-body .login-page-root,
 body.doca-livre-pro.dl-splash-active .container,
 body.ss-hub-body.dl-splash-active .ss-hub,
 body.login-page-body.dl-splash-active .login-page-root {
+    opacity: 0;
     visibility: hidden;
+    pointer-events: none;
 }
 
 html.dl-splash-pending .app-env-banner,
 body.dl-splash-active .app-env-banner {
+    opacity: 0;
     visibility: hidden;
+    pointer-events: none;
 }
 
 body.doca-livre-pro.dl-splash-active,
