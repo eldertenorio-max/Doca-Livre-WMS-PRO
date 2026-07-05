@@ -407,22 +407,89 @@ body.doca-livre-pro .header-alertas-btn {
     color: #000;
 }
 
-/* ── Sidebar preta (doca-theme.css) ── */
-body.doca-livre-pro .modulo-sidebar {
+/* ── Sidebar preta — estilo Ultrafrio / doca-theme.css ── */
+body.doca-livre-pro nav.modulo-sidebar.tabs {
+    display: flex !important;
+    flex-direction: column !important;
     background: var(--sidebar-bg) !important;
     border-right: 1px solid var(--sidebar-border) !important;
+    border-bottom: none !important;
+    overflow-x: hidden !important;
+    padding: 0 !important;
+    box-shadow: none !important;
 }
 
-body.doca-livre-pro .modulo-sidebar.tabs {
+body.doca-livre-pro .modulo-sidebar,
+body.doca-livre-pro .modulo-sidebar.tabs,
+body.doca-livre-pro .modulo-sidebar:hover,
+body.doca-livre-pro .modulo-sidebar:hover.tabs {
     background: var(--sidebar-bg) !important;
+    border-right: 1px solid var(--sidebar-border) !important;
+    box-shadow: 4px 0 24px rgb(0 0 0 / 0.35) !important;
+}
+
+body.doca-livre-pro .modulo-sidebar-header {
+    margin-bottom: 0 !important;
+    padding: 14px 12px 12px !important;
+    border-bottom: 1px solid var(--sidebar-border) !important;
+    background: transparent !important;
 }
 
 body.doca-livre-pro .modulo-sidebar-header .sidebar-label {
-    color: var(--sidebar-text-muted) !important;
+    color: var(--sidebar-text) !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.1em !important;
+    text-transform: uppercase !important;
+}
+
+body.doca-livre-pro .modulo-sidebar-header .sidebar-icon {
+    color: var(--brand-yellow) !important;
+}
+
+body.doca-livre-pro .modulo-sidebar-nav {
+    padding: 0 !important;
+    gap: 0 !important;
 }
 
 body.doca-livre-pro .modulo-sidebar .tab-button {
-    color: rgba(255, 255, 255, 0.78);
+    flex: none !important;
+    width: 100% !important;
+    min-height: 48px !important;
+    margin: 0 !important;
+    padding: 12px 14px !important;
+    border: none !important;
+    border-top: 1px solid var(--sidebar-border) !important;
+    border-left: 3px solid transparent !important;
+    border-radius: 0 !important;
+    border-bottom: none !important;
+    background: transparent !important;
+    color: var(--sidebar-text) !important;
+    font-size: 0.92rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.02em !important;
+    text-align: left !important;
+    text-transform: none !important;
+    white-space: nowrap !important;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease !important;
+}
+
+body.doca-livre-pro .modulo-sidebar-nav > .tab-button:first-child {
+    border-top: none !important;
+}
+
+body.doca-livre-pro .modulo-sidebar:not(:hover) .tab-button {
+    justify-content: center !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+    gap: 0 !important;
+}
+
+body.doca-livre-pro .modulo-sidebar:hover .tab-button {
+    justify-content: flex-start !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+    gap: 10px !important;
 }
 
 body.doca-livre-pro .modulo-sidebar .tab-button:hover,
@@ -431,19 +498,74 @@ body.doca-livre-pro .sidebar-footer-btn:hover {
     color: #fff !important;
 }
 
+body.doca-livre-pro .modulo-sidebar .tab-button:hover .sidebar-icon,
+body.doca-livre-pro .modulo-sidebar .tab-button.active .sidebar-icon {
+    color: var(--brand-yellow) !important;
+}
+
 body.doca-livre-pro .modulo-sidebar .tab-button.active {
     background: var(--brand-yellow-soft) !important;
     color: var(--brand-yellow) !important;
     border-left-color: var(--brand-yellow) !important;
+    border-bottom-color: transparent !important;
+}
+
+body.doca-livre-pro .modulo-sidebar .sidebar-icon {
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    font-size: 1.05rem !important;
+    line-height: 1 !important;
+    color: var(--sidebar-text-muted) !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+}
+
+body.doca-livre-pro .modulo-sidebar .sidebar-label {
+    color: inherit !important;
+    font-weight: 700 !important;
 }
 
 body.doca-livre-pro .modulo-sidebar-footer {
-    border-top-color: var(--sidebar-border) !important;
-    background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.5)) !important;
+    margin-top: auto !important;
+    padding: 0 !important;
+    border-top: 1px solid var(--sidebar-border) !important;
+    background: transparent !important;
 }
 
 body.doca-livre-pro .sidebar-footer-btn {
+    width: 100% !important;
+    min-height: 48px !important;
+    margin: 0 !important;
+    padding: 12px 14px !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
     color: var(--sidebar-text-muted) !important;
+    font-size: 0.92rem !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+}
+
+body.doca-livre-pro .modulo-sidebar:not(:hover) .sidebar-footer-btn {
+    justify-content: center !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+    gap: 0 !important;
+}
+
+body.doca-livre-pro .modulo-sidebar:hover .sidebar-footer-btn {
+    justify-content: flex-start !important;
+    gap: 10px !important;
+}
+
+body.doca-livre-pro .sidebar-footer-btn:hover {
+    color: var(--brand-yellow) !important;
+}
+
+body.doca-livre-pro .sidebar-footer-btn:hover .sidebar-icon {
+    color: var(--brand-yellow) !important;
 }
 
 /* ── Área principal + marca d'água (main-panel) ── */
