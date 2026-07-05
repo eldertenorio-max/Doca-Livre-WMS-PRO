@@ -1,0 +1,36 @@
+---
+description: Paridade obrigatoria entre homologacao e producao ao deploy
+alwaysApply: true
+---
+
+# Paridade prod / homolog (Sistema WMS)
+
+**Regra:** homolog e producao devem ser **visualmente identicos**, exceto a faixa laranja "Homologacao". Ao subir homolog → main, nunca deve sobrar diferenca de layout.
+
+## Antes de merge/push para `main`
+
+1. Confirmar `wms/main` e `wms/homolog` no **mesmo commit**.
+2. Rodar: `python scripts/validar_paridade_env.py --live`
+3. Se falhar, corrigir antes do push.
+
+## CSS de ambiente (unico padrao)
+
+- Variavel global: `--app-env-banner-h` (`0` prod · `40px` homolog).
+- Estilos do banner **somente** em `static/doca-livre-pro.css` (`.app-env-banner { position: fixed; }`).
+- **Proibido:** `body.app-env-homologacao { padding-top: ... }` em qualquer CSS.
+- **Login:** `body.login-page-body { padding-top: 0 !important; }` — banner sobrepoe, nao empurra.
+- **Shell (index/hub):** `padding-top: var(--app-env-banner-h)` no `.container` / `.ss-hub`, nunca no `body`.
+
+## Templates
+
+- Pagina com `_app_env_banner.html` ou `is_homologacao` **deve** incluir `doca-livre-pro.css`.
+- Diferencas permitidas no HTML: banner, classe `app-env-homologacao`, texto "Homologacao" no splash.
+- Manter `?v=` de `doca-livre-pro.css` **igual** em login, index e entrada_modulos.
+
+## Deploy homolog → producao
+
+```bash
+git checkout main && git merge homolog && git push wms main
+git push wms homolog   # manter branches alinhadas
+python scripts/validar_paridade_env.py --live
+```
