@@ -16,6 +16,7 @@
 body.ss-hub-body {
     margin: 0;
     min-height: 100vh;
+    overflow-x: hidden;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     font-size: 13px;
     color: var(--ss-hub-text);
@@ -31,14 +32,20 @@ body.ss-hub-body.app-env-homologacao .ss-hub {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
 }
 
 .ss-hub-topbar.app-topbar {
     flex-shrink: 0;
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     position: sticky;
     top: 0;
     z-index: 120;
+    overflow: hidden;
 }
 
 .ss-hub-layout {
@@ -67,9 +74,30 @@ body.ss-hub-body.app-env-homologacao .ss-hub {
 .ss-hub-topbar-left {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     min-width: 0;
-    flex: 1;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+body.ss-hub-body .app-topbar-brand-row {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+body.ss-hub-body .app-topbar-brand {
+    min-width: 0;
+    gap: 10px;
+}
+
+body.ss-hub-body .app-topbar-logo {
+    max-width: min(150px, 24vw);
+    height: 30px;
+}
+
+body.ss-hub-body .app-topbar-wms-main {
+    font-size: 1.15rem;
 }
 
 body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar-label,
@@ -185,15 +213,27 @@ body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar {
 .ss-hub-topbar.app-topbar {
     height: var(--app-topbar-h, 54px);
     min-height: var(--app-topbar-h, 54px);
-    padding: 0 14px 0 10px;
+    padding: 0 12px 0 8px;
 }
 
 .ss-hub-topbar-right,
 .ss-hub-topbar .app-topbar-right {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 10px;
+    flex: 0 0 auto;
     flex-shrink: 0;
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.ss-hub-topbar-sair {
+    font-size: 12px;
+    color: var(--ss-hub-accent);
+    text-decoration: none;
+    font-weight: 600;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .ss-hub-topbar-icon {
@@ -209,14 +249,12 @@ body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar {
     gap: 6px;
     font-size: 12px;
     color: var(--ss-hub-muted);
-}
-
-.ss-hub-topbar-sair {
-    font-size: 12px;
-    color: var(--ss-hub-accent);
-    text-decoration: none;
-    font-weight: 600;
-    margin-left: 4px;
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ss-hub-topbar-sair:hover {
@@ -378,6 +416,26 @@ body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar {
 }
 
 /* ── Responsive ── */
+@media (max-width: 1100px) {
+    .ss-hub-topbar-icon {
+        display: none;
+    }
+}
+
+@media (max-width: 900px) {
+    body.ss-hub-body .app-topbar-back-label {
+        display: none;
+    }
+
+    body.ss-hub-body .app-topbar-wms-light {
+        display: none;
+    }
+
+    body.ss-hub-body .app-topbar-logo {
+        max-width: min(120px, 22vw);
+    }
+}
+
 @media (max-width: 768px) {
     .ss-hub-sidebar {
         display: none;
