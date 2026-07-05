@@ -3,26 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ system_name }} — Módulos</title>
+    <title>WMS DOCA LIVRE PRO — Módulos</title>
     {% from '_app_head_icons.html' import app_head_icons %}
     {{ app_head_icons() }}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705d">
-    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705f">
+    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705b">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
 </head>
 <body class="ss-hub-body{% if is_homologacao %} app-env-homologacao{% endif %}" data-usuario="{{ usuario or '' }}">
     {% include '_app_env_banner.html' %}
     {% include '_doca_livre_splash.html' %}
-    {% from '_stock_system_logo.html' import stock_system_logo %}
+    {% from '_doca_livre_logo.html' import doca_livre_logo %}
 
     <div class="ss-hub">
         <aside class="ss-hub-sidebar" aria-label="Menu lateral">
             <div class="ss-hub-sidebar-brand">
-                {{ stock_system_logo(class='ss-hub-sidebar-logo', grad_id='ssg-sidebar', width='140', height='38') }}
+                {{ doca_livre_logo(class='ss-hub-sidebar-logo', alt='WMS DOCA LIVRE PRO') }}
             </div>
 
             <nav class="ss-hub-sidebar-nav">
@@ -40,7 +40,7 @@
 
             <footer class="ss-hub-sidebar-foot">
                 <span class="ss-hub-sidebar-time" id="ss-hub-clock"></span>
-                <span>Versão: Stock System WMS</span>
+                <span>Versão: WMS DOCA LIVRE PRO</span>
             </footer>
         </aside>
 
@@ -66,7 +66,7 @@
 
             <main class="ss-hub-main">
                 <div class="ss-hub-hero-logo">
-                    {{ stock_system_logo(class='ss-hub-hero-logo-svg', grad_id='ssg-hero', width='280', height='77') }}
+                    {{ doca_livre_logo(class='ss-hub-hero-logo-img', alt='WMS DOCA LIVRE PRO') }}
                 </div>
 
                 <div class="ss-hub-search-wrap">
@@ -104,6 +104,6 @@
     ];
     </script>
     <script src="{{ url_for('static', filename='entrada-modulos.js') }}?v=20260705"></script>
-    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705c"></script>
+    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705d"></script>
 </body>
 </html>

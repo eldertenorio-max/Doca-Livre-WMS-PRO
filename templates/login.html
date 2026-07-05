@@ -18,7 +18,6 @@
 <body{% if is_homologacao %} class="app-env-homologacao"{% endif %}>
     {% include '_app_env_banner.html' %}
     {% from '_stock_system_logo.html' import stock_system_logo %}
-    {% include '_stock_system_splash.html' %}
     <div class="ss-page-content login-page-root">
     <div class="login-wrap">
         <div class="login-bg">
@@ -108,7 +107,6 @@
         </div>
     </div>
     </div>
-    <script src="{{ url_for('static', filename='stock-system-intro.js') }}"></script>
     <script>
 (function () {
     if (window.location.search.indexOf('sair=1') !== -1) {

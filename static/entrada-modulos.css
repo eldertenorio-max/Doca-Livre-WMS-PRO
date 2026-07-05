@@ -67,6 +67,8 @@ body.ss-hub-body.app-env-homologacao .ss-hub-sidebar {
     display: block;
     max-width: 100%;
     height: auto;
+    max-height: 40px;
+    width: auto;
 }
 
 .ss-hub-sidebar-nav {
@@ -219,6 +221,12 @@ body.ss-hub-body.app-env-homologacao .ss-hub-sidebar {
     display: flex;
     justify-content: center;
     margin-bottom: 20px;
+}
+
+.ss-hub-hero-logo-img {
+    max-width: min(360px, 88vw);
+    height: auto;
+    filter: drop-shadow(0 8px 24px rgb(0 0 0 / 0.08));
 }
 
 .ss-hub-hero-logo-svg {
