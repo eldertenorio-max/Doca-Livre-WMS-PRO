@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705o">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705q">
     <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}?v=20260705b">
     <script>document.documentElement.classList.add('dl-splash-pending');</script>
     <style>
@@ -261,5 +261,6 @@
     });
 })();
     </script>
+    {% include '_pwa_install.html' %}
 </body>
 </html>

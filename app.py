@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, Response, redirect, url_for, session, g, current_app
+from flask import Flask, render_template, request, jsonify, send_file, Response, redirect, url_for, session, g, current_app, send_from_directory
 from datetime import datetime, timedelta, timezone
 try:
     from zoneinfo import ZoneInfo
@@ -93,8 +93,9 @@ if load_dotenv:
 app = Flask(__name__)
 app.config['SECRET_KEY'] = (os.environ.get('SECRET_KEY') or 'ultrapao-secret-key-2024')
 
-SYSTEM_NAME = 'Stock System'
-SYSTEM_TAGLINE = 'WMS · Gestão de estoque e armazenagem'
+SYSTEM_NAME = 'WMS DOCA LIVRE PRO'
+SYSTEM_TAGLINE = 'Gestão de estoque e armazenagem'
+SYSTEM_SHORT_NAME = 'Doca Livre'
 
 
 def _app_env():
@@ -117,6 +118,7 @@ def _inject_stock_system_branding():
     env = _app_env()
     return {
         'system_name': SYSTEM_NAME,
+        'system_short_name': SYSTEM_SHORT_NAME,
         'system_tagline': SYSTEM_TAGLINE,
         'app_env': env,
         'app_env_url': _app_env_url() if env == 'homologacao' else None,
@@ -2255,6 +2257,12 @@ def api_health():
     return jsonify({'ok': True, 'env': _app_env()}), 200
 
 
+@app.route('/sw.js')
+def service_worker():
+    """Service worker na raiz — necessário para instalação PWA."""
+    return send_from_directory(app.static_folder, 'sw.js', mimetype='application/javascript')
+
+
 @app.route('/manifest.webmanifest')
 def manifest_app():
     """Manifest PWA — ícone na tela inicial e instalação na barra de tarefas."""
@@ -2279,14 +2287,14 @@ def manifest_app():
         },
     ]
     return jsonify({
-        'name': '%s WMS' % SYSTEM_NAME,
-        'short_name': SYSTEM_NAME,
+        'name': SYSTEM_NAME,
+        'short_name': SYSTEM_SHORT_NAME,
         'description': SYSTEM_TAGLINE,
         'start_url': url_for('entrada_modulos'),
         'scope': '/',
         'display': 'standalone',
-        'background_color': '#f0f2f5',
-        'theme_color': '#0369a1',
+        'background_color': '#ffffff',
+        'theme_color': '#000000',
         'orientation': 'any',
         'lang': 'pt-BR',
         'icons': icons,

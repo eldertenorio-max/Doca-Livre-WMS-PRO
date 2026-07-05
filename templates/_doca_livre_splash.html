@@ -1,8 +1,8 @@
-{% from '_doca_livre_logo.html' import doca_livre_brand %}
+{% from '_doca_livre_logo.html' import doca_livre_logo %}
 <script>document.documentElement.classList.add('dl-splash-pending');</script>
 <div id="doca-livre-splash" class="intro-splash" role="dialog" aria-label="Carregando WMS DOCA LIVRE PRO" aria-live="polite" aria-busy="true">
     <div class="intro-content">
-        {{ doca_livre_brand(logo_class='intro-logo', size='splash', theme='light') }}
+        {{ doca_livre_logo(logo_class='intro-logo', alt='WMS DOCA LIVRE PRO') }}
         {% if is_homologacao %}
         <p class="intro-ambiente intro-ambiente--homolog">Homologação</p>
         {% endif %}

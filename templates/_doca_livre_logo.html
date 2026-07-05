@@ -3,7 +3,7 @@
 <img src="{{ url_for('static', filename='logo-doca-livre.png') }}" alt="{{ alt }}" class="doca-livre-logo{% if class %} {{ class }}{% endif %}">
 {% endmacro %}
 
-{# Marca completa: logo PNG + WMS PRO (estilo topbar Ultrafrio) #}
+{# Marca completa: logo PNG + WMS PRO (estilo topbar Ultrafrio / Doca Livre) #}
 {% macro doca_livre_brand(logo_class='', wrap_class='', size='md', theme='light', alt='WMS DOCA LIVRE PRO') %}
 <div class="doca-livre-brand doca-livre-brand--{{ size }}{% if theme == 'dark' %} doca-livre-brand--dark{% endif %}{% if wrap_class %} {{ wrap_class }}{% endif %}">
     {{ doca_livre_logo(class=logo_class, alt=alt) }}
