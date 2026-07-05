@@ -1,8 +1,16 @@
 # Blueprint Render — Stock System WMS
-# Produção:  branch main    → https://sistema-wms.onrender.com
-# Homologação: branch homolog → https://sistema-wms-homologacao.onrender.com (após criar o serviço)
+# Produção:  branch main    → https://sistema-wms.onrender.com  (Supabase)
+# Homologação: branch homolog → https://sistema-wms-homologacao.onrender.com (Postgres Render)
 #
 # IMPORTANTE: este app é Flask + PostgreSQL → use Web Service (Python), NÃO Static Site.
+# Sem Supabase extra para homolog: ver HOMOLOG_SEM_SUPABASE.md
+
+databases:
+  # Banco só da homologação (não usa slot do Supabase)
+  - name: sistema-wms-homolog-db
+    plan: free
+    region: oregon
+    postgresMajorVersion: "16"
 
 services:
   # ── Produção ──────────────────────────────────────────────────────────────
@@ -24,6 +32,7 @@ services:
         generateValue: true
       - key: PGSSLMODE
         value: require
+      # Supabase produção — configure manualmente no painel Render
       - key: DATABASE_URL
         sync: false
       - key: RAVEX_USER
@@ -50,7 +59,9 @@ services:
       - key: PGSSLMODE
         value: require
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: sistema-wms-homolog-db
+          property: connectionString
       - key: RAVEX_USER
         sync: false
       - key: RAVEX_PASSWORD

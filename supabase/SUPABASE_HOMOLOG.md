@@ -1,8 +1,10 @@
 # Supabase de homologação — passo a passo
 
+> **Sem slot no Supabase?** Use **`HOMOLOG_SEM_SUPABASE.md`** (Postgres grátis no Render — recomendado).
+
 Banco **separado** da produção. Produção hoje: projeto **Sistema WMS** (`ndfjetskugqsrrmulcyz`).
 
-Homologação = **novo projeto Supabase** (ex.: `sistema-wms-homolog`).
+Homologação = **novo projeto Supabase** (ex.: `sistema-wms-homolog`) — **só se você tiver vaga** no plano.
 
 ---
 

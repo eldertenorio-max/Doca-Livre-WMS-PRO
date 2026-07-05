@@ -16,12 +16,15 @@ No Render isso exige **Web Service**, não **Static Site** (que só serve HTML/C
 
 ---
 
-## Passo 1 — Banco de homologação (obrigatório)
+## Passo 1 — Banco de homologação
 
-Use um **projeto Supabase separado** para homologação.
+**Sem projeto Supabase extra?** → **`HOMOLOG_SEM_SUPABASE.md`** (Postgres no Render, grátis).
 
-- **Nunca** use a mesma `DATABASE_URL` da produção na homologação.
-- Guia completo: **`supabase/SUPABASE_HOMOLOG.md`** (schema, migrations WMS, usuários, URL para o Render).
+**Com projeto Supabase novo?** → **`supabase/SUPABASE_HOMOLOG.md`**.
+
+- Produção continua no Supabase atual (`ndfjetskugqsrrmulcyz`)
+- Homologação usa **banco separado** (Render Postgres ou Supabase novo)
+- **Nunca** aponte homolog para o banco de produção, exceto emergência (ver guia)
 
 ---
 
