@@ -2923,10 +2923,8 @@ function initNavegacaoRapida() {
     var linkInicio = document.querySelector('.header-link-inicio');
     if (!linkInicio) return;
     var href = linkInicio.getAttribute('href') || '/entrada';
-    var temHub = !!document.getElementById('hub-modulos-overlay');
 
     function prefetchEntrada() {
-        if (temHub) return;
         try {
             if (document.querySelector('link[rel="prefetch"][href="' + href + '"]')) return;
             var prefetch = document.createElement('link');
@@ -2947,12 +2945,6 @@ function initNavegacaoRapida() {
         if (linkInicio._navegandoEntrada) return;
         linkInicio._navegandoEntrada = true;
         linkInicio.classList.add('header-link-inicio--saindo');
-        if (temHub) {
-            _mostrarHubModulos();
-            linkInicio.classList.remove('header-link-inicio--saindo');
-            linkInicio._navegandoEntrada = false;
-            return;
-        }
         _pausarPainelParaHub();
         window.location.assign(href);
     }

@@ -3997,24 +3997,7 @@
         }
     </style>
 
-    <div id="hub-modulos-overlay" class="hub-modulos-overlay" hidden aria-hidden="true" role="dialog" aria-label="Escolha o módulo">
-        <div class="hub-entrada-topstripe" aria-hidden="true"></div>
-        <div class="hub-entrada-wrap hub-modulos-overlay-inner">
-            <div class="hub-entrada-logo">
-                {{ stock_system_logo(grad_id='ssg-hub-overlay') }}
-            </div>
-            <p class="hub-entrada-subtitulo">{{ system_tagline }}</p>
-            <div class="hub-entrada-botoes">
-                <button type="button" class="hub-entrada-btn hub-entrada-btn--1" data-hub-modulo="carregamento">Carga/Expedição</button>
-                <button type="button" class="hub-entrada-btn hub-entrada-btn--2" data-hub-modulo="devolucoes">Retorno</button>
-                <button type="button" class="hub-entrada-btn hub-entrada-btn--3" data-hub-modulo="terceiros">Descarga/Recebimento</button>
-                <button type="button" class="hub-entrada-btn hub-entrada-btn--4" data-hub-modulo="estoque-sp">Estoque</button>
-                <button type="button" class="hub-entrada-btn hub-entrada-btn--5" data-hub-modulo="enderecamento-wms">Endereçamento WMS</button>
-            </div>
-        </div>
-    </div>
-
-    <script src="{{ url_for('static', filename='script.js') }}?v=20260626s"></script>
+    <script src="{{ url_for('static', filename='script.js') }}?v=20260705a"></script>
     <script src="{{ url_for('static', filename='wms-analise.js') }}?v=20260604"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" crossorigin="anonymous"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
