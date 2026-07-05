@@ -13,9 +13,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}?v=20260705b">
     <script>
       try {
-        var skipIntro = sessionStorage.getItem('dl-wms-skip-intro') === '1'
-          || sessionStorage.getItem('dl-wms-intro-shown') === '1'
-          || sessionStorage.getItem('dl-splash-done') === '1';
+        var skipIntro = sessionStorage.getItem('dl-wms-skip-intro') === '1';
         if (!skipIntro) {
           document.documentElement.classList.add('dl-splash-pending');
         }
@@ -132,7 +130,7 @@
         </div>
     </div>
     </div>
-    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705h"></script>
+    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705i"></script>
     <script>
 (function () {
     if (window.location.search.indexOf('sair=1') !== -1) {

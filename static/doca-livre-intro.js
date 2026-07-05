@@ -17,15 +17,13 @@
 
     function shouldSkipIntro() {
         try {
-            if (sessionStorage.getItem(INTRO_SKIP_KEY) === '1') return true;
-            if (sessionStorage.getItem(INTRO_SHOWN_KEY) === '1') return true;
-            if (sessionStorage.getItem(LEGACY_KEY) === '1') return true;
+            return sessionStorage.getItem(INTRO_SKIP_KEY) === '1';
         } catch (e) { /* ignore */ }
         return false;
     }
 
     function markIntroShown() {
-        try { sessionStorage.setItem(INTRO_SHOWN_KEY, '1'); } catch (e) { /* ignore */ }
+        /* reservado — intro só é pulada após autenticação */
     }
 
     function markIntroSkipAfterAuth() {
