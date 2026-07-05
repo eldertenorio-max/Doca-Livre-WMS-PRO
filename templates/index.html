@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='modulo-sidebar.css') }}?v=20260626h">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705g">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705j">
     <link rel="stylesheet" href="{{ url_for('static', filename='wms-mapa-3d.css') }}?v=20260619a">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -28,8 +28,12 @@
     <div class="container">
         <header class="header app-topbar" aria-label="Barra principal">
             <div class="app-topbar-left">
-                <a href="/entrada" class="app-topbar-menu header-link-inicio" title="Voltar aos módulos" aria-label="Voltar aos módulos">
+                <button type="button" class="app-topbar-menu" id="btn-sidebar-toggle" aria-label="Abrir menu lateral" aria-pressed="false" title="Abrir menu lateral">
                     <span class="app-topbar-menu-icon" aria-hidden="true"></span>
+                </button>
+                <a href="/entrada" class="app-topbar-back header-link-voltar" title="Voltar aos módulos" aria-label="Voltar aos módulos">
+                    <span class="app-topbar-back-icon" aria-hidden="true">←</span>
+                    <span class="app-topbar-back-label">Voltar</span>
                 </a>
                 <div class="app-topbar-brand-row">
                     <div class="app-topbar-brand">
@@ -3998,12 +4002,12 @@
     </style>
 
     <script src="{{ url_for('static', filename='doca-livre-sidebar.js') }}?v=20260705"></script>
-    <script src="{{ url_for('static', filename='script.js') }}?v=20260705b"></script>
+    <script src="{{ url_for('static', filename='script.js') }}?v=20260705c"></script>
     <script src="{{ url_for('static', filename='wms-analise.js') }}?v=20260604"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" crossorigin="anonymous"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
     <script defer src="{{ url_for('static', filename='wms-mapa-3d.js') }}?v=20260626v"></script>
-    <script src="{{ url_for('static', filename='doca-livre-pro.js') }}?v=20260705b"></script>
+    <script src="{{ url_for('static', filename='doca-livre-pro.js') }}?v=20260705c"></script>
     <script defer>
         (function () {
             function sinalizar() {

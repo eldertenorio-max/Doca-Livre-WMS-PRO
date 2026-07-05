@@ -177,21 +177,33 @@
     }
 
     function initSidebarToggle() {
-        var sidebarBtn = document.getElementById('btn-hub-sidebar-toggle');
-        var topbarBtn = document.getElementById('btn-hub-topbar-menu');
+        var btn = document.getElementById('btn-hub-sidebar-toggle');
+        var sidebar = document.querySelector('.ss-hub-sidebar');
+        var LS = 'dl-hub-sidebar-wide';
 
-        function setOpen(open) {
-            document.body.classList.toggle('ss-hub-sidebar-collapsed', !open);
-            if (sidebarBtn) sidebarBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-            if (topbarBtn) topbarBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        function isWide() {
+            return document.body.classList.contains('ss-hub-sidebar-wide');
         }
 
-        function toggle() {
-            setOpen(document.body.classList.contains('ss-hub-sidebar-collapsed'));
+        function applyWide(wide) {
+            document.body.classList.toggle('ss-hub-sidebar-wide', wide);
+            if (sidebar) sidebar.classList.toggle('ss-hub-sidebar--wide', wide);
+            if (btn) {
+                btn.setAttribute('aria-pressed', wide ? 'true' : 'false');
+                btn.setAttribute('aria-label', wide ? 'Recolher menu lateral' : 'Abrir menu lateral');
+                btn.title = wide ? 'Recolher menu lateral' : 'Abrir menu lateral';
+            }
+            try { localStorage.setItem(LS, wide ? '1' : '0'); } catch (e) { /* ignore */ }
         }
 
-        if (sidebarBtn) sidebarBtn.addEventListener('click', toggle);
-        if (topbarBtn) topbarBtn.addEventListener('click', toggle);
+        var wide = true;
+        try {
+            var raw = localStorage.getItem(LS);
+            if (raw === '0') wide = false;
+        } catch (e) { /* ignore */ }
+        applyWide(wide);
+
+        if (btn) btn.addEventListener('click', function () { applyWide(!isWide()); });
     }
 
     renderAll();

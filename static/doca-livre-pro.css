@@ -301,20 +301,54 @@ body.doca-livre-pro.app-env-homologacao .header {
     top: auto !important;
 }
 
-body.doca-livre-pro a.header-link-inicio.app-topbar-menu {
+body.doca-livre-pro a.header-link-inicio.app-topbar-menu,
+body.doca-livre-pro .header-link-voltar {
     position: static !important;
     left: auto !important;
     top: auto !important;
     transform: none !important;
     border: none !important;
     background: transparent !important;
-    color: #000000 !important;
-    padding: 0 !important;
-    margin: 0 !important;
     white-space: normal !important;
     order: unset !important;
     width: auto !important;
     text-align: left !important;
+}
+
+body.doca-livre-pro .app-topbar-back,
+body.doca-livre-pro a.header-link-voltar {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 38px;
+    padding: 0 12px;
+    border-radius: 8px;
+    border: 1px solid #d0d7de;
+    background: #fff;
+    color: #000;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-decoration: none;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+body.doca-livre-pro .app-topbar-back:hover,
+body.doca-livre-pro a.header-link-voltar:hover {
+    background: #f0f2f4;
+    border-color: #c8d0d8;
+    color: #000;
+}
+
+body.doca-livre-pro .app-topbar-back-icon {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+body.doca-livre-pro .header-link-voltar--saindo {
+    opacity: 0.75;
+    pointer-events: none;
 }
 
 body.doca-livre-pro .app-topbar-left,
@@ -556,6 +590,15 @@ body.doca-livre-pro .modulo-sidebar:hover.tabs {
 
 body.doca-livre-pro .modulo-sidebar:hover,
 body.doca-livre-pro .modulo-sidebar.modulo-sidebar--doca:hover {
+    width: var(--sidebar-w-collapsed) !important;
+    min-width: var(--sidebar-w-collapsed) !important;
+    max-width: var(--sidebar-w-collapsed) !important;
+    flex: 0 0 var(--sidebar-w-collapsed) !important;
+    box-shadow: none !important;
+}
+
+body.doca-livre-pro .modulo-sidebar.modulo-sidebar--wide,
+body.doca-livre-pro .modulo-sidebar.modulo-sidebar--wide.tabs {
     width: var(--sidebar-w-expanded) !important;
     min-width: var(--sidebar-w-expanded) !important;
     max-width: var(--sidebar-w-expanded) !important;
@@ -599,14 +642,14 @@ body.doca-livre-pro .modulo-sidebar-nav > .tab-button:first-child {
     border-top: none !important;
 }
 
-body.doca-livre-pro .modulo-sidebar:not(:hover) .tab-button {
+body.doca-livre-pro .modulo-sidebar:not(.modulo-sidebar--wide) .tab-button {
     justify-content: center !important;
     padding-left: 8px !important;
     padding-right: 8px !important;
     gap: 0 !important;
 }
 
-body.doca-livre-pro .modulo-sidebar:hover .tab-button {
+body.doca-livre-pro .modulo-sidebar.modulo-sidebar--wide .tab-button {
     justify-content: flex-start !important;
     padding: 14px 12px !important;
     gap: 10px !important;
@@ -660,10 +703,23 @@ body.doca-livre-pro .modulo-sidebar .sidebar-label {
     visibility: hidden !important;
 }
 
-body.doca-livre-pro .modulo-sidebar:hover .sidebar-label {
+body.doca-livre-pro .modulo-sidebar.modulo-sidebar--wide .sidebar-label {
     opacity: 1 !important;
     max-width: 220px !important;
     visibility: visible !important;
+}
+
+body.doca-livre-pro .modulo-sidebar:not(.modulo-sidebar--wide) .sidebar-footer-btn {
+    justify-content: center !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+    gap: 0 !important;
+}
+
+body.doca-livre-pro .modulo-sidebar.modulo-sidebar--wide .sidebar-footer-btn {
+    justify-content: flex-start !important;
+    padding: 14px 12px !important;
+    gap: 10px !important;
 }
 
 body.doca-livre-pro .modulo-sidebar-footer {
@@ -687,17 +743,16 @@ body.doca-livre-pro .sidebar-footer-btn {
     text-align: left !important;
 }
 
-body.doca-livre-pro .modulo-sidebar:not(:hover) .sidebar-footer-btn {
-    justify-content: center !important;
-    padding-left: 8px !important;
-    padding-right: 8px !important;
-    gap: 0 !important;
+body.doca-livre-pro .sidebar-footer-btn .sidebar-label {
+    opacity: 0 !important;
+    max-width: 0 !important;
+    visibility: hidden !important;
 }
 
-body.doca-livre-pro .modulo-sidebar:hover .sidebar-footer-btn {
-    justify-content: flex-start !important;
-    padding: 14px 12px !important;
-    gap: 10px !important;
+body.doca-livre-pro .modulo-sidebar.modulo-sidebar--wide .sidebar-footer-btn .sidebar-label {
+    opacity: 1 !important;
+    max-width: 220px !important;
+    visibility: visible !important;
 }
 
 body.doca-livre-pro .sidebar-footer-btn:hover {
@@ -707,18 +762,6 @@ body.doca-livre-pro .sidebar-footer-btn:hover {
 
 body.doca-livre-pro .sidebar-footer-btn:hover .sidebar-icon {
     color: var(--brand-yellow) !important;
-}
-
-body.doca-livre-pro .sidebar-footer-btn .sidebar-label {
-    opacity: 0 !important;
-    max-width: 0 !important;
-    visibility: hidden !important;
-}
-
-body.doca-livre-pro .modulo-sidebar:hover .sidebar-footer-btn .sidebar-label {
-    opacity: 1 !important;
-    max-width: 220px !important;
-    visibility: visible !important;
 }
 
 /* Hub /entrada — sidebar preta DOCA LIVRE */
@@ -770,42 +813,18 @@ body.ss-hub-body .ss-hub-sidebar-foot {
     color: #b0b0b0 !important;
 }
 
-body.ss-hub-body .ss-hub-sidebar-head {
-    padding: 12px 12px 0 !important;
-}
-
-body.ss-hub-body .ss-hub-sidebar-menu {
-    color: #ffffff !important;
-}
-
-body.ss-hub-body .ss-hub-sidebar-menu:hover {
-    background: rgb(255 255 255 / 0.08) !important;
-}
-
 body.ss-hub-body .ss-hub-topbar-menu {
     color: #000000 !important;
 }
 
-body.ss-hub-body .ss-hub-topbar-menu:hover {
-    background: #f0f2f4 !important;
+body.ss-hub-body .ss-hub-topbar-back {
+    color: #000000 !important;
+    border-color: #d0d7de !important;
+    background: #fff !important;
 }
 
-@media (max-width: 900px) {
-    body.ss-hub-body.ss-hub-sidebar-collapsed .ss-hub-sidebar {
-        transform: translateX(-100%);
-    }
-
-    body.ss-hub-body.ss-hub-sidebar-collapsed .ss-hub-shell {
-        margin-left: 0;
-    }
-
-    body.ss-hub-body .ss-hub-topbar-menu {
-        display: inline-flex !important;
-    }
-
-    body.ss-hub-body:not(.ss-hub-sidebar-collapsed) .ss-hub-topbar-menu {
-        display: none !important;
-    }
+body.ss-hub-body .ss-hub-topbar-back:hover {
+    background: #f0f2f4 !important;
 }
 
 /* ── Área principal + marca d'água (main-panel) ── */

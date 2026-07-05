@@ -10,6 +10,7 @@
     --ss-hub-card: #fff;
     --ss-hub-topbar-h: 44px;
     --ss-hub-sidebar-w: 220px;
+    --ss-hub-sidebar-w-collapsed: 72px;
 }
 
 body.ss-hub-body {
@@ -64,14 +65,13 @@ body.ss-hub-body.app-env-homologacao .ss-hub-sidebar {
     flex-shrink: 0;
 }
 
-.ss-hub-sidebar-menu,
 .ss-hub-topbar-menu {
     width: 38px;
     height: 38px;
     border: none;
     border-radius: 8px;
     background: transparent;
-    color: inherit;
+    color: #000;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -80,9 +80,34 @@ body.ss-hub-body.app-env-homologacao .ss-hub-sidebar {
     flex-shrink: 0;
 }
 
-.ss-hub-sidebar-menu:hover,
 .ss-hub-topbar-menu:hover {
-    background: rgb(255 255 255 / 0.08);
+    background: #f0f2f4;
+}
+
+.ss-hub-topbar-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 38px;
+    padding: 0 12px;
+    border-radius: 8px;
+    border: 1px solid #d0d7de;
+    background: #fff;
+    color: #000;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-decoration: none;
+    flex-shrink: 0;
+}
+
+.ss-hub-topbar-back:hover {
+    background: #f0f2f4;
+    border-color: #c8d0d8;
+}
+
+.ss-hub-topbar-back-icon {
+    font-size: 1rem;
+    line-height: 1;
 }
 
 .ss-hub-menu-icon {
@@ -94,16 +119,34 @@ body.ss-hub-body.app-env-homologacao .ss-hub-sidebar {
     box-shadow: 0 -6px 0 currentColor, 0 6px 0 currentColor;
 }
 
-.ss-hub-topbar-menu {
-    display: none;
-    color: #000;
-}
-
 .ss-hub-topbar-left {
     display: flex;
     align-items: center;
     gap: 10px;
     min-width: 0;
+}
+
+body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar {
+    width: var(--ss-hub-sidebar-w-collapsed);
+}
+
+body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-shell {
+    margin-left: var(--ss-hub-sidebar-w-collapsed);
+}
+
+body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar-brand,
+body.ss-hub-body:not(.ss-hub-sidebar-wide) .doca-livre-wms,
+body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar-label,
+body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar-link > span:not(.ss-hub-sidebar-link-ico),
+body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar-more,
+body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar-foot {
+    display: none;
+}
+
+body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar-link {
+    justify-content: center;
+    padding-left: 8px;
+    padding-right: 8px;
 }
 
 .ss-hub-sidebar-brand {

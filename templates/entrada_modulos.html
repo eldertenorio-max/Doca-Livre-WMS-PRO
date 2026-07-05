@@ -10,22 +10,17 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705i">
-    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705c">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705j">
+    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705d">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
 </head>
-<body class="ss-hub-body{% if is_homologacao %} app-env-homologacao{% endif %}" data-usuario="{{ usuario or '' }}">
+<body class="ss-hub-body ss-hub-sidebar-wide{% if is_homologacao %} app-env-homologacao{% endif %}" data-usuario="{{ usuario or '' }}">
     {% include '_app_env_banner.html' %}
     {% include '_doca_livre_splash.html' %}
     {% from '_doca_livre_logo.html' import doca_livre_brand %}
 
     <div class="ss-hub">
-        <aside class="ss-hub-sidebar" aria-label="Menu lateral">
-            <div class="ss-hub-sidebar-head">
-                <button type="button" class="ss-hub-sidebar-menu" id="btn-hub-sidebar-toggle" aria-label="Alternar menu lateral" aria-expanded="true">
-                    <span class="ss-hub-menu-icon" aria-hidden="true"></span>
-                </button>
-            </div>
+        <aside class="ss-hub-sidebar ss-hub-sidebar--wide" aria-label="Menu lateral">
             <div class="ss-hub-sidebar-brand">
                 {{ doca_livre_brand(logo_class='ss-hub-sidebar-logo', size='sm', theme='dark') }}
             </div>
@@ -52,10 +47,13 @@
         <div class="ss-hub-shell">
             <header class="ss-hub-topbar">
                 <div class="ss-hub-topbar-left">
-                    <button type="button" class="ss-hub-topbar-menu" id="btn-hub-topbar-menu" aria-label="Abrir menu lateral" aria-expanded="true">
+                    <button type="button" class="ss-hub-topbar-menu" id="btn-hub-sidebar-toggle" aria-label="Recolher menu lateral" aria-pressed="true" title="Recolher menu lateral">
                         <span class="ss-hub-menu-icon" aria-hidden="true"></span>
                     </button>
-                    <span class="ss-hub-topbar-empresa">Ultrapão Transportes</span>
+                    <a href="/login?sair=1" class="ss-hub-topbar-back" title="Voltar ao login" aria-label="Voltar ao login">
+                        <span class="ss-hub-topbar-back-icon" aria-hidden="true">←</span>
+                        <span class="ss-hub-topbar-back-label">Voltar</span>
+                    </a>
                 </div>
                 <div class="ss-hub-topbar-right">
                     <span class="ss-hub-topbar-icon" title="Notificações" aria-hidden="true">
@@ -111,7 +109,7 @@
         { id: 'enderecamento-wms', label: 'Endereçamento WMS', href: {{ url_for('painel')|tojson }} + '?modulo=enderecamento-wms', icon: 'wms' }
     ];
     </script>
-    <script src="{{ url_for('static', filename='entrada-modulos.js') }}?v=20260705b"></script>
+    <script src="{{ url_for('static', filename='entrada-modulos.js') }}?v=20260705c"></script>
     <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705d"></script>
 </body>
 </html>
