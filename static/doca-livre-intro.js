@@ -1,24 +1,47 @@
 /**
- * Splash DOCA LIVRE — apenas na primeira abertura do login (uma vez por sessão).
+ * Splash DOCA LIVRE — intro no login; pula após Entrar / Acessar painel.
  */
 (function () {
     'use strict';
 
     var MIN_INTRO_MS = 2200;
     var FADE_MS = 650;
-    var SPLASH_DONE_KEY = 'dl-splash-done';
+    var INTRO_SHOWN_KEY = 'dl-wms-intro-shown';
+    var INTRO_SKIP_KEY = 'dl-wms-skip-intro';
+    var LEGACY_KEY = 'dl-splash-done';
     var startRef = Date.now();
     var finished = false;
     var isLoginPage = document.body.classList.contains('login-page-body');
 
     function qs(id) { return document.getElementById(id); }
 
-    function markSplashDone() {
-        try { sessionStorage.setItem(SPLASH_DONE_KEY, '1'); } catch (e) { /* ignore */ }
+    function shouldSkipIntro() {
+        try {
+            if (sessionStorage.getItem(INTRO_SKIP_KEY) === '1') return true;
+            if (sessionStorage.getItem(INTRO_SHOWN_KEY) === '1') return true;
+            if (sessionStorage.getItem(LEGACY_KEY) === '1') return true;
+        } catch (e) { /* ignore */ }
+        return false;
     }
 
-    function isSplashDone() {
-        try { return sessionStorage.getItem(SPLASH_DONE_KEY) === '1'; } catch (e) { return false }
+    function markIntroShown() {
+        try { sessionStorage.setItem(INTRO_SHOWN_KEY, '1'); } catch (e) { /* ignore */ }
+    }
+
+    function markIntroSkipAfterAuth() {
+        try {
+            sessionStorage.setItem(INTRO_SKIP_KEY, '1');
+            sessionStorage.setItem(INTRO_SHOWN_KEY, '1');
+            sessionStorage.removeItem(LEGACY_KEY);
+        } catch (e) { /* ignore */ }
+    }
+
+    function clearIntroFlags() {
+        try {
+            sessionStorage.removeItem(INTRO_SKIP_KEY);
+            sessionStorage.removeItem(INTRO_SHOWN_KEY);
+            sessionStorage.removeItem(LEGACY_KEY);
+        } catch (e) { /* ignore */ }
     }
 
     function clearPending() {
@@ -28,7 +51,7 @@
     function hideSplash(splash) {
         if (!splash) return;
         splash.classList.add('intro-splash--exit');
-        markSplashDone();
+        markIntroShown();
         setTimeout(function () {
             document.body.classList.remove('dl-splash-active');
             clearPending();
@@ -55,17 +78,19 @@
             return;
         }
 
-        if (isSplashDone()) {
+        if (shouldSkipIntro()) {
             skipSplash();
             return;
         }
+
+        document.documentElement.classList.add('dl-splash-pending');
+        document.body.classList.add('dl-splash-active');
 
         var bar = qs('dl-splash-bar-fill');
         var pctEl = qs('dl-splash-pct');
         var progress = splash.querySelector('.intro-progress-track');
         var progressVal = 0;
 
-        document.body.classList.add('dl-splash-active');
         startRef = Date.now();
 
         var tick = setInterval(function () {
@@ -90,7 +115,8 @@
         }, 60);
     }
 
-    window.dlMarkSplashDone = markSplashDone;
+    window.dlMarkSplashDone = markIntroSkipAfterAuth;
+    window.dlClearIntroFlags = clearIntroFlags;
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', runSplash);

@@ -13,7 +13,10 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}?v=20260705b">
     <script>
       try {
-        if (!sessionStorage.getItem('dl-splash-done')) {
+        var skipIntro = sessionStorage.getItem('dl-wms-skip-intro') === '1'
+          || sessionStorage.getItem('dl-wms-intro-shown') === '1'
+          || sessionStorage.getItem('dl-splash-done') === '1';
+        if (!skipIntro) {
           document.documentElement.classList.add('dl-splash-pending');
         }
       } catch (e) {}
@@ -135,6 +138,12 @@
     if (window.location.search.indexOf('sair=1') !== -1) {
         var apiBase = window.API_BASE || '/api';
         fetch(apiBase + '/logout', { method: 'POST' }).catch(function() {});
+        if (window.dlClearIntroFlags) window.dlClearIntroFlags();
+        else try {
+            sessionStorage.removeItem('dl-wms-skip-intro');
+            sessionStorage.removeItem('dl-wms-intro-shown');
+            sessionStorage.removeItem('dl-splash-done');
+        } catch (e) {}
     }
 
     var btnAcessar = document.getElementById('btn-acessar-painel');
