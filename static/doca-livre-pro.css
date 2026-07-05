@@ -770,11 +770,6 @@ body.ss-hub-body .ss-hub-sidebar {
     border-right-color: #1f1f1f !important;
 }
 
-body.ss-hub-body .ss-hub-sidebar-brand {
-    border-bottom-color: #1f1f1f !important;
-    padding: 16px 12px 14px !important;
-}
-
 body.ss-hub-body .ss-hub-sidebar-label {
     color: #b0b0b0 !important;
     font-size: 0.72rem !important;
@@ -813,18 +808,8 @@ body.ss-hub-body .ss-hub-sidebar-foot {
     color: #b0b0b0 !important;
 }
 
-body.ss-hub-body .ss-hub-topbar-menu {
-    color: #000000 !important;
-}
-
-body.ss-hub-body .ss-hub-topbar-back {
-    color: #000000 !important;
-    border-color: #d0d7de !important;
-    background: #fff !important;
-}
-
-body.ss-hub-body .ss-hub-topbar-back:hover {
-    background: #f0f2f4 !important;
+body.ss-hub-body .ss-hub-sidebar-link-ico {
+    color: #b0b0b0 !important;
 }
 
 /* ── Área principal + marca d'água (main-panel) ── */
