@@ -19,12 +19,9 @@
           sessionStorage.removeItem('dl-wms-intro-shown');
           sessionStorage.removeItem('dl-splash-done');
         }
-      } catch (e) {}
-      try {
-        var skipIntro = sessionStorage.getItem('dl-wms-skip-intro') === '1';
-        if (!skipIntro) {
-          document.documentElement.classList.add('dl-splash-pending');
-        }
+        /* Intro sempre ao abrir /login — limpa flags legadas que bloqueavam a splash */
+        sessionStorage.removeItem('dl-splash-done');
+        document.documentElement.classList.add('dl-splash-pending');
       } catch (e) {}
     </script>
     <style>
@@ -138,7 +135,7 @@
         </div>
     </div>
     </div>
-    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705k"></script>
+    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705m"></script>
     <script>
 (function () {
     if (window.location.search.indexOf('sair=1') !== -1) {
