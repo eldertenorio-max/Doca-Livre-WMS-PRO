@@ -10,19 +10,19 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705g">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705h">
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705b">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
 </head>
 <body class="ss-hub-body{% if is_homologacao %} app-env-homologacao{% endif %}" data-usuario="{{ usuario or '' }}">
     {% include '_app_env_banner.html' %}
     {% include '_doca_livre_splash.html' %}
-    {% from '_doca_livre_logo.html' import doca_livre_logo %}
+    {% from '_doca_livre_logo.html' import doca_livre_brand %}
 
     <div class="ss-hub">
         <aside class="ss-hub-sidebar" aria-label="Menu lateral">
             <div class="ss-hub-sidebar-brand">
-                {{ doca_livre_logo(class='ss-hub-sidebar-logo', alt='WMS DOCA LIVRE PRO') }}
+                {{ doca_livre_brand(logo_class='ss-hub-sidebar-logo', size='sm', theme='dark') }}
             </div>
 
             <nav class="ss-hub-sidebar-nav">
@@ -66,7 +66,7 @@
 
             <main class="ss-hub-main">
                 <div class="ss-hub-hero-logo">
-                    {{ doca_livre_logo(class='ss-hub-hero-logo-img', alt='WMS DOCA LIVRE PRO') }}
+                    {{ doca_livre_brand(logo_class='ss-hub-hero-logo-img', size='lg', theme='light') }}
                 </div>
 
                 <div class="ss-hub-search-wrap">

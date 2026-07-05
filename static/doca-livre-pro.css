@@ -49,7 +49,8 @@ body.ss-hub-body.dl-splash-active {
     animation: intro-fade-out 0.65s ease-in forwards;
 }
 
-.intro-splash--exit .intro-logo {
+.intro-splash--exit .intro-logo,
+.intro-splash--exit .doca-livre-brand--splash .intro-logo {
     animation: intro-logo-exit 0.65s ease-in forwards;
 }
 
@@ -66,6 +67,124 @@ body.ss-hub-body.dl-splash-active {
     height: auto;
     animation: intro-logo-in 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
     filter: drop-shadow(0 8px 24px rgb(0 0 0 / 0.08));
+}
+
+.doca-livre-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.doca-livre-brand .doca-livre-logo,
+.doca-livre-brand .intro-logo,
+.doca-livre-brand .ss-hub-sidebar-logo,
+.doca-livre-brand .ss-hub-hero-logo-img {
+    display: block;
+    height: auto;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+.doca-livre-wms {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+.doca-livre-wms-main {
+    font-size: 1.35rem;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: #000000;
+}
+
+.doca-livre-wms-light {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: -0.12em;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #5c6670;
+    background: #f3f4f6;
+    border: 1px solid #d0d7de;
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.9);
+}
+
+.doca-livre-brand--dark .doca-livre-wms-main {
+    color: #ffffff;
+}
+
+.doca-livre-brand--dark .doca-livre-wms-light {
+    color: #f9db00;
+    background: rgb(249 219 0 / 0.12);
+    border-color: rgb(249 219 0 / 0.35);
+    box-shadow: none;
+}
+
+.doca-livre-brand--sm {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.doca-livre-brand--sm .ss-hub-sidebar-logo {
+    max-height: 38px;
+    width: auto;
+}
+
+.doca-livre-brand--sm .doca-livre-wms-main {
+    font-size: 1.05rem;
+}
+
+.doca-livre-brand--lg {
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+.doca-livre-brand--lg .ss-hub-hero-logo-img {
+    max-width: min(360px, 88vw);
+    filter: drop-shadow(0 8px 24px rgb(0 0 0 / 0.08));
+}
+
+.doca-livre-brand--lg .doca-livre-wms-main {
+    font-size: 1.75rem;
+}
+
+.doca-livre-brand--lg .doca-livre-wms-light {
+    font-size: 0.65rem;
+    padding: 4px 10px;
+}
+
+.doca-livre-brand--splash {
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    animation: intro-logo-in 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.doca-livre-brand--splash .intro-logo {
+    width: min(360px, 88vw);
+    max-height: none;
+    animation: none;
+    filter: drop-shadow(0 8px 24px rgb(0 0 0 / 0.08));
+}
+
+.doca-livre-brand--splash .doca-livre-wms-main {
+    font-size: 1.5rem;
+}
+
+.intro-splash--exit .doca-livre-brand--splash {
+    animation: intro-logo-exit 0.65s ease-in forwards;
 }
 
 .intro-progress-wrap {
