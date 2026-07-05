@@ -1,16 +1,9 @@
 # Blueprint Render — Stock System WMS
-# Produção:  branch main    → https://sistema-wms.onrender.com  (Supabase)
-# Homologação: branch homolog → https://sistema-wms-homologacao.onrender.com (Postgres Render)
+# Produção:  branch main    → https://sistema-wms.onrender.com
+# Homologação: branch homolog → https://sistema-wms-homologacao.onrender.com
 #
-# IMPORTANTE: este app é Flask + PostgreSQL → use Web Service (Python), NÃO Static Site.
-# Sem Supabase extra para homolog: ver HOMOLOG_SEM_SUPABASE.md
-
-databases:
-  # Banco só da homologação (não usa slot do Supabase)
-  - name: sistema-wms-homolog-db
-    plan: free
-    region: oregon
-    postgresMajorVersion: "16"
+# Mesmo banco Supabase nos dois serviços (copie DATABASE_URL da produção na homolog).
+# Homolog = Web Service Python (não Static Site — o app tem Flask + APIs + login).
 
 services:
   # ── Produção ──────────────────────────────────────────────────────────────
@@ -23,7 +16,6 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -b 0.0.0.0:$PORT --workers 1 --timeout 120 --graceful-timeout 30 --worker-class gthread --threads 4 app:app
     healthCheckPath: /api/health
-    # Produção: deploy manual no Render após merge homolog → main validado
     autoDeploy: false
     envVars:
       - key: APP_ENV
@@ -32,7 +24,6 @@ services:
         generateValue: true
       - key: PGSSLMODE
         value: require
-      # Supabase produção — configure manualmente no painel Render
       - key: DATABASE_URL
         sync: false
       - key: RAVEX_USER
@@ -40,7 +31,7 @@ services:
       - key: RAVEX_PASSWORD
         sync: false
 
-  # ── Homologação (testes antes de ir para produção) ────────────────────────
+  # ── Homologação (mesmo banco, branch homolog, deploy automático) ──────────
   - type: web
     name: sistema-wms-homologacao
     env: python
@@ -58,10 +49,9 @@ services:
         generateValue: true
       - key: PGSSLMODE
         value: require
+      # Cole a MESMA DATABASE_URL do serviço sistema-wms (Supabase produção)
       - key: DATABASE_URL
-        fromDatabase:
-          name: sistema-wms-homolog-db
-          property: connectionString
+        sync: false
       - key: RAVEX_USER
         sync: false
       - key: RAVEX_PASSWORD

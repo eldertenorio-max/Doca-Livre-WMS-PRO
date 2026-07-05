@@ -1,36 +1,55 @@
 # Homologação + Produção no Render
 
-Dois ambientes **iguais em código**, separados por **branch** e **URL**.
+Igual ao seu **outro projeto**: **mesmo banco**, **outro site** no Render.  
+A diferença é só o **tipo de serviço** — aqui é **Web Service (Python)**, não Static Site.
 
-| Ambiente | Branch | URL | Uso |
-|----------|--------|-----|-----|
-| **Produção** | `main` | https://sistema-wms.onrender.com | Operação real |
-| **Homologação** | `homolog` | https://sistema-wms-homologacao.onrender.com | Testes e edições |
+| Ambiente | Branch | URL | Banco |
+|----------|--------|-----|-------|
+| **Produção** | `main` | https://sistema-wms.onrender.com | Supabase (atual) |
+| **Homologação** | `homolog` | https://sistema-wms-homologacao.onrender.com | **Mesmo Supabase** |
 
 ---
 
 ## Por que não é Static Site?
 
-O Stock System WMS é **Flask (Python) + PostgreSQL + login + APIs**.  
-No Render isso exige **Web Service**, não **Static Site** (que só serve HTML/CSS/JS estáticos, sem backend).
+No outro projeto o front era só HTML/JS e apontava para uma API.  
+O **Stock System WMS** é o **app completo** (Flask + login + `/api/*` + WMS).  
+No Render isso precisa ser **Web Service**, não Static Site.
+
+Na prática para você: **duplicar o Web Service de produção**, mudar branch e URL.
 
 ---
 
-## Passo 1 — Banco de homologação
+## Passo 1 — Criar homologação no Render (5 min)
 
-**Sem projeto Supabase extra?** → **`HOMOLOG_SEM_SUPABASE.md`** (Postgres no Render, grátis).
+1. [Render Dashboard](https://dashboard.render.com) → serviço **`sistema-wms`** (produção)
+2. Anote em **Environment** os valores de:
+   - `DATABASE_URL`
+   - `PGSSLMODE`
+   - `RAVEX_USER` / `RAVEX_PASSWORD` (se existirem)
+3. **New +** → **Web Service** (não Static Site)
+4. Repo: **Sistema-WMS** · Branch: **`homolog`**
+5. Name: **`sistema-wms-homologacao`**
+6. Build: `pip install -r requirements.txt`
+7. Start: `gunicorn -b 0.0.0.0:$PORT --workers 1 --timeout 120 --graceful-timeout 30 --worker-class gthread --threads 4 app:app`
+8. Health check: `/api/health`
+9. **Environment** — copie da produção:
 
-**Com projeto Supabase novo?** → **`supabase/SUPABASE_HOMOLOG.md`**.
+| Variável | Homologação |
+|----------|-------------|
+| `APP_ENV` | `homologacao` |
+| `DATABASE_URL` | **Igual à produção** |
+| `PGSSLMODE` | `require` |
+| `SECRET_KEY` | Pode ser a mesma ou outra |
+| `RAVEX_*` | Igual à produção (opcional) |
 
-- Produção continua no Supabase atual (`ndfjetskugqsrrmulcyz`)
-- Homologação usa **banco separado** (Render Postgres ou Supabase novo)
-- **Nunca** aponte homolog para o banco de produção, exceto emergência (ver guia)
+10. **Create Web Service** → URL: `https://sistema-wms-homologacao.onrender.com`
+
+Não precisa criar banco novo, Postgres no Render nem projeto Supabase extra.
 
 ---
 
-## Passo 2 — Branch `homolog` no GitHub
-
-No repositório **Sistema-WMS** (`wms` remote):
+## Passo 2 — Branch `homolog` no Git
 
 ```powershell
 git checkout main
@@ -39,83 +58,52 @@ git checkout -b homolog
 git push -u wms homolog
 ```
 
-Fluxo de trabalho:
+---
 
-1. Desenvolver e commitar na branch **`homolog`**
-2. Testar em https://sistema-wms-homologacao.onrender.com
-3. Quando estiver ok: merge `homolog` → `main` (deploy automático na produção)
+## Passo 3 — Fluxo do dia a dia
+
+```
+Editar código → commit/push na branch homolog
+       ↓
+Deploy automático em sistema-wms-homologacao.onrender.com (faixa laranja)
+       ↓ ok
+Merge homolog → main → Manual Deploy em sistema-wms (produção)
+```
+
+| Push | O que atualiza |
+|------|----------------|
+| `homolog` | Só homologação (automático) |
+| `main` | Produção (**Manual Deploy** no Render) |
 
 ---
 
-## Passo 3 — Criar o serviço no Render
+## Como saber onde estou?
 
-### Opção A — Blueprint (`render.yaml`)
-
-1. [Render Dashboard](https://dashboard.render.com) → **Blueprints**
-2. Conecte o repo **Sistema-WMS**
-3. O arquivo `render.yaml` define **dois Web Services**
-4. Após o sync, configure **Environment** em cada serviço:
-   - **Produção** (`sistema-wms`): `DATABASE_URL` do Supabase **produção**
-   - **Homologação** (`sistema-wms-homologacao`): `DATABASE_URL` do Supabase **homolog**
-
-### Opção B — Manual (se produção já existir)
-
-1. **New +** → **Web Service**
-2. Repo: **Sistema-WMS** · Branch: **`homolog`**
-3. Name: **`sistema-wms-homologacao`**
-4. Build: `pip install -r requirements.txt`
-5. Start: `gunicorn -b 0.0.0.0:$PORT --workers 1 --timeout 120 --graceful-timeout 30 --worker-class gthread --threads 4 app:app`
-6. Health check: `/api/health`
-7. Variáveis:
-   - `APP_ENV` = `homologacao`
-   - `DATABASE_URL` = URL do banco **homolog**
-   - `PGSSLMODE` = `require`
-   - `SECRET_KEY` = chave aleatória (diferente da produção)
-   - `RAVEX_*` = opcional (pode usar credenciais de teste)
+- **Homologação**: faixa laranja **Homologação** no topo
+- **Produção**: sem faixa
+- API: `/api/health` → `"env": "homologacao"` ou `"producao"`
 
 ---
 
-## Passo 4 — Deploy (homolog automático, produção manual)
+## Atenção (mesmo banco)
 
-| Push em | Deploy em | Como |
-|---------|-----------|------|
-| `homolog` | **Homologação** | Automático (`autoDeploy: true`) |
-| `main` | **Produção** | **Manual** no Render (`autoDeploy: false`) |
+Como homolog e produção usam o **mesmo Supabase**:
 
-### Fluxo recomendado
+- Alterações em homolog (bipagem, WMS, cadastros) **aparecem na produção**
+- Use homolog para testar **layout, rotas, telas e código novo**
+- Evite testes destrutivos (apagar dados, inventário em massa, etc.)
 
-1. Commit + push na branch **`homolog`**
-2. Testar em https://sistema-wms-homologacao.onrender.com
-3. Merge `homolog` → `main` e push
-4. No [Render Dashboard](https://dashboard.render.com) → serviço **`sistema-wms`** → **Manual Deploy** → **Deploy latest commit**
-
-Assim a produção **só sobe quando você confirmar** no painel, mesmo após merge na `main`.
-
----
-
-## Como saber em qual ambiente estou?
-
-- **Homologação**: faixa laranja no topo — *“Homologação — Ambiente de testes”*
-- **API**: `GET /api/health` → `{ "ok": true, "env": "homologacao" }` ou `"producao"`
-
----
-
-## Renomear produção existente
-
-Se o serviço de produção no Render ainda se chama `controle-de-carregamento`:
-
-1. Settings → **Name** → renomeie para **`sistema-wms`** (URL continua `sistema-wms.onrender.com` se já configurada)
-2. Ou mantenha o nome e só adicione o serviço **`sistema-wms-homologacao`** manualmente
+Se no futuro quiser banco separado: **`HOMOLOG_SEM_SUPABASE.md`** (Postgres Render ou Supabase novo).
 
 ---
 
 ## Resumo
 
 ```
-[Git homolog] ──push──► Render Web Service (homologação) ──► Supabase homolog
-       │
-       └── merge main ──► Render Web Service (produção) ──► Supabase produção
+                    ┌── Web Service produção (main) ──► sistema-wms.onrender.com
+Supabase (único) ◄──┤
+                    └── Web Service homolog (homolog) ► sistema-wms-homologacao.onrender.com
 ```
 
 Produção: https://sistema-wms.onrender.com  
-Homologação: https://sistema-wms-homologacao.onrender.com (após criar o serviço)
+Homologação: https://sistema-wms-homologacao.onrender.com
