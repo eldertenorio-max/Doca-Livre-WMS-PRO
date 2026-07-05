@@ -20,11 +20,13 @@ body.doca-livre-pro {
     --app-topbar-h: 54px;
 }
 
-html.dl-splash-pending body.doca-livre-pro .container {
+html.dl-splash-pending body.doca-livre-pro .container,
+html.dl-splash-pending body.ss-hub-body .ss-hub {
     visibility: hidden;
 }
 
-body.doca-livre-pro.dl-splash-active {
+body.doca-livre-pro.dl-splash-active,
+body.ss-hub-body.dl-splash-active {
     overflow: hidden;
 }
 

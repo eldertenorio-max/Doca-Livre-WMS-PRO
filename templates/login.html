@@ -114,6 +114,7 @@
     if (window.location.search.indexOf('sair=1') !== -1) {
         var apiBase = window.API_BASE || '/api';
         fetch(apiBase + '/logout', { method: 'POST' }).catch(function() {});
+        try { sessionStorage.removeItem('dl-splash-done'); } catch (e) { /* ignore */ }
     }
 
     var cardLogin = document.getElementById('card-login');

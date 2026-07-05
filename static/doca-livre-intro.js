@@ -1,11 +1,12 @@
 /**
- * Splash — igual Ultrafrio IntroSplash.tsx
+ * Splash DOCA LIVRE — apenas na tela /entrada (hub de módulos).
  */
 (function () {
     'use strict';
 
     var MIN_INTRO_MS = 2200;
     var FADE_MS = 650;
+    var SESSION_KEY = 'dl-splash-done';
     var startRef = Date.now();
     var finished = false;
 
@@ -20,9 +21,16 @@
         splash.classList.add('intro-splash--exit');
         document.body.classList.remove('dl-splash-active');
         clearPending();
+        try { sessionStorage.setItem(SESSION_KEY, '1'); } catch (e) { /* ignore */ }
         setTimeout(function () {
             if (splash.parentNode) splash.parentNode.removeChild(splash);
         }, FADE_MS + 40);
+    }
+
+    function skipSplash() {
+        clearPending();
+        var splash = qs('doca-livre-splash');
+        if (splash && splash.parentNode) splash.parentNode.removeChild(splash);
     }
 
     function runSplash() {
@@ -31,6 +39,13 @@
             clearPending();
             return;
         }
+
+        try {
+            if (sessionStorage.getItem(SESSION_KEY)) {
+                skipSplash();
+                return;
+            }
+        } catch (e) { /* ignore */ }
 
         var bar = qs('dl-splash-bar-fill');
         var pctEl = qs('dl-splash-pct');

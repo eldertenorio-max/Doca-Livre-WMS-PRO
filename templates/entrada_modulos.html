@@ -10,11 +10,13 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705d">
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
 </head>
 <body class="ss-hub-body{% if is_homologacao %} app-env-homologacao{% endif %}" data-usuario="{{ usuario or '' }}">
     {% include '_app_env_banner.html' %}
+    {% include '_doca_livre_splash.html' %}
     {% from '_stock_system_logo.html' import stock_system_logo %}
 
     <div class="ss-hub">
@@ -102,5 +104,6 @@
     ];
     </script>
     <script src="{{ url_for('static', filename='entrada-modulos.js') }}?v=20260705"></script>
+    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705c"></script>
 </body>
 </html>
