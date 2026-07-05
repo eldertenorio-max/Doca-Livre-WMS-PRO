@@ -770,8 +770,42 @@ body.ss-hub-body .ss-hub-sidebar-foot {
     color: #b0b0b0 !important;
 }
 
-body.ss-hub-body .ss-hub-sidebar-link-ico {
-    color: #b0b0b0 !important;
+body.ss-hub-body .ss-hub-sidebar-head {
+    padding: 12px 12px 0 !important;
+}
+
+body.ss-hub-body .ss-hub-sidebar-menu {
+    color: #ffffff !important;
+}
+
+body.ss-hub-body .ss-hub-sidebar-menu:hover {
+    background: rgb(255 255 255 / 0.08) !important;
+}
+
+body.ss-hub-body .ss-hub-topbar-menu {
+    color: #000000 !important;
+}
+
+body.ss-hub-body .ss-hub-topbar-menu:hover {
+    background: #f0f2f4 !important;
+}
+
+@media (max-width: 900px) {
+    body.ss-hub-body.ss-hub-sidebar-collapsed .ss-hub-sidebar {
+        transform: translateX(-100%);
+    }
+
+    body.ss-hub-body.ss-hub-sidebar-collapsed .ss-hub-shell {
+        margin-left: 0;
+    }
+
+    body.ss-hub-body .ss-hub-topbar-menu {
+        display: inline-flex !important;
+    }
+
+    body.ss-hub-body:not(.ss-hub-sidebar-collapsed) .ss-hub-topbar-menu {
+        display: none !important;
+    }
 }
 
 /* ── Área principal + marca d'água (main-panel) ── */

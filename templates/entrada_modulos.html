@@ -10,8 +10,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705h">
-    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705i">
+    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705c">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
 </head>
 <body class="ss-hub-body{% if is_homologacao %} app-env-homologacao{% endif %}" data-usuario="{{ usuario or '' }}">
@@ -21,6 +21,11 @@
 
     <div class="ss-hub">
         <aside class="ss-hub-sidebar" aria-label="Menu lateral">
+            <div class="ss-hub-sidebar-head">
+                <button type="button" class="ss-hub-sidebar-menu" id="btn-hub-sidebar-toggle" aria-label="Alternar menu lateral" aria-expanded="true">
+                    <span class="ss-hub-menu-icon" aria-hidden="true"></span>
+                </button>
+            </div>
             <div class="ss-hub-sidebar-brand">
                 {{ doca_livre_brand(logo_class='ss-hub-sidebar-logo', size='sm', theme='dark') }}
             </div>
@@ -47,6 +52,9 @@
         <div class="ss-hub-shell">
             <header class="ss-hub-topbar">
                 <div class="ss-hub-topbar-left">
+                    <button type="button" class="ss-hub-topbar-menu" id="btn-hub-topbar-menu" aria-label="Abrir menu lateral" aria-expanded="true">
+                        <span class="ss-hub-menu-icon" aria-hidden="true"></span>
+                    </button>
                     <span class="ss-hub-topbar-empresa">Ultrapão Transportes</span>
                 </div>
                 <div class="ss-hub-topbar-right">
@@ -103,7 +111,7 @@
         { id: 'enderecamento-wms', label: 'Endereçamento WMS', href: {{ url_for('painel')|tojson }} + '?modulo=enderecamento-wms', icon: 'wms' }
     ];
     </script>
-    <script src="{{ url_for('static', filename='entrada-modulos.js') }}?v=20260705"></script>
+    <script src="{{ url_for('static', filename='entrada-modulos.js') }}?v=20260705b"></script>
     <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705d"></script>
 </body>
 </html>

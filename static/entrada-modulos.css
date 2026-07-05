@@ -48,6 +48,7 @@ body.ss-hub-body.app-env-homologacao .ss-hub-sidebar {
     flex-direction: column;
     z-index: 100;
     box-sizing: border-box;
+    transition: transform 0.22s ease-out;
 }
 
 .ss-hub-shell {
@@ -55,6 +56,53 @@ body.ss-hub-body.app-env-homologacao .ss-hub-sidebar {
     flex: 1;
     display: flex;
     flex-direction: column;
+    min-width: 0;
+}
+
+.ss-hub-sidebar-head {
+    padding: 12px 12px 0;
+    flex-shrink: 0;
+}
+
+.ss-hub-sidebar-menu,
+.ss-hub-topbar-menu {
+    width: 38px;
+    height: 38px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.ss-hub-sidebar-menu:hover,
+.ss-hub-topbar-menu:hover {
+    background: rgb(255 255 255 / 0.08);
+}
+
+.ss-hub-menu-icon {
+    display: block;
+    width: 18px;
+    height: 2px;
+    background: currentColor;
+    border-radius: 999px;
+    box-shadow: 0 -6px 0 currentColor, 0 6px 0 currentColor;
+}
+
+.ss-hub-topbar-menu {
+    display: none;
+    color: #000;
+}
+
+.ss-hub-topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     min-width: 0;
 }
 

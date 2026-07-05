@@ -176,8 +176,27 @@
         });
     }
 
+    function initSidebarToggle() {
+        var sidebarBtn = document.getElementById('btn-hub-sidebar-toggle');
+        var topbarBtn = document.getElementById('btn-hub-topbar-menu');
+
+        function setOpen(open) {
+            document.body.classList.toggle('ss-hub-sidebar-collapsed', !open);
+            if (sidebarBtn) sidebarBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (topbarBtn) topbarBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+
+        function toggle() {
+            setOpen(document.body.classList.contains('ss-hub-sidebar-collapsed'));
+        }
+
+        if (sidebarBtn) sidebarBtn.addEventListener('click', toggle);
+        if (topbarBtn) topbarBtn.addEventListener('click', toggle);
+    }
+
     renderAll();
     initClock();
     initSearch();
     initMenuCompleto();
+    initSidebarToggle();
 })();
