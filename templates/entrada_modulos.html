@@ -11,7 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705p">
-    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705g">
+    <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705h">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
 </head>
 <body class="ss-hub-body doca-livre-pro ss-hub-sidebar-wide{% if is_homologacao %} app-env-homologacao{% endif %}" data-usuario="{{ usuario or '' }}">
@@ -20,6 +20,41 @@
     {% from '_doca_livre_logo.html' import doca_livre_brand, doca_livre_logo %}
 
     <div class="ss-hub">
+        <header class="header app-topbar ss-hub-topbar" aria-label="Barra principal">
+            <div class="app-topbar-left ss-hub-topbar-left">
+                <button type="button" class="app-topbar-menu ss-hub-topbar-menu" id="btn-hub-sidebar-toggle" aria-label="Recolher menu lateral" aria-pressed="true" title="Recolher menu lateral">
+                    <span class="app-topbar-menu-icon" aria-hidden="true"></span>
+                </button>
+                <a href="/login?sair=1" class="app-topbar-back ss-hub-topbar-back header-link-voltar" title="Voltar ao login" aria-label="Voltar ao login">
+                    <span class="app-topbar-back-icon" aria-hidden="true">←</span>
+                    <span class="app-topbar-back-label">Voltar</span>
+                </a>
+                <div class="app-topbar-brand-row">
+                    <div class="app-topbar-brand">
+                        {{ doca_livre_logo(class='app-topbar-logo') }}
+                        <strong class="app-topbar-wms" aria-label="WMS DOCA LIVRE PRO">
+                            <span class="app-topbar-wms-main">WMS</span>
+                            <span class="app-topbar-wms-light">PRO</span>
+                        </strong>
+                    </div>
+                </div>
+            </div>
+            <div class="app-topbar-right ss-hub-topbar-right">
+                <span class="ss-hub-topbar-icon" title="Notificações" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+                </span>
+                <span class="ss-hub-topbar-icon" title="Relatórios" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+                </span>
+                <span class="ss-hub-topbar-user">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
+                    {{ usuario or 'Usuário' }}
+                </span>
+                <a class="ss-hub-topbar-sair" href="/login?sair=1" title="Sair">Sair</a>
+            </div>
+        </header>
+
+        <div class="ss-hub-layout">
         <aside class="ss-hub-sidebar ss-hub-sidebar--wide" aria-label="Menu lateral">
             <nav class="ss-hub-sidebar-nav">
                 <p class="ss-hub-sidebar-label">Mais acessados</p>
@@ -39,41 +74,6 @@
                 <span>Versão: WMS DOCA LIVRE PRO</span>
             </footer>
         </aside>
-
-        <div class="ss-hub-shell">
-            <header class="header app-topbar ss-hub-topbar" aria-label="Barra principal">
-                <div class="app-topbar-left ss-hub-topbar-left">
-                    <button type="button" class="app-topbar-menu ss-hub-topbar-menu" id="btn-hub-sidebar-toggle" aria-label="Recolher menu lateral" aria-pressed="true" title="Recolher menu lateral">
-                        <span class="app-topbar-menu-icon" aria-hidden="true"></span>
-                    </button>
-                    <a href="/login?sair=1" class="app-topbar-back ss-hub-topbar-back header-link-voltar" title="Voltar ao login" aria-label="Voltar ao login">
-                        <span class="app-topbar-back-icon" aria-hidden="true">←</span>
-                        <span class="app-topbar-back-label">Voltar</span>
-                    </a>
-                    <div class="app-topbar-brand-row">
-                        <div class="app-topbar-brand">
-                            {{ doca_livre_logo(class='app-topbar-logo') }}
-                            <strong class="app-topbar-wms" aria-label="WMS DOCA LIVRE PRO">
-                                <span class="app-topbar-wms-main">WMS</span>
-                                <span class="app-topbar-wms-light">PRO</span>
-                            </strong>
-                        </div>
-                    </div>
-                </div>
-                <div class="app-topbar-right ss-hub-topbar-right">
-                    <span class="ss-hub-topbar-icon" title="Notificações" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
-                    </span>
-                    <span class="ss-hub-topbar-icon" title="Relatórios" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
-                    </span>
-                    <span class="ss-hub-topbar-user">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
-                        {{ usuario or 'Usuário' }}
-                    </span>
-                    <a class="ss-hub-topbar-sair" href="/login?sair=1" title="Sair">Sair</a>
-                </div>
-            </header>
 
             <main class="ss-hub-main">
                 <div class="ss-hub-hero-logo">

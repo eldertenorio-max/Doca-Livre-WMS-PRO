@@ -1,4 +1,4 @@
-/* Hub de módulos — layout estilo portal (sidebar + cards + busca) */
+/* Hub de módulos — topbar full width + sidebar abaixo */
 
 :root {
     --ss-hub-bg: #ececec;
@@ -8,7 +8,7 @@
     --ss-hub-muted: #666;
     --ss-hub-accent: #1a3a5c;
     --ss-hub-card: #fff;
-    --ss-hub-topbar-h: 44px;
+    --ss-hub-topbar-h: 54px;
     --ss-hub-sidebar-w: 220px;
     --ss-hub-sidebar-w-collapsed: 72px;
 }
@@ -26,43 +26,42 @@ body.ss-hub-body.app-env-homologacao .ss-hub {
     min-height: calc(100vh - 40px);
 }
 
-body.ss-hub-body.app-env-homologacao .ss-hub-sidebar {
-    top: 40px;
-    height: calc(100vh - 40px);
-}
-
 /* ── Layout ── */
 .ss-hub {
     display: flex;
+    flex-direction: column;
     min-height: 100vh;
 }
 
-.ss-hub-sidebar {
-    position: fixed;
+.ss-hub-topbar.app-topbar {
+    flex-shrink: 0;
+    width: 100%;
+    position: sticky;
     top: 0;
-    left: 0;
+    z-index: 120;
+}
+
+.ss-hub-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+.ss-hub-sidebar {
+    flex: 0 0 var(--ss-hub-sidebar-w);
     width: var(--ss-hub-sidebar-w);
-    height: 100vh;
+    min-width: var(--ss-hub-sidebar-w);
+    max-width: var(--ss-hub-sidebar-w);
     background: var(--ss-hub-sidebar);
     border-right: 1px solid var(--ss-hub-border);
     display: flex;
     flex-direction: column;
     z-index: 100;
     box-sizing: border-box;
-    transition: transform 0.22s ease-out;
-}
-
-.ss-hub-shell {
-    margin-left: var(--ss-hub-sidebar-w);
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-
-.ss-hub-sidebar-head {
-    padding: 12px 12px 0;
-    flex-shrink: 0;
+    overflow: hidden;
+    transition: width 0.22s ease-out, min-width 0.22s ease-out, max-width 0.22s ease-out, flex-basis 0.22s ease-out;
 }
 
 .ss-hub-topbar-left {
@@ -87,11 +86,10 @@ body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar-link {
 }
 
 body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-sidebar {
+    flex-basis: var(--ss-hub-sidebar-w-collapsed);
     width: var(--ss-hub-sidebar-w-collapsed);
-}
-
-body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-shell {
-    margin-left: var(--ss-hub-sidebar-w-collapsed);
+    min-width: var(--ss-hub-sidebar-w-collapsed);
+    max-width: var(--ss-hub-sidebar-w-collapsed);
 }
 
 .ss-hub-sidebar-nav {
@@ -175,6 +173,7 @@ body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-shell {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    flex-shrink: 0;
 }
 
 .ss-hub-sidebar-time {
@@ -182,12 +181,11 @@ body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-shell {
     color: var(--ss-hub-text);
 }
 
-/* ── Topbar (mesmo visual dos módulos via app-topbar) ── */
+/* ── Topbar ── */
 .ss-hub-topbar.app-topbar {
     height: var(--app-topbar-h, 54px);
     min-height: var(--app-topbar-h, 54px);
     padding: 0 14px 0 10px;
-    flex-shrink: 0;
 }
 
 .ss-hub-topbar-right,
@@ -228,6 +226,7 @@ body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-shell {
 /* ── Main ── */
 .ss-hub-main {
     flex: 1;
+    min-width: 0;
     padding: 28px 32px 48px;
     overflow-y: auto;
 }
@@ -376,10 +375,6 @@ body.ss-hub-body:not(.ss-hub-sidebar-wide) .ss-hub-shell {
 @media (max-width: 768px) {
     .ss-hub-sidebar {
         display: none;
-    }
-
-    .ss-hub-shell {
-        margin-left: 0;
     }
 
     .ss-hub-main {
