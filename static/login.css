@@ -173,6 +173,13 @@ body {
     border-radius: 20px;
     animation: logoPulse 3s ease-in-out infinite;
 }
+.login-logo-wrap.login-brand-wrap {
+    background: transparent;
+    padding: 0;
+    animation: none;
+    box-shadow: none;
+    margin-bottom: 12px;
+}
 @keyframes logoPulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(54, 96, 146, 0.15); }
     50% { box-shadow: 0 0 0 12px rgba(54, 96, 146, 0); }
@@ -186,6 +193,20 @@ body {
     margin: 0 auto;
     object-fit: contain;
     filter: drop-shadow(0 2px 12px rgba(54, 96, 146, 0.2));
+}
+.login-brand-wrap .login-logo-img {
+    height: auto;
+    filter: none;
+}
+
+.login-tagline {
+    font-size: 0.88rem;
+    color: #5a6d82;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 4px;
+    animation: fadeInDown 0.6s ease 0.2s both;
 }
 
 .login-header h1 {

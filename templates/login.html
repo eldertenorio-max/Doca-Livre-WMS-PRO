@@ -3,21 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login — {{ system_name }}</title>
+    <title>Login — WMS DOCA LIVRE PRO</title>
     {% from '_app_head_icons.html' import app_head_icons %}
     {{ app_head_icons() }}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705l">
+    <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}?v=20260705">
     <script>
       window.API_BASE = window.API_BASE || localStorage.getItem('api_base') || '/api';
     </script>
 </head>
-<body{% if is_homologacao %} class="app-env-homologacao"{% endif %}>
+<body class="login-page-body{% if is_homologacao %} app-env-homologacao{% endif %}">
     {% include '_app_env_banner.html' %}
-    {% from '_stock_system_logo.html' import stock_system_logo %}
+    {% include '_doca_livre_splash.html' %}
+    {% from '_doca_livre_logo.html' import doca_livre_brand %}
     <div class="ss-page-content login-page-root">
     <div class="login-wrap">
         <div class="login-bg">
@@ -28,10 +29,10 @@
         <div class="login-card login-card-visible" id="card-login">
             <div class="login-card-inner">
                 <div class="login-header">
-                    <div class="login-logo-wrap">
-                        {{ stock_system_logo(class='login-logo-img', grad_id='ssg-login') }}
+                    <div class="login-logo-wrap login-brand-wrap">
+                        {{ doca_livre_brand(logo_class='login-logo-img', size='login', theme='light') }}
                     </div>
-                    <p>{{ system_tagline }}</p>
+                    <p class="login-tagline">Gestão de estoque e armazenagem</p>
                 </div>
                 {% if usuario %}
                 <div class="login-ja-logado" style="margin-bottom:20px;padding:16px;background:#e3f2fd;border-radius:12px;text-align:center;">
@@ -66,11 +67,11 @@
         <div class="login-card cadastro-card login-card-hidden" id="card-cadastro" aria-hidden="true">
             <div class="login-card-inner">
                 <div class="login-header">
-                    <div class="login-logo-wrap">
-                        {{ stock_system_logo(class='login-logo-img', grad_id='ssg-login') }}
+                    <div class="login-logo-wrap login-brand-wrap">
+                        {{ doca_livre_brand(logo_class='login-logo-img', size='login', theme='light') }}
                     </div>
                     <h1>Criar conta</h1>
-                    <p>Preencha os dados para se cadastrar no {{ system_name }}</p>
+                    <p>Preencha os dados para se cadastrar no WMS DOCA LIVRE PRO</p>
                 </div>
                 <form id="form-cadastro" class="login-form" autocomplete="on">
                     <div class="form-group form-group-anim">
@@ -107,6 +108,7 @@
         </div>
     </div>
     </div>
+    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705e"></script>
     <script>
 (function () {
     if (window.location.search.indexOf('sair=1') !== -1) {

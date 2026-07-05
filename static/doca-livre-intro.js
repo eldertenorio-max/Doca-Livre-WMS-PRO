@@ -1,14 +1,15 @@
 /**
- * Splash DOCA LIVRE — apenas na tela /entrada (hub de módulos).
+ * Splash DOCA LIVRE — login (sempre) e /entrada (uma vez por sessão).
  */
 (function () {
     'use strict';
 
     var MIN_INTRO_MS = 2200;
     var FADE_MS = 650;
-    var SESSION_KEY = 'dl-splash-done';
+    var ENTRADA_SESSION_KEY = 'dl-splash-done';
     var startRef = Date.now();
     var finished = false;
+    var isLoginPage = document.body.classList.contains('login-page-body');
 
     function qs(id) { return document.getElementById(id); }
 
@@ -21,7 +22,9 @@
         splash.classList.add('intro-splash--exit');
         document.body.classList.remove('dl-splash-active');
         clearPending();
-        try { sessionStorage.setItem(SESSION_KEY, '1'); } catch (e) { /* ignore */ }
+        if (!isLoginPage) {
+            try { sessionStorage.setItem(ENTRADA_SESSION_KEY, '1'); } catch (e) { /* ignore */ }
+        }
         setTimeout(function () {
             if (splash.parentNode) splash.parentNode.removeChild(splash);
         }, FADE_MS + 40);
@@ -40,12 +43,14 @@
             return;
         }
 
-        try {
-            if (sessionStorage.getItem(SESSION_KEY)) {
-                skipSplash();
-                return;
-            }
-        } catch (e) { /* ignore */ }
+        if (!isLoginPage) {
+            try {
+                if (sessionStorage.getItem(ENTRADA_SESSION_KEY)) {
+                    skipSplash();
+                    return;
+                }
+            } catch (e) { /* ignore */ }
+        }
 
         var bar = qs('dl-splash-bar-fill');
         var pctEl = qs('dl-splash-pct');

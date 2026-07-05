@@ -24,12 +24,14 @@ body.doca-livre-pro {
 }
 
 html.dl-splash-pending body.doca-livre-pro .container,
-html.dl-splash-pending body.ss-hub-body .ss-hub {
+html.dl-splash-pending body.ss-hub-body .ss-hub,
+html.dl-splash-pending body.login-page-body .login-page-root {
     visibility: hidden;
 }
 
 body.doca-livre-pro.dl-splash-active,
-body.ss-hub-body.dl-splash-active {
+body.ss-hub-body.dl-splash-active,
+body.login-page-body.dl-splash-active {
     overflow: hidden;
 }
 
@@ -177,6 +179,23 @@ body.ss-hub-body.dl-splash-active {
     max-height: none;
     animation: none;
     filter: drop-shadow(0 8px 24px rgb(0 0 0 / 0.08));
+}
+
+.doca-livre-brand--login {
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.doca-livre-brand--login .login-logo-img {
+    height: auto;
+    max-height: 72px;
+    max-width: min(280px, 88vw);
+    width: auto;
+}
+
+.doca-livre-brand--login .doca-livre-wms-main {
+    font-size: 1.35rem;
 }
 
 .doca-livre-brand--splash .doca-livre-wms-main {
