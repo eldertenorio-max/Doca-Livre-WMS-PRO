@@ -44,7 +44,7 @@ body.app-env-homologacao {
 }
 
 body.app-env-homologacao .header {
-    top: 40px;
+    top: auto;
 }
 
 body.ss-splash-active {

@@ -154,19 +154,43 @@ body.doca-livre-pro .header.app-topbar {
     height: var(--app-topbar-h);
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: space-between !important;
     gap: 16px;
-    padding: 0 14px 0 10px;
-    background: #ffffff;
+    padding: 0 14px 0 10px !important;
+    flex-wrap: nowrap !important;
+    background: #ffffff !important;
     color: var(--text);
     border-bottom: 1px solid #e5e7eb;
     box-shadow: 0 1px 3px rgb(0 0 0 / 0.06);
-    position: relative;
+    position: sticky;
+    top: 0;
+    z-index: 120;
     min-height: var(--app-topbar-h);
 }
 
+/* Homolog: banner fixo já empurra o body (padding-top 40px) — não usar top extra no header */
 body.doca-livre-pro.app-env-homologacao .header.app-topbar {
-    top: 40px;
+    top: 0;
+}
+
+body.doca-livre-pro.app-env-homologacao .header {
+    top: auto !important;
+}
+
+body.doca-livre-pro a.header-link-inicio.app-topbar-menu {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    transform: none !important;
+    border: none !important;
+    background: transparent !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    white-space: normal !important;
+    order: unset !important;
+    width: auto !important;
+    text-align: left !important;
 }
 
 body.doca-livre-pro .app-topbar-left,
@@ -179,6 +203,14 @@ body.doca-livre-pro .app-topbar-right {
 
 body.doca-livre-pro .app-topbar-left {
     flex: 1;
+    min-width: 0;
+    overflow: visible;
+}
+
+body.doca-livre-pro .app-topbar-brand-row {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
 }
 
 body.doca-livre-pro .app-topbar-right {
