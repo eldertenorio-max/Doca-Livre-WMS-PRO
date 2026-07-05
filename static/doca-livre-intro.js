@@ -1,11 +1,13 @@
 /**
- * Splash WMS DOCA LIVRE PRO — tela de módulos (/painel)
+ * Splash — igual Ultrafrio IntroSplash.tsx
  */
 (function () {
     'use strict';
 
-    var LOAD_MS = 2800;
-    var FADE_MS = 450;
+    var MIN_INTRO_MS = 2200;
+    var FADE_MS = 650;
+    var startRef = Date.now();
+    var finished = false;
 
     function qs(id) { return document.getElementById(id); }
 
@@ -15,12 +17,12 @@
 
     function hideSplash(splash) {
         if (!splash) return;
-        splash.classList.add('dl-splash--out');
+        splash.classList.add('intro-splash--exit');
         document.body.classList.remove('dl-splash-active');
         clearPending();
         setTimeout(function () {
             if (splash.parentNode) splash.parentNode.removeChild(splash);
-        }, FADE_MS + 60);
+        }, FADE_MS + 40);
     }
 
     function runSplash() {
@@ -32,23 +34,33 @@
 
         var bar = qs('dl-splash-bar-fill');
         var pctEl = qs('dl-splash-pct');
-        var progress = splash.querySelector('.dl-splash-bar');
+        var progress = splash.querySelector('.intro-progress-track');
+        var progressVal = 0;
+
         document.body.classList.add('dl-splash-active');
         clearPending();
+        startRef = Date.now();
 
-        var start = Date.now();
         var tick = setInterval(function () {
-            var pct = Math.min(100, Math.round(((Date.now() - start) / LOAD_MS) * 100));
-            if (bar) bar.style.width = pct + '%';
-            if (pctEl) pctEl.textContent = String(pct);
-            if (progress) progress.setAttribute('aria-valuenow', String(pct));
-            if (pct >= 100) clearInterval(tick);
-        }, 40);
+            var elapsed = Date.now() - startRef;
+            var minDone = elapsed >= MIN_INTRO_MS;
 
-        setTimeout(function () {
-            clearInterval(tick);
-            hideSplash(splash);
-        }, LOAD_MS);
+            if (minDone) {
+                progressVal = Math.min(100, progressVal + 6);
+            } else {
+                progressVal = Math.min(88, progressVal + 1.2 + Math.random() * 2.5);
+            }
+
+            if (bar) bar.style.width = progressVal + '%';
+            if (pctEl) pctEl.textContent = String(Math.round(progressVal));
+            if (progress) progress.setAttribute('aria-valuenow', String(Math.round(progressVal)));
+
+            if (!finished && minDone && progressVal >= 100) {
+                finished = true;
+                clearInterval(tick);
+                setTimeout(function () { hideSplash(splash); }, 350);
+            }
+        }, 60);
     }
 
     if (document.readyState === 'loading') {

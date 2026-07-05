@@ -1,18 +1,4 @@
-{# Logo WMS DOCA LIVRE PRO — amarelo #F9DB00 · preto #000000 #}
-{% macro doca_livre_logo(class='', grad_id='dlg', compact=false, watermark=false) %}
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 72" role="img" aria-label="WMS DOCA LIVRE PRO" class="dl-logo{% if class %} {{ class }}{% endif %}{% if compact %} dl-logo--compact{% endif %}{% if watermark %} dl-logo--watermark{% endif %}">
-  <g class="dl-logo-mark">
-    <rect x="4" y="10" width="52" height="52" rx="3" fill="none" stroke="#000000" stroke-width="2.5"/>
-    <path d="M14 36 L26 36 L22 30 L26 36 L22 42 Z" fill="#F9DB00"/>
-    <path d="M46 36 L34 36 L38 30 L34 36 L38 42 Z" fill="#F9DB00"/>
-  </g>
-  {% if not compact %}
-  <text x="68" y="26" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700" fill="#000000" letter-spacing="3">WMS</text>
-  {% endif %}
-  <text x="68" y="{% if compact %}38{% else %}44{% endif %}" font-family="Segoe UI, Arial, sans-serif" font-size="{% if compact %}22{% else %}26{% endif %}" font-weight="800" fill="#F9DB00">DOCA</text>
-  <text x="68" y="{% if compact %}62{% else %}66{% endif %}" font-family="Segoe UI, Arial, sans-serif" font-size="{% if compact %}16{% else %}18{% endif %}" font-weight="700" fill="#000000" letter-spacing="5">LIVRE</text>
-  {% if not watermark %}
-  <text x="{% if compact %}168{% else %}178{% endif %}" y="{% if compact %}62{% else %}66{% endif %}" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="800" fill="#000000" letter-spacing="1">PRO</text>
-  {% endif %}
-</svg>
+{# Logo Doca Livre — mesmo asset do projeto Ultrafrio #}
+{% macro doca_livre_logo(class='', alt='Doca Livre') %}
+<img src="{{ url_for('static', filename='logo-doca-livre.png') }}" alt="{{ alt }}" class="doca-livre-logo{% if class %} {{ class }}{% endif %}">
 {% endmacro %}

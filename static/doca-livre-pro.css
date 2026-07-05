@@ -1,14 +1,23 @@
-/* WMS DOCA LIVRE PRO — interior dos módulos (#F9DB00 · #000000) */
-
-:root {
-    --dl-yellow: #F9DB00;
-    --dl-black: #000000;
-    --dl-gray-bg: #f0f0f0;
-    --dl-topbar-h: 52px;
-}
+/* WMS DOCA LIVRE PRO — identidade Ultrafrio (preto #000 + amarelo #F9DB00) */
 
 body.doca-livre-pro {
-    --app-header-h: 52px;
+    --brand-black: #000000;
+    --brand-yellow: #f9db00;
+    --brand-yellow-hover: #e0c500;
+    --brand-yellow-soft: rgb(249 219 0 / 0.14);
+    --sidebar-bg: #000000;
+    --sidebar-border: #1f1f1f;
+    --sidebar-text: #ffffff;
+    --sidebar-text-muted: #b0b0b0;
+    --content-bg: #eef1f4;
+    --border: #dde1e6;
+    --text: #000000;
+    --text-muted: #5c6670;
+    --bg-panel: #ffffff;
+    --bg-elevated: #f8f9fb;
+    --btn-surface-hover-bg: #eceef0;
+    --btn-surface-border: #d0d7de;
+    --app-topbar-h: 54px;
 }
 
 html.dl-splash-pending body.doca-livre-pro .container {
@@ -19,333 +28,436 @@ body.doca-livre-pro.dl-splash-active {
     overflow: hidden;
 }
 
-body.doca-livre-pro.dl-splash-active .container {
-    visibility: hidden;
-}
-
-/* ── Splash inicial ── */
-.dl-splash {
+/* ── Splash (IntroSplash.css) ── */
+.intro-splash {
     position: fixed;
     inset: 0;
     z-index: 100002;
-    background: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: opacity 0.45s ease, visibility 0.45s ease;
+    background: #ffffff;
+    animation: intro-fade-in 0.5s ease-out;
 }
 
-.dl-splash--out {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
+.intro-splash--exit {
+    animation: intro-fade-out 0.65s ease-in forwards;
 }
 
-.dl-splash-inner {
+.intro-splash--exit .intro-logo {
+    animation: intro-logo-exit 0.65s ease-in forwards;
+}
+
+.intro-content {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 18px;
-    width: min(420px, 92vw);
-    text-align: center;
+    gap: 28px;
+    width: min(480px, 92vw);
 }
 
-.dl-splash-logo {
-    width: min(320px, 88vw);
+.intro-logo {
+    width: min(360px, 88vw);
     height: auto;
+    animation: intro-logo-in 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+    filter: drop-shadow(0 8px 24px rgb(0 0 0 / 0.08));
 }
 
-.dl-splash-title {
-    margin: 0;
-    font-family: 'Segoe UI', Tahoma, sans-serif;
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: #555;
-    letter-spacing: 0.04em;
-}
-
-.dl-splash-bar {
+.intro-progress-wrap {
     width: 100%;
-    height: 4px;
-    background: #e8e8e8;
-    border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    animation: intro-progress-in 0.8s ease-out 0.35s both;
+}
+
+.intro-progress-track {
+    width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: #eef1f4;
+    border: 1px solid #dde1e6;
     overflow: hidden;
 }
 
-.dl-splash-bar-fill {
+.intro-progress-bar {
     height: 100%;
     width: 0%;
-    background: #888;
-    border-radius: 2px;
-    transition: width 0.08s linear;
+    border-radius: 999px;
+    background: #6e7681;
+    transition: width 0.12s linear;
 }
 
-.dl-splash-status {
-    margin: 0;
-    font-size: 0.85rem;
-    color: #888;
+.intro-progress-label {
+    font-size: 0.8rem;
+    color: #5c6670;
+    letter-spacing: 0.04em;
 }
 
-/* ── Logo ── */
-.dl-logo {
-    display: block;
-    max-width: 100%;
-    height: auto;
+.intro-ambiente {
+    margin: -12px 0 0;
+    padding: 4px 14px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
 }
 
-.dl-logo--compact {
-    max-height: 40px;
-    width: auto;
+.intro-ambiente--homolog {
+    color: #1a1200;
+    background: #f9db00;
+    border: 1px solid #c9a800;
 }
 
-/* ── Topbar ── */
+@keyframes intro-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes intro-fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+@keyframes intro-logo-in {
+    0% { opacity: 0; transform: scale(0.82) translateY(18px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes intro-logo-exit {
+    to { opacity: 0; transform: scale(1.06) translateY(-12px); }
+}
+
+@keyframes intro-progress-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Shell ── */
 body.doca-livre-pro .container {
-    background: var(--dl-gray-bg);
+    background: var(--content-bg);
     box-shadow: none;
+    height: 100vh;
+    min-height: 100vh;
+    overflow: hidden;
 }
 
-body.doca-livre-pro .header.dl-topbar {
-    background: #fff;
-    color: var(--dl-black);
-    border-bottom: 1px solid #ddd;
-    min-height: var(--dl-topbar-h);
-    padding: 0 16px 0 8px;
-    justify-content: flex-start;
-    gap: 10px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+body.doca-livre-pro {
+    --app-header-h: 54px;
 }
 
-body.doca-livre-pro.app-env-homologacao .header.dl-topbar {
+/* ── Topbar (App.css + doca-theme.css) ── */
+body.doca-livre-pro .header.app-topbar {
+    flex-shrink: 0;
+    height: var(--app-topbar-h);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 0 14px 0 10px;
+    background: #ffffff;
+    color: var(--text);
+    border-bottom: 1px solid #e5e7eb;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.06);
+    position: relative;
+    min-height: var(--app-topbar-h);
+}
+
+body.doca-livre-pro.app-env-homologacao .header.app-topbar {
     top: 40px;
 }
 
-body.doca-livre-pro .dl-topbar-home {
-    position: static;
-    transform: none;
+body.doca-livre-pro .app-topbar-left,
+body.doca-livre-pro .app-topbar-right {
     display: flex;
     align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--dl-black);
-    font-size: 22px;
-    line-height: 1;
-    text-decoration: none;
-    flex-shrink: 0;
+    gap: 12px;
+    min-width: 0;
 }
 
-body.doca-livre-pro .dl-topbar-home:hover {
-    background: rgba(0, 0, 0, 0.06);
-}
-
-body.doca-livre-pro .header-link-inicio {
-    display: none;
-}
-
-body.doca-livre-pro .dl-topbar-brand {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-}
-
-body.doca-livre-pro .dl-topbar-brand .dl-logo--compact {
-    height: 38px;
-    width: auto;
-}
-
-body.doca-livre-pro .header-brand {
-    display: none;
-}
-
-body.doca-livre-pro .dl-topbar-product {
-    font-size: 1.35rem;
-    font-weight: 800;
-    color: var(--dl-black);
-    letter-spacing: -0.02em;
-    flex-shrink: 0;
-}
-
-body.doca-livre-pro .dl-badge {
-    display: inline-block;
-    margin-left: 6px;
-    padding: 2px 8px;
-    font-size: 0.65rem;
-    font-weight: 600;
-    color: #666;
-    background: #eee;
-    border-radius: 999px;
-    vertical-align: middle;
-    letter-spacing: 0.02em;
-}
-
-body.doca-livre-pro .dl-topbar-spacer {
+body.doca-livre-pro .app-topbar-left {
     flex: 1;
 }
 
-body.doca-livre-pro .dl-topbar-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
+body.doca-livre-pro .app-topbar-right {
     margin-left: auto;
+    flex-shrink: 0;
 }
 
-body.doca-livre-pro .dl-topbar-datetime {
+body.doca-livre-pro .app-topbar-menu {
+    width: 38px;
+    height: 38px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #000000;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    text-decoration: none;
+}
+
+body.doca-livre-pro .app-topbar-menu:hover {
+    background: color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+body.doca-livre-pro .app-topbar-menu-icon {
+    display: block;
+    width: 18px;
+    height: 2px;
+    background: currentColor;
+    border-radius: 999px;
+    box-shadow: 0 -6px 0 currentColor, 0 6px 0 currentColor;
+}
+
+body.doca-livre-pro .app-topbar-brand-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+}
+
+body.doca-livre-pro .app-topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+body.doca-livre-pro .app-topbar-logo {
+    display: block;
+    height: 34px;
+    width: auto;
+    max-width: min(220px, 42vw);
+    object-fit: contain;
+    object-position: left center;
+}
+
+body.doca-livre-pro .app-topbar-wms {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+body.doca-livre-pro .app-topbar-wms-main {
+    font-size: 1.35rem;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: #000000;
+}
+
+body.doca-livre-pro .app-topbar-wms-light {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: -0.12em;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #5c6670;
+    background: #f3f4f6;
+    border: 1px solid #d0d7de;
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.9);
+}
+
+body.doca-livre-pro .app-topbar-meta {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    font-size: 11px;
-    color: #555;
-    line-height: 1.25;
-    margin-left: 8px;
-    min-width: 72px;
+    line-height: 1.15;
+    padding: 0 12px 0 4px;
+    border-right: 1px solid #e5e7eb;
+    margin-right: 4px;
 }
 
-body.doca-livre-pro .dl-topbar-datetime #dl-clock-time {
-    font-size: 13px;
+body.doca-livre-pro .app-topbar-meta-time {
+    font-size: 0.82rem;
     font-weight: 700;
-    color: var(--dl-black);
+    font-variant-numeric: tabular-nums;
+    color: #000000;
 }
 
-body.doca-livre-pro .header-perfil .perfil-label {
-    color: #666;
+body.doca-livre-pro .app-topbar-meta-date {
+    font-size: 0.68rem;
+    color: #5c6670;
 }
 
-body.doca-livre-pro .header-perfil .perfil-usuario {
-    color: var(--dl-black);
+body.doca-livre-pro .app-topbar-user-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+body.doca-livre-pro .app-topbar-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 6px 4px 10px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    text-decoration: none;
+    color: inherit;
+}
+
+body.doca-livre-pro .app-topbar-user-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.2;
+}
+
+body.doca-livre-pro .app-topbar-user-text strong {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #000000;
+}
+
+body.doca-livre-pro .app-topbar-user-text span {
+    font-size: 0.72rem;
+    color: #5c6670;
+}
+
+body.doca-livre-pro .app-topbar-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid color-mix(in srgb, var(--brand-yellow) 35%, var(--border));
+    background: #fff;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.doca-livre-pro .app-topbar-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
+    padding: 3px;
+}
+
+body.doca-livre-pro .header-perfil {
+    display: none;
 }
 
 body.doca-livre-pro .btn-sair {
-    color: var(--dl-black);
-    border-color: #ccc;
-    background: #fafafa;
+    color: #000;
+    border-color: #d0d7de;
+    background: #fff;
+    font-size: 0.78rem;
 }
 
 body.doca-livre-pro .btn-sair:hover {
-    background: var(--dl-yellow);
-    border-color: var(--dl-yellow);
+    background: var(--brand-yellow);
+    border-color: var(--brand-yellow);
 }
 
 body.doca-livre-pro .btn-atualizar-aba {
-    color: var(--dl-black);
-    border-color: #ccc;
+    color: #000;
+    border-color: #d0d7de;
     background: #fff;
 }
 
 body.doca-livre-pro .header-alertas-btn {
-    color: var(--dl-black);
+    color: #000;
 }
 
-/* ── Sidebar escura DOCA ── */
+/* ── Sidebar preta (doca-theme.css) ── */
 body.doca-livre-pro .modulo-sidebar {
-    background: var(--dl-black) !important;
-    border-right: 1px solid #222 !important;
+    background: var(--sidebar-bg) !important;
+    border-right: 1px solid var(--sidebar-border) !important;
 }
 
 body.doca-livre-pro .modulo-sidebar.tabs {
-    background: var(--dl-black) !important;
-}
-
-body.doca-livre-pro .modulo-sidebar-header {
-    border-bottom-color: rgba(255, 255, 255, 0.12) !important;
+    background: var(--sidebar-bg) !important;
 }
 
 body.doca-livre-pro .modulo-sidebar-header .sidebar-label {
-    color: var(--dl-yellow) !important;
+    color: var(--sidebar-text-muted) !important;
+}
+
+body.doca-livre-pro .modulo-sidebar .tab-button {
+    color: rgba(255, 255, 255, 0.78);
 }
 
 body.doca-livre-pro .modulo-sidebar .tab-button:hover,
 body.doca-livre-pro .sidebar-footer-btn:hover {
-    background: rgba(249, 219, 0, 0.1) !important;
+    background: rgb(255 255 255 / 0.05) !important;
     color: #fff !important;
 }
 
 body.doca-livre-pro .modulo-sidebar .tab-button.active {
-    background: rgba(249, 219, 0, 0.15) !important;
-    color: var(--dl-yellow) !important;
-    border-left-color: var(--dl-yellow) !important;
+    background: var(--brand-yellow-soft) !important;
+    color: var(--brand-yellow) !important;
+    border-left-color: var(--brand-yellow) !important;
 }
 
 body.doca-livre-pro .modulo-sidebar-footer {
+    border-top-color: var(--sidebar-border) !important;
     background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.5)) !important;
-    border-top-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-/* ── Área principal + marca d'água ── */
+body.doca-livre-pro .sidebar-footer-btn {
+    color: var(--sidebar-text-muted) !important;
+}
+
+/* ── Área principal + marca d'água (main-panel) ── */
 body.doca-livre-pro .modulo-main {
-    background: var(--dl-gray-bg) !important;
+    background: var(--content-bg) !important;
     position: relative;
 }
 
-body.doca-livre-pro .modulo-welcome-watermark {
+body.doca-livre-pro .modulo-main::before {
+    content: '';
     position: absolute;
     inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     pointer-events: none;
+    background:
+        url('logo-doca-livre.png') center 42% / min(420px, 70%) no-repeat,
+        radial-gradient(circle at center, rgb(249 219 0 / 0.04) 0%, transparent 55%);
+    opacity: 0.07;
     z-index: 0;
 }
 
-body.doca-livre-pro .modulo-welcome-watermark-inner {
-    text-align: center;
-    opacity: 0.14;
-}
-
-body.doca-livre-pro .modulo-welcome-logo svg {
-    width: min(360px, 70vw);
-    height: auto;
-    margin: 0 auto 12px;
-}
-
-body.doca-livre-pro .modulo-welcome-text {
-    margin: 0;
-    font-size: clamp(1.1rem, 2.5vw, 1.6rem);
-    font-weight: 600;
-    color: var(--dl-black);
-    letter-spacing: 0.06em;
-}
-
-body.doca-livre-pro .modulo-main > .content,
-body.doca-livre-pro .modulo-main > .devolucoes-conteudo,
-body.doca-livre-pro .modulo-main > *:not(.modulo-welcome-watermark) {
+body.doca-livre-pro .modulo-main > * {
     position: relative;
     z-index: 1;
 }
 
 body.doca-livre-pro .modulo-main > .content {
-    background: transparent;
+    background: rgba(255, 255, 255, 0.94);
 }
 
 body.doca-livre-pro .content {
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.94);
 }
 
-/* Tabs antigas escondidas no carregamento direto */
-body.doca-livre-pro #modulo-carregamento > nav.tabs:not(.modulo-sidebar) {
-    display: none;
-}
-
-@media (max-width: 768px) {
-    body.doca-livre-pro .dl-topbar-product {
+@media (max-width: 900px) {
+    body.doca-livre-pro .app-topbar-meta,
+    body.doca-livre-pro .app-topbar-user-text span {
         display: none;
     }
 
-    body.doca-livre-pro .dl-topbar-datetime {
-        display: none;
+    body.doca-livre-pro .app-topbar-wms-main {
+        font-size: 1.1rem;
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .dl-splash {
-        transition: none;
-    }
-
-    .dl-splash-bar-fill {
-        transition: none;
+    .intro-splash,
+    .intro-logo,
+    .intro-progress-wrap {
+        animation: none !important;
     }
 }

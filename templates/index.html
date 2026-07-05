@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='modulo-sidebar.css') }}?v=20260626h">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705b">
     <link rel="stylesheet" href="{{ url_for('static', filename='wms-mapa-3d.css') }}?v=20260619a">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -27,15 +27,22 @@
     {% from '_doca_livre_logo.html' import doca_livre_logo %}
     {% include '_doca_livre_splash.html' %}
     <div class="container">
-        <!-- Topbar estilo DOCA LIVRE PRO -->
-        <header class="header dl-topbar">
-            <a href="/entrada" class="dl-topbar-home header-link-inicio" title="Voltar à tela inicial de módulos" aria-label="Menu">☰</a>
-            <div class="dl-topbar-brand">
-                {{ doca_livre_logo(class='dl-logo--compact', compact=true) }}
+        <header class="header app-topbar" aria-label="Barra principal">
+            <div class="app-topbar-left">
+                <a href="/entrada" class="app-topbar-menu header-link-inicio" title="Voltar aos módulos" aria-label="Voltar aos módulos">
+                    <span class="app-topbar-menu-icon" aria-hidden="true"></span>
+                </a>
+                <div class="app-topbar-brand-row">
+                    <div class="app-topbar-brand">
+                        {{ doca_livre_logo(class='app-topbar-logo') }}
+                        <strong class="app-topbar-wms" aria-label="WMS DOCA LIVRE PRO">
+                            <span class="app-topbar-wms-main">WMS</span>
+                            <span class="app-topbar-wms-light">PRO</span>
+                        </strong>
+                    </div>
+                </div>
             </div>
-            <span class="dl-topbar-product">WMS <span class="dl-badge">PRO</span></span>
-            <div class="dl-topbar-spacer"></div>
-            <div class="header-actions dl-topbar-actions">
+            <div class="app-topbar-right header-actions">
             <div class="header-alertas-terceiros" id="header-alertas-terceiros">
                 <button type="button" class="header-alertas-btn" id="btn-terceiros-alertas" title="Alertas de NFs paradas">
                     <span class="header-alertas-icone" aria-hidden="true">🔔</span>
@@ -49,15 +56,22 @@
                 </div>
             </div>
             <button type="button" class="btn-atualizar-aba" id="btn-atualizar-aba" title="Atualizar apenas os dados da aba atual">🔄 Atualizar aba</button>
-            <div class="header-perfil">
-                <span class="perfil-label">Logado como:</span>
-                <span class="perfil-usuario" id="perfil-usuario">{{ usuario or '—' }}</span>
+            <div class="app-topbar-meta" aria-label="Data e hora">
+                <span class="app-topbar-meta-time" id="dl-clock-time">--:--</span>
+                <span class="app-topbar-meta-date" id="dl-clock-date">--/--/----</span>
+            </div>
+            <div class="app-topbar-user-wrap">
+                <div class="app-topbar-user">
+                    <div class="app-topbar-user-text">
+                        <strong id="perfil-usuario">{{ usuario or 'Usuário' }}</strong>
+                        <span>WMS DOCA LIVRE PRO</span>
+                    </div>
+                    <span class="app-topbar-avatar" aria-hidden="true">
+                        {{ doca_livre_logo(alt='') }}
+                    </span>
+                </div>
             </div>
             <a href="/login?sair=1" class="btn-sair" id="btn-sair" title="Sair">Sair</a>
-            <div class="dl-topbar-datetime">
-                <span id="dl-clock-time">--:--</span>
-                <span id="dl-clock-date">--/--/----</span>
-            </div>
             </div>
         </header>
 
@@ -4001,7 +4015,7 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705"></script>
+    <script src="{{ url_for('static', filename='doca-livre-intro.js') }}?v=20260705b"></script>
     <script src="{{ url_for('static', filename='script.js') }}?v=20260626s"></script>
     <script src="{{ url_for('static', filename='wms-analise.js') }}?v=20260604"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" crossorigin="anonymous"></script>

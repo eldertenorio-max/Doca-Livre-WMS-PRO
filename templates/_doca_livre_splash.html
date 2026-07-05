@@ -1,12 +1,16 @@
 {% from '_doca_livre_logo.html' import doca_livre_logo %}
 <script>document.documentElement.classList.add('dl-splash-pending');</script>
-<div id="doca-livre-splash" class="dl-splash" role="dialog" aria-label="Carregando WMS DOCA LIVRE PRO" aria-live="polite">
-    <div class="dl-splash-inner">
-        {{ doca_livre_logo(class='dl-splash-logo') }}
-        <p class="dl-splash-title">WMS DOCA LIVRE PRO</p>
-        <div class="dl-splash-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-            <div class="dl-splash-bar-fill" id="dl-splash-bar-fill"></div>
+<div id="doca-livre-splash" class="intro-splash" role="dialog" aria-label="Carregando WMS DOCA LIVRE PRO" aria-live="polite" aria-busy="true">
+    <div class="intro-content">
+        {{ doca_livre_logo(class='intro-logo', alt='WMS DOCA LIVRE PRO') }}
+        {% if is_homologacao %}
+        <p class="intro-ambiente intro-ambiente--homolog">Homologação</p>
+        {% endif %}
+        <div class="intro-progress-wrap">
+            <div class="intro-progress-track">
+                <div class="intro-progress-bar" id="dl-splash-bar-fill"></div>
+            </div>
+            <span class="intro-progress-label">Carregando… <span id="dl-splash-pct">0</span>%</span>
         </div>
-        <p class="dl-splash-status">Carregando... <span id="dl-splash-pct">0</span>%</p>
     </div>
 </div>
