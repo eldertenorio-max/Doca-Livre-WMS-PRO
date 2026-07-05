@@ -23,10 +23,6 @@ body.ss-hub-body {
     background: var(--ss-hub-bg);
 }
 
-body.ss-hub-body.app-env-homologacao .ss-hub {
-    min-height: calc(100vh - 40px);
-}
-
 /* ── Layout ── */
 .ss-hub {
     display: flex;

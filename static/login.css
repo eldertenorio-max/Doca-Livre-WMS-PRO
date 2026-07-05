@@ -174,7 +174,7 @@ body {
 }
 .login-logo-wrap.login-brand-wrap {
     background: transparent;
-    padding: 0;
+    padding: 8px 0 0;
     animation: none;
     box-shadow: none;
     margin-bottom: 12px;
