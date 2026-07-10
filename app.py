@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, Response, redirect, url_for, session, g, current_app, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_file, Response, redirect, url_for, session, g, current_app, send_from_directory, make_response
 from datetime import datetime, timedelta, timezone
 try:
     from zoneinfo import ZoneInfo
@@ -2167,7 +2167,10 @@ def raiz():
         session.pop('_auth_ok_ts', None)
     if session.get('usuario'):
         return redirect(url_for('entrada_modulos'))
-    return render_template('portal.html', usuario=session.get('usuario') or '')
+    resp = make_response(render_template('portal.html', usuario=session.get('usuario') or ''))
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
 
 
 @app.route('/api/login', methods=['POST'])

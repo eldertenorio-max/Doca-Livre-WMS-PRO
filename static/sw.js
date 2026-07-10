@@ -1,6 +1,6 @@
 /* WMS DOCA LIVRE PRO — service worker mínimo (instalação PWA). */
 
-const CACHE = 'dl-wms-shell-v1'
+const CACHE = 'dl-wms-shell-v2'
 const SHELL = [
   '/manifest.webmanifest',
   '/static/icons/icon-192.png',

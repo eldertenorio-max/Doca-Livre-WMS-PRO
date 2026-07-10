@@ -1,14 +1,13 @@
-# Blueprint Render — Stock System WMS
-# Produção:  branch main    → https://sistema-wms.onrender.com
-# Homologação: branch homolog → https://sistema-wms-homologacao.onrender.com
+# Blueprint Render — Doca Livre WMS PRO
+# Produção:  branch main    → https://doca-livre-wms-pro.onrender.com
+# Homologação: branch homolog → https://doca-livre-wms-pro-homologacao.onrender.com
 #
 # Mesmo banco Supabase nos dois serviços (copie DATABASE_URL da produção na homolog).
-# Homolog = Web Service Python (não Static Site — o app tem Flask + APIs + login).
 
 services:
   # ── Produção ──────────────────────────────────────────────────────────────
   - type: web
-    name: sistema-wms
+    name: doca-livre-wms-pro
     env: python
     plan: free
     region: oregon
@@ -16,7 +15,7 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -b 0.0.0.0:$PORT --workers 1 --timeout 120 --graceful-timeout 30 --worker-class gthread --threads 4 app:app
     healthCheckPath: /api/health
-    autoDeploy: false
+    autoDeploy: true
     envVars:
       - key: APP_ENV
         value: producao
@@ -31,9 +30,9 @@ services:
       - key: RAVEX_PASSWORD
         sync: false
 
-  # ── Homologação (mesmo banco, branch homolog, deploy automático) ──────────
+  # ── Homologação ───────────────────────────────────────────────────────────
   - type: web
-    name: sistema-wms-homologacao
+    name: doca-livre-wms-pro-homologacao
     env: python
     plan: free
     region: oregon
@@ -49,7 +48,6 @@ services:
         generateValue: true
       - key: PGSSLMODE
         value: require
-      # Cole a MESMA DATABASE_URL do serviço sistema-wms (Supabase produção)
       - key: DATABASE_URL
         sync: false
       - key: RAVEX_USER
