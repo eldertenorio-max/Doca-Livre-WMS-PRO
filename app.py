@@ -2062,7 +2062,7 @@ def _get_latest_dataset_id(conn):
 
 def _requer_login():
     """Retorna True se a rota atual requer login (e o usuário não está logado)."""
-    if request.endpoint in (None, 'login', 'static', 'raiz', 'ravex_env_check'):
+    if request.endpoint in (None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check'):
         return False
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return False
@@ -2120,7 +2120,7 @@ def _api_json_exception_handler(e):
 def proteger_rotas():
     """Redireciona para /login se o usuário não estiver autenticado. Invalida sessão se o usuário foi excluído."""
     # Rotas que não exigem autenticação
-    if request.endpoint in (None, 'login', 'static', 'raiz', 'ravex_env_check', 'api_health'):
+    if request.endpoint in (None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check', 'api_health'):
         return None
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return None
@@ -2149,8 +2149,25 @@ def proteger_rotas():
 
 @app.route('/login', methods=['GET'])
 def login():
-    """Página de login. Sempre exibe a tela de login; se já logado, mostra link para o painel."""
-    return render_template('login.html', usuario=session.get('usuario') or '')
+    """Login legado — redireciona ao portal (splash + seletor + login Pro)."""
+    if session.get('usuario'):
+        return redirect(url_for('entrada_modulos'))
+    if request.args.get('sair') == '1':
+        return redirect(url_for('raiz', sair=1))
+    return redirect(url_for('raiz'))
+
+
+@app.route('/')
+def raiz():
+    """Portal Doca Livre Sistemas — splash, seletor de produtos e login WMS Pro."""
+    if request.args.get('sair') == '1':
+        session.pop('usuario', None)
+        session.pop('usuario_id', None)
+        session.pop('_auth_ok_user', None)
+        session.pop('_auth_ok_ts', None)
+    if session.get('usuario'):
+        return redirect(url_for('entrada_modulos'))
+    return render_template('portal.html', usuario=session.get('usuario') or '')
 
 
 @app.route('/api/login', methods=['POST'])
@@ -2243,12 +2260,6 @@ def api_listar_usuarios():
     rows = conn.execute('SELECT usuario, criado_em FROM usuarios ORDER BY usuario').fetchall()
     conn.close()
     return jsonify([{'usuario': row['usuario'], 'criado_em': row['criado_em'] or ''} for row in rows])
-
-
-@app.route('/')
-def raiz():
-    """Raiz do site: sempre abre na página de login."""
-    return redirect(url_for('login'))
 
 
 @app.route('/api/health')
