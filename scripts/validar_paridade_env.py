@@ -8,6 +8,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -19,8 +20,19 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "static"
 TEMPLATES = ROOT / "templates"
 
-PROD_LOGIN = "https://sistema-wms.onrender.com/login?sair=1"
-HML_LOGIN = "https://sistema-wms-homologacao.onrender.com/login?sair=1"
+# WMS Pro no Render (override via WMS_PROD_URL / WMS_HML_URL)
+PROD_LOGIN = os.environ.get(
+    "WMS_PROD_URL",
+    "https://doca-livre-wms-pro.onrender.com/?sair=1",
+)
+HML_LOGIN = os.environ.get(
+    "WMS_HML_URL",
+    "https://doca-livre-wms-pro-homologacao.onrender.com/?sair=1",
+)
+GIT_REMOTE = os.environ.get("WMS_GIT_REMOTE", "pro")
+
+# Paginas shell com banner de ambiente (portal substitui login na raiz)
+SHELL_PAGES = ("portal.html", "index.html", "entrada_modulos.html")
 
 ALLOWED_HOMOLOG_DIFFS = (
     "app-env-banner",
@@ -41,14 +53,14 @@ def ok(msg: str) -> None:
 
 
 def git_same_commit() -> None:
-    for ref in ("wms/main", "wms/homolog"):
-        subprocess.run(["git", "fetch", "wms"], cwd=ROOT, check=False, capture_output=True)
-        break
+    subprocess.run(
+        ["git", "fetch", GIT_REMOTE], cwd=ROOT, check=False, capture_output=True
+    )
     main = subprocess.check_output(
-        ["git", "rev-parse", "wms/main"], cwd=ROOT, text=True
+        ["git", "rev-parse", f"{GIT_REMOTE}/main"], cwd=ROOT, text=True
     ).strip()
     homolog = subprocess.check_output(
-        ["git", "rev-parse", "wms/homolog"], cwd=ROOT, text=True
+        ["git", "rev-parse", f"{GIT_REMOTE}/homolog"], cwd=ROOT, text=True
     ).strip()
     if main != homolog:
         fail(f"branches divergentes: main={main[:8]} homolog={homolog[:8]}")
@@ -57,9 +69,8 @@ def git_same_commit() -> None:
 
 def pages_load_doca_css() -> None:
     """Toda pagina com banner de ambiente deve carregar doca-livre-pro.css (banner fixo)."""
-    shell_pages = ("login.html", "index.html", "entrada_modulos.html")
     offenders: list[str] = []
-    for name in shell_pages:
+    for name in SHELL_PAGES:
         path = TEMPLATES / name
         if not path.exists():
             continue
@@ -102,7 +113,7 @@ def css_uses_banner_variable() -> None:
 def cache_bust_aligned() -> None:
     """Versoes ?v= de doca-livre-pro.css devem ser iguais nos templates principais."""
     versions: set[str] = set()
-    for name in ("login.html", "index.html", "entrada_modulos.html"):
+    for name in SHELL_PAGES:
         path = TEMPLATES / name
         if not path.exists():
             continue
@@ -148,7 +159,7 @@ def live_parity() -> None:
 
     for label, html in (("prod", prod), ("hml", hml)):
         if "doca-livre-pro.css" not in html:
-            fail(f"{label}: pagina login sem doca-livre-pro.css")
+            fail(f"{label}: pagina raiz sem doca-livre-pro.css")
         v = re.search(r"doca-livre-pro\.css[^?]*\?v=([^\s\"']+)", html)
         if not v:
             fail(f"{label}: sem cache bust doca-livre-pro.css")
@@ -171,14 +182,14 @@ def live_parity() -> None:
         for i, (a, b) in enumerate(zip(np, nh)):
             if a != b:
                 fail(
-                    "HTML login normalizado difere entre prod e homolog "
+                    "HTML raiz normalizado difere entre prod e homolog "
                     f"(pos {i}): prod=...{np[max(0,i-40):i+60]!r} "
                     f"hml=...{nh[max(0,i-40):i+60]!r}"
                 )
         if len(np) != len(nh):
             fail(f"tamanho HTML normalizado difere: prod={len(np)} hml={len(nh)}")
 
-    ok("login live prod/homolog identico (exceto banner homolog)")
+    ok("raiz live prod/homolog identico (exceto banner homolog)")
 
 
 def main() -> None:

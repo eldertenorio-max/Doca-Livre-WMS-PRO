@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260705t">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260710a">
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705k">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
 </head>
@@ -108,7 +108,7 @@
     window.SS_HUB_MODULOS = [
         { id: 'carregamento', label: 'Carga/Expedição', href: {{ url_for('painel')|tojson }} + '?modulo=carregamento', icon: 'truck' },
         { id: 'devolucoes', label: 'Retorno', href: {{ url_for('painel')|tojson }} + '?modulo=devolucoes', icon: 'return' },
-        { id: 'terceiros', label: 'Descarga/Recebimento', href: {{ url_for('painel')|tojson }} + '?modulo=terceiros', icon: 'inbound' },
+        { id: 'terceiros', label: 'Descarga/Recebimento', href: {{ url_for('painel')|tojson }} + '?modulo=terceiros&aba=pendencia-recebimento', icon: 'inbound' },
         { id: 'estoque-sp', label: 'Estoque', href: {{ url_for('painel')|tojson }} + '?modulo=estoque-sp', icon: 'stock' },
         { id: 'enderecamento-wms', label: 'Endereçamento WMS', href: {{ url_for('painel')|tojson }} + '?modulo=enderecamento-wms', icon: 'wms' }
     ];

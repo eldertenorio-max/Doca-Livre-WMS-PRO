@@ -14,7 +14,7 @@ alwaysApply: true
 3. `git commit -m "tipo: descricao curta"` (estilo do repo: `feat:`, `fix:`, `style:`, etc.).
 4. `git push wms main` (e `git push wms homolog` se estiver na branch homolog).
 5. `python scripts/validar_paridade_env.py --live` — confirmar prod/homolog identicos (exceto banner).
-6. Informar o **hash do commit** e que foi enviado para producao (Render: https://sistema-wms.onrender.com).
+6. Informar o **hash do commit** e que foi enviado para producao (Render: https://doca-livre-wms-pro.onrender.com).
 
 ## Regras
 
