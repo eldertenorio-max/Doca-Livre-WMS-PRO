@@ -2150,8 +2150,6 @@ def proteger_rotas():
 @app.route('/login', methods=['GET'])
 def login():
     """Login legado — redireciona ao portal (splash + seletor + login Pro)."""
-    if session.get('usuario'):
-        return redirect(url_for('entrada_modulos'))
     if request.args.get('sair') == '1':
         return redirect(url_for('raiz', sair=1))
     return redirect(url_for('raiz'))
@@ -2165,8 +2163,6 @@ def raiz():
         session.pop('usuario_id', None)
         session.pop('_auth_ok_user', None)
         session.pop('_auth_ok_ts', None)
-    if session.get('usuario'):
-        return redirect(url_for('entrada_modulos'))
     resp = make_response(render_template('portal.html', usuario=session.get('usuario') or ''))
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     resp.headers['Pragma'] = 'no-cache'
