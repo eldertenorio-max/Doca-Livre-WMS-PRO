@@ -253,11 +253,8 @@ def consumir_codigo(conn, *, finalidade: str, email: str, codigo: str) -> bool:
 
 
 def otp_debug_enabled() -> bool:
-    """Mostra o código na tela (UI) quando SMTP não está configurado ou PORTAL_OTP_DEBUG=1."""
-    if str(os.environ.get('PORTAL_OTP_DEBUG') or '').strip().lower() in ('1', 'true', 'yes'):
-        return True
-    # Sem SMTP no Render: permite cadastro/trocar senha mostrando o código no portal.
-    return not bool((os.environ.get('SMTP_HOST') or '').strip())
+    """Só com PORTAL_OTP_DEBUG=1 (NUNCA mostrar OTP na tela em produção)."""
+    return str(os.environ.get('PORTAL_OTP_DEBUG') or '').strip().lower() in ('1', 'true', 'yes')
 
 
 def enviar_codigo_email(

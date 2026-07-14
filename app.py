@@ -2400,7 +2400,7 @@ def api_portal_cadastro_enviar_codigo():
             if portal_otp_debug_enabled():
                 return _sso_cors(jsonify({
                     'ok': True,
-                    'mensagem': 'Código gerado. Cole-o abaixo (e-mail SMTP ainda não configurado no servidor).',
+                    'mensagem': 'Código gerado (somente debug local — SMTP falhou).',
                     'email': email,
                     'debug_codigo': codigo,
                     'smtp_erro': motivo,
@@ -2408,9 +2408,11 @@ def api_portal_cadastro_enviar_codigo():
             return _sso_cors(jsonify({
                 'ok': False,
                 'erro': (
-                    'Não foi possível enviar o e-mail. '
-                    'No Render do Pro configure SMTP_HOST, SMTP_USER, SMTP_PASSWORD e SMTP_FROM.'
+                    'Não foi possível enviar o e-mail de confirmação. '
+                    'Configure SMTP no Render do WMS Pro (SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM) '
+                    'e tente de novo.'
                 ),
+                'smtp_motivo': motivo,
             })), 503
         payload = {
             'ok': True,
@@ -2566,7 +2568,7 @@ def api_portal_senha_enviar_codigo():
             if portal_otp_debug_enabled():
                 return _sso_cors(jsonify({
                     'ok': True,
-                    'mensagem': msg_ok + ' Cole o código abaixo (SMTP ainda não configurado).',
+                    'mensagem': msg_ok + ' (somente debug local — SMTP falhou).',
                     'email': email,
                     'debug_codigo': codigo,
                     'smtp_erro': motivo,
@@ -2575,8 +2577,9 @@ def api_portal_senha_enviar_codigo():
                 'ok': False,
                 'erro': (
                     'Não foi possível enviar o e-mail. '
-                    'No Render do Pro configure SMTP_HOST, SMTP_USER, SMTP_PASSWORD e SMTP_FROM.'
+                    'Configure SMTP no Render do WMS Pro (SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM).'
                 ),
+                'smtp_motivo': motivo,
             })), 503
         payload = {'ok': True, 'mensagem': msg_ok, 'email_mascarado': _mascara_email(email)}
         if portal_otp_debug_enabled():
