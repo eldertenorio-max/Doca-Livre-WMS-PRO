@@ -8,6 +8,9 @@
 #
 # Obrigatório no Dashboard Render (Environment) nos 2 serviços:
 #   SSO_SECRET = mesma chave longa nos dois + no Supabase Light (Edge Function sso-entrar)
+# Cadastro/trocar senha (e-mail): SMTP_HOST=smtp.gmail.com, SMTP_PORT=587,
+#   SMTP_USER, SMTP_PASSWORD (senha de app), SMTP_FROM, SMTP_USE_TLS=1
+# Sem SMTP o portal mostra o código na tela (fallback).
 
 services:
   # ── Produção ──────────────────────────────────────────────────────────────

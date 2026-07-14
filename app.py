@@ -2400,14 +2400,17 @@ def api_portal_cadastro_enviar_codigo():
             if portal_otp_debug_enabled():
                 return _sso_cors(jsonify({
                     'ok': True,
-                    'mensagem': 'Código gerado (modo debug — SMTP indisponível).',
+                    'mensagem': 'Código gerado. Cole-o abaixo (e-mail SMTP ainda não configurado no servidor).',
                     'email': email,
                     'debug_codigo': codigo,
                     'smtp_erro': motivo,
                 }))
             return _sso_cors(jsonify({
                 'ok': False,
-                'erro': 'Não foi possível enviar o e-mail. Verifique SMTP no servidor.',
+                'erro': (
+                    'Não foi possível enviar o e-mail. '
+                    'No Render do Pro configure SMTP_HOST, SMTP_USER, SMTP_PASSWORD e SMTP_FROM.'
+                ),
             })), 503
         payload = {
             'ok': True,
@@ -2563,14 +2566,17 @@ def api_portal_senha_enviar_codigo():
             if portal_otp_debug_enabled():
                 return _sso_cors(jsonify({
                     'ok': True,
-                    'mensagem': msg_ok + ' (modo debug)',
+                    'mensagem': msg_ok + ' Cole o código abaixo (SMTP ainda não configurado).',
                     'email': email,
                     'debug_codigo': codigo,
                     'smtp_erro': motivo,
                 }))
             return _sso_cors(jsonify({
                 'ok': False,
-                'erro': 'Não foi possível enviar o e-mail. Verifique SMTP no servidor.',
+                'erro': (
+                    'Não foi possível enviar o e-mail. '
+                    'No Render do Pro configure SMTP_HOST, SMTP_USER, SMTP_PASSWORD e SMTP_FROM.'
+                ),
             })), 503
         payload = {'ok': True, 'mensagem': msg_ok, 'email_mascarado': _mascara_email(email)}
         if portal_otp_debug_enabled():
