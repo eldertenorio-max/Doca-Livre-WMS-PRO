@@ -26,7 +26,7 @@ _DEFAULT_URLS_HML = {
     'pro': 'https://doca-livre-wms-pro-homologacao.onrender.com/',
 }
 _DEFAULT_PORTAL_PROD = 'https://wms.docalivre.com.br/'
-_DEFAULT_PORTAL_HML = 'https://wms.docalivre.com.br/'
+_DEFAULT_PORTAL_HML = 'https://ultrafrio-homologacao.onrender.com/'
 
 
 def _is_homolog_env() -> bool:
@@ -42,11 +42,11 @@ def _default_urls() -> dict[str, str]:
 
 
 def portal_public_url() -> str:
-    """Link único público — domínio custom do Plus."""
+    """Link único público — Plus prod ou homolog."""
     env = (os.environ.get('PORTAL_PUBLIC_URL') or '').strip()
     if env:
         return env if env.endswith('/') else env + '/'
-    return _DEFAULT_PORTAL_PROD
+    return _DEFAULT_PORTAL_HML if _is_homolog_env() else _DEFAULT_PORTAL_PROD
 
 
 _used_jti_lock = threading.Lock()

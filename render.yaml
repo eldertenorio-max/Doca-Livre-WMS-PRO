@@ -64,11 +64,11 @@ services:
       - key: SSO_SECRET
         sync: false
       - key: PORTAL_PUBLIC_URL
-        value: https://wms.docalivre.com.br/
+        value: https://ultrafrio-homologacao.onrender.com/
       - key: SYSTEM_URL_LIGHT
         value: https://doca-livre-wms-light-homolog.onrender.com/
       - key: SYSTEM_URL_PLUS
-        value: https://wms.docalivre.com.br/
+        value: https://ultrafrio-homologacao.onrender.com/
       - key: SYSTEM_URL_PRO
         value: https://doca-livre-wms-pro-homologacao.onrender.com/
       - key: PGSSLMODE
