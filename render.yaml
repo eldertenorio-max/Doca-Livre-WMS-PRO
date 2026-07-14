@@ -29,10 +29,14 @@ services:
         generateValue: true
       - key: SSO_SECRET
         sync: false
+      - key: PORTAL_PUBLIC_URL
+        value: https://wms.docalivre.com.br/
       - key: SYSTEM_URL_LIGHT
         value: https://doca-livre-wms-light.onrender.com/
       - key: SYSTEM_URL_PLUS
         value: https://wms.docalivre.com.br/
+      - key: SYSTEM_URL_PRO
+        value: https://doca-livre-wms-pro.onrender.com/
       - key: PGSSLMODE
         value: require
       - key: DATABASE_URL
@@ -60,10 +64,14 @@ services:
         generateValue: true
       - key: SSO_SECRET
         sync: false
+      - key: PORTAL_PUBLIC_URL
+        value: https://ultrafrio-homologacao.onrender.com/
       - key: SYSTEM_URL_LIGHT
         value: https://doca-livre-wms-light-homolog.onrender.com/
       - key: SYSTEM_URL_PLUS
         value: https://ultrafrio-homologacao.onrender.com/
+      - key: SYSTEM_URL_PRO
+        value: https://doca-livre-wms-pro-homologacao.onrender.com/
       - key: PGSSLMODE
         value: require
       - key: DATABASE_URL

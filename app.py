@@ -31,15 +31,21 @@ try:
     from sso_portal import (
         SSO_SYSTEMS,
         build_sso_redirect_url,
+        issue_hub_token as sso_issue_hub_token,
         issue_token as sso_issue_token,
+        portal_public_url,
         portal_system_urls,
+        verify_hub_token as sso_verify_hub_token,
         verify_token as sso_verify_token,
     )
 except ImportError:
-    SSO_SYSTEMS = ('light', 'plus')
+    SSO_SYSTEMS = ('light', 'plus', 'pro')
     build_sso_redirect_url = None
+    sso_issue_hub_token = None
     sso_issue_token = None
+    portal_public_url = None
     portal_system_urls = None
+    sso_verify_hub_token = None
     sso_verify_token = None
 
 try:
@@ -2077,11 +2083,11 @@ def _get_latest_dataset_id(conn):
 
 def _requer_login():
     """Retorna True se a rota atual requer login (e o usuário não está logado)."""
-    if request.endpoint in (None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check', 'api_sso_verify', 'sso_entrar_pro'):
+    if request.endpoint in (None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check', 'api_sso_verify', 'sso_entrar_pro', 'api_portal_login'):
         return False
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return False
-    if request.path.startswith('/api/sso/verify'):
+    if request.path.startswith('/api/sso/verify') or request.path.startswith('/api/portal/login'):
         return False
     return 'usuario' not in session
 
@@ -2151,11 +2157,11 @@ def _sso_cors(resp):
 def proteger_rotas():
     """Redireciona para /login se o usuário não estiver autenticado. Invalida sessão se o usuário foi excluído."""
     # Rotas que não exigem autenticação
-    if request.endpoint in (None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check', 'api_health', 'api_sso_verify', 'sso_entrar_pro'):
+    if request.endpoint in (None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check', 'api_health', 'api_sso_verify', 'sso_entrar_pro', 'api_portal_login'):
         return None
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return None
-    if request.path.startswith('/api/sso/verify'):
+    if request.path.startswith('/api/sso/verify') or request.path.startswith('/api/portal/login'):
         return None
     # Se está logado, verificar se o usuário ainda existe no banco (não foi removido do config)
     if session.get('usuario'):
@@ -2190,12 +2196,17 @@ def login():
 
 @app.route('/')
 def raiz():
-    """Portal Doca Livre Sistemas — splash, login único e hub Light/Plus/Pro."""
+    """Portal legado no Pro — visitantes vão ao link único (Plus / domínio custom)."""
     if request.args.get('sair') == '1':
         session.pop('usuario', None)
         session.pop('usuario_id', None)
         session.pop('_auth_ok_user', None)
         session.pop('_auth_ok_ts', None)
+    # SSO para este Pro usa /sso/entrar; raiz pública aponta ao portal Plus.
+    if callable(portal_public_url) and not session.get('usuario') and request.args.get('local') != '1':
+        dest = portal_public_url()
+        if dest:
+            return redirect(dest)
     urls = portal_system_urls() if callable(portal_system_urls) else {}
     resp = make_response(render_template(
         'portal.html',
@@ -2224,33 +2235,90 @@ def api_login():
     session['usuario_id'] = row['id']
     session['_auth_ok_user'] = usuario
     session['_auth_ok_ts'] = time.time()
+    hub_token = None
+    if callable(sso_issue_hub_token):
+        try:
+            hub_token = sso_issue_hub_token(usuario)
+        except Exception:
+            hub_token = None
     return jsonify({
         'ok': True,
         'usuario': usuario,
         'hub': True,
+        'hub_token': hub_token,
         'redirect': url_for('raiz'),
     })
 
 
-@app.route('/api/sso/issue', methods=['POST'])
-def api_sso_issue():
-    """Emite URL SSO para Light ou Plus (exige sessão do portal Pro)."""
-    if not session.get('usuario'):
-        return jsonify({'ok': False, 'erro': 'Não autorizado'}), 401
-    if not callable(sso_issue_token) or not callable(build_sso_redirect_url):
-        return jsonify({'ok': False, 'erro': 'SSO indisponível neste servidor.'}), 503
+@app.route('/api/portal/login', methods=['POST', 'OPTIONS'])
+def api_portal_login():
+    """Login do portal único (Plus) — valida no Pro e devolve hub_token (CORS)."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    if not callable(sso_issue_hub_token):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Portal SSO indisponível.'})), 503
     data = request.get_json(silent=True) or {}
+    usuario = (data.get('usuario') or '').strip()
+    senha = data.get('senha') or ''
+    if not usuario or not senha:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe usuário e senha.'})), 400
+    conn = get_db()
+    row = conn.execute('SELECT id, senha_hash FROM usuarios WHERE usuario = ?', (usuario,)).fetchone()
+    conn.close()
+    if not row or not check_password_hash(row['senha_hash'], senha):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})), 401
+    try:
+        hub_token = sso_issue_hub_token(usuario)
+    except ValueError as exc:
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+    return _sso_cors(jsonify({
+        'ok': True,
+        'usuario': usuario,
+        'hub_token': hub_token,
+    }))
+
+
+def _usuario_from_hub_or_session(data=None):
+    data = data or {}
+    if session.get('usuario'):
+        return session.get('usuario')
+    if not callable(sso_verify_hub_token):
+        return None
+    hub = (data.get('hub_token') or '').strip()
+    if not hub:
+        auth = (request.headers.get('Authorization') or '').strip()
+        if auth.lower().startswith('bearer '):
+            hub = auth[7:].strip()
+    if not hub:
+        return None
+    try:
+        return sso_verify_hub_token(hub)['usuario']
+    except ValueError:
+        return None
+
+
+@app.route('/api/sso/issue', methods=['POST', 'OPTIONS'])
+def api_sso_issue():
+    """Emite URL SSO para Light / Plus / Pro (sessão Pro ou hub_token do portal Plus)."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    data = request.get_json(silent=True) or {}
+    usuario = _usuario_from_hub_or_session(data)
+    if not usuario:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Não autorizado'})), 401
+    if not callable(sso_issue_token) or not callable(build_sso_redirect_url):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'SSO indisponível neste servidor.'})), 503
     system_id = (data.get('system') or data.get('sistema') or '').strip().lower()
     if system_id not in SSO_SYSTEMS:
-        return jsonify({'ok': False, 'erro': 'Informe system=light ou system=plus.'}), 400
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe system=light, plus ou pro.'})), 400
     try:
-        token = sso_issue_token(session.get('usuario'), system_id)
+        token = sso_issue_token(usuario, system_id)
         url = build_sso_redirect_url(system_id, token)
     except ValueError as exc:
-        return jsonify({'ok': False, 'erro': str(exc)}), 400
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
     except Exception as exc:
-        return jsonify({'ok': False, 'erro': 'Falha ao emitir SSO: %s' % (exc,)}), 500
-    return jsonify({'ok': True, 'system': system_id, 'url': url})
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Falha ao emitir SSO: %s' % (exc,)})), 500
+    return _sso_cors(jsonify({'ok': True, 'system': system_id, 'url': url, 'usuario': usuario}))
 
 
 @app.route('/api/sso/verify', methods=['POST', 'OPTIONS'])
@@ -2276,17 +2344,16 @@ def api_sso_verify():
 
 @app.route('/sso/entrar', methods=['GET'])
 def sso_entrar_pro():
-    """Consume SSO apontando para este Pro (mesma origem) — cria sessão e vai ao hub/entrada."""
+    """Consume SSO apontando para este Pro — cria sessão e vai ao /entrada."""
     if not callable(sso_verify_token):
-        return redirect(url_for('raiz'))
+        return redirect(url_for('raiz', local=1))
     token = (request.args.get('token') or request.args.get('sso') or '').strip()
     if not token:
-        return redirect(url_for('raiz'))
+        return redirect(url_for('raiz', local=1))
     try:
         payload = sso_verify_token(token, expected_system='pro', consume=True)
     except ValueError:
-        # Pro normalmente não recebe SSO externo; se inválido, volta ao portal.
-        return redirect(url_for('raiz'))
+        return redirect(url_for('raiz', local=1))
     usuario = payload['usuario']
     conn = get_db()
     try:
@@ -2294,7 +2361,7 @@ def sso_entrar_pro():
     finally:
         conn.close()
     if not row:
-        return redirect(url_for('raiz', sso_erro=1))
+        return redirect(url_for('raiz', local=1, sso_erro=1))
     session['usuario'] = usuario
     session['usuario_id'] = row['id']
     session['_auth_ok_user'] = usuario
