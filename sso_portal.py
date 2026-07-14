@@ -14,10 +14,27 @@ from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 
 SSO_SYSTEMS = ('light', 'plus')
 SSO_TOKEN_TTL_SEC = 60
-_DEFAULT_URLS = {
+_DEFAULT_URLS_PROD = {
     'light': 'https://doca-livre-wms-light.onrender.com/',
     'plus': 'https://wms.docalivre.com.br/',
 }
+_DEFAULT_URLS_HML = {
+    'light': 'https://doca-livre-wms-light-homolog.onrender.com/',
+    'plus': 'https://ultrafrio-homologacao.onrender.com/',
+}
+
+
+def _is_homolog_env() -> bool:
+    raw = (os.environ.get('APP_ENV') or '').strip().lower()
+    if raw in ('homolog', 'homologacao', 'hml', 'staging', 'stg'):
+        return True
+    svc = (os.environ.get('RENDER_SERVICE_NAME') or '').strip().lower()
+    return 'homolog' in svc or svc.endswith('-hml')
+
+
+def _default_urls() -> dict[str, str]:
+    return _DEFAULT_URLS_HML if _is_homolog_env() else _DEFAULT_URLS_PROD
+
 
 _used_jti_lock = threading.Lock()
 _used_jti: dict[str, float] = {}
@@ -36,16 +53,17 @@ def sso_secret() -> str:
     secret = (os.environ.get('SSO_SECRET') or '').strip()
     if secret:
         return secret
-    # Fallback local / bootstrap — em produção defina SSO_SECRET nos 3 ambientes.
+    # Fallback local / bootstrap — em produção defina SSO_SECRET no Render do Pro.
     return (os.environ.get('SECRET_KEY') or 'ultrapao-secret-key-2024').strip()
 
 
 def system_base_url(system_id: str) -> str | None:
     sid = (system_id or '').strip().lower()
+    defaults = _default_urls()
     if sid == 'light':
-        return (os.environ.get('SYSTEM_URL_LIGHT') or _DEFAULT_URLS['light']).strip() or None
+        return (os.environ.get('SYSTEM_URL_LIGHT') or defaults['light']).strip() or None
     if sid == 'plus':
-        return (os.environ.get('SYSTEM_URL_PLUS') or _DEFAULT_URLS['plus']).strip() or None
+        return (os.environ.get('SYSTEM_URL_PLUS') or defaults['plus']).strip() or None
     return None
 
 
