@@ -8,14 +8,10 @@
 #
 # Obrigatório no Dashboard Render (Environment) nos 2 serviços:
 #   SSO_SECRET = mesma chave longa nos dois + no Supabase Light (Edge Function sso-entrar)
-# Cadastro/trocar senha por e-mail — OBRIGATÓRIO no Pro (prod e homolog):
-#   SMTP_HOST=smtp.gmail.com
-#   SMTP_PORT=587
-#   SMTP_USER=seuemail@gmail.com
-#   SMTP_PASSWORD=senha de app (16 caracteres)
-#   SMTP_FROM=seuemail@gmail.com
-#   SMTP_USE_TLS=1
-# Sem isso o código NÃO vai por e-mail. Não use PORTAL_OTP_DEBUG em produção.
+# Cadastro/trocar senha por e-mail no Pro (prod e homolog):
+# Preferência no Render: RESEND_API_KEY (HTTPS — estável).
+# Alternativa: SMTP_* (Gmail; muitas vezes bloqueado no Render free).
+# Sem e-mail configurado o portal mostra erro — não use PORTAL_OTP_DEBUG em produção.
 
 services:
   # ── Produção ──────────────────────────────────────────────────────────────

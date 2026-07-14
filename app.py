@@ -19,6 +19,7 @@ import importlib.util
 import re
 import base64
 import smtplib
+import ssl
 import xml.etree.ElementTree as ET
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -2407,11 +2408,7 @@ def api_portal_cadastro_enviar_codigo():
                 }))
             return _sso_cors(jsonify({
                 'ok': False,
-                'erro': (
-                    'Não foi possível enviar o e-mail de confirmação. '
-                    'Configure SMTP no Render do WMS Pro (SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM) '
-                    'e tente de novo.'
-                ),
+                'erro': _portal_msg_falha_email(motivo),
                 'smtp_motivo': motivo,
             })), 503
         payload = {
@@ -2575,10 +2572,7 @@ def api_portal_senha_enviar_codigo():
                 }))
             return _sso_cors(jsonify({
                 'ok': False,
-                'erro': (
-                    'Não foi possível enviar o e-mail. '
-                    'Configure SMTP no Render do WMS Pro (SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM).'
-                ),
+                'erro': _portal_msg_falha_email(motivo),
                 'smtp_motivo': motivo,
             })), 503
         payload = {'ok': True, 'mensagem': msg_ok, 'email_mascarado': _mascara_email(email)}
@@ -13972,27 +13966,61 @@ def _terceiros_nf_texto_email(doc):
 
 
 def _terceiros_smtp_configurado():
-    return bool((os.environ.get('SMTP_HOST') or '').strip())
+    return bool(
+        (os.environ.get('RESEND_API_KEY') or '').strip()
+        or (os.environ.get('SMTP_HOST') or '').strip()
+    )
 
 
-def _terceiros_enviar_email(destinatarios, assunto, corpo_texto, corpo_html=None):
-    """Retorna (ok: bool, motivo: str). motivo vazio se enviado com sucesso."""
-    destinatarios = [d.strip() for d in (destinatarios or []) if d and '@' in str(d)]
-    if not destinatarios:
-        print('[terceiros-email] Nenhum destinatário válido.')
-        return False, 'sem_destinatarios'
+def _enviar_email_resend(destinatarios, assunto, corpo_texto, corpo_html=None):
+    """API HTTPS (funciona no Render). Retorna (ok, motivo) ou None se não configurado."""
+    api_key = (os.environ.get('RESEND_API_KEY') or '').strip()
+    if not api_key:
+        return None
+    from_addr = (
+        (os.environ.get('RESEND_FROM') or '').strip()
+        or (os.environ.get('SMTP_FROM') or '').strip()
+        or 'Doca Livre <onboarding@resend.dev>'
+    )
+    payload = {
+        'from': from_addr,
+        'to': list(destinatarios),
+        'subject': assunto,
+        'text': corpo_texto or '',
+    }
+    if corpo_html:
+        payload['html'] = corpo_html
+    try:
+        import requests
+        r = requests.post(
+            'https://api.resend.com/emails',
+            headers={
+                'Authorization': 'Bearer %s' % api_key,
+                'Content-Type': 'application/json',
+            },
+            json=payload,
+            timeout=25,
+        )
+        if r.status_code in (200, 201):
+            print('[email] Resend OK → %s' % ', '.join(destinatarios))
+            return True, ''
+        return False, 'resend_http_%s: %s' % (r.status_code, (r.text or '')[:240])
+    except Exception as e:
+        return False, 'resend_erro: %s' % e
+
+
+def _enviar_email_smtp(destinatarios, assunto, corpo_texto, corpo_html=None):
     smtp_host = (os.environ.get('SMTP_HOST') or '').strip()
     if not smtp_host:
-        print('[terceiros-email] SMTP_HOST não configurado; e-mail não enviado.')
         return False, 'smtp_nao_configurado'
-    smtp_port = int(os.environ.get('SMTP_PORT') or '587')
+    smtp_port = int(os.environ.get('SMTP_PORT') or '465')
     smtp_user = (os.environ.get('SMTP_USER') or '').strip()
     smtp_pass = (os.environ.get('SMTP_PASSWORD') or '').strip().replace(' ', '')
-    if smtp_host and not smtp_pass:
-        print('[terceiros-email] SMTP_PASSWORD vazio; e-mail não enviado.')
+    if not smtp_pass:
         return False, 'smtp_sem_senha'
-    smtp_from = (os.environ.get('SMTP_FROM') or smtp_user or 'noreply@ultrapao.com.br').strip()
+    smtp_from = (os.environ.get('SMTP_FROM') or smtp_user or 'noreply@docalivre.com.br').strip()
     use_tls = str(os.environ.get('SMTP_USE_TLS', '1')).strip().lower() not in ('0', 'false', 'no')
+
     msg = MIMEMultipart('alternative')
     msg['Subject'] = assunto
     msg['From'] = smtp_from
@@ -14000,18 +14028,72 @@ def _terceiros_enviar_email(destinatarios, assunto, corpo_texto, corpo_html=None
     msg.attach(MIMEText(corpo_texto or '', 'plain', 'utf-8'))
     if corpo_html:
         msg.attach(MIMEText(corpo_html, 'html', 'utf-8'))
-    try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-            if use_tls:
-                server.starttls()
-            if smtp_user and smtp_pass:
-                server.login(smtp_user, smtp_pass)
-            server.sendmail(smtp_from, destinatarios, msg.as_string())
-        print('[terceiros-email] Enviado para %s — %s' % (', '.join(destinatarios), assunto))
-        return True, ''
-    except Exception as e:
-        print('[terceiros-email] Falha ao enviar: %s' % e)
-        return False, 'erro_smtp: %s' % e
+
+    context = ssl.create_default_context()
+    attempts = [('ssl', 465), ('starttls', 587)]
+    # Se o usuário pediu porta específica, tenta ela primeiro
+    if smtp_port not in (465, 587):
+        attempts.insert(0, ('ssl' if smtp_port == 465 else 'starttls', smtp_port))
+    elif smtp_port == 587:
+        attempts = [('starttls', 587), ('ssl', 465)]
+
+    last_err = 'smtp_falhou'
+    for mode, port in attempts:
+        try:
+            if mode == 'ssl':
+                with smtplib.SMTP_SSL(smtp_host, port, timeout=25, context=context) as server:
+                    if smtp_user and smtp_pass:
+                        server.login(smtp_user, smtp_pass)
+                    server.sendmail(smtp_from, destinatarios, msg.as_string())
+            else:
+                with smtplib.SMTP(smtp_host, port, timeout=25) as server:
+                    server.ehlo()
+                    if use_tls:
+                        server.starttls(context=context)
+                        server.ehlo()
+                    if smtp_user and smtp_pass:
+                        server.login(smtp_user, smtp_pass)
+                    server.sendmail(smtp_from, destinatarios, msg.as_string())
+            print('[email] SMTP OK (%s:%s) → %s' % (mode, port, ', '.join(destinatarios)))
+            return True, ''
+        except Exception as e:
+            last_err = 'erro_smtp_%s_%s: %s' % (mode, port, e)
+            print('[email] SMTP falhou %s:%s — %s' % (mode, port, e))
+            continue
+    return False, last_err
+
+
+def _terceiros_enviar_email(destinatarios, assunto, corpo_texto, corpo_html=None):
+    """Retorna (ok: bool, motivo: str). Preferência: Resend (HTTPS) → SMTP Gmail."""
+    destinatarios = [d.strip() for d in (destinatarios or []) if d and '@' in str(d)]
+    if not destinatarios:
+        print('[email] Nenhum destinatário válido.')
+        return False, 'sem_destinatarios'
+
+    resend = _enviar_email_resend(destinatarios, assunto, corpo_texto, corpo_html)
+    if resend is not None:
+        return resend
+
+    return _enviar_email_smtp(destinatarios, assunto, corpo_texto, corpo_html)
+
+
+def _portal_msg_falha_email(motivo):
+    m = (motivo or '').lower()
+    if 'smtp_nao_configurado' in m or 'smtp_sem_senha' in m:
+        return (
+            'E-mail ainda não configurado no WMS Pro. '
+            'No Render (doca-livre-wms-pro) defina RESEND_API_KEY (recomendado) '
+            'ou SMTP_HOST/SMTP_USER/SMTP_PASSWORD/SMTP_FROM.'
+        )
+    if 'network is unreachable' in m or 'errno 101' in m or 'timed out' in m or 'connection' in m:
+        return (
+            'O Render não conseguiu conectar ao Gmail por SMTP (rede bloqueada). '
+            'Use RESEND_API_KEY no Pro (envio por HTTPS) — é a forma mais estável.'
+        )
+    return (
+        'Não foi possível enviar o e-mail de confirmação. '
+        'Verifique RESEND_API_KEY ou SMTP no Render do WMS Pro e tente de novo.'
+    )
 
 
 def _terceiros_notificar_consumivel_sp_pronto_lancamento(doc, usuario):
@@ -16278,12 +16360,17 @@ def api_terceiros_email_diagnostico():
     dest = _terceiros_emails_consumivel_sp_destino()
     return jsonify({
         'ok': True,
-        'smtp_configurado': _terceiros_smtp_configurado(),
+        'email_configurado': _terceiros_smtp_configurado(),
+        'smtp_configurado': bool((os.environ.get('SMTP_HOST') or '').strip()),
+        'resend_configurado': bool((os.environ.get('RESEND_API_KEY') or '').strip()),
         'smtp_host': (os.environ.get('SMTP_HOST') or '').strip() or None,
         'smtp_user_definido': bool((os.environ.get('SMTP_USER') or '').strip()),
         'smtp_senha_definida': bool((os.environ.get('SMTP_PASSWORD') or '').strip()),
         'destinatarios_consumivel_sp': dest,
-        'dica': 'No Render: SMTP_HOST, SMTP_PORT=587, SMTP_USER, SMTP_PASSWORD (senha de app Gmail), SMTP_FROM, SMTP_USE_TLS=1',
+        'dica': (
+            'No Render (recomendado): RESEND_API_KEY + RESEND_FROM. '
+            'Alternativa: SMTP_HOST=smtp.gmail.com, SMTP_PORT=465, SMTP_USER, SMTP_PASSWORD, SMTP_FROM.'
+        ),
     })
 
 
