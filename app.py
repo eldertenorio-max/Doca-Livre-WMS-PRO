@@ -49,6 +49,35 @@ except ImportError:
     sso_verify_token = None
 
 try:
+    from portal_auth import (
+        consumir_codigo as portal_consumir_codigo,
+        email_valido as portal_email_valido,
+        ensure_portal_auth_schema,
+        enviar_codigo_email as portal_enviar_codigo_email,
+        gerar_codigo as portal_gerar_codigo,
+        hash_senha as portal_hash_senha,
+        issue_verify_token as portal_issue_verify_token,
+        normalize_email as portal_normalize_email,
+        otp_debug_enabled as portal_otp_debug_enabled,
+        salvar_codigo as portal_salvar_codigo,
+        verify_token_payload as portal_verify_token_payload,
+        cooldown_ok as portal_cooldown_ok,
+    )
+except ImportError:
+    ensure_portal_auth_schema = None
+    portal_email_valido = None
+    portal_normalize_email = None
+    portal_gerar_codigo = None
+    portal_salvar_codigo = None
+    portal_consumir_codigo = None
+    portal_enviar_codigo_email = None
+    portal_issue_verify_token = None
+    portal_verify_token_payload = None
+    portal_otp_debug_enabled = None
+    portal_hash_senha = None
+    portal_cooldown_ok = None
+
+try:
     from ravex_client import (
         get_token as ravex_get_token,
         obter_roteiro_por_id,
@@ -501,6 +530,14 @@ def init_db():
                     conn.rollback()
                 except Exception:
                     pass
+            if callable(ensure_portal_auth_schema):
+                try:
+                    ensure_portal_auth_schema(conn)
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
             # Postgres: sem commit o DDL era revertido ao fechar a conexão (coluna fluxo sumia).
             try:
                 conn.commit()
@@ -592,6 +629,11 @@ def init_db():
         criado_em TEXT
             )'''
         )
+        if callable(ensure_portal_auth_schema):
+            try:
+                ensure_portal_auth_schema(conn)
+            except Exception:
+                pass
         conn.execute(
             '''CREATE TABLE IF NOT EXISTS colaboradores (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2087,7 +2129,7 @@ def _requer_login():
         return False
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return False
-    if request.path.startswith('/api/sso/verify') or request.path.startswith('/api/portal/login'):
+    if request.path.startswith('/api/sso/verify') or request.path.startswith('/api/portal/'):
         return False
     return 'usuario' not in session
 
@@ -2161,7 +2203,7 @@ def proteger_rotas():
         return None
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return None
-    if request.path.startswith('/api/sso/verify') or request.path.startswith('/api/portal/login'):
+    if request.path.startswith('/api/sso/verify') or request.path.startswith('/api/portal/'):
         return None
     # Se está logado, verificar se o usuário ainda existe no banco (não foi removido do config)
     if session.get('usuario'):
@@ -2294,6 +2336,356 @@ def api_portal_login():
         'usuario': usuario,
         'hub_token': hub_token,
     }))
+
+
+def _portal_auth_indisponivel():
+    return _sso_cors(jsonify({'ok': False, 'erro': 'Cadastro/senha por e-mail indisponível neste servidor.'})), 503
+
+
+def _portal_resolver_email_usuario(conn, usuario_ou_email):
+    raw = (usuario_ou_email or '').strip()
+    if not raw:
+        return None, None
+    email_n = portal_normalize_email(raw) if callable(portal_normalize_email) else raw.lower()
+    if callable(portal_email_valido) and portal_email_valido(email_n):
+        row = conn.execute(
+            'SELECT usuario, email FROM usuarios WHERE lower(COALESCE(email, \'\')) = ?',
+            (email_n,),
+        ).fetchone()
+        if row:
+            return row['usuario'], portal_normalize_email(row['email'] or email_n)
+        return None, email_n
+    row = conn.execute(
+        'SELECT usuario, email FROM usuarios WHERE usuario = ?',
+        (raw,),
+    ).fetchone()
+    if not row:
+        return None, None
+    em = (row['email'] or '').strip()
+    return row['usuario'], (portal_normalize_email(em) if em else None)
+
+
+@app.route('/api/portal/cadastro/enviar-codigo', methods=['POST', 'OPTIONS'])
+def api_portal_cadastro_enviar_codigo():
+    """Envia código de confirmação de e-mail para cadastro no portal."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    if not all(callable(x) for x in (
+        portal_email_valido, portal_normalize_email, portal_gerar_codigo,
+        portal_salvar_codigo, portal_enviar_codigo_email, portal_cooldown_ok,
+        ensure_portal_auth_schema,
+    )):
+        return _portal_auth_indisponivel()
+    data = request.get_json(silent=True) or {}
+    email = portal_normalize_email(data.get('email') or '')
+    if not portal_email_valido(email):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe um e-mail válido.'})), 400
+    conn = get_db()
+    try:
+        ensure_portal_auth_schema(conn)
+        existe_email = conn.execute(
+            'SELECT 1 FROM usuarios WHERE lower(COALESCE(email, \'\')) = ?',
+            (email,),
+        ).fetchone()
+        if existe_email:
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Este e-mail já está cadastrado.'})), 409
+        if not portal_cooldown_ok(conn, email, 'cadastro'):
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Aguarde cerca de 1 minuto para pedir outro código.'})), 429
+        codigo = portal_gerar_codigo()
+        portal_salvar_codigo(conn, finalidade='cadastro', email=email, codigo=codigo)
+        ok_mail, motivo = portal_enviar_codigo_email(
+            _terceiros_enviar_email, email=email, codigo=codigo, finalidade='cadastro'
+        )
+        if not ok_mail:
+            if portal_otp_debug_enabled():
+                return _sso_cors(jsonify({
+                    'ok': True,
+                    'mensagem': 'Código gerado (modo debug — SMTP indisponível).',
+                    'email': email,
+                    'debug_codigo': codigo,
+                    'smtp_erro': motivo,
+                }))
+            return _sso_cors(jsonify({
+                'ok': False,
+                'erro': 'Não foi possível enviar o e-mail. Verifique SMTP no servidor.',
+            })), 503
+        payload = {
+            'ok': True,
+            'mensagem': 'Código enviado. Confira sua caixa de entrada.',
+            'email': email,
+        }
+        if portal_otp_debug_enabled():
+            payload['debug_codigo'] = codigo
+        return _sso_cors(jsonify(payload))
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.route('/api/portal/cadastro/verificar-codigo', methods=['POST', 'OPTIONS'])
+def api_portal_cadastro_verificar_codigo():
+    """Confirma o código do e-mail e emite token para concluir cadastro."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    if not all(callable(x) for x in (
+        portal_email_valido, portal_normalize_email, portal_consumir_codigo,
+        portal_issue_verify_token, ensure_portal_auth_schema,
+    )):
+        return _portal_auth_indisponivel()
+    data = request.get_json(silent=True) or {}
+    email = portal_normalize_email(data.get('email') or '')
+    codigo = (data.get('codigo') or '').strip()
+    if not portal_email_valido(email):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe um e-mail válido.'})), 400
+    if not codigo:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe o código recebido no e-mail.'})), 400
+    conn = get_db()
+    try:
+        ensure_portal_auth_schema(conn)
+        if not portal_consumir_codigo(conn, finalidade='cadastro', email=email, codigo=codigo):
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Código inválido ou expirado.'})), 400
+        token = portal_issue_verify_token(finalidade='cadastro', email=email)
+        return _sso_cors(jsonify({
+            'ok': True,
+            'mensagem': 'E-mail confirmado. Defina usuário e senha.',
+            'verify_token': token,
+            'email': email,
+        }))
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.route('/api/portal/cadastro/concluir', methods=['POST', 'OPTIONS'])
+def api_portal_cadastro_concluir():
+    """Conclui cadastro após e-mail confirmado (usuário + senha)."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    if not all(callable(x) for x in (
+        portal_verify_token_payload, portal_hash_senha, ensure_portal_auth_schema,
+    )):
+        return _portal_auth_indisponivel()
+    data = request.get_json(silent=True) or {}
+    try:
+        verified = portal_verify_token_payload(data.get('verify_token') or '', finalidade='cadastro')
+    except ValueError as exc:
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+    email = verified['email']
+    usuario = (data.get('usuario') or '').strip()
+    senha = data.get('senha') or ''
+    confirmar = data.get('confirmar_senha') or ''
+    if not usuario or not senha:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe usuário e senha.'})), 400
+    if len(usuario) < 2:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Usuário deve ter pelo menos 2 caracteres.'})), 400
+    if len(senha) < 4:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Senha deve ter pelo menos 4 caracteres.'})), 400
+    if senha != confirmar:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'As senhas não coincidem.'})), 400
+    conn = get_db()
+    try:
+        ensure_portal_auth_schema(conn)
+        if conn.execute('SELECT 1 FROM usuarios WHERE usuario = ?', (usuario,)).fetchone():
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Este usuário já existe.'})), 409
+        if conn.execute(
+            'SELECT 1 FROM usuarios WHERE lower(COALESCE(email, \'\')) = ?',
+            (email,),
+        ).fetchone():
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Este e-mail já está cadastrado.'})), 409
+        kind = getattr(conn, 'kind', 'sqlite')
+        senha_hash = portal_hash_senha(senha)
+        if kind == 'pg':
+            conn.execute(
+                'INSERT INTO usuarios (usuario, senha_hash, email) VALUES (?, ?, ?)',
+                (usuario, senha_hash, email),
+            )
+        else:
+            conn.execute(
+                'INSERT INTO usuarios (usuario, senha_hash, email, criado_em) VALUES (?, ?, ?, ?)',
+                (usuario, senha_hash, email, datetime.now().isoformat()),
+            )
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        msg = str(e or '').lower()
+        if 'unique' in msg or 'duplicate' in msg:
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Usuário ou e-mail já cadastrado.'})), 409
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Erro ao cadastrar: %s' % e})), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    try:
+        adicionar_usuario_ao_config(usuario, senha)
+    except Exception:
+        pass
+    return _sso_cors(jsonify({'ok': True, 'mensagem': 'Cadastro realizado. Faça login.', 'usuario': usuario}))
+
+
+@app.route('/api/portal/senha/enviar-codigo', methods=['POST', 'OPTIONS'])
+def api_portal_senha_enviar_codigo():
+    """Envia código no e-mail cadastrado para trocar a senha."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    if not all(callable(x) for x in (
+        portal_gerar_codigo, portal_salvar_codigo, portal_enviar_codigo_email,
+        portal_cooldown_ok, ensure_portal_auth_schema, portal_normalize_email,
+    )):
+        return _portal_auth_indisponivel()
+    data = request.get_json(silent=True) or {}
+    ident = (data.get('usuario') or data.get('email') or data.get('identificador') or '').strip()
+    if not ident:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe usuário ou e-mail.'})), 400
+    conn = get_db()
+    try:
+        ensure_portal_auth_schema(conn)
+        usuario, email = _portal_resolver_email_usuario(conn, ident)
+        # Resposta genérica para não vazar se conta existe
+        msg_ok = 'Se a conta existir e tiver e-mail, enviamos um código.'
+        if not usuario or not email:
+            return _sso_cors(jsonify({'ok': True, 'mensagem': msg_ok}))
+        if not portal_cooldown_ok(conn, email, 'senha'):
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Aguarde cerca de 1 minuto para pedir outro código.'})), 429
+        codigo = portal_gerar_codigo()
+        portal_salvar_codigo(conn, finalidade='senha', email=email, codigo=codigo)
+        ok_mail, motivo = portal_enviar_codigo_email(
+            _terceiros_enviar_email, email=email, codigo=codigo, finalidade='senha'
+        )
+        if not ok_mail:
+            if portal_otp_debug_enabled():
+                return _sso_cors(jsonify({
+                    'ok': True,
+                    'mensagem': msg_ok + ' (modo debug)',
+                    'email': email,
+                    'debug_codigo': codigo,
+                    'smtp_erro': motivo,
+                }))
+            return _sso_cors(jsonify({
+                'ok': False,
+                'erro': 'Não foi possível enviar o e-mail. Verifique SMTP no servidor.',
+            })), 503
+        payload = {'ok': True, 'mensagem': msg_ok, 'email_mascarado': _mascara_email(email)}
+        if portal_otp_debug_enabled():
+            payload['debug_codigo'] = codigo
+            payload['email'] = email
+        return _sso_cors(jsonify(payload))
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _mascara_email(email: str) -> str:
+    email = (email or '').strip()
+    if '@' not in email:
+        return '***'
+    local, dom = email.split('@', 1)
+    if len(local) <= 2:
+        local_m = local[:1] + '*'
+    else:
+        local_m = local[:2] + ('*' * min(4, len(local) - 2))
+    return f'{local_m}@{dom}'
+
+
+@app.route('/api/portal/senha/verificar-codigo', methods=['POST', 'OPTIONS'])
+def api_portal_senha_verificar_codigo():
+    """Valida código e emite token para redefinir senha."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    if not all(callable(x) for x in (
+        portal_consumir_codigo, portal_issue_verify_token, ensure_portal_auth_schema,
+        portal_normalize_email, portal_email_valido,
+    )):
+        return _portal_auth_indisponivel()
+    data = request.get_json(silent=True) or {}
+    ident = (data.get('usuario') or data.get('email') or data.get('identificador') or '').strip()
+    codigo = (data.get('codigo') or '').strip()
+    if not ident or not codigo:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe usuário/e-mail e o código.'})), 400
+    conn = get_db()
+    try:
+        ensure_portal_auth_schema(conn)
+        usuario, email = _portal_resolver_email_usuario(conn, ident)
+        if not usuario or not email:
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Código inválido ou expirado.'})), 400
+        if not portal_consumir_codigo(conn, finalidade='senha', email=email, codigo=codigo):
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Código inválido ou expirado.'})), 400
+        token = portal_issue_verify_token(finalidade='senha', email=email)
+        return _sso_cors(jsonify({
+            'ok': True,
+            'mensagem': 'Código confirmado. Defina a nova senha.',
+            'verify_token': token,
+            'usuario': usuario,
+            'email': email,
+        }))
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.route('/api/portal/senha/redefinir', methods=['POST', 'OPTIONS'])
+def api_portal_senha_redefinir():
+    """Redefine senha após confirmação do código no e-mail."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    if not all(callable(x) for x in (
+        portal_verify_token_payload, portal_hash_senha, ensure_portal_auth_schema,
+    )):
+        return _portal_auth_indisponivel()
+    data = request.get_json(silent=True) or {}
+    try:
+        verified = portal_verify_token_payload(data.get('verify_token') or '', finalidade='senha')
+    except ValueError as exc:
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+    email = verified['email']
+    senha = data.get('senha') or ''
+    confirmar = data.get('confirmar_senha') or ''
+    if len(senha) < 4:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Senha deve ter pelo menos 4 caracteres.'})), 400
+    if senha != confirmar:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'As senhas não coincidem.'})), 400
+    conn = get_db()
+    try:
+        ensure_portal_auth_schema(conn)
+        row = conn.execute(
+            'SELECT id, usuario FROM usuarios WHERE lower(COALESCE(email, \'\')) = ?',
+            (email,),
+        ).fetchone()
+        if not row:
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Conta não encontrada.'})), 404
+        conn.execute(
+            'UPDATE usuarios SET senha_hash = ? WHERE id = ?',
+            (portal_hash_senha(senha), row['id']),
+        )
+        conn.commit()
+        usuario = row['usuario']
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Erro ao atualizar senha: %s' % e})), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    try:
+        adicionar_usuario_ao_config(usuario, senha)
+    except Exception:
+        pass
+    return _sso_cors(jsonify({'ok': True, 'mensagem': 'Senha atualizada. Faça login.', 'usuario': usuario}))
 
 
 def _usuario_from_hub_or_session(data=None):
