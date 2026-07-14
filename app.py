@@ -2188,25 +2188,43 @@ def proteger_rotas():
 
 @app.route('/login', methods=['GET'])
 def login():
-    """Login legado — redireciona ao portal (splash + login + hub)."""
-    if request.args.get('sair') == '1':
-        return redirect(url_for('raiz', sair=1))
-    return redirect(url_for('raiz'))
+    """Login legado — redireciona ao portal único (Plus / domínio custom)."""
+    sair = request.args.get('sair') == '1'
+    if sair:
+        session.pop('usuario', None)
+        session.pop('usuario_id', None)
+        session.pop('_auth_ok_user', None)
+        session.pop('_auth_ok_ts', None)
+    if callable(portal_public_url) and request.args.get('local') != '1':
+        dest = portal_public_url().rstrip('/') + '/'
+        return redirect(dest + ('?sair=1' if sair else ''))
+    return redirect(url_for('raiz', **({'sair': 1} if sair else {})))
 
 
 @app.route('/')
 def raiz():
-    """Portal legado no Pro — visitantes vão ao link único (Plus / domínio custom)."""
+    """Raiz do Pro — visitantes vão ao link único https://wms.docalivre.com.br/"""
     if request.args.get('sair') == '1':
         session.pop('usuario', None)
         session.pop('usuario_id', None)
         session.pop('_auth_ok_user', None)
         session.pop('_auth_ok_ts', None)
-    # SSO para este Pro usa /sso/entrar; raiz pública aponta ao portal Plus.
-    if callable(portal_public_url) and not session.get('usuario') and request.args.get('local') != '1':
-        dest = portal_public_url()
-        if dest:
-            return redirect(dest)
+    # Manter /?local=1 só para debug interno do portal legado.
+    if request.args.get('local') == '1':
+        urls = portal_system_urls() if callable(portal_system_urls) else {}
+        resp = make_response(render_template(
+            'portal.html',
+            usuario=session.get('usuario') or '',
+            portal_system_urls=urls,
+        ))
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        return resp
+    if callable(portal_public_url):
+        dest = portal_public_url().rstrip('/') + '/'
+        if request.args.get('sair') == '1':
+            return redirect(dest + '?sair=1')
+        return redirect(dest)
     urls = portal_system_urls() if callable(portal_system_urls) else {}
     resp = make_response(render_template(
         'portal.html',

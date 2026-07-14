@@ -3,12 +3,11 @@
 # Produção:    branch main    → https://doca-livre-wms-pro.onrender.com
 # Homologação: branch homolog → https://doca-livre-wms-pro-homologacao.onrender.com
 #
-# Link único do usuário = URL deste serviço (splash → login → hub → SSO).
-# Mesmo banco Supabase nos dois serviços (copie DATABASE_URL da produção na homolog).
+# Link único do usuário = https://wms.docalivre.com.br/ (Plus).
+# Outros links (Pro/Light) redirecionam para esse portal.
 #
 # Obrigatório no Dashboard Render (Environment) nos 2 serviços:
 #   SSO_SECRET = mesma chave longa nos dois + no Supabase Light (Edge Function sso-entrar)
-#   SYSTEM_URL_LIGHT / SYSTEM_URL_PLUS = URLs Render de cada produto (já pré-preenchidas abaixo)
 
 services:
   # ── Produção ──────────────────────────────────────────────────────────────
@@ -65,11 +64,11 @@ services:
       - key: SSO_SECRET
         sync: false
       - key: PORTAL_PUBLIC_URL
-        value: https://ultrafrio-homologacao.onrender.com/
+        value: https://wms.docalivre.com.br/
       - key: SYSTEM_URL_LIGHT
         value: https://doca-livre-wms-light-homolog.onrender.com/
       - key: SYSTEM_URL_PLUS
-        value: https://ultrafrio-homologacao.onrender.com/
+        value: https://wms.docalivre.com.br/
       - key: SYSTEM_URL_PRO
         value: https://doca-livre-wms-pro-homologacao.onrender.com/
       - key: PGSSLMODE
