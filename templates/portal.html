@@ -11,11 +11,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260710c">
-    <link rel="stylesheet" href="{{ url_for('static', filename='system-portal.css') }}?v=20260710c">
-    <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}?v=20260710c">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260713a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='system-portal.css') }}?v=20260713a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}?v=20260713a">
     <script>
       window.API_BASE = window.API_BASE || localStorage.getItem('api_base') || '/api';
+      window.PORTAL_CONFIG = {
+        usuario: {{ (usuario or '')|tojson }},
+        systemUrls: {{ (portal_system_urls or {})|tojson }}
+      };
     </script>
 </head>
 <body class="portal-page-body login-page-body portal-splash-active{% if is_homologacao %} app-env-homologacao{% endif %}">
@@ -26,7 +30,7 @@
     {% include '_portal_system_entry.html' %}
 
     <div id="portal-login" class="portal-stage" role="main" hidden>
-        <button type="button" class="portal-back-btn" data-portal-back>
+        <button type="button" class="portal-back-btn" data-portal-back hidden>
             <span class="portal-back-btn__icon" aria-hidden="true">←</span>
             Voltar
         </button>
@@ -43,14 +47,8 @@
                         <div class="login-logo-wrap login-brand-wrap">
                             {{ doca_livre_brand(logo_class='login-logo-img', size='login', theme='light') }}
                         </div>
-                        <p class="login-tagline">Gestão de estoque e armazenagem</p>
+                        <p class="login-tagline">Um login para Light, Plus e Pro</p>
                     </div>
-                    {% if usuario %}
-                    <div class="login-ja-logado" style="margin-bottom:20px;padding:16px;background:#e3f2fd;border-radius:12px;text-align:center;">
-                        <p style="margin-bottom:12px;color:#1565c0;">Você está logado como <strong>{{ usuario }}</strong>.</p>
-                        <a href="/entrada" class="btn btn-primary" style="display:inline-block;text-decoration:none;">Acessar painel</a>
-                    </div>
-                    {% endif %}
                     <form id="form-login" class="login-form" autocomplete="on">
                         <div class="form-group form-group-anim">
                             <label for="usuario">Usuário</label>
@@ -120,8 +118,8 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='system-portal.js') }}?v=20260710c"></script>
-    <script src="{{ url_for('static', filename='portal-login.js') }}?v=20260710c"></script>
+    <script src="{{ url_for('static', filename='system-portal.js') }}?v=20260713a"></script>
+    <script src="{{ url_for('static', filename='portal-login.js') }}?v=20260713a"></script>
     {% include '_pwa_install.html' %}
 </body>
 </html>

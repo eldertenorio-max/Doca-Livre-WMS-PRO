@@ -67,6 +67,29 @@ body.portal-page-body.portal-splash-active .portal-stage {
 
 .system-selector__header {
     text-align: center;
+    position: relative;
+}
+
+.portal-hub-sair {
+    margin-top: 12px;
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.92rem;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.portal-hub-sair:hover {
+    color: #0f172a;
+}
+
+#portal-hub-erro {
+    max-width: 420px;
+    margin: 0 auto;
 }
 
 .system-selector__title {

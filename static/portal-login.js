@@ -1,5 +1,6 @@
 /**
  * Formulários de login/cadastro no portal WMS Pro
+ * Após login bem-sucedido: hub de sistemas (não vai direto ao /entrada).
  */
 (function () {
     'use strict';
@@ -77,20 +78,26 @@
         e.preventDefault();
         mostrarErro(msgErroLogin);
         btnEntrar.disabled = true;
+        var usuarioVal = document.getElementById('usuario').value.trim();
         fetch((window.API_BASE || '/api') + '/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
             body: JSON.stringify({
-                usuario: document.getElementById('usuario').value.trim(),
+                usuario: usuarioVal,
                 senha: document.getElementById('senha').value
             })
         }).then(function (r) { return r.json(); }).then(function (data) {
             if (data.ok) {
                 if (data.access_token) {
                     try { localStorage.setItem('access_token', data.access_token); } catch (err) {}
-                    try { localStorage.setItem('usuario', data.usuario || document.getElementById('usuario').value.trim()); } catch (err) {}
+                    try { localStorage.setItem('usuario', data.usuario || usuarioVal); } catch (err) {}
                 }
-                window.location.href = (data.redirect || '/entrada');
+                if (data.hub && typeof window.portalShowHub === 'function') {
+                    window.portalShowHub(data.usuario || usuarioVal);
+                    return;
+                }
+                window.location.href = (data.redirect || '/');
                 return;
             }
             mostrarErro(msgErroLogin, data.erro || 'Erro ao entrar.');

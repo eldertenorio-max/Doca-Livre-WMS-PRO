@@ -28,6 +28,21 @@ from io import BytesIO
 from werkzeug.utils import secure_filename
 
 try:
+    from sso_portal import (
+        SSO_SYSTEMS,
+        build_sso_redirect_url,
+        issue_token as sso_issue_token,
+        portal_system_urls,
+        verify_token as sso_verify_token,
+    )
+except ImportError:
+    SSO_SYSTEMS = ('light', 'plus')
+    build_sso_redirect_url = None
+    sso_issue_token = None
+    portal_system_urls = None
+    sso_verify_token = None
+
+try:
     from ravex_client import (
         get_token as ravex_get_token,
         obter_roteiro_por_id,
@@ -2062,9 +2077,11 @@ def _get_latest_dataset_id(conn):
 
 def _requer_login():
     """Retorna True se a rota atual requer login (e o usuário não está logado)."""
-    if request.endpoint in (None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check'):
+    if request.endpoint in (None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check', 'api_sso_verify', 'sso_entrar_pro'):
         return False
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
+        return False
+    if request.path.startswith('/api/sso/verify'):
         return False
     return 'usuario' not in session
 
@@ -2116,13 +2133,29 @@ def _api_json_exception_handler(e):
     raise e
 
 
+def _sso_cors(resp):
+    """Permite Plus/Light (outros origins) chamarem verify do portal."""
+    origin = (request.headers.get('Origin') or '').strip()
+    if origin:
+        resp.headers['Access-Control-Allow-Origin'] = origin
+        resp.headers['Vary'] = 'Origin'
+        resp.headers['Access-Control-Allow-Credentials'] = 'true'
+    else:
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+    return resp
+
+
 @app.before_request
 def proteger_rotas():
     """Redireciona para /login se o usuário não estiver autenticado. Invalida sessão se o usuário foi excluído."""
     # Rotas que não exigem autenticação
-    if request.endpoint in (None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check', 'api_health'):
+    if request.endpoint in (None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check', 'api_health', 'api_sso_verify', 'sso_entrar_pro'):
         return None
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
+        return None
+    if request.path.startswith('/api/sso/verify'):
         return None
     # Se está logado, verificar se o usuário ainda existe no banco (não foi removido do config)
     if session.get('usuario'):
@@ -2149,7 +2182,7 @@ def proteger_rotas():
 
 @app.route('/login', methods=['GET'])
 def login():
-    """Login legado — redireciona ao portal (splash + seletor + login Pro)."""
+    """Login legado — redireciona ao portal (splash + login + hub)."""
     if request.args.get('sair') == '1':
         return redirect(url_for('raiz', sair=1))
     return redirect(url_for('raiz'))
@@ -2157,13 +2190,18 @@ def login():
 
 @app.route('/')
 def raiz():
-    """Portal Doca Livre Sistemas — splash, seletor de produtos e login WMS Pro."""
+    """Portal Doca Livre Sistemas — splash, login único e hub Light/Plus/Pro."""
     if request.args.get('sair') == '1':
         session.pop('usuario', None)
         session.pop('usuario_id', None)
         session.pop('_auth_ok_user', None)
         session.pop('_auth_ok_ts', None)
-    resp = make_response(render_template('portal.html', usuario=session.get('usuario') or ''))
+    urls = portal_system_urls() if callable(portal_system_urls) else {}
+    resp = make_response(render_template(
+        'portal.html',
+        usuario=session.get('usuario') or '',
+        portal_system_urls=urls,
+    ))
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     resp.headers['Pragma'] = 'no-cache'
     return resp
@@ -2171,7 +2209,7 @@ def raiz():
 
 @app.route('/api/login', methods=['POST'])
 def api_login():
-    """Autentica usuário e inicia sessão."""
+    """Autentica usuário e inicia sessão — depois o portal mostra o hub de sistemas."""
     data = request.get_json() or {}
     usuario = (data.get('usuario') or '').strip()
     senha = data.get('senha') or ''
@@ -2186,7 +2224,82 @@ def api_login():
     session['usuario_id'] = row['id']
     session['_auth_ok_user'] = usuario
     session['_auth_ok_ts'] = time.time()
-    return jsonify({'ok': True, 'redirect': url_for('entrada_modulos')})
+    return jsonify({
+        'ok': True,
+        'usuario': usuario,
+        'hub': True,
+        'redirect': url_for('raiz'),
+    })
+
+
+@app.route('/api/sso/issue', methods=['POST'])
+def api_sso_issue():
+    """Emite URL SSO para Light ou Plus (exige sessão do portal Pro)."""
+    if not session.get('usuario'):
+        return jsonify({'ok': False, 'erro': 'Não autorizado'}), 401
+    if not callable(sso_issue_token) or not callable(build_sso_redirect_url):
+        return jsonify({'ok': False, 'erro': 'SSO indisponível neste servidor.'}), 503
+    data = request.get_json(silent=True) or {}
+    system_id = (data.get('system') or data.get('sistema') or '').strip().lower()
+    if system_id not in SSO_SYSTEMS:
+        return jsonify({'ok': False, 'erro': 'Informe system=light ou system=plus.'}), 400
+    try:
+        token = sso_issue_token(session.get('usuario'), system_id)
+        url = build_sso_redirect_url(system_id, token)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'erro': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'ok': False, 'erro': 'Falha ao emitir SSO: %s' % (exc,)}), 500
+    return jsonify({'ok': True, 'system': system_id, 'url': url})
+
+
+@app.route('/api/sso/verify', methods=['POST', 'OPTIONS'])
+def api_sso_verify():
+    """Valida (e consome) um token SSO — usado pelo Plus/front estático."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    if not callable(sso_verify_token):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'SSO indisponível neste servidor.'})), 503
+    data = request.get_json(silent=True) or {}
+    token = (data.get('token') or request.args.get('token') or '').strip()
+    expected = (data.get('system') or data.get('sistema') or '').strip().lower() or None
+    try:
+        payload = sso_verify_token(token, expected_system=expected, consume=True)
+    except ValueError as exc:
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 401
+    return _sso_cors(jsonify({
+        'ok': True,
+        'usuario': payload['usuario'],
+        'system': payload['system'],
+    }))
+
+
+@app.route('/sso/entrar', methods=['GET'])
+def sso_entrar_pro():
+    """Consume SSO apontando para este Pro (mesma origem) — cria sessão e vai ao hub/entrada."""
+    if not callable(sso_verify_token):
+        return redirect(url_for('raiz'))
+    token = (request.args.get('token') or request.args.get('sso') or '').strip()
+    if not token:
+        return redirect(url_for('raiz'))
+    try:
+        payload = sso_verify_token(token, expected_system='pro', consume=True)
+    except ValueError:
+        # Pro normalmente não recebe SSO externo; se inválido, volta ao portal.
+        return redirect(url_for('raiz'))
+    usuario = payload['usuario']
+    conn = get_db()
+    try:
+        row = conn.execute('SELECT id FROM usuarios WHERE usuario = ?', (usuario,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return redirect(url_for('raiz', sso_erro=1))
+    session['usuario'] = usuario
+    session['usuario_id'] = row['id']
+    session['_auth_ok_user'] = usuario
+    session['_auth_ok_ts'] = time.time()
+    return redirect(url_for('entrada_modulos'))
 
 
 @app.route('/api/cadastrar', methods=['POST'])
