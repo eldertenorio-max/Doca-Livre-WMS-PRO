@@ -2914,13 +2914,33 @@ def manifest_app():
 @app.route('/entrada')
 def entrada_modulos():
     """Tela inicial pós-login: escolha do módulo (três botões)."""
-    return render_template('entrada_modulos.html', usuario=session.get('usuario', ''))
+    portal_url = ''
+    if callable(portal_public_url):
+        try:
+            portal_url = portal_public_url().rstrip('/') + '/'
+        except Exception:
+            portal_url = ''
+    return render_template(
+        'entrada_modulos.html',
+        usuario=session.get('usuario', ''),
+        portal_public_url=portal_url or 'https://wms.docalivre.com.br/',
+    )
 
 
 @app.route('/painel')
 def painel():
     """Página principal - Painel (requer login)."""
-    return render_template('index.html', usuario=session.get('usuario', ''))
+    portal_url = ''
+    if callable(portal_public_url):
+        try:
+            portal_url = portal_public_url().rstrip('/') + '/'
+        except Exception:
+            portal_url = ''
+    return render_template(
+        'index.html',
+        usuario=session.get('usuario', ''),
+        portal_public_url=portal_url or 'https://wms.docalivre.com.br/',
+    )
 
 
 @app.route('/api/eventos-stream')
