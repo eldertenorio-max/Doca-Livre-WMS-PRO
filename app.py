@@ -2557,10 +2557,10 @@ def api_portal_senha_enviar_codigo():
     try:
         ensure_portal_auth_schema(conn)
         usuario, email = _portal_resolver_email_usuario(conn, ident)
-        # Resposta genérica para não vazar se conta existe
+        # Resposta genérica para não vazar se conta existe (enviado=false → UI não pede OTP)
         msg_ok = 'Se a conta existir e tiver e-mail, enviamos um código.'
         if not usuario or not email:
-            return _sso_cors(jsonify({'ok': True, 'mensagem': msg_ok}))
+            return _sso_cors(jsonify({'ok': True, 'enviado': False, 'mensagem': msg_ok}))
         if not portal_cooldown_ok(conn, email, 'senha'):
             return _sso_cors(jsonify({'ok': False, 'erro': 'Aguarde cerca de 1 minuto para pedir outro código.'})), 429
         codigo = portal_gerar_codigo()
@@ -2572,17 +2572,24 @@ def api_portal_senha_enviar_codigo():
             if portal_otp_debug_enabled():
                 return _sso_cors(jsonify({
                     'ok': True,
-                    'mensagem': msg_ok + ' (somente debug local — SMTP falhou).',
+                    'enviado': False,
+                    'mensagem': msg_ok + ' (somente debug local — e-mail falhou).',
                     'email': email,
                     'debug_codigo': codigo,
                     'smtp_erro': motivo,
                 }))
             return _sso_cors(jsonify({
                 'ok': False,
+                'enviado': False,
                 'erro': _portal_msg_falha_email(motivo),
                 'smtp_motivo': motivo,
             })), 503
-        payload = {'ok': True, 'mensagem': msg_ok, 'email_mascarado': _mascara_email(email)}
+        payload = {
+            'ok': True,
+            'enviado': True,
+            'mensagem': msg_ok,
+            'email_mascarado': _mascara_email(email),
+        }
         if portal_otp_debug_enabled():
             payload['debug_codigo'] = codigo
             payload['email'] = email
