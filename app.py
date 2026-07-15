@@ -2126,11 +2126,15 @@ def _get_latest_dataset_id(conn):
 
 def _requer_login():
     """Retorna True se a rota atual requer login (e o usuário não está logado)."""
-    if request.endpoint in (None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check', 'api_sso_verify', 'sso_entrar_pro', 'api_portal_login'):
+    if request.endpoint in (
+        None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check',
+        'api_sso_verify', 'api_sso_issue', 'sso_entrar_pro', 'api_portal_login',
+    ):
         return False
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return False
-    if request.path.startswith('/api/sso/verify') or request.path.startswith('/api/portal/'):
+    # Portal Plus (CORS) + emissão/verificação SSO por hub_token — sem cookie de sessão Pro.
+    if request.path.startswith('/api/sso/') or request.path.startswith('/api/portal/'):
         return False
     return 'usuario' not in session
 
@@ -2200,11 +2204,14 @@ def _sso_cors(resp):
 def proteger_rotas():
     """Redireciona para /login se o usuário não estiver autenticado. Invalida sessão se o usuário foi excluído."""
     # Rotas que não exigem autenticação
-    if request.endpoint in (None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check', 'api_health', 'api_sso_verify', 'sso_entrar_pro', 'api_portal_login'):
+    if request.endpoint in (
+        None, 'login', 'static', 'raiz', 'portal', 'ravex_env_check', 'api_health',
+        'api_sso_verify', 'api_sso_issue', 'sso_entrar_pro', 'api_portal_login',
+    ):
         return None
     if request.path.startswith('/api/login') or request.path.startswith('/api/cadastrar'):
         return None
-    if request.path.startswith('/api/sso/verify') or request.path.startswith('/api/portal/'):
+    if request.path.startswith('/api/sso/') or request.path.startswith('/api/portal/'):
         return None
     # Se está logado, verificar se o usuário ainda existe no banco (não foi removido do config)
     if session.get('usuario'):
