@@ -848,11 +848,19 @@ USUARIOS = [
                 (usuario, senha_hash, datetime.now().isoformat())
             )
         conn.commit()
-        # Remove do banco usuários que não estão mais no arquivo (excluídos no config = não podem mais logar)
-        remover = [row['usuario'] for row in conn.execute('SELECT usuario FROM usuarios') if row['usuario'] not in usuarios_do_arquivo]
-        for u in remover:
-            conn.execute('DELETE FROM usuarios WHERE usuario = ?', (u,))
-        conn.commit()
+        # No Postgres (Render/portal): NÃO apagar usuários fora do arquivo.
+        # Contas criadas por Cadastro (com e-mail) vivem só no banco; se apagarmos,
+        # o e-mail de cadastro ainda funciona, mas Trocar senha/login somem.
+        # No SQLite local: mantém sync antigo (config = fonte da verdade).
+        if getattr(conn, 'kind', None) != 'pg':
+            remover = [
+                row['usuario']
+                for row in conn.execute('SELECT usuario FROM usuarios')
+                if row['usuario'] not in usuarios_do_arquivo
+            ]
+            for u in remover:
+                conn.execute('DELETE FROM usuarios WHERE usuario = ?', (u,))
+            conn.commit()
     finally:
         conn.close()
 
@@ -2557,10 +2565,18 @@ def api_portal_senha_enviar_codigo():
     try:
         ensure_portal_auth_schema(conn)
         usuario, email = _portal_resolver_email_usuario(conn, ident)
-        # Resposta genérica para não vazar se conta existe (enviado=false → UI não pede OTP)
-        msg_ok = 'Se a conta existir e tiver e-mail, enviamos um código.'
         if not usuario or not email:
-            return _sso_cors(jsonify({'ok': True, 'enviado': False, 'mensagem': msg_ok}))
+            # ok:false para a UI não pedir OTP sem e-mail enviado (cadastro ≠ troca de senha)
+            return _sso_cors(jsonify({
+                'ok': False,
+                'enviado': False,
+                'erro': (
+                    'Não há conta concluída com esse usuário/e-mail neste ambiente, '
+                    'ou a conta não tem e-mail cadastrado. '
+                    'Se você só recebeu o e-mail de "confirmação de e-mail", '
+                    'termine o Cadastro (usuário + senha) antes de usar Trocar senha.'
+                ),
+            })), 404
         if not portal_cooldown_ok(conn, email, 'senha'):
             return _sso_cors(jsonify({'ok': False, 'erro': 'Aguarde cerca de 1 minuto para pedir outro código.'})), 429
         codigo = portal_gerar_codigo()
@@ -2573,7 +2589,7 @@ def api_portal_senha_enviar_codigo():
                 return _sso_cors(jsonify({
                     'ok': True,
                     'enviado': False,
-                    'mensagem': msg_ok + ' (somente debug local — e-mail falhou).',
+                    'mensagem': 'E-mail falhou (debug local).',
                     'email': email,
                     'debug_codigo': codigo,
                     'smtp_erro': motivo,
@@ -2587,7 +2603,10 @@ def api_portal_senha_enviar_codigo():
         payload = {
             'ok': True,
             'enviado': True,
-            'mensagem': msg_ok,
+            'mensagem': (
+                'Enviamos o código para trocar a senha. '
+                'Assunto do e-mail: "Doca Livre — código para trocar a senha".'
+            ),
             'email_mascarado': _mascara_email(email),
         }
         if portal_otp_debug_enabled():

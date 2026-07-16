@@ -268,6 +268,7 @@ def enviar_codigo_email(
         assunto = 'Doca Livre — código de confirmação de e-mail'
         acao = 'confirmar seu e-mail e concluir o cadastro'
     else:
+        # Assunto próximo ao de cadastro (mesma entregabilidade); corpo deixa a finalidade clara.
         assunto = 'Doca Livre — código para trocar a senha'
         acao = 'redefinir sua senha no portal'
     corpo = (
