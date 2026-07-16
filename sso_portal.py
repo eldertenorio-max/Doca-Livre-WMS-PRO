@@ -204,7 +204,13 @@ def build_sso_redirect_url(system_id: str, token: str) -> str:
     if not base:
         raise ValueError('URL do sistema não configurada.')
     parsed = urlparse(base if '://' in base else f'https://{base}')
-    path = '/sso/entrar/' if system_id in ('light', 'plus') else '/sso/entrar'
+    # Light: cai na raiz do SPA (query preservada). Plus: /sso/entrar/. Pro: /sso/entrar.
+    if system_id == 'light':
+        path = '/'
+    elif system_id == 'plus':
+        path = '/sso/entrar/'
+    else:
+        path = '/sso/entrar'
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
     query['token'] = token
     query['sso'] = token
