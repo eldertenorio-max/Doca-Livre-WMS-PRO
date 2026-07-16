@@ -1,28 +1,43 @@
 ---
-description: Commit e push automaticos apos cada alteracao no projeto
+description: Commit, push e comando suba em Plus/Pro/Light
 alwaysApply: true
 ---
 
-# Deploy automatico (Sistema WMS)
+# Deploy automatico (portal WMS: Plus + Pro + Light)
 
-**Obrigatorio:** ao concluir qualquer alteracao de codigo neste repositorio, faca **commit + push** imediatamente — **sem esperar** o usuario pedir "suba", "commit" ou "deploy".
+## Ao concluir qualquer alteracao de codigo
 
-## Fluxo (sempre ao final da tarefa)
+Faca **commit + push** imediatamente — sem esperar o usuario pedir.
 
-1. `git status` e `git diff` — revisar o que mudou.
-2. `git add` apenas arquivos relevantes (nunca `.env`, credenciais, `__pycache__`).
-3. `git commit -m "tipo: descricao curta"` (estilo do repo: `feat:`, `fix:`, `style:`, etc.).
-4. `git push wms main` (e `git push wms homolog` se estiver na branch homolog).
-5. `python scripts/validar_paridade_env.py --live` — confirmar prod/homolog identicos (exceto banner).
-6. Informar o **hash do commit** e que foi enviado para producao (Render: https://doca-livre-wms-pro.onrender.com).
+## Quando o usuario disser "suba" (ou equivalente)
 
-## Regras
+**Obrigatorio subir TUDO pendente**, nos tres sistemas, sem deixar nada atras:
 
-- Remote: **`wms`** · branch **`main`**
-- Sem force push, sem alterar `git config`, sem commit vazio.
-- Se o commit falhar (hook, etc.), corrigir e criar **novo** commit — nao amend salvo excecao do protocolo git.
-- Se **nao houver mudancas**, nao commitar.
+1. **Plus** (`Doca Livre WMS Plus`) → remote `origin` · branches `homolog` + `main`
+2. **Pro** (`Doca Livre WMS Pro`) → remote `pro` · branches `homolog` + `main`
+3. **Light** (`Doca Livre WMS Light`) → remote `doca` · branches `homologacao` + `master`
+
+Fluxo por repo:
+
+1. `git status` / `git diff` — revisar.
+2. `git add` so o relevante (nunca `.env`, credenciais, `node_modules`, backups, `__pycache__`, `tmp/`).
+3. Commit se houver mudanca real (estilo `feat:` / `fix:` / `style:` / `chore:`).
+4. Alinhar prod e homolog no **mesmo commit** (merge homolog→main ou vice-versa).
+5. Push nas duas branches do remote certo.
+6. Pro: `python scripts/validar_paridade_env.py --live` apos push.
+7. Plus prod (wms.docalivre.com.br): se Auto-Deploy estiver off, avisar **Manual Deploy + Clear build cache** no Render.
+8. Informar hashes e URLs ao usuario.
+
+## Remotes corretos
+
+| Repo | Remote | URL tipica |
+|------|--------|------------|
+| Pro | `pro` | `Doca-Livre-WMS-PRO` |
+| Plus | `origin` | `Ultrafrio` / Plus |
+| Light | `doca` | `Doca-Livre-WMS-Light` |
+
+Nao usar o remote `wms` (legado / inacessivel). Sem force push, sem alterar `git config`, sem commit vazio.
 
 ## Excecao
 
-So **nao** subir se o usuario pedir explicitamente para nao commitar, apenas revisar, ou trabalhar em rascunho local.
+So **nao** subir se o usuario pedir explicitamente para nao commitar, apenas revisar, ou rascunho local.
