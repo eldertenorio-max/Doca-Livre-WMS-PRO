@@ -111,6 +111,22 @@ def ensure_portal_auth_schema(conn) -> None:
         conn.execute(
             'CREATE INDEX IF NOT EXISTS idx_portal_email_codigos_email ON public.portal_email_codigos (email, finalidade, criado_em DESC)'
         )
+        # Remove selo UNRESTRICTED no Supabase; backend (DATABASE_URL) bypassa RLS.
+        try:
+            conn.execute('ALTER TABLE public.portal_email_codigos ENABLE ROW LEVEL SECURITY')
+            for pol in (
+                'Permitir SELECT em portal_email_codigos',
+                'Permitir INSERT em portal_email_codigos',
+                'Permitir UPDATE em portal_email_codigos',
+                'Permitir DELETE em portal_email_codigos',
+            ):
+                conn.execute(f'DROP POLICY IF EXISTS "{pol}" ON public.portal_email_codigos')
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         try:
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_email_unique ON public.usuarios (lower(email)) WHERE email IS NOT NULL AND email <> ''"

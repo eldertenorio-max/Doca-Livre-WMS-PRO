@@ -62,6 +62,7 @@ SQL_FILES_RLS = [
     "migrate_wms_enderecamento_rls.sql",
     "migrate_wms_palete_controle_rls.sql",
     "migrate_romaneio_por_item_rls.sql",
+    "migrate_portal_email_codigos_rls.sql",
     "enable_rls_views.sql",
     "fix_supabase_linter_security.sql",
 ]
