@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260710c">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doca-livre-pro.css') }}?v=20260715a">
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}?v=20260705k">
     <script src="{{ url_for('static', filename='stock-system-reload-login.js') }}"></script>
 </head>
@@ -24,7 +24,7 @@
                 <button type="button" class="app-topbar-menu ss-hub-topbar-menu" id="btn-hub-sidebar-toggle" aria-label="Recolher menu lateral" aria-pressed="true" title="Recolher menu lateral">
                     <span class="app-topbar-menu-icon" aria-hidden="true"></span>
                 </button>
-                <a href="{{ portal_public_url }}" class="app-topbar-back ss-hub-topbar-back header-link-voltar" title="Voltar aos sistemas" aria-label="Voltar aos sistemas">
+                <a href="{{ portal_public_url }}" id="link-voltar-sistemas" class="app-topbar-back app-topbar-back-systems ss-hub-topbar-back header-link-sistemas" title="Voltar aos sistemas Light, Plus e Pro" aria-label="Voltar aos sistemas">
                     <span class="app-topbar-back-icon" aria-hidden="true">←</span>
                     <span class="app-topbar-back-label">Sistemas</span>
                 </a>

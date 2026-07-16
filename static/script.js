@@ -2920,7 +2920,9 @@ function initConferenciaTabelaAcoes() {
 }
 
 function initNavegacaoRapida() {
-    var linkVoltar = document.querySelector('.header-link-voltar');
+    var linkVoltar = document.getElementById('link-voltar-modulos')
+        || document.querySelector('.header-link-voltar[href="/entrada"]')
+        || document.querySelector('a.header-link-voltar[href*="entrada"]');
     if (!linkVoltar) return;
     var href = linkVoltar.getAttribute('href') || '/entrada';
 
