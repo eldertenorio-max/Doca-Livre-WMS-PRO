@@ -3005,7 +3005,7 @@ def entrada_modulos():
     return render_template(
         'entrada_modulos.html',
         usuario=session.get('usuario', ''),
-        portal_public_url=portal_url or 'https://wms.docalivre.com.br/',
+        portal_public_url=(portal_url or 'https://wms.docalivre.com.br/').rstrip('/') + '/?hub=1',
     )
 
 
@@ -3021,7 +3021,7 @@ def painel():
     return render_template(
         'index.html',
         usuario=session.get('usuario', ''),
-        portal_public_url=portal_url or 'https://wms.docalivre.com.br/',
+        portal_public_url=(portal_url or 'https://wms.docalivre.com.br/').rstrip('/') + '/?hub=1',
     )
 
 
