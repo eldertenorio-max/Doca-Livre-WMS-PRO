@@ -53,6 +53,7 @@ except ImportError:
 try:
     from portal_auth import (
         consumir_codigo as portal_consumir_codigo,
+        consumir_codigo_detalhe as portal_consumir_codigo_detalhe,
         email_valido as portal_email_valido,
         ensure_portal_auth_schema,
         enviar_codigo_email as portal_enviar_codigo_email,
@@ -72,6 +73,7 @@ except ImportError:
     portal_gerar_codigo = None
     portal_salvar_codigo = None
     portal_consumir_codigo = None
+    portal_consumir_codigo_detalhe = None
     portal_enviar_codigo_email = None
     portal_issue_verify_token = None
     portal_verify_token_payload = None
@@ -2409,12 +2411,12 @@ def api_portal_cadastro_enviar_codigo():
         if not portal_cooldown_ok(conn, email, 'cadastro'):
             return _sso_cors(jsonify({'ok': False, 'erro': 'Aguarde cerca de 1 minuto para pedir outro código.'})), 429
         codigo = portal_gerar_codigo()
-        portal_salvar_codigo(conn, finalidade='cadastro', email=email, codigo=codigo)
         ok_mail, motivo = portal_enviar_codigo_email(
             _terceiros_enviar_email, email=email, codigo=codigo, finalidade='cadastro'
         )
         if not ok_mail:
             if portal_otp_debug_enabled():
+                portal_salvar_codigo(conn, finalidade='cadastro', email=email, codigo=codigo)
                 return _sso_cors(jsonify({
                     'ok': True,
                     'mensagem': 'Código gerado (somente debug local — SMTP falhou).',
@@ -2427,6 +2429,8 @@ def api_portal_cadastro_enviar_codigo():
                 'erro': _portal_msg_falha_email(motivo),
                 'smtp_motivo': motivo,
             })), 503
+        # Só grava/invalida códigos anteriores depois do e-mail sair
+        portal_salvar_codigo(conn, finalidade='cadastro', email=email, codigo=codigo)
         payload = {
             'ok': True,
             'mensagem': 'Código enviado. Confira sua caixa de entrada.',
@@ -2457,13 +2461,25 @@ def api_portal_cadastro_verificar_codigo():
     codigo = (data.get('codigo') or '').strip()
     if not portal_email_valido(email):
         return _sso_cors(jsonify({'ok': False, 'erro': 'Informe um e-mail válido.'})), 400
-    if not codigo:
-        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe o código recebido no e-mail.'})), 400
+    codigo = re.sub(r'\D', '', codigo or '')
+    if len(codigo) != 6:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe o código de 6 dígitos do e-mail.'})), 400
     conn = get_db()
     try:
         ensure_portal_auth_schema(conn)
-        if not portal_consumir_codigo(conn, finalidade='cadastro', email=email, codigo=codigo):
-            return _sso_cors(jsonify({'ok': False, 'erro': 'Código inválido ou expirado.'})), 400
+        ok_code, motivo = (
+            portal_consumir_codigo_detalhe(conn, finalidade='cadastro', email=email, codigo=codigo)
+            if callable(portal_consumir_codigo_detalhe)
+            else (portal_consumir_codigo(conn, finalidade='cadastro', email=email, codigo=codigo), '')
+        )
+        if not ok_code:
+            msg = {
+                'expirado': 'Código expirado. Peça um novo código.',
+                'inexistente': 'Não há código pendente. Clique em Reenviar.',
+                'invalido': 'Código incorreto. Confira o e-mail mais recente (assunto: confirmação de e-mail).',
+                'formato': 'Código deve ter 6 dígitos.',
+            }.get(motivo, 'Código inválido ou expirado.')
+            return _sso_cors(jsonify({'ok': False, 'erro': msg})), 400
         token = portal_issue_verify_token(finalidade='cadastro', email=email)
         return _sso_cors(jsonify({
             'ok': True,
@@ -2581,12 +2597,12 @@ def api_portal_senha_enviar_codigo():
         if not portal_cooldown_ok(conn, email, 'senha'):
             return _sso_cors(jsonify({'ok': False, 'erro': 'Aguarde cerca de 1 minuto para pedir outro código.'})), 429
         codigo = portal_gerar_codigo()
-        portal_salvar_codigo(conn, finalidade='senha', email=email, codigo=codigo)
         ok_mail, motivo = portal_enviar_codigo_email(
             _terceiros_enviar_email, email=email, codigo=codigo, finalidade='senha'
         )
         if not ok_mail:
             if portal_otp_debug_enabled():
+                portal_salvar_codigo(conn, finalidade='senha', email=email, codigo=codigo)
                 return _sso_cors(jsonify({
                     'ok': True,
                     'enviado': False,
@@ -2601,6 +2617,7 @@ def api_portal_senha_enviar_codigo():
                 'erro': _portal_msg_falha_email(motivo),
                 'smtp_motivo': motivo,
             })), 503
+        portal_salvar_codigo(conn, finalidade='senha', email=email, codigo=codigo)
         payload = {
             'ok': True,
             'enviado': True,
@@ -2645,17 +2662,44 @@ def api_portal_senha_verificar_codigo():
         return _portal_auth_indisponivel()
     data = request.get_json(silent=True) or {}
     ident = (data.get('usuario') or data.get('email') or data.get('identificador') or '').strip()
-    codigo = (data.get('codigo') or '').strip()
-    if not ident or not codigo:
-        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe usuário/e-mail e o código.'})), 400
+    codigo = re.sub(r'\D', '', (data.get('codigo') or ''))
+    if not ident or len(codigo) != 6:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe usuário/e-mail e o código de 6 dígitos.'})), 400
     conn = get_db()
     try:
         ensure_portal_auth_schema(conn)
         usuario, email = _portal_resolver_email_usuario(conn, ident)
-        if not usuario or not email:
-            return _sso_cors(jsonify({'ok': False, 'erro': 'Código inválido ou expirado.'})), 400
-        if not portal_consumir_codigo(conn, finalidade='senha', email=email, codigo=codigo):
-            return _sso_cors(jsonify({'ok': False, 'erro': 'Código inválido ou expirado.'})), 400
+        if not email and callable(portal_email_valido) and portal_email_valido(portal_normalize_email(ident)):
+            email = portal_normalize_email(ident)
+        if not email:
+            return _sso_cors(jsonify({
+                'ok': False,
+                'erro': 'Conta não encontrada. Faça o Cadastro ou use o e-mail cadastrado.',
+            })), 400
+        ok_code, motivo = (
+            portal_consumir_codigo_detalhe(conn, finalidade='senha', email=email, codigo=codigo)
+            if callable(portal_consumir_codigo_detalhe)
+            else (portal_consumir_codigo(conn, finalidade='senha', email=email, codigo=codigo), '')
+        )
+        if not ok_code:
+            msg = {
+                'expirado': 'Código expirado. Clique em Reenviar e use o e-mail novo.',
+                'inexistente': 'Não há código de troca de senha pendente. Clique em Reenviar.',
+                'invalido': (
+                    'Código incorreto. Use o e-mail com assunto '
+                    '"Doca Livre — código para trocar a senha" (não o de cadastro).'
+                ),
+                'formato': 'Código deve ter 6 dígitos.',
+            }.get(motivo, 'Código inválido ou expirado.')
+            return _sso_cors(jsonify({'ok': False, 'erro': msg})), 400
+        if not usuario:
+            usuario, email2 = _portal_resolver_email_usuario(conn, email)
+            email = email2 or email
+        if not usuario:
+            return _sso_cors(jsonify({
+                'ok': False,
+                'erro': 'Conta não encontrada neste ambiente. Conclua o Cadastro e tente de novo.',
+            })), 400
         token = portal_issue_verify_token(finalidade='senha', email=email)
         return _sso_cors(jsonify({
             'ok': True,

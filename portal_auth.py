@@ -29,7 +29,25 @@ def email_valido(email: str) -> bool:
 
 
 def _otp_secret() -> str:
-    return (os.environ.get('SSO_SECRET') or os.environ.get('SECRET_KEY') or 'ultrapao-secret-key-2024').strip()
+    """Segredo estável para OTP (não usar só SECRET_KEY — pode mudar no Render)."""
+    for key in ('PORTAL_OTP_SECRET', 'SSO_SECRET', 'SECRET_KEY'):
+        val = (os.environ.get(key) or '').strip()
+        if val:
+            return val
+    return 'ultrapao-secret-key-2024'
+
+
+def _otp_secrets_for_verify() -> list[str]:
+    """Aceita hashes gerados com qualquer segredo ainda presente no ambiente."""
+    out: list[str] = []
+    for key in ('PORTAL_OTP_SECRET', 'SSO_SECRET', 'SECRET_KEY'):
+        val = (os.environ.get(key) or '').strip()
+        if val and val not in out:
+            out.append(val)
+    fallback = 'ultrapao-secret-key-2024'
+    if fallback not in out:
+        out.append(fallback)
+    return out
 
 
 def _b64url_encode(raw: bytes) -> str:
@@ -45,8 +63,21 @@ def _b64url_decode(text: str) -> bytes:
     return base64.urlsafe_b64decode((text + pad).encode('ascii'))
 
 
-def hash_codigo(codigo: str) -> str:
-    return hashlib.sha256(f'{_otp_secret()}:{codigo.strip()}'.encode('utf-8')).hexdigest()
+def hash_codigo(codigo: str, secret: str | None = None) -> str:
+    pepper = (secret if secret is not None else _otp_secret()).strip()
+    return hashlib.sha256(f'{pepper}:{codigo.strip()}'.encode('utf-8')).hexdigest()
+
+
+def _normalize_otp(codigo: str) -> str:
+    return re.sub(r'\D', '', (codigo or '').strip())
+
+
+def _codigo_bate_hash(codigo: str, codigo_hash: str) -> bool:
+    stored = str(codigo_hash or '')
+    for secret in _otp_secrets_for_verify():
+        if hmac.compare_digest(stored, hash_codigo(codigo, secret)):
+            return True
+    return False
 
 
 def gerar_codigo() -> str:
@@ -227,10 +258,15 @@ def salvar_codigo(conn, *, finalidade: str, email: str, codigo: str) -> None:
 
 
 def consumir_codigo(conn, *, finalidade: str, email: str, codigo: str) -> bool:
+    return consumir_codigo_detalhe(conn, finalidade=finalidade, email=email, codigo=codigo)[0]
+
+
+def consumir_codigo_detalhe(conn, *, finalidade: str, email: str, codigo: str) -> tuple[bool, str]:
+    """Retorna (ok, motivo) — motivo vazio se ok."""
     email = normalize_email(email)
-    codigo = (codigo or '').strip()
+    codigo = _normalize_otp(codigo)
     if not codigo.isdigit() or len(codigo) != OTP_LEN:
-        return False
+        return False, 'formato'
     kind = getattr(conn, 'kind', 'sqlite')
     tbl = 'public.portal_email_codigos' if kind == 'pg' else 'portal_email_codigos'
     usado_false = 'FALSE' if kind == 'pg' else '0'
@@ -241,7 +277,7 @@ def consumir_codigo(conn, *, finalidade: str, email: str, codigo: str) -> bool:
         (email, finalidade),
     ).fetchone()
     if not row:
-        return False
+        return False, 'inexistente'
     expira = row['expira_em']
     try:
         from datetime import datetime, timezone
@@ -255,17 +291,17 @@ def consumir_codigo(conn, *, finalidade: str, email: str, codigo: str) -> bool:
 
             expira_dt = expira_dt.replace(tzinfo=tz.utc)
         if expira_dt.timestamp() < time.time():
-            return False
+            return False, 'expirado'
     except Exception:
-        return False
-    if not hmac.compare_digest(str(row['codigo_hash']), hash_codigo(codigo)):
-        return False
+        return False, 'expirado'
+    if not _codigo_bate_hash(codigo, row['codigo_hash']):
+        return False, 'invalido'
     if kind == 'pg':
         conn.execute(f'UPDATE {tbl} SET usado = TRUE WHERE id = ?', (row['id'],))
     else:
         conn.execute(f'UPDATE {tbl} SET usado = 1 WHERE id = ?', (row['id'],))
     conn.commit()
-    return True
+    return True, ''
 
 
 def otp_debug_enabled() -> bool:
