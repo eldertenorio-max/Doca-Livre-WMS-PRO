@@ -27,6 +27,7 @@ import openpyxl
 from openpyxl.styles import Font
 from io import BytesIO
 from werkzeug.utils import secure_filename
+from urllib.parse import quote
 
 try:
     from sso_portal import (
@@ -2788,18 +2789,27 @@ def api_sso_verify():
     }))
 
 
+def _redirect_portal_sso_erro(motivo: str):
+    """Volta ao hub do portal com erro legível (evita 'abrir o início' sem explicação)."""
+    msg = (motivo or 'sso_falhou').strip()[:120]
+    if callable(portal_public_url):
+        base = portal_public_url().rstrip('/') + '/'
+        return redirect(base + '?sso_erro=' + quote(msg, safe=''))
+    return redirect(url_for('raiz', local=1, sso_erro=1))
+
+
 @app.route('/sso/entrar', methods=['GET'])
 def sso_entrar_pro():
     """Consume SSO apontando para este Pro — cria sessão e vai ao /entrada."""
     if not callable(sso_verify_token):
-        return redirect(url_for('raiz', local=1))
+        return _redirect_portal_sso_erro('SSO indisponível no Pro.')
     token = (request.args.get('token') or request.args.get('sso') or '').strip()
     if not token:
-        return redirect(url_for('raiz', local=1))
+        return _redirect_portal_sso_erro('Token SSO ausente.')
     try:
         payload = sso_verify_token(token, expected_system='pro', consume=True)
-    except ValueError:
-        return redirect(url_for('raiz', local=1))
+    except ValueError as exc:
+        return _redirect_portal_sso_erro(str(exc) or 'Token SSO inválido.')
     usuario = payload['usuario']
     conn = get_db()
     try:
@@ -2807,7 +2817,9 @@ def sso_entrar_pro():
     finally:
         conn.close()
     if not row:
-        return redirect(url_for('raiz', local=1, sso_erro=1))
+        return _redirect_portal_sso_erro(
+            'Usuário não encontrado no Pro. Faça o cadastro no portal e tente de novo.'
+        )
     session['usuario'] = usuario
     session['usuario_id'] = row['id']
     session['_auth_ok_user'] = usuario
