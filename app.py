@@ -2491,18 +2491,26 @@ def api_portal_config_overview():
         return _sso_cors(jsonify({'ok': False, 'erro': 'Módulo de permissões indisponível.'})), 503
     conn = get_db()
     try:
-        if callable(ensure_portal_permissoes_schema):
-            ensure_portal_permissoes_schema(conn)
-        if callable(ensure_portal_org_schema):
-            ensure_portal_org_schema(conn)
-        usuarios = portal_listar_usuarios(conn)
-        niveis = portal_listar_niveis(conn) if callable(portal_listar_niveis) else []
-        matriz = {}
-        for u in usuarios:
-            matriz[u['usuario']] = portal_carregar_permissoes(conn, u['usuario'])
-        catalogo = portal_catalogo_permissoes() if callable(portal_catalogo_permissoes) else {}
-        arvore = portal_org_arvore(conn) if callable(portal_org_arvore) else []
-        tipos_org = portal_org_tipos() if callable(portal_org_tipos) else []
+        try:
+            if callable(ensure_portal_permissoes_schema):
+                ensure_portal_permissoes_schema(conn)
+            if callable(ensure_portal_org_schema):
+                ensure_portal_org_schema(conn)
+            usuarios = portal_listar_usuarios(conn)
+            niveis = portal_listar_niveis(conn) if callable(portal_listar_niveis) else []
+            matriz = {}
+            for u in usuarios:
+                matriz[u['usuario']] = portal_carregar_permissoes(conn, u['usuario'])
+            catalogo = portal_catalogo_permissoes() if callable(portal_catalogo_permissoes) else {}
+            try:
+                arvore = portal_org_arvore(conn) if callable(portal_org_arvore) else []
+            except Exception as org_exc:
+                # Não derruba a tela inteira se a árvore falhar (ex.: SQL legado).
+                arvore = []
+                catalogo = {**catalogo, 'arvore_erro': str(org_exc)}
+            tipos_org = portal_org_tipos() if callable(portal_org_tipos) else []
+        except Exception as exc:
+            return _sso_cors(jsonify({'ok': False, 'erro': f'Falha ao carregar configuração: {exc}'})), 500
     finally:
         conn.close()
     return _sso_cors(jsonify({

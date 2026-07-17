@@ -175,12 +175,18 @@ def _row_to_no(r: Any) -> dict[str, Any]:
 
 
 def listar_nos_flat(conn) -> list[dict[str, Any]]:
-    rows = conn.execute(
-        '''SELECT id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo
-           FROM portal_org_nos
-           WHERE COALESCE(ativo, TRUE) = TRUE OR ativo = 1
-           ORDER BY ordem ASC, nome ASC'''
-    ).fetchall()
+    kind = getattr(conn, 'kind', 'sqlite')
+    if kind == 'pg':
+        sql = '''SELECT id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo
+                 FROM portal_org_nos
+                 WHERE COALESCE(ativo, TRUE) IS TRUE
+                 ORDER BY ordem ASC, nome ASC'''
+    else:
+        sql = '''SELECT id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo
+                 FROM portal_org_nos
+                 WHERE COALESCE(ativo, 1) = 1
+                 ORDER BY ordem ASC, nome ASC'''
+    rows = conn.execute(sql).fetchall()
     return [_row_to_no(r) for r in rows]
 
 
