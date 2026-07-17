@@ -225,23 +225,70 @@ def ensure_portal_permissoes_schema(conn) -> None:
         pass
 
 
-def _modulos_from_db(raw: Any) -> list[str] | None:
+def _normalize_acesso(raw: Any) -> str | None:
+    v = str(raw or '').strip().lower()
+    if v in ('visualizar', 'view', 'leitura', 'read', 'ver'):
+        return 'visualizar'
+    if v in ('editar', 'edit', 'escrita', 'write', 'full', 'completo'):
+        return 'editar'
+    return None
+
+
+def _modulos_from_db(raw: Any) -> dict[str, str] | None:
+    """Retorna mapa id→acesso (visualizar|editar), ou None = todas as telas com editar.
+
+    Formatos aceitos (legado + novo):
+      null
+      ["consulta", "entrada"]                      → todos editar
+      [{"id": "consulta", "acesso": "visualizar"}]
+      {"consulta": "visualizar", "entrada": "editar"}
+    """
     if raw is None:
-        return None
-    if isinstance(raw, list):
-        return [str(x).strip() for x in raw if str(x).strip()]
-    if isinstance(raw, (dict,)):
         return None
     if isinstance(raw, str):
         try:
-            data = json.loads(raw)
-            if data is None:
-                return None
-            if isinstance(data, list):
-                return [str(x).strip() for x in data if str(x).strip()]
+            raw = json.loads(raw)
         except Exception:
-            return []
-    return []
+            return {}
+        if raw is None:
+            return None
+    if isinstance(raw, dict):
+        out: dict[str, str] = {}
+        for k, v in raw.items():
+            mid = str(k).strip()
+            if not mid:
+                continue
+            # Objeto aninhado legado
+            if isinstance(v, dict):
+                acesso = _normalize_acesso(v.get('acesso') or v.get('modo') or v.get('level'))
+            else:
+                acesso = _normalize_acesso(v)
+            out[mid] = acesso or 'editar'
+        return out
+    if isinstance(raw, list):
+        out = {}
+        for item in raw:
+            if isinstance(item, dict):
+                mid = str(item.get('id') or item.get('modulo') or '').strip()
+                acesso = _normalize_acesso(item.get('acesso') or item.get('modo') or 'editar')
+                if mid:
+                    out[mid] = acesso or 'editar'
+            else:
+                mid = str(item).strip()
+                if mid:
+                    out[mid] = 'editar'
+        return out
+    return {}
+
+
+def _modulos_to_db(mods: Any) -> Any:
+    """Normaliza payload do cliente para gravar (null ou dict id→acesso)."""
+    if mods is None:
+        return None
+    parsed = _modulos_from_db(mods)
+    if parsed is None:
+        return None
+    return parsed
 
 
 def listar_niveis(conn) -> list[dict[str, Any]]:
@@ -324,11 +371,9 @@ def salvar_permissoes_usuario(
     for sistema in SISTEMAS:
         bloco = matriz.get(sistema) or {}
         pode = bool(bloco.get('pode_acessar', True))
-        mods = bloco.get('modulos', None)
-        if mods is not None:
-            if not isinstance(mods, list):
-                raise ValueError(f'modulos de {sistema} deve ser lista ou null.')
-            mods = [str(x).strip() for x in mods if str(x).strip()]
+        mods = _modulos_to_db(bloco.get('modulos', None))
+        if mods is not None and not isinstance(mods, dict):
+            raise ValueError(f'modulos de {sistema} inválido.')
         mods_json = json.dumps(mods, ensure_ascii=False) if mods is not None else None
         if kind == 'pg':
             conn.execute(
