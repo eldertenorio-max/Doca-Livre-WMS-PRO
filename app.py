@@ -98,9 +98,25 @@ except ImportError:
     portal_listar_usuarios = None
     portal_salvar_hierarquia = None
     portal_salvar_permissoes = None
-    portal_otp_debug_enabled = None
-    portal_hash_senha = None
-    portal_cooldown_ok = None
+
+try:
+    from portal_hierarquia import (
+        atualizar_no as portal_org_atualizar,
+        catalogo_tipos as portal_org_tipos,
+        criar_no as portal_org_criar,
+        ensure_portal_org_schema,
+        excluir_no as portal_org_excluir,
+        filho_sugerido as portal_org_filho_sugerido,
+        montar_arvore as portal_org_arvore,
+    )
+except ImportError:
+    ensure_portal_org_schema = None
+    portal_org_arvore = None
+    portal_org_criar = None
+    portal_org_atualizar = None
+    portal_org_excluir = None
+    portal_org_tipos = None
+    portal_org_filho_sugerido = None
 
 try:
     from ravex_client import (
@@ -571,6 +587,14 @@ def init_db():
                         conn.rollback()
                     except Exception:
                         pass
+            if callable(ensure_portal_org_schema):
+                try:
+                    ensure_portal_org_schema(conn)
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
             # Postgres: sem commit o DDL era revertido ao fechar a conexão (coluna fluxo sumia).
             try:
                 conn.commit()
@@ -670,6 +694,11 @@ def init_db():
         if callable(ensure_portal_permissoes_schema):
             try:
                 ensure_portal_permissoes_schema(conn)
+            except Exception:
+                pass
+        if callable(ensure_portal_org_schema):
+            try:
+                ensure_portal_org_schema(conn)
             except Exception:
                 pass
         conn.execute(
@@ -2444,12 +2473,16 @@ def api_portal_config_overview():
     try:
         if callable(ensure_portal_permissoes_schema):
             ensure_portal_permissoes_schema(conn)
+        if callable(ensure_portal_org_schema):
+            ensure_portal_org_schema(conn)
         usuarios = portal_listar_usuarios(conn)
         niveis = portal_listar_niveis(conn) if callable(portal_listar_niveis) else []
         matriz = {}
         for u in usuarios:
             matriz[u['usuario']] = portal_carregar_permissoes(conn, u['usuario'])
         catalogo = portal_catalogo_permissoes() if callable(portal_catalogo_permissoes) else {}
+        arvore = portal_org_arvore(conn) if callable(portal_org_arvore) else []
+        tipos_org = portal_org_tipos() if callable(portal_org_tipos) else []
     finally:
         conn.close()
     return _sso_cors(jsonify({
@@ -2458,6 +2491,8 @@ def api_portal_config_overview():
         'usuarios': usuarios,
         'niveis': niveis,
         'matriz': matriz,
+        'arvore': arvore,
+        'tipos_org': tipos_org,
         **catalogo,
     }))
 
@@ -2492,6 +2527,7 @@ def api_portal_config_salvar_permissoes():
 
 @app.route('/api/portal/config/hierarquia', methods=['PUT', 'POST', 'OPTIONS'])
 def api_portal_config_salvar_hierarquia():
+    """Legado: nível/superior do usuário (ainda usado em permissões)."""
     if request.method == 'OPTIONS':
         return _sso_cors(make_response(('', 204)))
     actor, err = _portal_require_superuser()
@@ -2518,6 +2554,73 @@ def api_portal_config_salvar_hierarquia():
     finally:
         conn.close()
     return _sso_cors(jsonify({'ok': True, 'usuario': alvo, 'mensagem': 'Hierarquia salva.', 'actor': actor}))
+
+
+@app.route('/api/portal/config/org', methods=['POST', 'PUT', 'OPTIONS'])
+def api_portal_config_org_salvar():
+    """Cria ou atualiza nó da árvore organizacional."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    actor, err = _portal_require_superuser()
+    if err:
+        return err
+    if not callable(portal_org_criar) or not callable(portal_org_atualizar):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Hierarquia organizacional indisponível.'})), 503
+    data = request.get_json(silent=True) or {}
+    no_id = (data.get('id') or '').strip()
+    conn = get_db()
+    try:
+        if callable(ensure_portal_org_schema):
+            ensure_portal_org_schema(conn)
+        if no_id:
+            portal_org_atualizar(
+                conn,
+                no_id=no_id,
+                nome=data.get('nome'),
+                cnpj=data.get('cnpj'),
+                codigo=data.get('codigo'),
+            )
+            payload = {'ok': True, 'id': no_id, 'mensagem': 'Empresa atualizada.', 'actor': actor}
+        else:
+            criado = portal_org_criar(
+                conn,
+                parent_id=(data.get('parent_id') or None),
+                tipo=(data.get('tipo') or ''),
+                nome=(data.get('nome') or ''),
+                cnpj=data.get('cnpj'),
+                codigo=data.get('codigo'),
+            )
+            payload = {'ok': True, 'no': criado, 'mensagem': 'Empresa adicionada.', 'actor': actor}
+    except ValueError as exc:
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+    finally:
+        conn.close()
+    return _sso_cors(jsonify(payload))
+
+
+@app.route('/api/portal/config/org/delete', methods=['POST', 'DELETE', 'OPTIONS'])
+def api_portal_config_org_delete():
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    actor, err = _portal_require_superuser()
+    if err:
+        return err
+    if not callable(portal_org_excluir):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Hierarquia organizacional indisponível.'})), 503
+    data = request.get_json(silent=True) or {}
+    no_id = (data.get('id') or request.args.get('id') or '').strip()
+    if not no_id:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe o id.'})), 400
+    conn = get_db()
+    try:
+        if callable(ensure_portal_org_schema):
+            ensure_portal_org_schema(conn)
+        portal_org_excluir(conn, no_id=no_id)
+    except ValueError as exc:
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+    finally:
+        conn.close()
+    return _sso_cors(jsonify({'ok': True, 'mensagem': 'Empresa removida.', 'actor': actor}))
 
 
 @app.route('/api/portal/me', methods=['GET', 'POST', 'OPTIONS'])
