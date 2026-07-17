@@ -101,15 +101,24 @@ except ImportError:
 
 try:
     from portal_hierarquia import (
+        adicionar_membro_grupo as portal_grp_add_membro,
+        atualizar_grupo as portal_grp_atualizar,
+        atualizar_membro_grupo as portal_grp_atualizar_membro,
         atualizar_no as portal_org_atualizar,
         catalogo_sistemas as portal_org_sistemas,
         catalogo_tipos as portal_org_tipos,
+        criar_grupo as portal_grp_criar,
         criar_no as portal_org_criar,
+        empresas_visiveis as portal_org_empresas_visiveis,
         ensure_portal_org_schema,
+        excluir_grupo as portal_grp_excluir,
         excluir_no as portal_org_excluir,
         filho_sugerido as portal_org_filho_sugerido,
+        filhos_permitidos as portal_org_filhos_permitidos,
+        listar_grupos_por_sistema as portal_grp_por_sistema,
         montar_arvore as portal_org_arvore,
         montar_arvores_por_sistema as portal_org_arvores,
+        remover_membro_grupo as portal_grp_remover_membro,
     )
 except ImportError:
     ensure_portal_org_schema = None
@@ -121,6 +130,15 @@ except ImportError:
     portal_org_tipos = None
     portal_org_sistemas = None
     portal_org_filho_sugerido = None
+    portal_org_filhos_permitidos = None
+    portal_org_empresas_visiveis = None
+    portal_grp_por_sistema = None
+    portal_grp_criar = None
+    portal_grp_atualizar = None
+    portal_grp_excluir = None
+    portal_grp_add_membro = None
+    portal_grp_remover_membro = None
+    portal_grp_atualizar_membro = None
 
 try:
     from ravex_client import (
@@ -2531,6 +2549,9 @@ def api_portal_config_overview():
             for u in usuarios:
                 matriz[u['usuario']] = portal_carregar_permissoes(conn, u['usuario'])
             catalogo = portal_catalogo_permissoes() if callable(portal_catalogo_permissoes) else {}
+            arvore = []
+            arvores = {'light': [], 'plus': [], 'pro': []}
+            grupos = {'light': [], 'plus': [], 'pro': []}
             try:
                 arvore = portal_org_arvore(conn, sistema='plus') if callable(portal_org_arvore) else []
                 arvores = (
@@ -2540,11 +2561,14 @@ def api_portal_config_overview():
                 )
             except Exception as org_exc:
                 # Não derruba a tela inteira se a árvore falhar (ex.: SQL legado).
-                arvore = []
-                arvores = {'light': [], 'plus': [], 'pro': []}
                 catalogo = {**catalogo, 'arvore_erro': str(org_exc)}
             tipos_org = portal_org_tipos() if callable(portal_org_tipos) else []
             sistemas_org = portal_org_sistemas() if callable(portal_org_sistemas) else []
+            try:
+                if callable(portal_grp_por_sistema):
+                    grupos = portal_grp_por_sistema(conn)
+            except Exception as grp_exc:
+                catalogo = {**catalogo, 'grupos_erro': str(grp_exc)}
         except Exception as exc:
             return _sso_cors(jsonify({'ok': False, 'erro': f'Falha ao carregar configuração: {exc}'})), 500
     finally:
@@ -2557,6 +2581,7 @@ def api_portal_config_overview():
         'matriz': matriz,
         'arvore': arvore,
         'arvores': arvores,
+        'grupos': grupos,
         'tipos_org': tipos_org,
         'sistemas_org': sistemas_org,
         **catalogo,
@@ -2614,6 +2639,8 @@ def api_portal_config_salvar_hierarquia():
             usuario=alvo,
             nivel=data.get('nivel'),
             superior=data.get('superior'),
+            empresa_org_id=data.get('empresa_org_id'),
+            atualizar_empresa_org=('empresa_org_id' in data),
         )
     except ValueError as exc:
         return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
@@ -2645,6 +2672,7 @@ def api_portal_config_org_salvar():
                 nome=data.get('nome'),
                 cnpj=data.get('cnpj'),
                 codigo=data.get('codigo'),
+                is_fornecedor=data.get('is_fornecedor'),
             )
             payload = {'ok': True, 'id': no_id, 'mensagem': 'Empresa atualizada.', 'actor': actor}
         else:
@@ -2656,6 +2684,7 @@ def api_portal_config_org_salvar():
                 cnpj=data.get('cnpj'),
                 codigo=data.get('codigo'),
                 sistema=(data.get('sistema') or 'plus'),
+                is_fornecedor=data.get('is_fornecedor'),
             )
             payload = {'ok': True, 'no': criado, 'mensagem': 'Empresa adicionada.', 'actor': actor}
     except ValueError as exc:
@@ -2663,6 +2692,192 @@ def api_portal_config_org_salvar():
     finally:
         conn.close()
     return _sso_cors(jsonify(payload))
+
+
+@app.route('/api/portal/config/org/filhos', methods=['GET', 'POST', 'OPTIONS'])
+def api_portal_config_org_filhos():
+    """Tipos filhos permitidos sob um pai (parentesco flexível)."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    actor, err = _portal_require_superuser()
+    if err:
+        return err
+    if not callable(portal_org_filhos_permitidos):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Hierarquia organizacional indisponível.'})), 503
+    data = request.get_json(silent=True) or {}
+    tipo_pai = data.get('tipo_pai') if request.method == 'POST' else request.args.get('tipo_pai')
+    tipos = portal_org_filhos_permitidos(tipo_pai if tipo_pai not in (None, '') else None)
+    labels = {t['id']: t['label'] for t in (portal_org_tipos() if callable(portal_org_tipos) else [])}
+    return _sso_cors(jsonify({
+        'ok': True,
+        'actor': actor,
+        'tipos': [{'id': t, 'label': labels.get(t, t)} for t in tipos],
+    }))
+
+
+@app.route('/api/portal/config/org/visiveis', methods=['POST', 'OPTIONS'])
+def api_portal_config_org_visiveis():
+    """Empresas visíveis (BFS top-down) a partir de empresa_org_id."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    actor, err = _portal_require_superuser()
+    if err:
+        return err
+    if not callable(portal_org_empresas_visiveis):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Hierarquia organizacional indisponível.'})), 503
+    data = request.get_json(silent=True) or {}
+    empresa_id = (data.get('empresa_id') or '').strip()
+    sistema = (data.get('sistema') or 'plus').strip().lower()
+    if not empresa_id:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe empresa_id.'})), 400
+    conn = get_db()
+    try:
+        if callable(ensure_portal_org_schema):
+            ensure_portal_org_schema(conn)
+        lista = portal_org_empresas_visiveis(conn, empresa_id=empresa_id, sistema=sistema)
+    finally:
+        conn.close()
+    return _sso_cors(jsonify({'ok': True, 'empresas': lista, 'actor': actor}))
+
+
+@app.route('/api/portal/config/grupos', methods=['GET', 'POST', 'PUT', 'OPTIONS'])
+def api_portal_config_grupos():
+    """CRUD de grupos de hierarquia."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    actor, err = _portal_require_superuser()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        if callable(ensure_portal_org_schema):
+            ensure_portal_org_schema(conn)
+        if request.method == 'GET':
+            if not callable(portal_grp_por_sistema):
+                return _sso_cors(jsonify({'ok': False, 'erro': 'Grupos indisponíveis.'})), 503
+            sistema = (request.args.get('sistema') or data.get('sistema') or '').strip().lower() or None
+            grupos = portal_grp_por_sistema(conn)
+            if sistema:
+                return _sso_cors(jsonify({'ok': True, 'grupos': grupos.get(sistema, []), 'actor': actor}))
+            return _sso_cors(jsonify({'ok': True, 'grupos': grupos, 'actor': actor}))
+        grupo_id = (data.get('id') or '').strip()
+        if grupo_id:
+            if not callable(portal_grp_atualizar):
+                return _sso_cors(jsonify({'ok': False, 'erro': 'Grupos indisponíveis.'})), 503
+            portal_grp_atualizar(
+                conn,
+                grupo_id=grupo_id,
+                nome=data.get('nome'),
+                descricao=data.get('descricao'),
+            )
+            return _sso_cors(jsonify({'ok': True, 'id': grupo_id, 'mensagem': 'Grupo atualizado.', 'actor': actor}))
+        if not callable(portal_grp_criar):
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Grupos indisponíveis.'})), 503
+        criado = portal_grp_criar(
+            conn,
+            nome=(data.get('nome') or ''),
+            descricao=data.get('descricao'),
+            sistema=(data.get('sistema') or 'plus'),
+            empresa_id=data.get('empresa_id'),
+        )
+        return _sso_cors(jsonify({'ok': True, 'grupo': criado, 'mensagem': 'Grupo criado.', 'actor': actor}))
+    except ValueError as exc:
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+    finally:
+        conn.close()
+
+
+@app.route('/api/portal/config/grupos/delete', methods=['POST', 'DELETE', 'OPTIONS'])
+def api_portal_config_grupos_delete():
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    actor, err = _portal_require_superuser()
+    if err:
+        return err
+    if not callable(portal_grp_excluir):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Grupos indisponíveis.'})), 503
+    data = request.get_json(silent=True) or {}
+    grupo_id = (data.get('id') or request.args.get('id') or '').strip()
+    if not grupo_id:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe o id.'})), 400
+    conn = get_db()
+    try:
+        if callable(ensure_portal_org_schema):
+            ensure_portal_org_schema(conn)
+        portal_grp_excluir(conn, grupo_id=grupo_id)
+    except ValueError as exc:
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+    finally:
+        conn.close()
+    return _sso_cors(jsonify({'ok': True, 'mensagem': 'Grupo removido.', 'actor': actor}))
+
+
+@app.route('/api/portal/config/grupos/membros', methods=['POST', 'PUT', 'OPTIONS'])
+def api_portal_config_grupos_membros():
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    actor, err = _portal_require_superuser()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        if callable(ensure_portal_org_schema):
+            ensure_portal_org_schema(conn)
+        membro_id = (data.get('id') or data.get('membro_id') or '').strip()
+        if membro_id or request.method == 'PUT':
+            if not callable(portal_grp_atualizar_membro):
+                return _sso_cors(jsonify({'ok': False, 'erro': 'Grupos indisponíveis.'})), 503
+            mid = membro_id or (data.get('id') or '').strip()
+            portal_grp_atualizar_membro(
+                conn,
+                membro_id=mid,
+                parent_empresa_id=data.get('parent_empresa_id'),
+                posicao=data.get('posicao'),
+            )
+            return _sso_cors(jsonify({'ok': True, 'id': mid, 'mensagem': 'Membro atualizado.', 'actor': actor}))
+        if not callable(portal_grp_add_membro):
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Grupos indisponíveis.'})), 503
+        membro = portal_grp_add_membro(
+            conn,
+            grupo_id=(data.get('grupo_id') or ''),
+            empresa_id=(data.get('empresa_id') or ''),
+            parent_empresa_id=data.get('parent_empresa_id'),
+            posicao=data.get('posicao'),
+        )
+        return _sso_cors(jsonify({'ok': True, 'membro': membro, 'mensagem': 'Membro adicionado.', 'actor': actor}))
+    except ValueError as exc:
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+    finally:
+        conn.close()
+
+
+@app.route('/api/portal/config/grupos/membros/delete', methods=['POST', 'DELETE', 'OPTIONS'])
+def api_portal_config_grupos_membros_delete():
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    actor, err = _portal_require_superuser()
+    if err:
+        return err
+    if not callable(portal_grp_remover_membro):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Grupos indisponíveis.'})), 503
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        if callable(ensure_portal_org_schema):
+            ensure_portal_org_schema(conn)
+        portal_grp_remover_membro(
+            conn,
+            membro_id=(data.get('id') or data.get('membro_id') or None),
+            grupo_id=data.get('grupo_id'),
+            empresa_id=data.get('empresa_id'),
+        )
+    except ValueError as exc:
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+    finally:
+        conn.close()
+    return _sso_cors(jsonify({'ok': True, 'mensagem': 'Membro removido.', 'actor': actor}))
 
 
 @app.route('/api/portal/config/org/delete', methods=['POST', 'DELETE', 'OPTIONS'])

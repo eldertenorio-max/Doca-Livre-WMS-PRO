@@ -119,6 +119,7 @@ def ensure_portal_permissoes_schema(conn) -> None:
         try:
             conn.execute('ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS nivel_hierarquia TEXT')
             conn.execute('ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS superior_usuario TEXT')
+            conn.execute('ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS empresa_org_id TEXT')
         except Exception:
             try:
                 conn.rollback()
@@ -159,6 +160,8 @@ def ensure_portal_permissoes_schema(conn) -> None:
                 conn.execute('ALTER TABLE usuarios ADD COLUMN nivel_hierarquia TEXT')
             if 'superior_usuario' not in cols:
                 conn.execute('ALTER TABLE usuarios ADD COLUMN superior_usuario TEXT')
+            if 'empresa_org_id' not in cols:
+                conn.execute('ALTER TABLE usuarios ADD COLUMN empresa_org_id TEXT')
             conn.commit()
         except Exception:
             pass
@@ -307,11 +310,17 @@ def listar_niveis(conn) -> list[dict[str, Any]]:
 def listar_usuarios_portal(conn) -> list[dict[str, Any]]:
     try:
         rows = conn.execute(
-            '''SELECT usuario, email, ativo, nivel_hierarquia, superior_usuario
+            '''SELECT usuario, email, ativo, nivel_hierarquia, superior_usuario, empresa_org_id
                FROM usuarios ORDER BY usuario ASC'''
         ).fetchall()
     except Exception:
-        rows = conn.execute('SELECT usuario FROM usuarios ORDER BY usuario ASC').fetchall()
+        try:
+            rows = conn.execute(
+                '''SELECT usuario, email, ativo, nivel_hierarquia, superior_usuario
+                   FROM usuarios ORDER BY usuario ASC'''
+            ).fetchall()
+        except Exception:
+            rows = conn.execute('SELECT usuario FROM usuarios ORDER BY usuario ASC').fetchall()
     out = []
     for r in rows:
         keys = set(r.keys()) if hasattr(r, 'keys') else set()
@@ -323,6 +332,9 @@ def listar_usuarios_portal(conn) -> list[dict[str, Any]]:
                 'ativo': bool(r['ativo']) if 'ativo' in keys else True,
                 'nivel': str(r['nivel_hierarquia'] or '') if 'nivel_hierarquia' in keys else '',
                 'superior': str(r['superior_usuario'] or '') if 'superior_usuario' in keys else '',
+                'empresa_org_id': (
+                    str(r['empresa_org_id'] or '') if 'empresa_org_id' in keys and r['empresa_org_id'] else None
+                ),
                 'is_superuser': is_portal_superuser(usuario),
             }
         )
@@ -409,8 +421,10 @@ def salvar_hierarquia_usuario(
     conn,
     *,
     usuario: str,
-    nivel: str | None,
-    superior: str | None,
+    nivel: str | None = None,
+    superior: str | None = None,
+    empresa_org_id: str | None = None,
+    atualizar_empresa_org: bool = False,
 ) -> None:
     u = (usuario or '').strip()
     if not u:
@@ -419,12 +433,27 @@ def salvar_hierarquia_usuario(
     sup_v = (superior or '').strip() or None
     if sup_v and normalize_usuario(sup_v) == normalize_usuario(u):
         raise ValueError('Usuário não pode ser superior de si mesmo.')
-    conn.execute(
-        '''UPDATE usuarios
-           SET nivel_hierarquia = ?, superior_usuario = ?
-           WHERE lower(usuario) = lower(?)''',
-        (nivel_v, sup_v, u),
-    )
+    if atualizar_empresa_org:
+        emp_v = (empresa_org_id or '').strip() or None
+        if emp_v:
+            row = conn.execute('SELECT id FROM portal_org_nos WHERE id = ?', (emp_v,)).fetchone()
+            if not row:
+                raise ValueError('Empresa organizacional não encontrada.')
+        conn.execute(
+            '''UPDATE usuarios
+               SET nivel_hierarquia = COALESCE(?, nivel_hierarquia),
+                   superior_usuario = COALESCE(?, superior_usuario),
+                   empresa_org_id = ?
+               WHERE lower(usuario) = lower(?)''',
+            (nivel_v, sup_v, emp_v, u),
+        )
+    else:
+        conn.execute(
+            '''UPDATE usuarios
+               SET nivel_hierarquia = ?, superior_usuario = ?
+               WHERE lower(usuario) = lower(?)''',
+            (nivel_v, sup_v, u),
+        )
     try:
         conn.commit()
     except Exception:
