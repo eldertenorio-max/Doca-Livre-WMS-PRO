@@ -6,11 +6,12 @@ import os
 from typing import Any
 
 # Super usuários fixos do portal (login = coluna usuarios.usuario).
+# Nomes com espaço/acento (Elder Tenório, Diego Isidoro) também contam.
 PORTAL_SUPERUSERS = {
     n.strip().lower()
     for n in (
         os.environ.get('PORTAL_SUPERUSERS')
-        or 'Diego,Elder,diego,elder,diego.isidoro,elder.tenorio'
+        or 'Diego,Elder,diego,elder,diego.isidoro,elder.tenorio,diego isidoro,elder tenório,elder tenorio'
     ).split(',')
     if n.strip()
 }
@@ -72,19 +73,42 @@ def is_portal_superuser(usuario: str) -> bool:
         return False
     if u in PORTAL_SUPERUSERS:
         return True
+    # Remove acentos simples para comparar "tenório" ~ "tenorio"
+    u_ascii = (
+        u.replace('á', 'a')
+        .replace('à', 'a')
+        .replace('ã', 'a')
+        .replace('â', 'a')
+        .replace('é', 'e')
+        .replace('ê', 'e')
+        .replace('í', 'i')
+        .replace('ó', 'o')
+        .replace('ô', 'o')
+        .replace('õ', 'o')
+        .replace('ú', 'u')
+        .replace('ç', 'c')
+    )
+    if u_ascii in PORTAL_SUPERUSERS:
+        return True
     local = u.split('@', 1)[0]
-    if local in PORTAL_SUPERUSERS:
+    local_ascii = u_ascii.split('@', 1)[0]
+    if local in PORTAL_SUPERUSERS or local_ascii in PORTAL_SUPERUSERS:
         return True
     for su in PORTAL_SUPERUSERS:
         if u.startswith(su + '.') or u.startswith(su + '@'):
             return True
         if local.startswith(su) and su in ('diego', 'elder'):
             return True
-    # Nomes comuns sem ponto: diegoisidoro / eldertenorio
-    if local.replace('.', '') in {'diegoisidoro', 'eldertenorio'} or u.replace('.', '') in {
+        if local_ascii.startswith(su) and su in ('diego', 'elder'):
+            return True
+    compact = local_ascii.replace('.', '').replace(' ', '')
+    if compact in {'diegoisidoro', 'eldertenorio'} or u_ascii.replace('.', '').replace(' ', '') in {
         'diegoisidoro',
         'eldertenorio',
     }:
+        return True
+    # "elder tenorio" / "diego isidoro"
+    if local_ascii.startswith('elder ') or local_ascii.startswith('diego '):
         return True
     return False
 

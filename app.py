@@ -2459,14 +2459,39 @@ def _portal_auth_indisponivel():
     return _sso_cors(jsonify({'ok': False, 'erro': 'Cadastro/senha por e-mail indisponível neste servidor.'})), 503
 
 
+def _portal_auth_usuario_detalhe(data=None):
+    """Retorna (usuario, None) ou (None, mensagem_erro)."""
+    data = data or {}
+    if not callable(sso_verify_hub_token):
+        u = session.get('usuario')
+        if u:
+            return u, None
+        return None, 'Autenticação do portal indisponível neste servidor.'
+    hub = (data.get('hub_token') or data.get('hubToken') or '').strip()
+    if not hub:
+        auth = (request.headers.get('Authorization') or '').strip()
+        if auth.lower().startswith('bearer '):
+            hub = auth[7:].strip()
+    if not hub:
+        return None, 'Sessão do portal ausente. Faça login de novo.'
+    try:
+        return sso_verify_hub_token(hub)['usuario'], None
+    except ValueError as exc:
+        msg = str(exc).strip() or 'Sessão do portal inválida.'
+        return None, msg
+
+
 def _portal_require_superuser():
     """Retorna (usuario, None) ou (None, response_erro)."""
     data = request.get_json(silent=True) or {}
-    usuario = _usuario_from_hub_or_session(data)
+    usuario, auth_err = _portal_auth_usuario_detalhe(data)
     if not usuario:
-        return None, (_sso_cors(jsonify({'ok': False, 'erro': 'Não autorizado'})), 401)
+        return None, (_sso_cors(jsonify({'ok': False, 'erro': auth_err or 'Não autorizado'})), 401)
     if not callable(is_portal_superuser) or not is_portal_superuser(usuario):
-        return None, (_sso_cors(jsonify({'ok': False, 'erro': 'Apenas Super Usuários (Elder/Diego).'})), 403)
+        return None, (_sso_cors(jsonify({
+            'ok': False,
+            'erro': f'Apenas Super Usuários (Elder/Diego). Conta atual: {usuario}',
+        })), 403)
     return usuario, None
 
 
@@ -3087,22 +3112,21 @@ def api_portal_senha_redefinir():
 
 
 def _usuario_from_hub_or_session(data=None):
+    """Resolve usuário pelo hub_token do portal (preferência) ou sessão Pro."""
     data = data or {}
-    if session.get('usuario'):
-        return session.get('usuario')
     if not callable(sso_verify_hub_token):
-        return None
-    hub = (data.get('hub_token') or '').strip()
+        return session.get('usuario')
+    hub = (data.get('hub_token') or data.get('hubToken') or '').strip()
     if not hub:
         auth = (request.headers.get('Authorization') or '').strip()
         if auth.lower().startswith('bearer '):
             hub = auth[7:].strip()
-    if not hub:
-        return None
-    try:
-        return sso_verify_hub_token(hub)['usuario']
-    except ValueError:
-        return None
+    if hub:
+        try:
+            return sso_verify_hub_token(hub)['usuario']
+        except ValueError:
+            return None
+    return session.get('usuario')
 
 
 @app.route('/api/sso/issue', methods=['POST', 'OPTIONS'])
