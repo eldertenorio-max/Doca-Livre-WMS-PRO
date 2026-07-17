@@ -102,20 +102,24 @@ except ImportError:
 try:
     from portal_hierarquia import (
         atualizar_no as portal_org_atualizar,
+        catalogo_sistemas as portal_org_sistemas,
         catalogo_tipos as portal_org_tipos,
         criar_no as portal_org_criar,
         ensure_portal_org_schema,
         excluir_no as portal_org_excluir,
         filho_sugerido as portal_org_filho_sugerido,
         montar_arvore as portal_org_arvore,
+        montar_arvores_por_sistema as portal_org_arvores,
     )
 except ImportError:
     ensure_portal_org_schema = None
     portal_org_arvore = None
+    portal_org_arvores = None
     portal_org_criar = None
     portal_org_atualizar = None
     portal_org_excluir = None
     portal_org_tipos = None
+    portal_org_sistemas = None
     portal_org_filho_sugerido = None
 
 try:
@@ -2528,12 +2532,19 @@ def api_portal_config_overview():
                 matriz[u['usuario']] = portal_carregar_permissoes(conn, u['usuario'])
             catalogo = portal_catalogo_permissoes() if callable(portal_catalogo_permissoes) else {}
             try:
-                arvore = portal_org_arvore(conn) if callable(portal_org_arvore) else []
+                arvore = portal_org_arvore(conn, sistema='plus') if callable(portal_org_arvore) else []
+                arvores = (
+                    portal_org_arvores(conn)
+                    if callable(portal_org_arvores)
+                    else {'light': [], 'plus': arvore, 'pro': []}
+                )
             except Exception as org_exc:
                 # Não derruba a tela inteira se a árvore falhar (ex.: SQL legado).
                 arvore = []
+                arvores = {'light': [], 'plus': [], 'pro': []}
                 catalogo = {**catalogo, 'arvore_erro': str(org_exc)}
             tipos_org = portal_org_tipos() if callable(portal_org_tipos) else []
+            sistemas_org = portal_org_sistemas() if callable(portal_org_sistemas) else []
         except Exception as exc:
             return _sso_cors(jsonify({'ok': False, 'erro': f'Falha ao carregar configuração: {exc}'})), 500
     finally:
@@ -2545,7 +2556,9 @@ def api_portal_config_overview():
         'niveis': niveis,
         'matriz': matriz,
         'arvore': arvore,
+        'arvores': arvores,
         'tipos_org': tipos_org,
+        'sistemas_org': sistemas_org,
         **catalogo,
     }))
 
@@ -2642,6 +2655,7 @@ def api_portal_config_org_salvar():
                 nome=(data.get('nome') or ''),
                 cnpj=data.get('cnpj'),
                 codigo=data.get('codigo'),
+                sistema=(data.get('sistema') or 'plus'),
             )
             payload = {'ok': True, 'no': criado, 'mensagem': 'Empresa adicionada.', 'actor': actor}
     except ValueError as exc:

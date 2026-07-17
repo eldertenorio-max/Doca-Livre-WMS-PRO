@@ -1,4 +1,4 @@
-"""Árvore organizacional do portal (Hierarquia).
+"""Árvore organizacional do portal (Hierarquia) — uma por sistema (Light / Plus / Pro).
 
 Tipos (como no Ultrafrio Log):
   operador_logistico → filial_operador → embarcador → unidade → transportadora
@@ -6,8 +6,15 @@ Tipos (como no Ultrafrio Log):
 from __future__ import annotations
 
 import secrets
-import time
 from typing import Any
+
+SISTEMAS_ORG = ('light', 'plus', 'pro')
+
+SISTEMA_LABELS = {
+    'light': 'WMS Light',
+    'plus': 'WMS Plus',
+    'pro': 'WMS Pro',
+}
 
 TIPOS_ORDEM = (
     'operador_logistico',
@@ -25,7 +32,6 @@ TIPO_LABELS = {
     'transportadora': 'Transportadora',
 }
 
-# Filho permitido por tipo de pai (None = raiz)
 FILHOS_PERMITIDOS: dict[str | None, tuple[str, ...]] = {
     None: ('operador_logistico',),
     'operador_logistico': ('filial_operador',),
@@ -38,6 +44,11 @@ FILHOS_PERMITIDOS: dict[str | None, tuple[str, ...]] = {
 
 def _new_id() -> str:
     return secrets.token_hex(8)
+
+
+def _norm_sistema(sistema: str | None) -> str:
+    s = (sistema or 'plus').strip().lower()
+    return s if s in SISTEMAS_ORG else 'plus'
 
 
 def ensure_portal_org_schema(conn) -> None:
@@ -53,13 +64,26 @@ def ensure_portal_org_schema(conn) -> None:
                 codigo TEXT,
                 ordem INTEGER NOT NULL DEFAULT 100,
                 ativo BOOLEAN NOT NULL DEFAULT TRUE,
+                sistema TEXT NOT NULL DEFAULT 'plus',
                 criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )'''
         )
         try:
             conn.execute(
+                "ALTER TABLE public.portal_org_nos ADD COLUMN IF NOT EXISTS sistema TEXT NOT NULL DEFAULT 'plus'"
+            )
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        try:
+            conn.execute(
                 'CREATE INDEX IF NOT EXISTS idx_portal_org_parent ON public.portal_org_nos (parent_id)'
+            )
+            conn.execute(
+                'CREATE INDEX IF NOT EXISTS idx_portal_org_sistema ON public.portal_org_nos (sistema)'
             )
         except Exception:
             try:
@@ -77,31 +101,72 @@ def ensure_portal_org_schema(conn) -> None:
                 codigo TEXT,
                 ordem INTEGER NOT NULL DEFAULT 100,
                 ativo INTEGER NOT NULL DEFAULT 1,
+                sistema TEXT NOT NULL DEFAULT 'plus',
                 criado_em TEXT,
                 atualizado_em TEXT
             )'''
         )
         try:
+            cols = {
+                str(r['name'] if hasattr(r, 'keys') else r[1]).lower()
+                for r in conn.execute('PRAGMA table_info(portal_org_nos)').fetchall()
+            }
+            if 'sistema' not in cols:
+                conn.execute("ALTER TABLE portal_org_nos ADD COLUMN sistema TEXT NOT NULL DEFAULT 'plus'")
+        except Exception:
+            pass
+        try:
             conn.commit()
         except Exception:
             pass
 
-    # Seed inicial (só se árvore vazia)
+    # Linhas antigas sem sistema → plus
     try:
-        row = conn.execute('SELECT COUNT(*) AS c FROM portal_org_nos').fetchone()
-        count = int(row['c'] if hasattr(row, 'keys') else row[0] or 0)
+        conn.execute(
+            "UPDATE portal_org_nos SET sistema = 'plus' WHERE sistema IS NULL OR TRIM(sistema) = ''"
+        )
     except Exception:
-        count = 0
-    if count == 0:
-        _seed_exemplo(conn)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+    # Seed / clone por sistema
+    for sis in SISTEMAS_ORG:
+        try:
+            row = conn.execute(
+                'SELECT COUNT(*) AS c FROM portal_org_nos WHERE sistema = ?',
+                (sis,),
+            ).fetchone()
+            count = int(row['c'] if hasattr(row, 'keys') else row[0] or 0)
+        except Exception:
+            count = 0
+        if count > 0:
+            continue
+        # Preferir clonar a árvore do Plus (se existir); senão seed exemplo.
+        try:
+            plus_count_row = conn.execute(
+                "SELECT COUNT(*) AS c FROM portal_org_nos WHERE sistema = 'plus'"
+            ).fetchone()
+            plus_count = int(
+                plus_count_row['c'] if hasattr(plus_count_row, 'keys') else plus_count_row[0] or 0
+            )
+        except Exception:
+            plus_count = 0
+        if sis != 'plus' and plus_count > 0:
+            _clonar_sistema(conn, origem='plus', destino=sis)
+        else:
+            _seed_exemplo(conn, sistema=sis)
+
     try:
         conn.commit()
     except Exception:
         pass
 
 
-def _seed_exemplo(conn) -> None:
-    """Exemplo Ultrafrio Log (editável depois)."""
+def _seed_exemplo(conn, *, sistema: str = 'plus') -> None:
+    """Exemplo Ultrafrio Log (editável depois), por sistema."""
+    sistema = _norm_sistema(sistema)
     op = _new_id()
     fil = _new_id()
     emb = _new_id()
@@ -130,17 +195,73 @@ def _seed_exemplo(conn) -> None:
             if kind == 'pg':
                 conn.execute(
                     '''INSERT INTO public.portal_org_nos
-                         (id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)
+                         (id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo, sistema)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, ?)
                        ON CONFLICT (id) DO NOTHING''',
-                    (nid, parent, tipo, nome, cnpj, codigo, ordem),
+                    (nid, parent, tipo, nome, cnpj, codigo, ordem, sistema),
                 )
             else:
                 conn.execute(
                     '''INSERT OR IGNORE INTO portal_org_nos
-                         (id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo, criado_em, atualizado_em)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))''',
-                    (nid, parent, tipo, nome, cnpj, codigo, ordem),
+                         (id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo, sistema, criado_em, atualizado_em)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, datetime('now'), datetime('now'))''',
+                    (nid, parent, tipo, nome, cnpj, codigo, ordem, sistema),
+                )
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+
+def _clonar_sistema(conn, *, origem: str, destino: str) -> None:
+    origem = _norm_sistema(origem)
+    destino = _norm_sistema(destino)
+    if origem == destino:
+        return
+    flat = listar_nos_flat(conn, sistema=origem)
+    if not flat:
+        _seed_exemplo(conn, sistema=destino)
+        return
+    id_map = {n['id']: _new_id() for n in flat}
+    kind = getattr(conn, 'kind', 'sqlite')
+    for n in flat:
+        old_id = n['id']
+        new_id = id_map[old_id]
+        old_parent = n.get('parent_id')
+        new_parent = id_map.get(old_parent) if old_parent else None
+        try:
+            if kind == 'pg':
+                conn.execute(
+                    '''INSERT INTO public.portal_org_nos
+                         (id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo, sistema)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, ?)''',
+                    (
+                        new_id,
+                        new_parent,
+                        n['tipo'],
+                        n['nome'],
+                        n.get('cnpj'),
+                        n.get('codigo'),
+                        n.get('ordem') or 100,
+                        destino,
+                    ),
+                )
+            else:
+                conn.execute(
+                    '''INSERT INTO portal_org_nos
+                         (id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo, sistema, criado_em, atualizado_em)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, datetime('now'), datetime('now'))''',
+                    (
+                        new_id,
+                        new_parent,
+                        n['tipo'],
+                        n['nome'],
+                        n.get('cnpj'),
+                        n.get('codigo'),
+                        n.get('ordem') or 100,
+                        destino,
+                    ),
                 )
         except Exception:
             try:
@@ -151,6 +272,7 @@ def _seed_exemplo(conn) -> None:
 
 def _row_to_no(r: Any) -> dict[str, Any]:
     keys = set(r.keys()) if hasattr(r, 'keys') else set()
+
     def g(name: str, idx: int, default=None):
         if name in keys:
             return r[name]
@@ -159,39 +281,57 @@ def _row_to_no(r: Any) -> dict[str, Any]:
         except Exception:
             return default
 
+    tipo = str(g('tipo', 2) or '')
     return {
         'id': str(g('id', 0) or ''),
         'parent_id': (str(g('parent_id', 1)) if g('parent_id', 1) else None),
-        'tipo': str(g('tipo', 2) or ''),
+        'tipo': tipo,
         'nome': str(g('nome', 3) or ''),
         'cnpj': str(g('cnpj', 4) or '') or None,
         'codigo': str(g('codigo', 5) or '') or None,
         'ordem': int(g('ordem', 6) or 100),
         'ativo': bool(g('ativo', 7, True)),
-        'label_tipo': TIPO_LABELS.get(str(g('tipo', 2) or ''), str(g('tipo', 2) or '')),
+        'sistema': _norm_sistema(str(g('sistema', 8) or 'plus')),
+        'label_tipo': TIPO_LABELS.get(tipo, tipo),
         'usuarios_count': 0,
         'children': [],
     }
 
 
-def listar_nos_flat(conn) -> list[dict[str, Any]]:
+def listar_nos_flat(conn, *, sistema: str | None = None) -> list[dict[str, Any]]:
     kind = getattr(conn, 'kind', 'sqlite')
+    sis = _norm_sistema(sistema) if sistema else None
     if kind == 'pg':
-        sql = '''SELECT id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo
-                 FROM portal_org_nos
-                 WHERE COALESCE(ativo, TRUE) IS TRUE
-                 ORDER BY ordem ASC, nome ASC'''
+        if sis:
+            sql = '''SELECT id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo, sistema
+                     FROM portal_org_nos
+                     WHERE COALESCE(ativo, TRUE) IS TRUE AND sistema = ?
+                     ORDER BY ordem ASC, nome ASC'''
+            rows = conn.execute(sql, (sis,)).fetchall()
+        else:
+            sql = '''SELECT id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo, sistema
+                     FROM portal_org_nos
+                     WHERE COALESCE(ativo, TRUE) IS TRUE
+                     ORDER BY sistema ASC, ordem ASC, nome ASC'''
+            rows = conn.execute(sql).fetchall()
     else:
-        sql = '''SELECT id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo
-                 FROM portal_org_nos
-                 WHERE COALESCE(ativo, 1) = 1
-                 ORDER BY ordem ASC, nome ASC'''
-    rows = conn.execute(sql).fetchall()
+        if sis:
+            sql = '''SELECT id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo, sistema
+                     FROM portal_org_nos
+                     WHERE COALESCE(ativo, 1) = 1 AND sistema = ?
+                     ORDER BY ordem ASC, nome ASC'''
+            rows = conn.execute(sql, (sis,)).fetchall()
+        else:
+            sql = '''SELECT id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo, sistema
+                     FROM portal_org_nos
+                     WHERE COALESCE(ativo, 1) = 1
+                     ORDER BY sistema ASC, ordem ASC, nome ASC'''
+            rows = conn.execute(sql).fetchall()
     return [_row_to_no(r) for r in rows]
 
 
-def montar_arvore(conn) -> list[dict[str, Any]]:
-    flat = listar_nos_flat(conn)
+def montar_arvore(conn, sistema: str | None = None) -> list[dict[str, Any]]:
+    flat = listar_nos_flat(conn, sistema=sistema)
     by_id = {n['id']: {**n, 'children': []} for n in flat}
     roots: list[dict[str, Any]] = []
     for n in by_id.values():
@@ -203,8 +343,16 @@ def montar_arvore(conn) -> list[dict[str, Any]]:
     return roots
 
 
+def montar_arvores_por_sistema(conn) -> dict[str, list[dict[str, Any]]]:
+    return {s: montar_arvore(conn, sistema=s) for s in SISTEMAS_ORG}
+
+
 def catalogo_tipos() -> list[dict[str, str]]:
     return [{'id': t, 'label': TIPO_LABELS[t]} for t in TIPOS_ORDEM]
+
+
+def catalogo_sistemas() -> list[dict[str, str]]:
+    return [{'id': s, 'label': SISTEMA_LABELS[s]} for s in SISTEMAS_ORG]
 
 
 def criar_no(
@@ -215,9 +363,11 @@ def criar_no(
     nome: str,
     cnpj: str | None = None,
     codigo: str | None = None,
+    sistema: str | None = 'plus',
 ) -> dict[str, Any]:
     tipo = (tipo or '').strip().lower()
     nome = (nome or '').strip()
+    sistema = _norm_sistema(sistema)
     if not nome:
         raise ValueError('Informe o nome.')
     if tipo not in TIPO_LABELS:
@@ -226,12 +376,15 @@ def criar_no(
     parent_tipo: str | None = None
     if parent_id:
         row = conn.execute(
-            'SELECT tipo FROM portal_org_nos WHERE id = ?',
+            'SELECT tipo, sistema FROM portal_org_nos WHERE id = ?',
             (parent_id,),
         ).fetchone()
         if not row:
             raise ValueError('Empresa pai não encontrada.')
         parent_tipo = str(row['tipo'] if hasattr(row, 'keys') else row[0])
+        parent_sis = _norm_sistema(str(row['sistema'] if hasattr(row, 'keys') else row[1]))
+        if parent_sis != sistema:
+            raise ValueError('Empresa pai pertence a outro sistema.')
     permitidos = FILHOS_PERMITIDOS.get(parent_tipo, ())
     if tipo not in permitidos:
         raise ValueError(
@@ -244,16 +397,16 @@ def criar_no(
     if kind == 'pg':
         conn.execute(
             '''INSERT INTO public.portal_org_nos
-                 (id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo)
-               VALUES (?, ?, ?, ?, ?, ?, 100, TRUE)''',
-            (nid, parent_id, tipo, nome, (cnpj or '').strip() or None, (codigo or '').strip() or None),
+                 (id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo, sistema)
+               VALUES (?, ?, ?, ?, ?, ?, 100, TRUE, ?)''',
+            (nid, parent_id, tipo, nome, (cnpj or '').strip() or None, (codigo or '').strip() or None, sistema),
         )
     else:
         conn.execute(
             '''INSERT INTO portal_org_nos
-                 (id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo, criado_em, atualizado_em)
-               VALUES (?, ?, ?, ?, ?, ?, 100, 1, datetime('now'), datetime('now'))''',
-            (nid, parent_id, tipo, nome, (cnpj or '').strip() or None, (codigo or '').strip() or None),
+                 (id, parent_id, tipo, nome, cnpj, codigo, ordem, ativo, sistema, criado_em, atualizado_em)
+               VALUES (?, ?, ?, ?, ?, ?, 100, 1, ?, datetime('now'), datetime('now'))''',
+            (nid, parent_id, tipo, nome, (cnpj or '').strip() or None, (codigo or '').strip() or None, sistema),
         )
     try:
         conn.commit()
@@ -266,6 +419,7 @@ def criar_no(
         'nome': nome,
         'cnpj': cnpj,
         'codigo': codigo,
+        'sistema': sistema,
         'label_tipo': TIPO_LABELS[tipo],
     }
 
@@ -284,7 +438,6 @@ def atualizar_no(
     row = conn.execute('SELECT id FROM portal_org_nos WHERE id = ?', (no_id,)).fetchone()
     if not row:
         raise ValueError('Empresa não encontrada.')
-    # Lê atual
     cur = conn.execute(
         'SELECT nome, cnpj, codigo FROM portal_org_nos WHERE id = ?',
         (no_id,),
