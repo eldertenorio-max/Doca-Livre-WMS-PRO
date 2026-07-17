@@ -77,6 +77,27 @@ except ImportError:
     portal_enviar_codigo_email = None
     portal_issue_verify_token = None
     portal_verify_token_payload = None
+
+try:
+    from portal_permissoes import (
+        carregar_permissoes_usuario as portal_carregar_permissoes,
+        catalogo_publico as portal_catalogo_permissoes,
+        ensure_portal_permissoes_schema,
+        is_portal_superuser,
+        listar_niveis as portal_listar_niveis,
+        listar_usuarios_portal as portal_listar_usuarios,
+        salvar_hierarquia_usuario as portal_salvar_hierarquia,
+        salvar_permissoes_usuario as portal_salvar_permissoes,
+    )
+except ImportError:
+    ensure_portal_permissoes_schema = None
+    is_portal_superuser = None
+    portal_carregar_permissoes = None
+    portal_catalogo_permissoes = None
+    portal_listar_niveis = None
+    portal_listar_usuarios = None
+    portal_salvar_hierarquia = None
+    portal_salvar_permissoes = None
     portal_otp_debug_enabled = None
     portal_hash_senha = None
     portal_cooldown_ok = None
@@ -542,6 +563,14 @@ def init_db():
                         conn.rollback()
                     except Exception:
                         pass
+            if callable(ensure_portal_permissoes_schema):
+                try:
+                    ensure_portal_permissoes_schema(conn)
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
             # Postgres: sem commit o DDL era revertido ao fechar a conexão (coluna fluxo sumia).
             try:
                 conn.commit()
@@ -636,6 +665,11 @@ def init_db():
         if callable(ensure_portal_auth_schema):
             try:
                 ensure_portal_auth_schema(conn)
+            except Exception:
+                pass
+        if callable(ensure_portal_permissoes_schema):
+            try:
+                ensure_portal_permissoes_schema(conn)
             except Exception:
                 pass
         conn.execute(
@@ -2350,15 +2384,167 @@ def api_portal_login():
         hub_token = sso_issue_hub_token(usuario)
     except ValueError as exc:
         return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+    superuser = bool(callable(is_portal_superuser) and is_portal_superuser(usuario))
+    permissoes = None
+    if callable(portal_carregar_permissoes):
+        try:
+            conn2 = get_db()
+            try:
+                if callable(ensure_portal_permissoes_schema):
+                    ensure_portal_permissoes_schema(conn2)
+                permissoes = portal_carregar_permissoes(conn2, usuario)
+            finally:
+                conn2.close()
+        except Exception:
+            permissoes = None
     return _sso_cors(jsonify({
         'ok': True,
         'usuario': usuario,
         'hub_token': hub_token,
+        'is_superuser': superuser,
+        'permissoes': permissoes,
     }))
 
 
 def _portal_auth_indisponivel():
     return _sso_cors(jsonify({'ok': False, 'erro': 'Cadastro/senha por e-mail indisponível neste servidor.'})), 503
+
+
+def _portal_require_superuser():
+    """Retorna (usuario, None) ou (None, response_erro)."""
+    data = request.get_json(silent=True) or {}
+    usuario = _usuario_from_hub_or_session(data)
+    if not usuario:
+        return None, (_sso_cors(jsonify({'ok': False, 'erro': 'Não autorizado'})), 401)
+    if not callable(is_portal_superuser) or not is_portal_superuser(usuario):
+        return None, (_sso_cors(jsonify({'ok': False, 'erro': 'Apenas Super Usuários (Elder/Diego).'})), 403)
+    return usuario, None
+
+
+@app.route('/api/portal/config/catalogo', methods=['GET', 'OPTIONS'])
+def api_portal_config_catalogo():
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    if not callable(portal_catalogo_permissoes):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Módulo de permissões indisponível.'})), 503
+    return _sso_cors(jsonify({'ok': True, **portal_catalogo_permissoes()}))
+
+
+@app.route('/api/portal/config/overview', methods=['GET', 'POST', 'OPTIONS'])
+def api_portal_config_overview():
+    """Lista usuários, níveis e matriz de permissões (só Super Usuário)."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    actor, err = _portal_require_superuser()
+    if err:
+        return err
+    if not callable(portal_listar_usuarios) or not callable(portal_carregar_permissoes):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Módulo de permissões indisponível.'})), 503
+    conn = get_db()
+    try:
+        if callable(ensure_portal_permissoes_schema):
+            ensure_portal_permissoes_schema(conn)
+        usuarios = portal_listar_usuarios(conn)
+        niveis = portal_listar_niveis(conn) if callable(portal_listar_niveis) else []
+        matriz = {}
+        for u in usuarios:
+            matriz[u['usuario']] = portal_carregar_permissoes(conn, u['usuario'])
+        catalogo = portal_catalogo_permissoes() if callable(portal_catalogo_permissoes) else {}
+    finally:
+        conn.close()
+    return _sso_cors(jsonify({
+        'ok': True,
+        'actor': actor,
+        'usuarios': usuarios,
+        'niveis': niveis,
+        'matriz': matriz,
+        **catalogo,
+    }))
+
+
+@app.route('/api/portal/config/permissoes', methods=['PUT', 'POST', 'OPTIONS'])
+def api_portal_config_salvar_permissoes():
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    actor, err = _portal_require_superuser()
+    if err:
+        return err
+    if not callable(portal_salvar_permissoes):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Módulo de permissões indisponível.'})), 503
+    data = request.get_json(silent=True) or {}
+    alvo = (data.get('usuario') or '').strip()
+    matriz = data.get('permissoes') or data.get('matriz') or {}
+    if not alvo:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe o usuário alvo.'})), 400
+    if not isinstance(matriz, dict):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'permissoes inválidas.'})), 400
+    conn = get_db()
+    try:
+        if callable(ensure_portal_permissoes_schema):
+            ensure_portal_permissoes_schema(conn)
+        portal_salvar_permissoes(conn, usuario=alvo, matriz=matriz, atualizado_por=actor)
+    except ValueError as exc:
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+    finally:
+        conn.close()
+    return _sso_cors(jsonify({'ok': True, 'usuario': alvo, 'mensagem': 'Permissões salvas.'}))
+
+
+@app.route('/api/portal/config/hierarquia', methods=['PUT', 'POST', 'OPTIONS'])
+def api_portal_config_salvar_hierarquia():
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    actor, err = _portal_require_superuser()
+    if err:
+        return err
+    if not callable(portal_salvar_hierarquia):
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Módulo de hierarquia indisponível.'})), 503
+    data = request.get_json(silent=True) or {}
+    alvo = (data.get('usuario') or '').strip()
+    if not alvo:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Informe o usuário alvo.'})), 400
+    conn = get_db()
+    try:
+        if callable(ensure_portal_permissoes_schema):
+            ensure_portal_permissoes_schema(conn)
+        portal_salvar_hierarquia(
+            conn,
+            usuario=alvo,
+            nivel=data.get('nivel'),
+            superior=data.get('superior'),
+        )
+    except ValueError as exc:
+        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+    finally:
+        conn.close()
+    return _sso_cors(jsonify({'ok': True, 'usuario': alvo, 'mensagem': 'Hierarquia salva.', 'actor': actor}))
+
+
+@app.route('/api/portal/me', methods=['GET', 'POST', 'OPTIONS'])
+def api_portal_me():
+    """Dados do usuário logado no hub (superuser + permissões)."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    data = request.get_json(silent=True) or {}
+    usuario = _usuario_from_hub_or_session(data)
+    if not usuario:
+        return _sso_cors(jsonify({'ok': False, 'erro': 'Não autorizado'})), 401
+    superuser = bool(callable(is_portal_superuser) and is_portal_superuser(usuario))
+    permissoes = None
+    if callable(portal_carregar_permissoes):
+        conn = get_db()
+        try:
+            if callable(ensure_portal_permissoes_schema):
+                ensure_portal_permissoes_schema(conn)
+            permissoes = portal_carregar_permissoes(conn, usuario)
+        finally:
+            conn.close()
+    return _sso_cors(jsonify({
+        'ok': True,
+        'usuario': usuario,
+        'is_superuser': superuser,
+        'permissoes': permissoes,
+    }))
 
 
 def _portal_resolver_email_usuario(conn, usuario_ou_email):
@@ -2802,6 +2988,26 @@ def api_sso_issue():
     system_id = (data.get('system') or data.get('sistema') or '').strip().lower()
     if system_id not in SSO_SYSTEMS:
         return _sso_cors(jsonify({'ok': False, 'erro': 'Informe system=light, plus ou pro.'})), 400
+    # Respeita permissão de sistema do portal (exceto Super Usuário).
+    if callable(portal_carregar_permissoes) and not (
+        callable(is_portal_superuser) and is_portal_superuser(usuario)
+    ):
+        try:
+            conn_perm = get_db()
+            try:
+                if callable(ensure_portal_permissoes_schema):
+                    ensure_portal_permissoes_schema(conn_perm)
+                matriz = portal_carregar_permissoes(conn_perm, usuario)
+            finally:
+                conn_perm.close()
+            bloco = (matriz or {}).get(system_id) or {}
+            if bloco.get('pode_acessar') is False:
+                return _sso_cors(jsonify({
+                    'ok': False,
+                    'erro': 'Você não tem permissão para acessar este sistema.',
+                })), 403
+        except Exception:
+            pass
     try:
         token = sso_issue_token(usuario, system_id)
         url = build_sso_redirect_url(system_id, token)
