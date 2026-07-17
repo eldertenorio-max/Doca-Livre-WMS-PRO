@@ -2400,15 +2400,35 @@ def api_portal_login():
     if not callable(sso_issue_hub_token):
         return _sso_cors(jsonify({'ok': False, 'erro': 'Portal SSO indisponível.'})), 503
     data = request.get_json(silent=True) or {}
-    usuario = (data.get('usuario') or '').strip()
+    usuario_in = (data.get('usuario') or '').strip()
     senha = data.get('senha') or ''
-    if not usuario or not senha:
+    if not usuario_in or not senha:
         return _sso_cors(jsonify({'ok': False, 'erro': 'Informe usuário e senha.'})), 400
     conn = get_db()
-    row = conn.execute('SELECT id, senha_hash FROM usuarios WHERE usuario = ?', (usuario,)).fetchone()
+    # Aceita usuário exato, case-insensitive ou e-mail cadastrado.
+    row = conn.execute(
+        'SELECT id, usuario, senha_hash FROM usuarios WHERE usuario = ?',
+        (usuario_in,),
+    ).fetchone()
+    if not row:
+        row = conn.execute(
+            'SELECT id, usuario, senha_hash FROM usuarios WHERE lower(usuario) = lower(?)',
+            (usuario_in,),
+        ).fetchone()
+    if not row and '@' in usuario_in:
+        email_n = (
+            portal_normalize_email(usuario_in)
+            if callable(portal_normalize_email)
+            else usuario_in.strip().lower()
+        )
+        row = conn.execute(
+            "SELECT id, usuario, senha_hash FROM usuarios WHERE lower(COALESCE(email, '')) = ?",
+            (email_n,),
+        ).fetchone()
     conn.close()
     if not row or not check_password_hash(row['senha_hash'], senha):
         return _sso_cors(jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})), 401
+    usuario = str(row['usuario'] if hasattr(row, 'keys') else row[1])
     try:
         hub_token = sso_issue_hub_token(usuario)
     except ValueError as exc:

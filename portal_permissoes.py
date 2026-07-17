@@ -78,6 +78,14 @@ def is_portal_superuser(usuario: str) -> bool:
     for su in PORTAL_SUPERUSERS:
         if u.startswith(su + '.') or u.startswith(su + '@'):
             return True
+        if local.startswith(su) and su in ('diego', 'elder'):
+            return True
+    # Nomes comuns sem ponto: diegoisidoro / eldertenorio
+    if local.replace('.', '') in {'diegoisidoro', 'eldertenorio'} or u.replace('.', '') in {
+        'diegoisidoro',
+        'eldertenorio',
+    }:
+        return True
     return False
 
 
