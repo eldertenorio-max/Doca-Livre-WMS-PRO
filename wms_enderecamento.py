@@ -3050,11 +3050,9 @@ def _listar_paletes_fora(conn):
 
 
 def _seed_wms_defaults(conn):
-    """Câmaras, zoneamento e perguntas de qualidade padrão."""
+    """Câmaras, zoneamento e perguntas de qualidade padrão (idempotente)."""
     t_cam = _tbl(conn, 'wms_camara')
-    n = conn.execute(f'SELECT COUNT(*) AS c FROM {t_cam}').fetchone()
-    if n and (n['c'] if isinstance(n, dict) else n[0]) > 0:
-        return
+    t_z = _tbl(conn, 'wms_zoneamento')
     now = _now_iso()
     camaras = [
         (11, 'Câmara 11', 144),
@@ -3063,34 +3061,45 @@ def _seed_wms_defaults(conn):
         (21, 'Câmara 21', 28),
     ]
     for cod, desc, tot in camaras:
-        if _is_pg(conn):
-            conn.execute(
-                f'INSERT INTO {t_cam} (codigo, descricao, total_posicoes) VALUES (?, ?, ?) ON CONFLICT (codigo) DO NOTHING',
-                (cod, desc, tot),
-            )
-        else:
-            conn.execute(
-                f'INSERT OR IGNORE INTO {t_cam} (codigo, descricao, total_posicoes, ativo, criado_em) VALUES (?, ?, ?, 1, ?)',
-                (cod, desc, tot, now),
-            )
+        try:
+            if _is_pg(conn):
+                conn.execute(
+                    f'INSERT INTO {t_cam} (codigo, descricao, total_posicoes) VALUES (?, ?, ?) ON CONFLICT (codigo) DO NOTHING',
+                    (cod, desc, tot),
+                )
+            else:
+                conn.execute(
+                    f'INSERT OR IGNORE INTO {t_cam} (codigo, descricao, total_posicoes, ativo, criado_em) VALUES (?, ?, ?, 1, ?)',
+                    (cod, desc, tot, now),
+                )
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
     zone = [
         ('A', 11, 1), ('A', 12, 2),
         ('B', 11, 1), ('B', 12, 2),
         ('C', 12, 1), ('C', 13, 2),
         ('D', 13, 1), ('D', 21, 2),
     ]
-    t_z = _tbl(conn, 'wms_zoneamento')
     for cat, cam, pri in zone:
-        if _is_pg(conn):
-            conn.execute(
-                f'INSERT INTO {t_z} (categoria, camara, prioridade) VALUES (?, ?, ?) ON CONFLICT (categoria, camara) DO NOTHING',
-                (cat, cam, pri),
-            )
-        else:
-            conn.execute(
-                f'INSERT OR IGNORE INTO {t_z} (categoria, camara, prioridade, ativo) VALUES (?, ?, ?, 1)',
-                (cat, cam, pri),
-            )
+        try:
+            if _is_pg(conn):
+                conn.execute(
+                    f'INSERT INTO {t_z} (categoria, camara, prioridade) VALUES (?, ?, ?) ON CONFLICT (categoria, camara) DO NOTHING',
+                    (cat, cam, pri),
+                )
+            else:
+                conn.execute(
+                    f'INSERT OR IGNORE INTO {t_z} (categoria, camara, prioridade, ativo) VALUES (?, ?, ?, 1)',
+                    (cat, cam, pri),
+                )
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
     perguntas = [
         (1, 'Veículo consta lacrado?'),
         (2, 'Divisória térmica em boas condições?'),
@@ -3102,21 +3111,27 @@ def _seed_wms_defaults(conn):
     t_cq = _tbl(conn, 'wms_check_qualidade')
     for ordem, pergunta in perguntas:
         tipo = 'numero' if 'Temperatura' in pergunta or 'lacre' in pergunta.lower() else 'sim_nao'
-        exist = conn.execute(
-            f'SELECT 1 FROM {t_cq} WHERE contexto = ? AND pergunta = ?',
-            ('recebimento', pergunta),
-        ).fetchone()
-        if not exist:
-            if _is_pg(conn):
-                conn.execute(
-                    f'INSERT INTO {t_cq} (contexto, ordem, pergunta, tipo_resposta) VALUES (?, ?, ?, ?)',
-                    ('recebimento', ordem, pergunta, tipo),
-                )
-            else:
-                conn.execute(
-                    f'INSERT INTO {t_cq} (contexto, ordem, pergunta, tipo_resposta, ativo) VALUES (?, ?, ?, ?, 1)',
-                    ('recebimento', ordem, pergunta, tipo),
-                )
+        try:
+            exist = conn.execute(
+                f'SELECT 1 FROM {t_cq} WHERE contexto = ? AND pergunta = ?',
+                ('recebimento', pergunta),
+            ).fetchone()
+            if not exist:
+                if _is_pg(conn):
+                    conn.execute(
+                        f'INSERT INTO {t_cq} (contexto, ordem, pergunta, tipo_resposta) VALUES (?, ?, ?, ?)',
+                        ('recebimento', ordem, pergunta, tipo),
+                    )
+                else:
+                    conn.execute(
+                        f'INSERT INTO {t_cq} (contexto, ordem, pergunta, tipo_resposta, ativo) VALUES (?, ?, ?, ?, 1)',
+                        ('recebimento', ordem, pergunta, tipo),
+                    )
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
     try:
         conn.commit()
     except Exception:
@@ -6061,40 +6076,73 @@ def api_wms_painel():
     conn = _db()
     ensure_wms_schema(conn)
     _seed_wms_defaults(conn)
+
+    def _safe(label, fn, default):
+        try:
+            return fn()
+        except Exception as exc:
+            try:
+                print('[wms/painel] %s falhou: %s' % (label, exc), flush=True)
+            except Exception:
+                pass
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return default
+
     try:
-        pesos = _pesos_categoria_produtos(conn)
-        camaras = _ocupacao_camara(conn)
-        dist_cat = _distribuicao_categoria(conn)
-        zoneamento = _listar_zoneamento(conn)
+        pesos = _safe('pesos', lambda: _pesos_categoria_produtos(conn), {})
+        camaras = _safe('camaras', lambda: _ocupacao_camara(conn), [])
+        dist_cat = _safe('dist_cat', lambda: _distribuicao_categoria(conn), [])
+        zoneamento = _safe('zoneamento', lambda: _listar_zoneamento(conn), [])
         t_mov = _tbl(conn, 'wms_movimentacao')
         t_rec = _tbl(conn, 'wms_recebimento')
         t_inv = _tbl(conn, 'wms_inventario')
-        pendentes = conn.execute(
-            f"SELECT COUNT(*) AS c FROM {t_mov} WHERE status = 'pendente'"
-        ).fetchone()
-        rec_abertos = conn.execute(
-            f"SELECT COUNT(*) AS c FROM {t_rec} WHERE status NOT IN ('finalizado', 'cancelado')"
-        ).fetchone()
-        inv_ativos = conn.execute(
-            f"SELECT COUNT(*) AS c FROM {t_inv} WHERE status IN ('ativo', 'em_andamento')"
-        ).fetchone()
-        paletes_fora = _contar_paletes_fora(conn)
-        _ensure_produto_planejamento_columns(conn)
+        pendentes = _safe(
+            'mov_pend',
+            lambda: conn.execute(f"SELECT COUNT(*) AS c FROM {t_mov} WHERE status = 'pendente'").fetchone(),
+            None,
+        )
+        rec_abertos = _safe(
+            'rec_abertos',
+            lambda: conn.execute(
+                f"SELECT COUNT(*) AS c FROM {t_rec} WHERE status NOT IN ('finalizado', 'cancelado')"
+            ).fetchone(),
+            None,
+        )
+        inv_ativos = _safe(
+            'inv_ativos',
+            lambda: conn.execute(
+                f"SELECT COUNT(*) AS c FROM {t_inv} WHERE status IN ('ativo', 'em_andamento')"
+            ).fetchone(),
+            None,
+        )
+        paletes_fora = _safe('paletes_fora', lambda: _contar_paletes_fora(conn), 0)
+        _safe('produto_cols', lambda: _ensure_produto_planejamento_columns(conn), None)
         t_prod = _tbl(conn, 'wms_produto_enderecamento')
-        resumo_status = _resumo_status_planejamento(conn)
-        pesos_pos = conn.execute(
-            f'''SELECT UPPER(SUBSTR(categoria, 1, 1)) AS cat,
-                       SUM(COALESCE(NULLIF(posicoes_med, 0), 1)) AS posicoes
-                FROM {t_prod} WHERE {_ativo_sql(conn)}
-                GROUP BY UPPER(SUBSTR(categoria, 1, 1))'''
-        ).fetchall()
+        resumo_status = _safe('resumo_status', lambda: _resumo_status_planejamento(conn), {})
+        pesos_pos = _safe(
+            'pesos_pos',
+            lambda: conn.execute(
+                f'''SELECT UPPER(SUBSTR(categoria, 1, 1)) AS cat,
+                           SUM(COALESCE(NULLIF(posicoes_med, 0), 1)) AS posicoes
+                    FROM {t_prod} WHERE {_ativo_sql(conn)}
+                    GROUP BY UPPER(SUBSTR(categoria, 1, 1))'''
+            ).fetchall(),
+            [],
+        )
         conn.close()
         return jsonify({
+            'ok': True,
             'camaras': camaras,
             'distribuicao_categoria': dist_cat,
             'zoneamento': zoneamento,
             'pesos_categoria': pesos,
-            'pesos_posicoes_categoria': {(_row_dict(r) or {}).get('cat'): int((_row_dict(r) or {}).get('posicoes') or 0) for r in pesos_pos},
+            'pesos_posicoes_categoria': {
+                (_row_dict(r) or {}).get('cat'): int((_row_dict(r) or {}).get('posicoes') or 0)
+                for r in (pesos_pos or [])
+            },
             'resumo_status_planejamento': resumo_status,
             'fonte_estoque': 'wms',
             'movimentacoes_pendentes': _int_col(pendentes),
@@ -6107,7 +6155,7 @@ def api_wms_painel():
             conn.close()
         except Exception:
             pass
-        return jsonify({'erro': str(e)}), 500
+        return jsonify({'ok': False, 'erro': str(e)}), 500
 
 
 @bp.route('/layout/gerar', methods=['POST'])

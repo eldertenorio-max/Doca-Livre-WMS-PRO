@@ -1808,6 +1808,9 @@ function initEventosStream() {
 // Inicialização
 document.addEventListener('DOMContentLoaded', function() {
     initModuloSidebars();
+    // WMS precisa registrar _wmsIniciarModulo ANTES de initModulos:
+    // a URL ?modulo=enderecamento-wms chama mostrarModulo no boot.
+    initWmsEnderecamento();
     initModulos();
     initTabs();
     if (typeof prefetchBaixadosRavex === 'function') {
@@ -1816,7 +1819,6 @@ document.addEventListener('DOMContentLoaded', function() {
     initDevolucoesTabs();
     initDevolucaoNfFlow();
     initEstoqueSp();
-    initWmsEnderecamento();
     initTerceirosTabs();
     void _terceirosGarantirPrefetchLista();
     initTerceirosAlertasHeader();
@@ -3185,6 +3187,9 @@ function initModulos() {
         } else if (id === 'enderecamento-wms') {
             if (typeof window._wmsIniciarModulo === 'function') {
                 window._wmsIniciarModulo(opts.wmsTab);
+            } else if (typeof loadWmsPainel === 'function') {
+                // Fallback se initWms ainda não registrou o boot.
+                loadWmsPainel();
             }
         } else if (id === 'terceiros') {
             void _terceirosGarantirPrefetchLista();
@@ -3972,7 +3977,15 @@ function _wmsErroMsg(data, fallback) {
 }
 
 async function _wmsFetchGet(path, timeoutMs) {
-    return _modFetchGet(path, timeoutMs || 45000);
+    // Usa fetchAPIComTimeout diretamente (evita depender de _modFetchGet, definido mais abaixo no arquivo).
+    if (typeof fetchAPIComTimeout === 'function') {
+        var sep = path.indexOf('?') >= 0 ? '&' : '?';
+        return fetchAPIComTimeout(path + sep + '_=' + Date.now(), {}, timeoutMs || 45000);
+    }
+    if (typeof _modFetchGet === 'function') {
+        return _modFetchGet(path, timeoutMs || 45000);
+    }
+    return { erro: 'Cliente WMS ainda não inicializado.' };
 }
 
 function _wmsSetTbody(id, cols, html) {
@@ -6620,6 +6633,15 @@ function wmsAtualizarAvisoEstadoEntrada() {
 
 function initWmsEnderecamento() {
     if (!document.getElementById('modulo-enderecamento-wms')) return;
+    // Expõe o boot do módulo o quanto antes (antes de binds que possam falhar).
+    window._wmsIniciarModulo = function(tab) {
+        var abasWms = ['painel', 'localizacoes', 'etiquetas-longarina', 'produtos', 'movimentacoes', 'recebimento', 'controle-paletes', 'historico-nf', 'relatorios', 'separacao', 'enderecamento', 'ocupacao', 'estoque-seguranca', 'shelf-life', 'visao-cruzada', 'inventario', 'pesquisa'];
+        var t = (tab || 'painel').trim();
+        if (t === 'areas-especiais') t = 'enderecamento';
+        if (abasWms.indexOf(t) === -1) t = 'painel';
+        _wmsMostrarSubtab(t);
+    };
+    try {
     _wmsEndBindLoadingUi();
     if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels();
     document.querySelectorAll('.wms-subtab[data-wms-tab]').forEach(function(btn) {
@@ -6811,14 +6833,19 @@ function initWmsEnderecamento() {
         }
     });
 
-    window._wmsIniciarModulo = function(tab) {
-        var abasWms = ['painel', 'localizacoes', 'etiquetas-longarina', 'produtos', 'movimentacoes', 'recebimento', 'controle-paletes', 'historico-nf', 'relatorios', 'separacao', 'enderecamento', 'ocupacao', 'estoque-seguranca', 'shelf-life', 'visao-cruzada', 'inventario', 'pesquisa'];
-        var t = (tab || 'painel').trim();
-        if (t === 'areas-especiais') t = 'enderecamento';
-        if (abasWms.indexOf(t) === -1) t = 'painel';
-        _wmsMostrarSubtab(t);
-    };
     wmsBipInitStepper();
+    } catch (eInit) {
+        try { console.error('initWmsEnderecamento:', eInit); } catch (e0) {}
+    }
+    // Se o módulo já estiver visível (ex.: reload com ?modulo=), carrega a aba ativa.
+    try {
+        var wmsMod = document.getElementById('modulo-enderecamento-wms');
+        if (wmsMod && !wmsMod.hidden && typeof window._wmsIniciarModulo === 'function') {
+            var abaAtiva = document.querySelector('.wms-subtab.active[data-wms-tab]');
+            var tab = (abaAtiva && abaAtiva.getAttribute('data-wms-tab')) || 'painel';
+            window._wmsIniciarModulo(tab);
+        }
+    } catch (eBoot) {}
 }
 
 async function wmsRedistribuirLayout() {
