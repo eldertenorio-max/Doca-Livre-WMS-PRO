@@ -8256,8 +8256,25 @@ def _agrupar_faixas_por_camara(faixas, nomes_camara=None):
 
 def _opcoes_impressao_longarina(conn):
     """Câmaras, ruas e colunas do layout para filtros de impressão de etiquetas."""
-    _ensure_layout_enderecos(conn)
-    nomes = _map_nomes_camaras(conn)
+    # Não bloqueia as sugestões se o ensure de layout falhar/demorar.
+    try:
+        _ensure_layout_enderecos(conn)
+    except Exception as exc:
+        try:
+            print('[wms/etq-opcoes] ensure_layout falhou:', exc, flush=True)
+        except Exception:
+            pass
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+    nomes = {}
+    try:
+        nomes = _map_nomes_camaras(conn)
+    except Exception:
+        nomes = {}
+
     t_loc = _tbl(conn, 'wms_localizacao')
     db_cols = {}
     try:
@@ -8272,6 +8289,10 @@ def _opcoes_impressao_longarina(conn):
             key = (int(rd.get('camara') or 0), str(rd.get('rua') or '').upper(), int(rd.get('posicao') or 0))
             db_cols[key] = int(rd.get('niveis') or 0)
     except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         db_cols = {}
 
     camaras_out = []
@@ -8281,13 +8302,23 @@ def _opcoes_impressao_longarina(conn):
             continue
         niveis = max(1, int(bloco.get('niveis') or 5))
         ruas_map = {}
-        for _cam, rua, pos, _niv, dest_acao, _dest_lbl, _apenas_rotulo in _coords_from_bloco_layout(bloco):
+        try:
+            coords = _coords_from_bloco_layout(bloco)
+        except Exception:
+            coords = []
+        for _cam, rua, pos, _niv, dest_acao, _dest_lbl, _apenas_rotulo in coords:
             if dest_acao:
                 continue
             rua = str(rua or '').strip().upper()
             if not rua:
                 continue
             ruas_map.setdefault(rua, set()).add(int(pos))
+        # Fallback: monta a partir do que já existe no banco.
+        if not ruas_map:
+            for (c_cam, c_rua, c_pos), _nb in db_cols.items():
+                if c_cam != cod or not c_rua:
+                    continue
+                ruas_map.setdefault(c_rua, set()).add(int(c_pos))
         ruas_out = []
         for rua in sorted(ruas_map.keys()):
             colunas = []
@@ -8312,6 +8343,7 @@ def _opcoes_impressao_longarina(conn):
         })
     camaras_out.sort(key=lambda x: x['codigo'])
     return {
+        'ok': True,
         'camaras': camaras_out,
         'niveis_padrao': max((c['niveis'] for c in camaras_out), default=5),
     }

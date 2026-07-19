@@ -7124,12 +7124,25 @@ function wmsEtqSincronizarFiltros(origem) {
                 if (pos && !cols.some(function(col) { return parseInt(col.posicao, 10) === parseInt(pos, 10); })) return;
                 ruasOpts.push({ value: r.letra, label: 'Rua ' + r.letra + ' (' + (r.total_colunas || cols.length) + ' col.)' });
             });
-        } else if (rua) {
-            ruasOpts.push({ value: rua, label: 'Rua ' + rua });
+        } else {
+            // Sem câmara: lista união de ruas de todas as câmaras (sugestões sempre visíveis).
+            var seenRua = {};
+            (op.camaras || []).forEach(function(c) {
+                (c.ruas || []).forEach(function(r) {
+                    var L = String(r.letra || '').toUpperCase();
+                    if (!L || seenRua[L]) return;
+                    if (pos && !(r.colunas || []).some(function(col) {
+                        return parseInt(col.posicao, 10) === parseInt(pos, 10);
+                    })) return;
+                    seenRua[L] = true;
+                    ruasOpts.push({ value: L, label: 'Rua ' + L });
+                });
+            });
+            ruasOpts.sort(function(a, b) { return String(a.value).localeCompare(String(b.value)); });
         }
 
         if (origem !== 'rua') {
-            _wmsEtqFillSelect(selRua, ruasOpts, cam ? 'Selecione a rua' : 'Selecione a câmara primeiro', rua);
+            _wmsEtqFillSelect(selRua, ruasOpts, 'Selecione a rua', rua);
             rua = selRua ? String(selRua.value || '').toUpperCase() : rua;
         }
 
@@ -7144,21 +7157,25 @@ function wmsEtqSincronizarFiltros(origem) {
                 if (nb > 0 && nb < n) lbl += ' (' + nb + ' no banco)';
                 colOpts.push({ value: p, label: lbl });
             });
-        } else if (camObj) {
-            var seen = {};
-            (camObj.ruas || []).forEach(function(r) {
-                (r.colunas || []).forEach(function(col) {
-                    var p = parseInt(col.posicao, 10);
-                    if (seen[p]) return;
-                    seen[p] = true;
-                    colOpts.push({ value: p, label: 'Col ' + p });
+        } else {
+            var seenCol = {};
+            var fonteCams = camObj ? [camObj] : (op.camaras || []);
+            fonteCams.forEach(function(c) {
+                (c.ruas || []).forEach(function(r) {
+                    if (rua && String(r.letra || '').toUpperCase() !== rua) return;
+                    (r.colunas || []).forEach(function(col) {
+                        var p = parseInt(col.posicao, 10);
+                        if (!p || seenCol[p]) return;
+                        seenCol[p] = true;
+                        colOpts.push({ value: p, label: 'Col ' + p });
+                    });
                 });
             });
             colOpts.sort(function(a, b) { return parseInt(a.value, 10) - parseInt(b.value, 10); });
         }
 
         if (origem !== 'coluna') {
-            _wmsEtqFillSelect(selPos, colOpts, rua ? 'Selecione a coluna' : (cam ? 'Selecione a rua' : 'Selecione a câmara'), pos);
+            _wmsEtqFillSelect(selPos, colOpts, 'Selecione a coluna', pos);
             pos = selPos ? selPos.value : pos;
         }
 
@@ -7200,17 +7217,38 @@ function wmsInitEtqLongarinaFiltros() {
 }
 
 async function loadWmsEtqLongarinaOpcoes() {
+    var selCam = document.getElementById('wms-etq-camara');
+    var selRua = document.getElementById('wms-etq-rua');
+    var selPos = document.getElementById('wms-etq-pos');
+    if (!window._wmsEtqOpcoes) {
+        _wmsEtqFillSelect(selCam, [], 'Carregando…');
+        _wmsEtqFillSelect(selRua, [], 'Carregando…');
+        _wmsEtqFillSelect(selPos, [], 'Carregando…');
+    }
     try {
         var data = await _wmsFetchGet('/wms/etiqueta/enderecos/opcoes', 45000);
         if (!data || data.erro) {
             showMessage(_wmsErroMsg(data, 'Não foi possível carregar ruas/colunas do layout.'), 'warning');
+            if (!window._wmsEtqOpcoes) {
+                _wmsEtqFillSelect(selCam, [], 'Selecione');
+                _wmsEtqFillSelect(selRua, [], 'Selecione');
+                _wmsEtqFillSelect(selPos, [], 'Selecione');
+            }
             return;
+        }
+        if (!(data.camaras || []).length) {
+            showMessage('Nenhuma câmara no layout. No Painel WMS, use «Recalcular distribuição».', 'warning');
         }
         window._wmsEtqOpcoes = data;
         wmsInitEtqLongarinaFiltros();
         wmsEtqSincronizarFiltros('init');
     } catch (e) {
         showMessage('Erro ao carregar opções de impressão: ' + ((e && e.message) || 'falha'), 'warning');
+        if (!window._wmsEtqOpcoes) {
+            _wmsEtqFillSelect(selCam, [], 'Selecione');
+            _wmsEtqFillSelect(selRua, [], 'Selecione');
+            _wmsEtqFillSelect(selPos, [], 'Selecione');
+        }
     }
 }
 
@@ -7269,14 +7307,19 @@ async function loadWmsEtqLongarinaResumo(opcoes) {
             html += '<p class="info-text" style="margin:8px 0 0 0;">Nenhum endereço no banco. No <strong>Painel WMS</strong>, use «Recalcular distribuição» ou aguarde a geração automática do layout.</p>';
         }
         box.innerHTML = html;
-        if (opcoes.recarregarOpcoes !== false) loadWmsEtqLongarinaOpcoes();
+        // Recarrega opções após sync de layout (níveis atualizados).
+        if (opcoes.jaSincronizou || opcoes.recarregarOpcoes) loadWmsEtqLongarinaOpcoes();
     } catch (e) {
         box.innerHTML = '<p style="margin:0;color:#c62828;">' + escHtml((e && e.message) || 'Erro.') + '</p>';
+        // Mesmo se o resumo falhar, tenta popular os selects.
+        loadWmsEtqLongarinaOpcoes();
     }
 }
 
 function loadWmsEtiquetasLongarinaAba() {
-    loadWmsEtqLongarinaResumo({ recarregarOpcoes: true });
+    // Opções dos selects não dependem do resumo (que pode demorar com sync).
+    loadWmsEtqLongarinaOpcoes();
+    loadWmsEtqLongarinaResumo({ recarregarOpcoes: false });
 }
 
 function wmsImprimirEtqTodasLongarinas() {
