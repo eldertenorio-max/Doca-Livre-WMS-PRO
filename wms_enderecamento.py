@@ -32,7 +32,7 @@ _WMS_SCHEMA_READY = False
 _WMS_AUX_DATA_READY = False
 _WMS_DEFAULTS_SEEDED = False
 _WMS_PAINEL_CACHE = {'ts': 0.0, 'payload': None}
-_WMS_PAINEL_TTL_SEC = 25
+_WMS_PAINEL_TTL_SEC = 90
 
 
 def _invalidate_wms_painel_cache():
@@ -6204,10 +6204,12 @@ def api_wms_painel():
     import time as _time
 
     force = str(request.args.get('force') or '').strip().lower() in ('1', 'true', 'sim')
+    leve = str(request.args.get('leve') or '').strip().lower() in ('1', 'true', 'sim')
     now = _time.time()
     cached = _WMS_PAINEL_CACHE.get('payload')
     if (
         not force
+        and not leve
         and cached
         and (now - float(_WMS_PAINEL_CACHE.get('ts') or 0)) < _WMS_PAINEL_TTL_SEC
     ):
@@ -6238,6 +6240,30 @@ def api_wms_painel():
             return default
 
     try:
+        # leve=1: resposta imediata (sem varredura de localizações).
+        if leve:
+            zoneamento = _safe('zoneamento', lambda: _listar_zoneamento(conn), [])
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return jsonify({
+                'ok': True,
+                'leve': True,
+                'camaras': (cached or {}).get('camaras') or [],
+                'distribuicao_categoria': (cached or {}).get('distribuicao_categoria') or [],
+                'zoneamento': zoneamento or (cached or {}).get('zoneamento') or [],
+                'pesos_categoria': (cached or {}).get('pesos_categoria') or {'A': 1, 'B': 1, 'C': 1, 'D': 1},
+                'pesos_posicoes_categoria': (cached or {}).get('pesos_posicoes_categoria') or {'A': 1, 'B': 1, 'C': 1, 'D': 1},
+                'resumo_status_planejamento': (cached or {}).get('resumo_status_planejamento') or {},
+                'fonte_estoque': 'wms',
+                'movimentacoes_pendentes': int((cached or {}).get('movimentacoes_pendentes') or 0),
+                'recebimentos_abertos': int((cached or {}).get('recebimentos_abertos') or 0),
+                'inventarios_ativos': int((cached or {}).get('inventarios_ativos') or 0),
+                'paletes_fora_armazem': int((cached or {}).get('paletes_fora_armazem') or 0),
+                'cache_ttl_sec': _WMS_PAINEL_TTL_SEC,
+            })
+
         pair = _safe('ocup_dist', lambda: _painel_ocupacao_e_dist(conn), ([], []))
         camaras = pair[0] if isinstance(pair, (list, tuple)) and len(pair) == 2 else []
         dist_cat = pair[1] if isinstance(pair, (list, tuple)) and len(pair) == 2 else []

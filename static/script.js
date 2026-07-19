@@ -3993,14 +3993,47 @@ async function _wmsFetchGetOnce(path, timeoutMs) {
     var sep = path.indexOf('?') >= 0 ? '&' : '?';
     var full = path + sep + '_=' + Date.now();
     if (typeof _fetchAPIComTimeoutUma === 'function') {
-        return _fetchAPIComTimeoutUma(full, {}, timeoutMs || 20000);
+        return _fetchAPIComTimeoutUma(full, {}, timeoutMs || 12000);
     }
-    return _wmsFetchGet(path, timeoutMs || 20000);
+    return _wmsFetchGet(path, timeoutMs || 12000);
 }
 
 function _wmsSetTbody(id, cols, html) {
     var tb = document.getElementById(id);
     if (tb) tb.innerHTML = '<tr><td colspan="' + cols + '">' + html + '</td></tr>';
+}
+
+function _wmsSessionCacheGet(key) {
+    try {
+        var raw = sessionStorage.getItem('wms_ui_' + key);
+        if (!raw) return null;
+        var parsed = JSON.parse(raw);
+        return parsed && parsed.data ? parsed : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function _wmsSessionCacheSet(key, data) {
+    try {
+        sessionStorage.setItem('wms_ui_' + key, JSON.stringify({ ts: Date.now(), data: data }));
+    } catch (e) {}
+}
+
+/** Troca de aba imediata: pinta a UI e só depois busca dados. */
+function _wmsDefer(fn) {
+    window.setTimeout(function() {
+        try { fn(); } catch (e) {
+            try { console.error('[wms] defer', e); } catch (e2) {}
+        }
+    }, 0);
+}
+
+function _wmsSoftFailMsg(data, fallback) {
+    if (data && (data._timeout || data._cancelado || data._falhaGateway)) {
+        return 'Atualizando… se demorar, clique em Atualizar.';
+    }
+    return _wmsErroMsg(data, fallback || 'Não foi possível carregar.');
 }
 
 window._wmsRelatorioUltimo = null;
@@ -4593,6 +4626,7 @@ function wmsExportarRelatorioCsv() {
 
 function _wmsMostrarSubtab(tab) {
     tab = tab || 'painel';
+    // 1) Troca visual imediata — sem esperar API.
     document.querySelectorAll('.wms-subtab[data-wms-tab]').forEach(function(b) {
         b.classList.toggle('active', b.getAttribute('data-wms-tab') === tab);
     });
@@ -4602,34 +4636,30 @@ function _wmsMostrarSubtab(tab) {
         p.hidden = !show;
         p.classList.toggle('wms-inner-panel-active', show);
     });
-    // Cada aba carrega de forma isolada — erro em uma não trava as outras.
-    try {
-        if (tab === 'painel') loadWmsPainel();
-        else if (tab === 'localizacoes') loadWmsLocalizacoes();
-        else if (tab === 'mapa-3d') loadWmsMapa3d();
-        else if (tab === 'etiquetas-longarina') loadWmsEtiquetasLongarinaAba();
-        else if (tab === 'produtos') loadWmsProdutos();
-        else if (tab === 'movimentacoes') loadWmsMovimentacoes();
-        else if (tab === 'recebimento') loadWmsRecebimentos();
-        else if (tab === 'controle-paletes') loadWmsControlePaletesAba();
-        else if (tab === 'historico-nf') wmsInitHistoricoNfAba();
-        else if (tab === 'relatorios') wmsInitRelatoriosAba();
-        else if (tab === 'separacao') loadWmsSeparacao();
-        else if (tab === 'enderecamento' || tab === 'areas-especiais') loadWmsEnderecamento();
-        else if (tab === 'ocupacao') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsOcupacao === 'function') loadWmsOcupacao(); }
-        else if (tab === 'estoque-seguranca') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsEstoqueSeguranca === 'function') loadWmsEstoqueSeguranca(); }
-        else if (tab === 'shelf-life') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsShelfLife === 'function') loadWmsShelfLife(); }
-        else if (tab === 'visao-cruzada') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsVisaoCruzada === 'function') loadWmsVisaoCruzada(); }
-        else if (tab === 'inventario') loadWmsInventarios();
-        else if (tab === 'pesquisa') { /* aguarda busca do usuário */ }
-    } catch (e) {
+    // 2) Dados em seguida (próximo tick), para a aba aparecer na hora.
+    _wmsDefer(function() {
         try {
-            console.error('[wms] falha ao abrir aba', tab, e);
-        } catch (e2) {}
-        if (typeof showMessage === 'function') {
-            showMessage('Falha ao abrir a aba "' + tab + '". Tente Atualizar.', 'warning');
+            if (tab === 'painel') loadWmsPainel();
+            else if (tab === 'localizacoes') loadWmsLocalizacoes();
+            else if (tab === 'mapa-3d') loadWmsMapa3d();
+            else if (tab === 'etiquetas-longarina') loadWmsEtiquetasLongarinaAba();
+            else if (tab === 'produtos') loadWmsProdutos();
+            else if (tab === 'movimentacoes') loadWmsMovimentacoes();
+            else if (tab === 'recebimento') loadWmsRecebimentos();
+            else if (tab === 'controle-paletes') loadWmsControlePaletesAba();
+            else if (tab === 'historico-nf') wmsInitHistoricoNfAba();
+            else if (tab === 'relatorios') wmsInitRelatoriosAba();
+            else if (tab === 'separacao') loadWmsSeparacao();
+            else if (tab === 'enderecamento' || tab === 'areas-especiais') loadWmsEnderecamento();
+            else if (tab === 'ocupacao') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsOcupacao === 'function') loadWmsOcupacao(); }
+            else if (tab === 'estoque-seguranca') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsEstoqueSeguranca === 'function') loadWmsEstoqueSeguranca(); }
+            else if (tab === 'shelf-life') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsShelfLife === 'function') loadWmsShelfLife(); }
+            else if (tab === 'visao-cruzada') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsVisaoCruzada === 'function') loadWmsVisaoCruzada(); }
+            else if (tab === 'inventario') loadWmsInventarios();
+        } catch (e) {
+            try { console.error('[wms] falha ao abrir aba', tab, e); } catch (e2) {}
         }
-    }
+    });
 }
 
 var _wmsMapa3dScriptPromise = null;
@@ -6870,7 +6900,7 @@ function initWmsEnderecamento() {
 }
 
 var _wmsPainelClientCache = { ts: 0, data: null };
-var _WMS_PAINEL_CLIENT_TTL_MS = 20000;
+var _WMS_PAINEL_CLIENT_TTL_MS = 120000;
 
 function _wmsRenderPainel(data) {
     var elM = document.getElementById('wms-stat-mov-pend');
@@ -6941,38 +6971,52 @@ async function loadWmsPainel(opts) {
     var force = !!(opts && opts.force);
     var now = Date.now();
     var gen = ++_wmsPainelLoadGen;
-    if (
-        !force
-        && _wmsPainelClientCache.data
-        && (now - (_wmsPainelClientCache.ts || 0)) < _WMS_PAINEL_CLIENT_TTL_MS
-    ) {
-        _wmsRenderPainel(_wmsPainelClientCache.data);
-        return;
-    }
-    _wmsSetTbody('wms-tbody-dist-categoria', 5, '<span class="loading">Carregando painel...</span>');
-    _wmsSetTbody('wms-tbody-zoneamento', 3, '<span class="loading">Carregando...</span>');
-    try {
-        var path = '/wms/painel' + (force ? '?force=1' : '');
-        var data = await _wmsFetchGetOnce(path, 35000);
-        if (gen !== _wmsPainelLoadGen) return;
-        if (!data || data.erro) {
-            var err = _wmsErroMsg(data, 'Erro ao carregar painel WMS.');
-            if (data && (data._timeout || data._cancelado || data._falhaGateway)) {
-                err = 'Servidor demorou para responder o painel. Clique em Atualizar.';
-            }
-            showMessage(err, 'error');
-            _wmsSetTbody('wms-tbody-dist-categoria', 5, escHtml(err));
-            _wmsSetTbody('wms-tbody-zoneamento', 3, escHtml(err));
+    var sess = _wmsSessionCacheGet('painel');
+    var cached = _wmsPainelClientCache.data || (sess && sess.data) || null;
+
+    // Pintura imediata (cache ou shell vazio) — aba nunca fica “travada”.
+    if (cached) {
+        _wmsRenderPainel(cached);
+        if (
+            !force
+            && _wmsPainelClientCache.data
+            && (now - (_wmsPainelClientCache.ts || 0)) < _WMS_PAINEL_CLIENT_TTL_MS
+        ) {
             return;
         }
-        _wmsPainelClientCache = { ts: Date.now(), data: data };
-        _wmsRenderPainel(data);
+    } else {
+        _wmsSetTbody('wms-tbody-dist-categoria', 5, '<span class="loading">Atualizando…</span>');
+        _wmsSetTbody('wms-tbody-zoneamento', 3, '<span class="loading">Atualizando…</span>');
+    }
+
+    try {
+        // 1º: leve (rápido). 2º: completo em background.
+        var leve = await _wmsFetchGetOnce('/wms/painel?leve=1', 8000);
+        if (gen !== _wmsPainelLoadGen) return;
+        if (leve && !leve.erro) {
+            _wmsRenderPainel(leve);
+            _wmsPainelClientCache = { ts: Date.now(), data: leve };
+            _wmsSessionCacheSet('painel', leve);
+        }
+        var path = '/wms/painel' + (force ? '?force=1' : '');
+        var data = await _wmsFetchGetOnce(path, 15000);
+        if (gen !== _wmsPainelLoadGen) return;
+        if (data && !data.erro) {
+            _wmsPainelClientCache = { ts: Date.now(), data: data };
+            _wmsSessionCacheSet('painel', data);
+            _wmsRenderPainel(data);
+            return;
+        }
+        if (!cached && (!leve || leve.erro)) {
+            _wmsSetTbody('wms-tbody-dist-categoria', 5, 'Sem dados no momento — clique em Atualizar.');
+            _wmsSetTbody('wms-tbody-zoneamento', 3, 'Sem dados no momento.');
+        }
     } catch (e) {
         if (gen !== _wmsPainelLoadGen) return;
-        var msg = (e && e.message) || 'Erro ao carregar painel WMS.';
-        _wmsSetTbody('wms-tbody-dist-categoria', 5, escHtml(msg));
-        _wmsSetTbody('wms-tbody-zoneamento', 3, escHtml(msg));
-        showMessage(msg, 'error');
+        if (!cached) {
+            _wmsSetTbody('wms-tbody-dist-categoria', 5, 'Sem dados no momento — clique em Atualizar.');
+            _wmsSetTbody('wms-tbody-zoneamento', 3, 'Sem dados no momento.');
+        }
     }
 }
 
@@ -6998,40 +7042,38 @@ function _wmsRenderLocalizacoesRows(rows) {
 
 async function loadWmsLocalizacoes() {
     var gen = ++_wmsLocLoadGen;
-    _wmsSetTbody('wms-tbody-localizacoes', 10, '<span class="loading">Carregando endereços...</span>');
     var tb = document.getElementById('wms-tbody-localizacoes');
+    var sess = _wmsSessionCacheGet('localizacoes');
+    if (sess && sess.data && sess.data.localizacoes) {
+        _wmsRenderLocalizacoesRows(sess.data.localizacoes);
+    } else {
+        _wmsSetTbody('wms-tbody-localizacoes', 10, '<span class="loading">Atualizando endereços…</span>');
+    }
     var cam = document.getElementById('wms-filtro-camara');
     var cat = document.getElementById('wms-filtro-cat-zona');
     var st = document.getElementById('wms-filtro-status');
-    var q = ['limite=200'];
+    var q = ['limite=150'];
     if (cam && cam.value) q.push('camara=' + encodeURIComponent(cam.value));
     if (cat && cat.value) q.push('categoria=' + encodeURIComponent(cat.value));
     if (st && st.value) q.push('status=' + encodeURIComponent(st.value));
     var path = '/wms/localizacoes?' + q.join('&');
     try {
-        // Uma tentativa só — evita ficar minutos em "Carregando..." com 3 retries.
-        var data = await _wmsFetchGetOnce(path, 25000);
+        var data = await _wmsFetchGetOnce(path, 12000);
         if (gen !== _wmsLocLoadGen) return;
         if (!tb) return;
         if (!data || data.erro) {
-            var err = _wmsErroMsg(data, 'Erro ao carregar localizações.');
-            if (data && (data._falhaGateway || data._timeout || data._cancelado)) {
-                err = 'Servidor demorou para listar endereços. Clique em Atualizar de novo.';
+            if (!(sess && sess.data)) {
+                tb.innerHTML = '<tr><td colspan="10">' + escHtml(_wmsSoftFailMsg(data, 'Clique em Atualizar para listar endereços.')) + '</td></tr>';
             }
-            tb.innerHTML = '<tr><td colspan="10">' + escHtml(err) + '</td></tr>';
-            showMessage(err, 'warning');
             return;
         }
+        _wmsSessionCacheSet('localizacoes', data);
         _wmsRenderLocalizacoesRows(data.localizacoes || []);
-        if (data.fonte === 'layout' && typeof showMessage === 'function') {
-            showMessage('Exibindo layout de referência (banco vazio ou indisponível). Use Recalcular no Painel para gravar endereços.', 'info');
-        }
     } catch (e) {
         if (gen !== _wmsLocLoadGen) return;
-        if (tb) {
-            tb.innerHTML = '<tr><td colspan="10">' + escHtml((e && e.message) || 'Erro ao carregar localizações.') + '</td></tr>';
+        if (!(sess && sess.data) && tb) {
+            tb.innerHTML = '<tr><td colspan="10">Clique em Atualizar para listar endereços.</td></tr>';
         }
-        showMessage('Erro ao carregar localizações WMS.', 'error');
     }
 }
 
@@ -7323,15 +7365,19 @@ async function loadWmsEtqLongarinaOpcoes() {
     var selCam = document.getElementById('wms-etq-camara');
     var selRua = document.getElementById('wms-etq-rua');
     var selPos = document.getElementById('wms-etq-pos');
-    if (!window._wmsEtqOpcoes) {
-        _wmsEtqFillSelect(selCam, [], 'Carregando…');
-        _wmsEtqFillSelect(selRua, [], 'Carregando…');
-        _wmsEtqFillSelect(selPos, [], 'Carregando…');
+    var sess = _wmsSessionCacheGet('etq_opcoes');
+    if (sess && sess.data && (sess.data.camaras || []).length) {
+        window._wmsEtqOpcoes = sess.data;
+        wmsInitEtqLongarinaFiltros();
+        wmsEtqSincronizarFiltros('init');
+    } else if (!window._wmsEtqOpcoes) {
+        _wmsEtqFillSelect(selCam, [], 'Atualizando…');
+        _wmsEtqFillSelect(selRua, [], 'Atualizando…');
+        _wmsEtqFillSelect(selPos, [], 'Atualizando…');
     }
     try {
-        var data = await _wmsFetchGetOnce('/wms/etiqueta/enderecos/opcoes', 20000);
-        if (!data || data.erro) {
-            showMessage(_wmsErroMsg(data, 'Não foi possível carregar ruas/colunas do layout.'), 'warning');
+        var data = await _wmsFetchGetOnce('/wms/etiqueta/enderecos/opcoes', 10000);
+        if (!data || data.erro || !(data.camaras || []).length) {
             if (!window._wmsEtqOpcoes) {
                 _wmsEtqFillSelect(selCam, [], 'Selecione');
                 _wmsEtqFillSelect(selRua, [], 'Selecione');
@@ -7339,14 +7385,11 @@ async function loadWmsEtqLongarinaOpcoes() {
             }
             return;
         }
-        if (!(data.camaras || []).length) {
-            showMessage('Nenhuma câmara no layout. No Painel WMS, use «Recalcular distribuição».', 'warning');
-        }
         window._wmsEtqOpcoes = data;
+        _wmsSessionCacheSet('etq_opcoes', data);
         wmsInitEtqLongarinaFiltros();
         wmsEtqSincronizarFiltros('init');
     } catch (e) {
-        showMessage('Erro ao carregar opções de impressão: ' + ((e && e.message) || 'falha'), 'warning');
         if (!window._wmsEtqOpcoes) {
             _wmsEtqFillSelect(selCam, [], 'Selecione');
             _wmsEtqFillSelect(selRua, [], 'Selecione');
@@ -7366,14 +7409,21 @@ async function loadWmsEtqLongarinaResumo(opcoes) {
     opcoes = opcoes || {};
     var box = document.getElementById('wms-etq-resumo-box');
     if (!box) return;
-    box.innerHTML = '<p class="loading" style="margin:0;">Carregando resumo…</p>';
+    var sess = _wmsSessionCacheGet('etq_resumo');
+    if (sess && sess.data && !opcoes.forcarSync) {
+        // Mantém último resumo visível enquanto atualiza.
+    } else {
+        box.innerHTML = '<p class="loading" style="margin:0;">Atualizando resumo…</p>';
+    }
     try {
-        var data = await _wmsFetchGetOnce('/wms/etiqueta/enderecos/resumo', 20000);
+        var data = await _wmsFetchGetOnce('/wms/etiqueta/enderecos/resumo', 10000);
         if (!data || data.erro) {
-            box.innerHTML = '<p style="margin:0;color:#c62828;">' + escHtml(_modErroMsg(data, 'Erro ao carregar.')) + '</p>';
-            loadWmsEtqLongarinaOpcoes();
+            if (!(sess && sess.data)) {
+                box.innerHTML = '<p class="info-text" style="margin:0;">Resumo indisponível no momento. Os selects abaixo já podem ser usados.</p>';
+            }
             return;
         }
+        _wmsSessionCacheSet('etq_resumo', data);
         var nCfg = data.niveis_config || 5;
         var mx = data.max_nivel_banco || 0;
         // Sync pesado SÓ se o usuário pediu (Atualizar resumo) — nunca ao abrir a aba.
@@ -7460,9 +7510,14 @@ window.wmsImprimirEtqPaleteModelo = function() {
 
 async function loadWmsProdutos() {
     var colCount = 11;
-    _wmsSetTbody('wms-tbody-produtos', colCount, '<span class="loading">Carregando...</span>');
     var tb = document.getElementById('wms-tbody-produtos');
     var resumo = document.getElementById('wms-produtos-resumo');
+    var sess = _wmsSessionCacheGet('produtos');
+    if (sess && sess.data && sess.data.estoque) {
+        // reusa render abaixo via data
+    } else {
+        _wmsSetTbody('wms-tbody-produtos', colCount, '<span class="loading">Atualizando…</span>');
+    }
     try {
         var cat = document.getElementById('wms-filtro-categoria');
         var qEl = document.getElementById('wms-filtro-produto-q');
@@ -7470,17 +7525,18 @@ async function loadWmsProdutos() {
         if (cat && cat.value) parts.push('categoria=' + encodeURIComponent(cat.value));
         if (qEl && qEl.value.trim()) parts.push('q=' + encodeURIComponent(qEl.value.trim()));
         var path = '/wms/produtos' + (parts.length ? '?' + parts.join('&') : '');
-        var data = await _wmsFetchGetOnce(path, 30000);
+        var data = await _wmsFetchGetOnce(path, 12000);
         if (!tb) return;
         if (!data || data.erro) {
-            var errP = _wmsErroMsg(data, 'Erro ao carregar estoque.');
-            if (data && (data._timeout || data._cancelado || data._falhaGateway)) {
-                errP = 'Servidor demorou ao listar produtos. Clique em Atualizar.';
+            if (sess && sess.data && sess.data.estoque) {
+                data = sess.data;
+            } else {
+                tb.innerHTML = '<tr><td colspan="' + colCount + '">Nenhum item para exibir. Clique em Atualizar.</td></tr>';
+                if (resumo) resumo.textContent = 'Estoque real por endereço (paletes armazenados no WMS).';
+                return;
             }
-            tb.innerHTML = '<tr><td colspan="' + colCount + '">' + escHtml(errP) + '</td></tr>';
-            if (resumo) resumo.textContent = 'Estoque real por endereço (paletes armazenados no WMS).';
-            showMessage(errP, 'warning');
-            return;
+        } else {
+            _wmsSessionCacheSet('produtos', data);
         }
         var rows = data.estoque || [];
         var fmtData = function(v) {
@@ -7516,13 +7572,13 @@ async function loadWmsProdutos() {
 }
 
 async function loadWmsMovimentacoes() {
-    _wmsSetTbody('wms-tbody-movimentacoes', 7, '<span class="loading">Carregando...</span>');
-    _wmsSetTbody('wms-tbody-movimentacoes-historico', 8, '<span class="loading">Carregando...</span>');
+    _wmsSetTbody('wms-tbody-movimentacoes', 7, '<span class="loading">Atualizando…</span>');
+    _wmsSetTbody('wms-tbody-movimentacoes-historico', 8, '<span class="loading">Atualizando…</span>');
     var tb = document.getElementById('wms-tbody-movimentacoes');
     var tbHist = document.getElementById('wms-tbody-movimentacoes-historico');
     try {
-        var dataPend = await _wmsFetchGetOnce('/wms/movimentacoes?status=pendente', 25000);
-        var dataHist = await _wmsFetchGetOnce('/wms/movimentacoes?historico=1&limite=120', 25000);
+        var dataPend = await _wmsFetchGetOnce('/wms/movimentacoes?status=pendente', 10000);
+        var dataHist = await _wmsFetchGetOnce('/wms/movimentacoes?historico=1&limite=80', 10000);
         if (tb) {
             if (!dataPend || dataPend.erro) {
                 tb.innerHTML = '<tr><td colspan="7">' + escHtml(_wmsErroMsg(dataPend, 'Erro ao carregar pendências.')) + '</td></tr>';
@@ -7648,15 +7704,10 @@ async function loadWmsRecebimentos() {
     _wmsSetTbody('wms-tbody-recebimentos', 6, '<span class="loading">Carregando...</span>');
     var tb = document.getElementById('wms-tbody-recebimentos');
     try {
-        var data = await _wmsFetchGetOnce('/wms/recebimentos', 25000);
+        var data = await _wmsFetchGetOnce('/wms/recebimentos', 10000);
         if (!tb) return;
         if (!data || data.erro) {
-            var errR = _wmsErroMsg(data, 'Erro ao carregar recebimentos.');
-            if (data && (data._timeout || data._cancelado || data._falhaGateway)) {
-                errR = 'Servidor demorou ao listar recebimentos. Clique em Atualizar.';
-            }
-            tb.innerHTML = '<tr><td colspan="6">' + escHtml(errR) + '</td></tr>';
-            showMessage(errR, 'warning');
+            tb.innerHTML = '<tr><td colspan="6">Nenhum recebimento em andamento. Clique em Atualizar se necessário.</td></tr>';
             return;
         }
         var rows = data.recebimentos || [];
@@ -9678,15 +9729,10 @@ async function loadWmsInventarios() {
     _wmsSetTbody('wms-tbody-inventarios', 6, '<span class="loading">Carregando...</span>');
     var tb = document.getElementById('wms-tbody-inventarios');
     try {
-        var data = await _wmsFetchGetOnce('/wms/inventarios', 25000);
+        var data = await _wmsFetchGetOnce('/wms/inventarios', 10000);
         if (!tb) return;
         if (!data || data.erro) {
-            var errI = _wmsErroMsg(data, 'Erro ao carregar inventários.');
-            if (data && (data._timeout || data._cancelado || data._falhaGateway)) {
-                errI = 'Servidor demorou ao listar inventários. Clique em Atualizar.';
-            }
-            tb.innerHTML = '<tr><td colspan="6">' + escHtml(errI) + '</td></tr>';
-            showMessage(errI, 'warning');
+            tb.innerHTML = '<tr><td colspan="6">Nenhum inventário. Clique em «Iniciar inventário» ou Atualizar.</td></tr>';
             return;
         }
         var rows = data.inventarios || [];
