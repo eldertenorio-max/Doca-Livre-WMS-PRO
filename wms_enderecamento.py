@@ -8493,19 +8493,39 @@ def _opcoes_impressao_longarina(conn):
             coords = _coords_from_bloco_layout(bloco)
         except Exception:
             coords = []
-        for _cam, rua, pos, _niv, dest_acao, _dest_lbl, _apenas_rotulo in coords:
-            if dest_acao:
-                continue
+        # Inclui estoque e destinos — etiqueta longarina existe em ambos.
+        for _cam, rua, pos, _niv, _dest_acao, _dest_lbl, _apenas_rotulo in coords:
             rua = str(rua or '').strip().upper()
             if not rua:
                 continue
-            ruas_map.setdefault(rua, set()).add(int(pos))
-        # Fallback: monta a partir do que já existe no banco.
+            try:
+                pos_i = int(pos)
+            except Exception:
+                continue
+            if pos_i <= 0:
+                continue
+            ruas_map.setdefault(rua, set()).add(pos_i)
+        # Fallback: banco
         if not ruas_map:
             for (c_cam, c_rua, c_pos), _nb in db_cols.items():
                 if c_cam != cod or not c_rua:
                     continue
                 ruas_map.setdefault(c_rua, set()).add(int(c_pos))
+        # Fallback: gera a partir de ruas/níveis/total do JSON (nunca deixa select vazio).
+        if not ruas_map:
+            try:
+                total = _total_posicoes_ref(cod, bloco)
+                for _c, r, p, _n in _gerar_coordenadas_camara(
+                    cod, bloco.get('ruas'), niveis, total,
+                ):
+                    ruas_map.setdefault(str(r).upper(), set()).add(int(p))
+            except Exception:
+                pass
+        if not ruas_map:
+            for r in (bloco.get('ruas') or []):
+                ru = str(r or '').strip().upper()
+                if ru:
+                    ruas_map[ru] = set(range(1, 16))
         ruas_out = []
         for rua in sorted(ruas_map.keys()):
             colunas = []

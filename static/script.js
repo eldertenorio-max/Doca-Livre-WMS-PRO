@@ -7263,6 +7263,72 @@ function wmsImprimirEtqColuna() {
 window._wmsEtqOpcoes = null;
 window._wmsEtqFiltroLock = false;
 
+function _wmsEtqColsRange(ini, fim, niveis) {
+    var out = [];
+    for (var p = ini; p <= fim; p++) {
+        out.push({ posicao: p, niveis: niveis || 5, niveis_banco: 0 });
+    }
+    return out;
+}
+
+/** Fallback local — garante Câmara/Rua/Coluna mesmo se a API falhar. */
+function _wmsEtqOpcoesFallback() {
+    return {
+        ok: true,
+        niveis_padrao: 5,
+        fonte: 'fallback_local',
+        camaras: [
+            {
+                codigo: 11, nome: 'Câmara 11', niveis: 5, total_colunas: 30,
+                ruas: [
+                    { letra: 'A', total_colunas: 15, colunas: _wmsEtqColsRange(1, 15, 5) },
+                    { letra: 'B', total_colunas: 15, colunas: _wmsEtqColsRange(1, 15, 5) }
+                ]
+            },
+            {
+                codigo: 12, nome: 'Câmara 12', niveis: 5, total_colunas: 25,
+                ruas: [
+                    { letra: 'C', total_colunas: 13, colunas: _wmsEtqColsRange(1, 13, 5) },
+                    { letra: 'D', total_colunas: 12, colunas: _wmsEtqColsRange(1, 12, 5) }
+                ]
+            },
+            {
+                codigo: 13, nome: 'Câmara 13', niveis: 5, total_colunas: 26,
+                ruas: [
+                    { letra: 'E', total_colunas: 13, colunas: _wmsEtqColsRange(1, 13, 5) },
+                    { letra: 'F', total_colunas: 13, colunas: _wmsEtqColsRange(1, 13, 5) }
+                ]
+            },
+            {
+                codigo: 21, nome: 'Câmara 21', niveis: 2, total_colunas: 14,
+                ruas: [
+                    { letra: 'G', total_colunas: 7, colunas: _wmsEtqColsRange(1, 7, 2) },
+                    { letra: 'H', total_colunas: 7, colunas: _wmsEtqColsRange(1, 7, 2) }
+                ]
+            }
+        ]
+    };
+}
+
+function _wmsEtqOpcoesTemRuas(data) {
+    if (!data || !(data.camaras || []).length) return false;
+    return (data.camaras || []).some(function(c) {
+        return (c.ruas || []).some(function(r) {
+            return String(r.letra || '') && (r.colunas || []).length > 0;
+        });
+    });
+}
+
+function _wmsEtqApplyOpcoes(data) {
+    if (!_wmsEtqOpcoesTemRuas(data)) {
+        data = _wmsEtqOpcoesFallback();
+    }
+    window._wmsEtqOpcoes = data;
+    try { _wmsSessionCacheSet('etq_opcoes', data); } catch (e) {}
+    wmsInitEtqLongarinaFiltros();
+    wmsEtqSincronizarFiltros('init');
+}
+
 function _wmsEtqFillSelect(el, items, placeholder, selected) {
     if (!el) return;
     var sel = selected != null && selected !== '' ? String(selected) : '';
@@ -7325,6 +7391,9 @@ function _wmsEtqCamarasFiltradas(rua, pos) {
 
 function wmsEtqSincronizarFiltros(origem) {
     if (window._wmsEtqFiltroLock) return;
+    if (!_wmsEtqOpcoesTemRuas(window._wmsEtqOpcoes)) {
+        window._wmsEtqOpcoes = _wmsEtqOpcoesFallback();
+    }
     var op = window._wmsEtqOpcoes;
     if (!op || !op.camaras) return;
     window._wmsEtqFiltroLock = true;
@@ -7336,6 +7405,11 @@ function wmsEtqSincronizarFiltros(origem) {
         var cam = selCam ? selCam.value : '';
         var rua = selRua ? String(selRua.value || '').toUpperCase() : '';
         var pos = selPos ? selPos.value : '';
+        // Troca de câmara: limpa rua/coluna para listar as opções corretas.
+        if (origem === 'camara') {
+            rua = '';
+            pos = '';
+        }
 
         if (origem === 'rua' && rua && !cam) {
             var camsRua = _wmsEtqCamarasFiltradas(rua, pos);
@@ -7472,59 +7546,25 @@ async function loadWmsEtqLongarinaOpcoes() {
     var selRua = document.getElementById('wms-etq-rua');
     var selPos = document.getElementById('wms-etq-pos');
     var sess = _wmsSessionCacheGet('etq_opcoes');
-    if (sess && sess.data && (sess.data.camaras || []).length) {
-        window._wmsEtqOpcoes = sess.data;
-        wmsInitEtqLongarinaFiltros();
-        wmsEtqSincronizarFiltros('init');
-    } else if (!window._wmsEtqOpcoes) {
-        // Placeholder imediato enquanto a API (layout) responde.
-        _wmsEtqFillSelect(selCam, [
-            { value: '11', label: '11' },
-            { value: '12', label: '12' },
-            { value: '13', label: '13' },
-            { value: '21', label: '21' }
-        ], 'Carregando câmaras…');
-        _wmsEtqFillSelect(selRua, [], 'Carregando ruas…');
-        _wmsEtqFillSelect(selPos, [], 'Carregando colunas…');
-        if (selCam) selCam.disabled = true;
-        if (selRua) selRua.disabled = true;
-        if (selPos) selPos.disabled = true;
+    // Cache só vale se já tiver ruas/colunas — senão usa fallback imediatamente.
+    if (_wmsEtqOpcoesTemRuas(sess && sess.data)) {
+        _wmsEtqApplyOpcoes(sess.data);
+    } else {
+        try { sessionStorage.removeItem('wms_ui_etq_opcoes'); } catch (e0) {}
+        _wmsEtqApplyOpcoes(_wmsEtqOpcoesFallback());
     }
+    if (selCam) selCam.disabled = false;
+    if (selRua) selRua.disabled = false;
+    if (selPos) selPos.disabled = false;
     try {
         var data = await _wmsFetchGetOnce('/wms/etiqueta/enderecos/opcoes', 12000);
-        if (selCam) selCam.disabled = false;
-        if (selRua) selRua.disabled = false;
-        if (selPos) selPos.disabled = false;
-        if (!data || data.erro || !(data.camaras || []).length) {
-            if (!window._wmsEtqOpcoes) {
-                _wmsEtqFillSelect(selCam, [
-                    { value: '11', label: '11' },
-                    { value: '12', label: '12' },
-                    { value: '13', label: '13' },
-                    { value: '21', label: '21' }
-                ], 'Selecione a câmara');
-                _wmsEtqFillSelect(selRua, [], 'Selecione a rua');
-                _wmsEtqFillSelect(selPos, [], 'Selecione a coluna');
-            }
-            return;
+        if (_wmsEtqOpcoesTemRuas(data)) {
+            _wmsEtqApplyOpcoes(data);
         }
-        window._wmsEtqOpcoes = data;
-        _wmsSessionCacheSet('etq_opcoes', data);
-        wmsInitEtqLongarinaFiltros();
-        wmsEtqSincronizarFiltros('init');
+        // Se a API vier vazia/errada, mantém o fallback já aplicado.
     } catch (e) {
-        if (selCam) selCam.disabled = false;
-        if (selRua) selRua.disabled = false;
-        if (selPos) selPos.disabled = false;
-        if (!window._wmsEtqOpcoes) {
-            _wmsEtqFillSelect(selCam, [
-                { value: '11', label: '11' },
-                { value: '12', label: '12' },
-                { value: '13', label: '13' },
-                { value: '21', label: '21' }
-            ], 'Selecione a câmara');
-            _wmsEtqFillSelect(selRua, [], 'Selecione a rua');
-            _wmsEtqFillSelect(selPos, [], 'Selecione a coluna');
+        if (!_wmsEtqOpcoesTemRuas(window._wmsEtqOpcoes)) {
+            _wmsEtqApplyOpcoes(_wmsEtqOpcoesFallback());
         }
     }
 }
