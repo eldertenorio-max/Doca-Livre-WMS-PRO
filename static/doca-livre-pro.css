@@ -971,3 +971,46 @@ body.doca-livre-pro .content {
         animation: none !important;
     }
 }
+
+/* Barra de carregamento global do módulo Endereçamento WMS */
+.wms-global-loading {
+    margin: 0 0 12px 0;
+    padding: 10px 12px;
+    border: 1px solid #bbdefb;
+    border-radius: 8px;
+    background: #e3f2fd;
+}
+.wms-global-loading[hidden] {
+    display: none !important;
+}
+.wms-global-loading-track {
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(21, 101, 192, 0.18);
+    overflow: hidden;
+}
+.wms-global-loading-bar {
+    height: 100%;
+    width: 35%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #1565c0, #42a5f5, #1565c0);
+    background-size: 200% 100%;
+    animation: wms-loading-slide 1.05s ease-in-out infinite;
+}
+.wms-global-loading-msg {
+    margin: 8px 0 0 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #0d47a1;
+}
+@keyframes wms-loading-slide {
+    0% { transform: translateX(-120%); }
+    100% { transform: translateX(320%); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .wms-global-loading-bar {
+        animation: none;
+        width: 100%;
+        opacity: 0.85;
+    }
+}

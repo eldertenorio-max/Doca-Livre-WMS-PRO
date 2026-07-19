@@ -4029,6 +4029,72 @@ function _wmsDefer(fn) {
     }, 0);
 }
 
+var _wmsLoadDepth = 0;
+var _wmsLoadHideTimer = null;
+
+function _wmsTabLoadingLabel(tab) {
+    var map = {
+        painel: 'Carregando painel…',
+        'etiquetas-longarina': 'Carregando opções de etiquetas…',
+        localizacoes: 'Carregando localizações…',
+        'mapa-3d': 'Carregando mapa 3D…',
+        produtos: 'Carregando produtos…',
+        movimentacoes: 'Carregando movimentações…',
+        recebimento: 'Carregando recebimentos…',
+        'controle-paletes': 'Carregando controle de paletes…',
+        'historico-nf': 'Preparando histórico…',
+        relatorios: 'Preparando relatórios…',
+        separacao: 'Carregando separação…',
+        enderecamento: 'Carregando endereçamento…',
+        'areas-especiais': 'Carregando áreas especiais…',
+        ocupacao: 'Carregando ocupação…',
+        'estoque-seguranca': 'Carregando estoque de segurança…',
+        'shelf-life': 'Carregando shelf life…',
+        'visao-cruzada': 'Carregando visão cruzada…',
+        inventario: 'Carregando inventário…',
+        pesquisa: 'Carregando pesquisa…'
+    };
+    return map[tab] || 'Carregando…';
+}
+
+function _wmsBeginLoading(msg) {
+    _wmsLoadDepth++;
+    if (_wmsLoadHideTimer) {
+        clearTimeout(_wmsLoadHideTimer);
+        _wmsLoadHideTimer = null;
+    }
+    var el = document.getElementById('wms-global-loading');
+    var m = document.getElementById('wms-global-loading-msg');
+    if (m) m.textContent = msg || 'Carregando…';
+    if (el) {
+        el.hidden = false;
+        el.setAttribute('aria-busy', 'true');
+        el.classList.add('is-active');
+    }
+}
+
+function _wmsEndLoading() {
+    _wmsLoadDepth = Math.max(0, (_wmsLoadDepth || 1) - 1);
+    if (_wmsLoadDepth > 0) return;
+    _wmsLoadHideTimer = setTimeout(function() {
+        if (_wmsLoadDepth > 0) return;
+        var el = document.getElementById('wms-global-loading');
+        if (el) {
+            el.hidden = true;
+            el.setAttribute('aria-busy', 'false');
+            el.classList.remove('is-active');
+        }
+    }, 150);
+}
+
+async function _wmsAwaitMaybe(p) {
+    if (p && typeof p.then === 'function') {
+        try { await p; } catch (e) {
+            try { console.error('[wms] load', e); } catch (e2) {}
+        }
+    }
+}
+
 function _wmsSoftFailMsg(data, fallback) {
     if (data && (data._timeout || data._cancelado || data._falhaGateway)) {
         return 'Atualizando… se demorar, clique em Atualizar.';
@@ -4258,7 +4324,6 @@ async function wmsRegistrarRetornoPalete() {
 }
 
 function loadWmsControlePaletesAba() {
-    loadWmsControlePaletesFora();
     var inp = document.getElementById('wms-ctrl-etiqueta');
     if (inp && !inp.dataset.bound) {
         inp.dataset.bound = '1';
@@ -4266,6 +4331,7 @@ function loadWmsControlePaletesAba() {
             if (ev.key === 'Enter') { ev.preventDefault(); loadWmsControlePaleteConsulta(); }
         });
     }
+    return loadWmsControlePaletesFora();
 }
 
 function wmsInitHistoricoNfAba() {
@@ -4636,28 +4702,41 @@ function _wmsMostrarSubtab(tab) {
         p.hidden = !show;
         p.classList.toggle('wms-inner-panel-active', show);
     });
-    // 2) Dados em seguida (próximo tick), para a aba aparecer na hora.
-    _wmsDefer(function() {
+    // Barra visível já na troca — o usuário nunca fica “sem feedback”.
+    _wmsBeginLoading(_wmsTabLoadingLabel(tab));
+    // 2) Dados no próximo tick; barra some quando a carga terminar.
+    _wmsDefer(async function() {
         try {
-            if (tab === 'painel') loadWmsPainel();
-            else if (tab === 'localizacoes') loadWmsLocalizacoes();
-            else if (tab === 'mapa-3d') loadWmsMapa3d();
-            else if (tab === 'etiquetas-longarina') loadWmsEtiquetasLongarinaAba();
-            else if (tab === 'produtos') loadWmsProdutos();
-            else if (tab === 'movimentacoes') loadWmsMovimentacoes();
-            else if (tab === 'recebimento') loadWmsRecebimentos();
-            else if (tab === 'controle-paletes') loadWmsControlePaletesAba();
-            else if (tab === 'historico-nf') wmsInitHistoricoNfAba();
-            else if (tab === 'relatorios') wmsInitRelatoriosAba();
-            else if (tab === 'separacao') loadWmsSeparacao();
-            else if (tab === 'enderecamento' || tab === 'areas-especiais') loadWmsEnderecamento();
-            else if (tab === 'ocupacao') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsOcupacao === 'function') loadWmsOcupacao(); }
-            else if (tab === 'estoque-seguranca') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsEstoqueSeguranca === 'function') loadWmsEstoqueSeguranca(); }
-            else if (tab === 'shelf-life') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsShelfLife === 'function') loadWmsShelfLife(); }
-            else if (tab === 'visao-cruzada') { if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels(); if (typeof loadWmsVisaoCruzada === 'function') loadWmsVisaoCruzada(); }
-            else if (tab === 'inventario') loadWmsInventarios();
+            if (tab === 'painel') await _wmsAwaitMaybe(loadWmsPainel());
+            else if (tab === 'localizacoes') await _wmsAwaitMaybe(loadWmsLocalizacoes());
+            else if (tab === 'mapa-3d') await _wmsAwaitMaybe(loadWmsMapa3d());
+            else if (tab === 'etiquetas-longarina') await _wmsAwaitMaybe(loadWmsEtiquetasLongarinaAba());
+            else if (tab === 'produtos') await _wmsAwaitMaybe(loadWmsProdutos());
+            else if (tab === 'movimentacoes') await _wmsAwaitMaybe(loadWmsMovimentacoes());
+            else if (tab === 'recebimento') await _wmsAwaitMaybe(loadWmsRecebimentos());
+            else if (tab === 'controle-paletes') await _wmsAwaitMaybe(loadWmsControlePaletesAba());
+            else if (tab === 'historico-nf') { wmsInitHistoricoNfAba(); }
+            else if (tab === 'relatorios') { wmsInitRelatoriosAba(); }
+            else if (tab === 'separacao') await _wmsAwaitMaybe(loadWmsSeparacao());
+            else if (tab === 'enderecamento' || tab === 'areas-especiais') await _wmsAwaitMaybe(loadWmsEnderecamento());
+            else if (tab === 'ocupacao') {
+                if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels();
+                if (typeof loadWmsOcupacao === 'function') await _wmsAwaitMaybe(loadWmsOcupacao());
+            } else if (tab === 'estoque-seguranca') {
+                if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels();
+                if (typeof loadWmsEstoqueSeguranca === 'function') await _wmsAwaitMaybe(loadWmsEstoqueSeguranca());
+            } else if (tab === 'shelf-life') {
+                if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels();
+                if (typeof loadWmsShelfLife === 'function') await _wmsAwaitMaybe(loadWmsShelfLife());
+            } else if (tab === 'visao-cruzada') {
+                if (typeof initWmsAnalisePanels === 'function') initWmsAnalisePanels();
+                if (typeof loadWmsVisaoCruzada === 'function') await _wmsAwaitMaybe(loadWmsVisaoCruzada());
+            } else if (tab === 'inventario') await _wmsAwaitMaybe(loadWmsInventarios());
+            else if (tab === 'pesquisa') await _wmsAwaitMaybe(typeof loadWmsPesquisaSku === 'function' ? loadWmsPesquisaSku() : null);
         } catch (e) {
             try { console.error('[wms] falha ao abrir aba', tab, e); } catch (e2) {}
+        } finally {
+            _wmsEndLoading();
         }
     });
 }
@@ -7371,17 +7450,34 @@ async function loadWmsEtqLongarinaOpcoes() {
         wmsInitEtqLongarinaFiltros();
         wmsEtqSincronizarFiltros('init');
     } else if (!window._wmsEtqOpcoes) {
-        _wmsEtqFillSelect(selCam, [], 'Atualizando…');
-        _wmsEtqFillSelect(selRua, [], 'Atualizando…');
-        _wmsEtqFillSelect(selPos, [], 'Atualizando…');
+        // Placeholder imediato enquanto a API (layout) responde.
+        _wmsEtqFillSelect(selCam, [
+            { value: '11', label: '11' },
+            { value: '12', label: '12' },
+            { value: '13', label: '13' },
+            { value: '21', label: '21' }
+        ], 'Carregando câmaras…');
+        _wmsEtqFillSelect(selRua, [], 'Carregando ruas…');
+        _wmsEtqFillSelect(selPos, [], 'Carregando colunas…');
+        if (selCam) selCam.disabled = true;
+        if (selRua) selRua.disabled = true;
+        if (selPos) selPos.disabled = true;
     }
     try {
-        var data = await _wmsFetchGetOnce('/wms/etiqueta/enderecos/opcoes', 10000);
+        var data = await _wmsFetchGetOnce('/wms/etiqueta/enderecos/opcoes', 12000);
+        if (selCam) selCam.disabled = false;
+        if (selRua) selRua.disabled = false;
+        if (selPos) selPos.disabled = false;
         if (!data || data.erro || !(data.camaras || []).length) {
             if (!window._wmsEtqOpcoes) {
-                _wmsEtqFillSelect(selCam, [], 'Selecione');
-                _wmsEtqFillSelect(selRua, [], 'Selecione');
-                _wmsEtqFillSelect(selPos, [], 'Selecione');
+                _wmsEtqFillSelect(selCam, [
+                    { value: '11', label: '11' },
+                    { value: '12', label: '12' },
+                    { value: '13', label: '13' },
+                    { value: '21', label: '21' }
+                ], 'Selecione a câmara');
+                _wmsEtqFillSelect(selRua, [], 'Selecione a rua');
+                _wmsEtqFillSelect(selPos, [], 'Selecione a coluna');
             }
             return;
         }
@@ -7390,10 +7486,18 @@ async function loadWmsEtqLongarinaOpcoes() {
         wmsInitEtqLongarinaFiltros();
         wmsEtqSincronizarFiltros('init');
     } catch (e) {
+        if (selCam) selCam.disabled = false;
+        if (selRua) selRua.disabled = false;
+        if (selPos) selPos.disabled = false;
         if (!window._wmsEtqOpcoes) {
-            _wmsEtqFillSelect(selCam, [], 'Selecione');
-            _wmsEtqFillSelect(selRua, [], 'Selecione');
-            _wmsEtqFillSelect(selPos, [], 'Selecione');
+            _wmsEtqFillSelect(selCam, [
+                { value: '11', label: '11' },
+                { value: '12', label: '12' },
+                { value: '13', label: '13' },
+                { value: '21', label: '21' }
+            ], 'Selecione a câmara');
+            _wmsEtqFillSelect(selRua, [], 'Selecione a rua');
+            _wmsEtqFillSelect(selPos, [], 'Selecione a coluna');
         }
     }
 }
@@ -7471,10 +7575,12 @@ async function loadWmsEtqLongarinaResumo(opcoes) {
     }
 }
 
-function loadWmsEtiquetasLongarinaAba() {
-    // Opções dos selects não dependem do resumo (que pode demorar com sync).
-    loadWmsEtqLongarinaOpcoes();
-    loadWmsEtqLongarinaResumo({ recarregarOpcoes: false });
+async function loadWmsEtiquetasLongarinaAba() {
+    // Opções dos selects não dependem do resumo — carrega em paralelo.
+    await Promise.all([
+        loadWmsEtqLongarinaOpcoes(),
+        loadWmsEtqLongarinaResumo({ recarregarOpcoes: false })
+    ]);
 }
 
 function wmsImprimirEtqTodasLongarinas() {
@@ -9295,7 +9401,7 @@ async function wmsConfirmarDestino() {
 
 function loadWmsSeparacao() {
     _wmsSetTbody('wms-tbody-separacao', 10, 'Informe roteiro e viagem e clique em Gerar lista.');
-    loadWmsStageLista();
+    return loadWmsStageLista();
 }
 
 function _wmsPickRoteiroViagem() {

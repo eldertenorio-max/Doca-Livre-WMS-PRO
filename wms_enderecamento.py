@@ -9696,26 +9696,12 @@ def api_wms_etiqueta_endereco():
 
 @bp.route('/etiqueta/enderecos/opcoes', methods=['GET'])
 def api_wms_etiqueta_enderecos_opcoes():
-    """Câmaras, ruas e colunas disponíveis para impressão de etiquetas longarina."""
-    conn = None
+    """Câmaras/ruas/colunas — layout JSON puro (sem abrir DB; evita select vazio/502)."""
     try:
-        conn = _db()
-        data = _opcoes_impressao_longarina(conn)
+        data = _opcoes_impressao_longarina(None)
         return jsonify(data)
     except Exception as e:
-        # Layout JSON puro — não depende de schema/banco.
-        try:
-            data = _opcoes_impressao_longarina(None)
-            data['aviso'] = str(e)
-            return jsonify(data)
-        except Exception:
-            return jsonify({'erro': str(e)}), 500
-    finally:
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:
-                pass
+        return jsonify({'erro': str(e)}), 500
 
 
 @bp.route('/etiqueta/enderecos/resumo', methods=['GET'])
