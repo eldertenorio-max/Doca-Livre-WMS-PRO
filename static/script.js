@@ -6998,9 +6998,51 @@ async function loadWmsLocalizacoes() {
     }
 }
 
-function _wmsAbrirEtiquetaUrl(url) {
-    var w = window.open(url, '_blank');
-    if (!w) showMessage('Pop-up bloqueado — libere pop-ups para imprimir etiquetas.', 'error');
+async function _wmsAbrirEtiquetaUrl(url) {
+    // Busca com sessão e só abre HTML — evita aba com JSON/502 sem mensagem útil.
+    try {
+        if (typeof showMessage === 'function') showMessage('Gerando etiqueta…', 'info');
+        var resp = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+        var ct = (resp.headers.get('content-type') || '').toLowerCase();
+        if (resp.status === 401 || resp.status === 403) {
+            showMessage('Sessão expirada. Faça login novamente e tente imprimir.', 'error');
+            return;
+        }
+        if (ct.indexOf('application/json') >= 0) {
+            var data = null;
+            try { data = await resp.json(); } catch (e1) { data = null; }
+            showMessage((data && data.erro) || ('Erro ao gerar etiqueta (HTTP ' + resp.status + ').'), 'error');
+            return;
+        }
+        if (!resp.ok) {
+            showMessage('Falha ao gerar etiqueta (HTTP ' + resp.status + '). Tente de novo em alguns segundos.', 'error');
+            return;
+        }
+        var html = await resp.text();
+        if (!html || html.length < 40) {
+            showMessage('Resposta vazia ao gerar etiqueta.', 'error');
+            return;
+        }
+        var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        var blobUrl = URL.createObjectURL(blob);
+        var w = window.open(blobUrl, '_blank');
+        if (!w) {
+            // Pop-up bloqueado: baixa/abre na mesma aba.
+            var a = document.createElement('a');
+            a.href = blobUrl;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            showMessage('Pop-up bloqueado — se a etiqueta não abriu, libere pop-ups para este site.', 'warning');
+        }
+        window.setTimeout(function() {
+            try { URL.revokeObjectURL(blobUrl); } catch (e2) {}
+        }, 120000);
+    } catch (e) {
+        showMessage((e && e.message) || 'Falha ao abrir etiqueta.', 'error');
+    }
 }
 
 window.wmsImprimirEtqEndereco = function(codigo) {
@@ -7017,7 +7059,7 @@ function wmsImprimirEtqColuna() {
     var url = '/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam) +
         '&rua=' + encodeURIComponent(rua) + '&posicao=' + encodeURIComponent(pos);
     _wmsAbrirEtiquetaUrl(url);
-};
+}
 
 window._wmsEtqOpcoes = null;
 window._wmsEtqFiltroLock = false;

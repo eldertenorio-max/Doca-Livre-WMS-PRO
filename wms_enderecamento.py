@@ -8406,11 +8406,78 @@ def _resumo_etiquetas_longarina(conn, sincronizar=False):
     }
 
 
+def _sintetizar_loc_rows_coluna(camara, rua, posicao, niveis=None):
+    """Gera linhas virtuais de etiqueta a partir do layout (sem depender do banco)."""
+    cam = int(camara)
+    rua_u = str(rua or '').strip().upper()
+    pos = int(posicao)
+    if not cam or not rua_u or pos <= 0:
+        return []
+    n_esp = int(niveis or 0) or int(_layout_niveis_esperados().get(cam) or 5)
+    n_esp = max(1, min(n_esp, 10))
+    rows = []
+    for niv in range(1, n_esp + 1):
+        rows.append({
+            'camara': cam,
+            'rua': rua_u,
+            'posicao': pos,
+            'nivel': niv,
+            'codigo_endereco': _codigo_endereco(cam, rua_u, pos, niv),
+            'zona_armazenagem': 'picking' if niv == 1 else 'pulmao',
+            'tipo': 'porta_palete',
+            'area': '',
+            'categoria_zona': '',
+            'status': 'vazia',
+        })
+    return rows
+
+
+def _sintetizar_loc_row_codigo(codigo):
+    """Uma etiqueta virtual a partir de 11-A-01-1 ou 11.1.1."""
+    raw = (codigo or '').strip()
+    if not raw:
+        return None
+    cod = _resolver_codigo_endereco_bip(raw) or raw
+    up = str(cod).strip().upper().replace(' ', '')
+    m = re.match(r'^(\d{1,2})-([A-Z]{1,3})-(\d{1,2})-(\d{1,2})$', up)
+    if m:
+        cam, rua_l, pos, niv = m.groups()
+        return {
+            'camara': int(cam),
+            'rua': rua_l,
+            'posicao': int(pos),
+            'nivel': int(niv),
+            'codigo_endereco': _codigo_endereco(int(cam), rua_l, int(pos), int(niv)),
+            'zona_armazenagem': 'picking' if int(niv) == 1 else 'pulmao',
+            'tipo': 'porta_palete',
+            'area': '',
+            'categoria_zona': '',
+            'status': 'vazia',
+        }
+    m3 = re.match(r'^(\d+)\.(\d+)\.(\d+)$', raw.replace(' ', ''))
+    if m3:
+        cam, pos, niv = (int(x) for x in m3.groups())
+        rua_l = _apto_para_rua(cam, 1)
+        return {
+            'camara': cam,
+            'rua': rua_l,
+            'posicao': pos,
+            'nivel': niv,
+            'codigo_endereco': _codigo_endereco(cam, rua_l, pos, niv),
+            'zona_armazenagem': 'picking' if niv == 1 else 'pulmao',
+            'tipo': 'porta_palete',
+            'area': '',
+            'categoria_zona': '',
+            'status': 'vazia',
+        }
+    return None
+
+
 def _buscar_rows_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False):
     """Linhas de wms_localizacao para impressão de longarina.
 
     Não regenera layout aqui — force/sync de níveis estoura timeout (502) no Render.
-    Layout incompleto: Painel «Recalcular distribuição» ou Etiquetas «Atualizar resumo».
+    Se o banco não tiver a coluna/endereço, sintetiza a partir do layout/código.
     """
     try:
         _ensure_zona_armazenagem_column(conn)
@@ -8427,26 +8494,42 @@ def _buscar_rows_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, c
             cod_busca = _resolver_codigo_endereco_bip(codigo, conn=conn) or codigo
             cod_u = str(cod_busca).strip().upper()
             # Aceita código WMS (11-A-01-1) e bip longarina (11.1.1).
-            row = conn.execute(
-                f'''SELECT * FROM {t_loc}
-                    WHERE UPPER(TRIM(codigo_endereco)) = ?
-                       OR UPPER(TRIM(codigo_endereco)) = ?''',
-                (cod_u, str(codigo).strip().upper()),
-            ).fetchone()
+            try:
+                row = conn.execute(
+                    f'''SELECT * FROM {t_loc}
+                        WHERE UPPER(TRIM(codigo_endereco)) = ?
+                           OR UPPER(TRIM(codigo_endereco)) = ?''',
+                    (cod_u, str(codigo).strip().upper()),
+                ).fetchone()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                row = None
             if row:
                 return [row]
             # Fallback por partes do endereço WMS.
             m = re.match(r'^(\d{1,2})-([A-Z]{1,3})-(\d{1,2})-(\d{1,2})$', cod_u)
             if m:
                 cam, rua_l, pos, niv = m.groups()
-                row = conn.execute(
-                    f'''SELECT * FROM {t_loc}
-                        WHERE camara = ? AND UPPER(TRIM(rua)) = ?
-                          AND posicao = ? AND nivel = ?''',
-                    (int(cam), rua_l, int(pos), int(niv)),
-                ).fetchone()
-                return [row] if row else []
-            return []
+                try:
+                    row = conn.execute(
+                        f'''SELECT * FROM {t_loc}
+                            WHERE camara = ? AND UPPER(TRIM(rua)) = ?
+                              AND posicao = ? AND nivel = ?''',
+                        (int(cam), rua_l, int(pos), int(niv)),
+                    ).fetchone()
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    row = None
+                if row:
+                    return [row]
+            synth = _sintetizar_loc_row_codigo(codigo)
+            return [synth] if synth else []
         sql = f'SELECT * FROM {t_loc} WHERE 1=1'
         params = []
         if not todas:
@@ -8460,9 +8543,49 @@ def _buscar_rows_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, c
                 sql += ' AND posicao = ?'
                 params.append(int(posicao))
         sql += ' ORDER BY camara, rua, posicao, nivel'
-        return conn.execute(sql, tuple(params)).fetchall()
+        try:
+            return conn.execute(sql, tuple(params)).fetchall()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return []
 
-    return _buscar()
+    rows = _buscar()
+    if rows:
+        return rows
+
+    # Dropdowns vêm do layout JSON — imprimir mesmo sem linhas no banco.
+    if codigo:
+        synth = _sintetizar_loc_row_codigo(codigo)
+        return [synth] if synth else []
+    if camara and rua and posicao and not todas:
+        return _sintetizar_loc_rows_coluna(camara, rua, posicao)
+    if camara and not todas and not rua and not posicao:
+        out = []
+        for bloco in (_layout_camaras_config().get('camaras') or []):
+            if int(bloco.get('codigo') or 0) != int(camara):
+                continue
+            niveis = max(1, int(bloco.get('niveis') or 5))
+            try:
+                coords = _coords_from_bloco_layout(bloco)
+            except Exception:
+                coords = []
+            seen = set()
+            for _cam, rua_c, pos_c, _niv, dest_acao, _dest_lbl, _apenas in coords:
+                if dest_acao:
+                    continue
+                rua_u = str(rua_c or '').strip().upper()
+                pos_i = int(pos_c or 0)
+                key = (rua_u, pos_i)
+                if not rua_u or pos_i <= 0 or key in seen:
+                    continue
+                seen.add(key)
+                out.extend(_sintetizar_loc_rows_coluna(camara, rua_u, pos_i, niveis=niveis))
+            break
+        return out
+    return []
 
 
 def _zpl_escape(texto):
@@ -9327,21 +9450,27 @@ def api_wms_etiqueta_enderecos_resumo():
 @bp.route('/etiqueta/enderecos', methods=['GET'])
 def api_wms_etiqueta_enderecos():
     """Impressão em lote: armazém inteiro, câmara, ou coluna (câmara+rua+posição)."""
-    conn = _db()
-    ensure_wms_schema(conn)
     todas = (request.args.get('todas') or '').strip().lower() in ('1', 'true', 'sim', 'all')
     camara = request.args.get('camara', type=int)
     rua = (request.args.get('rua') or '').strip() or None
     posicao = request.args.get('posicao', type=int)
     if not todas and not camara and not rua and not posicao:
         return jsonify({'erro': 'Informe todas=1, camara, ou coluna (camara+rua+posicao).'}), 400
+    conn = None
     try:
+        conn = _db()
+        try:
+            ensure_wms_schema(conn)
+        except Exception as schema_err:
+            try:
+                print('[wms/etiqueta/enderecos] schema:', schema_err, flush=True)
+            except Exception:
+                pass
         fmt = _formato_longarina_request()
         if fmt == 'xlsx':
             xlsx_bytes, err = _render_etiquetas_endereco_xlsx(
                 conn, camara=camara, rua=rua, posicao=posicao, todas=todas,
             )
-            conn.close()
             if err:
                 return jsonify({'erro': err}), 404
             nome = _nome_arquivo_xlsx_longarina(
@@ -9357,16 +9486,21 @@ def api_wms_etiqueta_enderecos():
             auto_print=auto_print,
             todas=todas,
         )
-        conn.close()
         if err:
             return jsonify({'erro': err}), 404
         return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
     except Exception as e:
         try:
-            conn.close()
+            print('[wms/etiqueta/enderecos] erro:', e, flush=True)
         except Exception:
             pass
-        return jsonify({'erro': str(e)}), 500
+        return jsonify({'erro': 'Falha ao gerar etiquetas: %s' % e}), 500
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @bp.route('/etiqueta/nf-itens', methods=['GET'])
