@@ -29,6 +29,14 @@ bp = Blueprint('wms_enderecamento', __name__)
 
 _get_db = None
 _WMS_SCHEMA_READY = False
+_WMS_DEFAULTS_SEEDED = False
+_WMS_PAINEL_CACHE = {'ts': 0.0, 'payload': None}
+_WMS_PAINEL_TTL_SEC = 25
+
+
+def _invalidate_wms_painel_cache():
+    _WMS_PAINEL_CACHE['ts'] = 0.0
+    _WMS_PAINEL_CACHE['payload'] = None
 
 
 def register_wms_db(get_db_func):
@@ -2515,6 +2523,72 @@ def _distribuicao_categoria(conn):
     return [_row_dict(r) or {} for r in rows]
 
 
+def _painel_ocupacao_e_dist(conn):
+    """Uma varredura agregada de wms_localizacao → câmaras + distribuição."""
+    t_loc = _tbl(conn, 'wms_localizacao')
+    t_cam = _tbl(conn, 'wms_camara')
+    cam_rows = conn.execute(
+        f'''SELECT codigo, descricao, total_posicoes
+            FROM {t_cam}
+            WHERE {_ativo_sql(conn)}
+            ORDER BY codigo'''
+    ).fetchall()
+    agg = conn.execute(
+        f'''SELECT camara, categoria_zona, status, COUNT(*) AS n
+            FROM {t_loc}
+            GROUP BY camara, categoria_zona, status'''
+    ).fetchall()
+    by_cam = {}
+    dist_map = {}
+    for r in agg:
+        d = _row_dict(r) or {}
+        cam = int(d.get('camara') or 0)
+        cat = (d.get('categoria_zona') or '').strip()
+        st = (d.get('status') or '').strip().lower()
+        n = int(d.get('n') or 0)
+        bc = by_cam.setdefault(cam, {'cadastradas': 0, 'ocupadas': 0, 'vazias': 0})
+        bc['cadastradas'] += n
+        if st == 'ocupada':
+            bc['ocupadas'] += n
+        elif st == 'vazia':
+            bc['vazias'] += n
+        if cat:
+            key = (cat, cam)
+            dd = dist_map.setdefault(
+                key,
+                {'categoria': cat, 'camara': cam, 'total': 0, 'vazias': 0, 'ocupadas': 0},
+            )
+            dd['total'] += n
+            if st == 'vazia':
+                dd['vazias'] += n
+            elif st == 'ocupada':
+                dd['ocupadas'] += n
+    refs = _map_totais_ref_camaras()
+    camaras = []
+    for r in cam_rows:
+        d = _row_dict(r) or {}
+        cod = int(d.get('codigo') or 0)
+        stats = by_cam.get(cod) or {'cadastradas': 0, 'ocupadas': 0, 'vazias': 0}
+        cad = int(stats['cadastradas'])
+        ocup = int(stats['ocupadas'])
+        vaz = int(stats['vazias'])
+        total_ref = refs.get(cod) or int(d.get('total_posicoes') or cad or 1)
+        base = cad if cad > 0 else total_ref
+        vaz_calc = cad - ocup if cad > 0 else max(total_ref - ocup, 0)
+        pct = round(100.0 * ocup / base, 1) if base else 0
+        camaras.append({
+            'camara': cod,
+            'descricao': d.get('descricao'),
+            'total_posicoes': total_ref,
+            'cadastradas': cad,
+            'ocupadas': ocup,
+            'vazias': vaz if cad else vaz_calc,
+            'ocupacao_pct': pct,
+        })
+    dist = sorted(dist_map.values(), key=lambda x: (str(x.get('categoria') or ''), int(x.get('camara') or 0)))
+    return camaras, dist
+
+
 def _listar_zoneamento(conn):
     t = _tbl(conn, 'wms_zoneamento')
     rows = conn.execute(
@@ -3028,18 +3102,16 @@ def _registrar_retorno_palete(conn, palete_id, motivo=None, codigo_endereco=None
 
 
 def _contar_paletes_fora(conn):
-    t_pal = _tbl(conn, 'wms_palete')
+    """Conta saídas sem retorno (mais leve que EXISTS por palete)."""
     t_ctrl = _tbl(conn, 'wms_palete_controle')
     row = conn.execute(
-        f'''SELECT COUNT(*) AS c FROM {t_pal} p
-            WHERE EXISTS (
-                SELECT 1 FROM {t_ctrl} c
-                WHERE c.palete_id = p.id AND c.tipo = 'saida'
-                  AND NOT EXISTS (
-                    SELECT 1 FROM {t_ctrl} r
-                    WHERE r.tipo = 'retorno' AND r.registro_saida_id = c.id
-                  )
-            )''',
+        f'''SELECT COUNT(DISTINCT c.palete_id) AS c
+            FROM {t_ctrl} c
+            WHERE c.tipo = 'saida'
+              AND NOT EXISTS (
+                SELECT 1 FROM {t_ctrl} r
+                WHERE r.tipo = 'retorno' AND r.registro_saida_id = c.id
+              )''',
     ).fetchone()
     return _int_col(row)
 
@@ -3051,8 +3123,23 @@ def _listar_paletes_fora(conn):
 
 def _seed_wms_defaults(conn):
     """Câmaras, zoneamento e perguntas de qualidade padrão (idempotente)."""
+    global _WMS_DEFAULTS_SEEDED
+    if _WMS_DEFAULTS_SEEDED:
+        return
     t_cam = _tbl(conn, 'wms_camara')
     t_z = _tbl(conn, 'wms_zoneamento')
+    # Atalho: se já há câmaras e zoneamento, não reprocessa inserts.
+    try:
+        n_cam = _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_cam}').fetchone())
+        n_z = _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_z}').fetchone())
+        if n_cam > 0 and n_z > 0:
+            _WMS_DEFAULTS_SEEDED = True
+            return
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
     now = _now_iso()
     camaras = [
         (11, 'Câmara 11', 144),
@@ -3139,6 +3226,7 @@ def _seed_wms_defaults(conn):
             conn.rollback()
         except Exception:
             pass
+    _WMS_DEFAULTS_SEEDED = True
 
 
 def _row_dict(row):
@@ -6073,6 +6161,18 @@ def _relatorio_wms(conn, tipo, data_inicio=None, data_fim=None, extra=None):
 
 @bp.route('/painel', methods=['GET'])
 def api_wms_painel():
+    import time as _time
+
+    force = str(request.args.get('force') or '').strip().lower() in ('1', 'true', 'sim')
+    now = _time.time()
+    cached = _WMS_PAINEL_CACHE.get('payload')
+    if (
+        not force
+        and cached
+        and (now - float(_WMS_PAINEL_CACHE.get('ts') or 0)) < _WMS_PAINEL_TTL_SEC
+    ):
+        return jsonify(cached)
+
     conn = _db()
     ensure_wms_schema(conn)
     _seed_wms_defaults(conn)
@@ -6092,37 +6192,18 @@ def api_wms_painel():
             return default
 
     try:
-        pesos = _safe('pesos', lambda: _pesos_categoria_produtos(conn), {})
-        camaras = _safe('camaras', lambda: _ocupacao_camara(conn), [])
-        dist_cat = _safe('dist_cat', lambda: _distribuicao_categoria(conn), [])
+        pair = _safe('ocup_dist', lambda: _painel_ocupacao_e_dist(conn), ([], []))
+        camaras = pair[0] if isinstance(pair, (list, tuple)) and len(pair) == 2 else []
+        dist_cat = pair[1] if isinstance(pair, (list, tuple)) and len(pair) == 2 else []
         zoneamento = _safe('zoneamento', lambda: _listar_zoneamento(conn), [])
+
         t_mov = _tbl(conn, 'wms_movimentacao')
         t_rec = _tbl(conn, 'wms_recebimento')
         t_inv = _tbl(conn, 'wms_inventario')
-        pendentes = _safe(
-            'mov_pend',
-            lambda: conn.execute(f"SELECT COUNT(*) AS c FROM {t_mov} WHERE status = 'pendente'").fetchone(),
-            None,
-        )
-        rec_abertos = _safe(
-            'rec_abertos',
-            lambda: conn.execute(
-                f"SELECT COUNT(*) AS c FROM {t_rec} WHERE status NOT IN ('finalizado', 'cancelado')"
-            ).fetchone(),
-            None,
-        )
-        inv_ativos = _safe(
-            'inv_ativos',
-            lambda: conn.execute(
-                f"SELECT COUNT(*) AS c FROM {t_inv} WHERE status IN ('ativo', 'em_andamento')"
-            ).fetchone(),
-            None,
-        )
-        paletes_fora = _safe('paletes_fora', lambda: _contar_paletes_fora(conn), 0)
-        _safe('produto_cols', lambda: _ensure_produto_planejamento_columns(conn), None)
         t_prod = _tbl(conn, 'wms_produto_enderecamento')
-        resumo_status = _safe('resumo_status', lambda: _resumo_status_planejamento(conn), {})
-        pesos_pos = _safe(
+
+        # Uma única agregação de metas por categoria (evita query duplicada de pesos).
+        pesos_pos_rows = _safe(
             'pesos_pos',
             lambda: conn.execute(
                 f'''SELECT UPPER(SUBSTR(categoria, 1, 1)) AS cat,
@@ -6132,24 +6213,51 @@ def api_wms_painel():
             ).fetchall(),
             [],
         )
+        pesos_pos = {}
+        for r in pesos_pos_rows or []:
+            rd = _row_dict(r) or {}
+            cat = (rd.get('cat') or '').strip().upper()
+            if cat in ('A', 'B', 'C', 'D'):
+                pesos_pos[cat] = int(rd.get('posicoes') or 0)
+        if not pesos_pos:
+            pesos_pos = {'A': 1, 'B': 1, 'C': 1, 'D': 1}
+
+        # KPIs em uma ida ao banco.
+        kpi_row = _safe(
+            'kpis',
+            lambda: conn.execute(
+                f'''SELECT
+                        (SELECT COUNT(*) FROM {t_mov} WHERE status = 'pendente') AS mov_pend,
+                        (SELECT COUNT(*) FROM {t_rec}
+                         WHERE status NOT IN ('finalizado', 'cancelado')) AS rec_abertos,
+                        (SELECT COUNT(*) FROM {t_inv}
+                         WHERE status IN ('ativo', 'em_andamento')) AS inv_ativos'''
+            ).fetchone(),
+            None,
+        )
+        kpi = _row_dict(kpi_row) or {}
+        paletes_fora = _safe('paletes_fora', lambda: _contar_paletes_fora(conn), 0)
+        resumo_status = _safe('resumo_status', lambda: _resumo_status_planejamento(conn), {})
+
         conn.close()
-        return jsonify({
+        payload = {
             'ok': True,
             'camaras': camaras,
             'distribuicao_categoria': dist_cat,
             'zoneamento': zoneamento,
-            'pesos_categoria': pesos,
-            'pesos_posicoes_categoria': {
-                (_row_dict(r) or {}).get('cat'): int((_row_dict(r) or {}).get('posicoes') or 0)
-                for r in (pesos_pos or [])
-            },
+            'pesos_categoria': dict(pesos_pos),
+            'pesos_posicoes_categoria': pesos_pos,
             'resumo_status_planejamento': resumo_status,
             'fonte_estoque': 'wms',
-            'movimentacoes_pendentes': _int_col(pendentes),
-            'recebimentos_abertos': _int_col(rec_abertos),
-            'inventarios_ativos': _int_col(inv_ativos),
+            'movimentacoes_pendentes': int(kpi.get('mov_pend') or 0),
+            'recebimentos_abertos': int(kpi.get('rec_abertos') or 0),
+            'inventarios_ativos': int(kpi.get('inv_ativos') or 0),
             'paletes_fora_armazem': paletes_fora,
-        })
+            'cache_ttl_sec': _WMS_PAINEL_TTL_SEC,
+        }
+        _WMS_PAINEL_CACHE['ts'] = now
+        _WMS_PAINEL_CACHE['payload'] = payload
+        return jsonify(payload)
     except Exception as e:
         try:
             conn.close()
@@ -6166,6 +6274,7 @@ def api_wms_layout_gerar():
     force = bool(data.get('force'))
     try:
         result = gerar_layout_enderecos(conn, force=force)
+        _invalidate_wms_painel_cache()
         conn.close()
         return jsonify(result)
     except Exception as e:

@@ -6848,23 +6848,88 @@ function initWmsEnderecamento() {
     } catch (eBoot) {}
 }
 
+var _wmsPainelClientCache = { ts: 0, data: null };
+var _WMS_PAINEL_CLIENT_TTL_MS = 20000;
+
+function _wmsRenderPainel(data) {
+    var elM = document.getElementById('wms-stat-mov-pend');
+    var elR = document.getElementById('wms-stat-rec-abertos');
+    var elI = document.getElementById('wms-stat-inv-ativos');
+    var elP = document.getElementById('wms-stat-pal-fora');
+    if (elM) elM.textContent = String(data.movimentacoes_pendentes || 0);
+    if (elR) elR.textContent = String(data.recebimentos_abertos || 0);
+    if (elI) elI.textContent = String(data.inventarios_ativos || 0);
+    if (elP) elP.textContent = String(data.paletes_fora_armazem || 0);
+    var box = document.getElementById('wms-camaras-barras');
+    if (box) {
+        var cams = data.camaras || [];
+        box.innerHTML = cams.map(function(c) {
+            var pct = Number(c.ocupacao_pct) || 0;
+            var vaz = c.vazias != null ? c.vazias : '—';
+            var ocup = c.ocupadas != null ? c.ocupadas : '—';
+            var tot = c.total_posicoes || c.cadastradas || 0;
+            return '<div style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;"><strong>Câmara ' + escHtml(c.camara) + '</strong><span>' + escHtml(ocup) + ' ocup. · ' + escHtml(vaz) + ' vaz. · ' + pct + '%</span></div><div style="background:#e0e0e0;border-radius:4px;height:10px;overflow:hidden;"><div style="width:' + Math.min(pct, 100) + '%;background:#1976d2;height:100%;"></div></div><div style="font-size:11px;color:#666;margin-top:2px;">Total ref.: ' + escHtml(tot) + ' posições</div></div>';
+        }).join('') || '<p class="info-text">Nenhuma câmara cadastrada.</p>';
+    }
+    var info = document.getElementById('wms-layout-info');
+    if (info) {
+        var pesosPos = data.pesos_posicoes_categoria || data.pesos_categoria || {};
+        var parts = ['A', 'B', 'C', 'D'].filter(function(k) { return pesosPos[k]; }).map(function(k) {
+            return k + ': ' + pesosPos[k] + ' pos.';
+        });
+        var stParts = [];
+        var rs = data.resumo_status_planejamento || {};
+        ['Vermelho', 'Amarelo', 'Verde', 'Excedido'].forEach(function(k) {
+            if (rs[k]) stParts.push(k + ' ' + rs[k]);
+        });
+        info.textContent = 'Posições médias (metas): ' + (parts.join(' · ') || 'padrão') +
+            (stParts.length ? ' · Status WMS real: ' + stParts.join(', ') : ' · Status WMS real');
+    }
+    var dtb = document.getElementById('wms-tbody-dist-categoria');
+    if (dtb) {
+        var dist = data.distribuicao_categoria || [];
+        dtb.innerHTML = dist.length ? dist.map(function(d) {
+            return '<tr><td><strong>' + escHtml(d.categoria) + '</strong></td><td>' + escHtml(d.camara) + '</td><td>' + escHtml(d.total) + '</td><td>' + escHtml(d.vazias) + '</td><td>' + escHtml(d.ocupadas) + '</td></tr>';
+        }).join('') : '<tr><td colspan="5">Sem distribuição — clique em Recalcular distribuição.</td></tr>';
+    }
+    var ztb = document.getElementById('wms-tbody-zoneamento');
+    if (ztb) {
+        var zona = data.zoneamento || [];
+        ztb.innerHTML = zona.length ? zona.map(function(z) {
+            return '<tr><td>' + escHtml(z.categoria) + '</td><td>' + escHtml(z.camara) + ' — ' + escHtml(z.camara_descricao || '') + '</td><td>' + escHtml(z.prioridade) + '</td></tr>';
+        }).join('') : '<tr><td colspan="3">Sem zoneamento.</td></tr>';
+    }
+}
+
 async function wmsRedistribuirLayout() {
     if (!confirm('Recalcular a distribuição de categorias em todos os endereços?')) return;
     var data = await fetchAPI('/wms/layout/gerar', { method: 'POST', body: JSON.stringify({ force: true }) });
     if (data && data.ok) {
         showMessage('Distribuição atualizada: ' + (data.geradas || 0) + ' endereços.', 'success');
-        loadWmsPainel();
+        _wmsPainelClientCache = { ts: 0, data: null };
+        loadWmsPainel({ force: true });
         loadWmsLocalizacoes();
     } else {
         showMessage((data && data.erro) || 'Erro ao recalcular.', 'error');
     }
 }
 
-async function loadWmsPainel() {
-    _wmsSetTbody('wms-tbody-dist-categoria', 5, '<span class="loading">Carregando...</span>');
+async function loadWmsPainel(opts) {
+    var force = !!(opts && opts.force);
+    var now = Date.now();
+    if (
+        !force
+        && _wmsPainelClientCache.data
+        && (now - (_wmsPainelClientCache.ts || 0)) < _WMS_PAINEL_CLIENT_TTL_MS
+    ) {
+        _wmsRenderPainel(_wmsPainelClientCache.data);
+        return;
+    }
+    _wmsSetTbody('wms-tbody-dist-categoria', 5, '<span class="loading">Carregando painel...</span>');
     _wmsSetTbody('wms-tbody-zoneamento', 3, '<span class="loading">Carregando...</span>');
     try {
-        var data = await _wmsFetchGet('/wms/painel', 60000);
+        var path = '/wms/painel' + (force ? '?force=1' : '');
+        var data = await _wmsFetchGet(path, 45000);
         if (!data || data.erro) {
             var err = _wmsErroMsg(data, 'Erro ao carregar painel WMS.');
             showMessage(err, 'error');
@@ -6872,53 +6937,8 @@ async function loadWmsPainel() {
             _wmsSetTbody('wms-tbody-zoneamento', 3, escHtml(err));
             return;
         }
-        var elM = document.getElementById('wms-stat-mov-pend');
-        var elR = document.getElementById('wms-stat-rec-abertos');
-        var elI = document.getElementById('wms-stat-inv-ativos');
-        var elP = document.getElementById('wms-stat-pal-fora');
-        if (elM) elM.textContent = String(data.movimentacoes_pendentes || 0);
-        if (elR) elR.textContent = String(data.recebimentos_abertos || 0);
-        if (elI) elI.textContent = String(data.inventarios_ativos || 0);
-        if (elP) elP.textContent = String(data.paletes_fora_armazem || 0);
-        var box = document.getElementById('wms-camaras-barras');
-        if (box) {
-            var cams = data.camaras || [];
-            box.innerHTML = cams.map(function(c) {
-                var pct = Number(c.ocupacao_pct) || 0;
-                var vaz = c.vazias != null ? c.vazias : '—';
-                var ocup = c.ocupadas != null ? c.ocupadas : '—';
-                var tot = c.total_posicoes || c.cadastradas || 0;
-                return '<div style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;"><strong>Câmara ' + escHtml(c.camara) + '</strong><span>' + escHtml(ocup) + ' ocup. · ' + escHtml(vaz) + ' vaz. · ' + pct + '%</span></div><div style="background:#e0e0e0;border-radius:4px;height:10px;overflow:hidden;"><div style="width:' + Math.min(pct, 100) + '%;background:#1976d2;height:100%;"></div></div><div style="font-size:11px;color:#666;margin-top:2px;">Total ref.: ' + escHtml(tot) + ' posições</div></div>';
-            }).join('') || '<p class="info-text">Nenhuma câmara cadastrada.</p>';
-        }
-        var info = document.getElementById('wms-layout-info');
-        if (info) {
-            var pesosPos = data.pesos_posicoes_categoria || data.pesos_categoria || {};
-            var parts = ['A', 'B', 'C', 'D'].filter(function(k) { return pesosPos[k]; }).map(function(k) {
-                return k + ': ' + pesosPos[k] + ' pos.';
-            });
-            var stParts = [];
-            var rs = data.resumo_status_planejamento || {};
-            ['Vermelho', 'Amarelo', 'Verde', 'Excedido'].forEach(function(k) {
-                if (rs[k]) stParts.push(k + ' ' + rs[k]);
-            });
-            info.textContent = 'Posições médias (metas): ' + (parts.join(' · ') || 'padrão') +
-                (stParts.length ? ' · Status WMS real: ' + stParts.join(', ') : ' · Status WMS real');
-        }
-        var dtb = document.getElementById('wms-tbody-dist-categoria');
-        if (dtb) {
-            var dist = data.distribuicao_categoria || [];
-            dtb.innerHTML = dist.length ? dist.map(function(d) {
-                return '<tr><td><strong>' + escHtml(d.categoria) + '</strong></td><td>' + escHtml(d.camara) + '</td><td>' + escHtml(d.total) + '</td><td>' + escHtml(d.vazias) + '</td><td>' + escHtml(d.ocupadas) + '</td></tr>';
-            }).join('') : '<tr><td colspan="5">Sem distribuição — clique em Recalcular distribuição.</td></tr>';
-        }
-        var ztb = document.getElementById('wms-tbody-zoneamento');
-        if (ztb) {
-            var zona = data.zoneamento || [];
-            ztb.innerHTML = zona.length ? zona.map(function(z) {
-                return '<tr><td>' + escHtml(z.categoria) + '</td><td>' + escHtml(z.camara) + ' — ' + escHtml(z.camara_descricao || '') + '</td><td>' + escHtml(z.prioridade) + '</td></tr>';
-            }).join('') : '<tr><td colspan="3">Sem zoneamento.</td></tr>';
-        }
+        _wmsPainelClientCache = { ts: Date.now(), data: data };
+        _wmsRenderPainel(data);
     } catch (e) {
         var msg = (e && e.message) || 'Erro ao carregar painel WMS.';
         _wmsSetTbody('wms-tbody-dist-categoria', 5, escHtml(msg));
