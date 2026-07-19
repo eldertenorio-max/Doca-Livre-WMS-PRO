@@ -29,6 +29,7 @@ bp = Blueprint('wms_enderecamento', __name__)
 
 _get_db = None
 _WMS_SCHEMA_READY = False
+_WMS_AUX_DATA_READY = False
 _WMS_DEFAULTS_SEEDED = False
 _WMS_PAINEL_CACHE = {'ts': 0.0, 'payload': None}
 _WMS_PAINEL_TTL_SEC = 25
@@ -50,6 +51,20 @@ def init_wms_enderecamento(get_db_func):
     try:
         conn = get_db_func()
         ensure_wms_schema(conn)
+        try:
+            _seed_wms_defaults(conn)
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        try:
+            _ensure_wms_aux_data(conn)
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         conn.close()
     except Exception:
         pass
@@ -452,7 +467,8 @@ def _ensure_categoria_zona_column(conn):
             pass
 
 
-def _ensure_zona_armazenagem_column(conn):
+def _ensure_zona_armazenagem_column(conn, backfill=False):
+    """Garante coluna zona_armazenagem. Backfill em massa só sob demanda (nunca no boot de API)."""
     _ensure_categoria_zona_column(conn)
     if _is_pg(conn):
         try:
@@ -474,6 +490,8 @@ def _ensure_zona_armazenagem_column(conn):
                 conn.commit()
         except Exception:
             pass
+    if not backfill:
+        return
     t_loc = _tbl(conn, 'wms_localizacao')
     try:
         conn.execute(
@@ -2645,22 +2663,44 @@ def _gerar_etiqueta_palete():
     return etiqueta
 
 
+def _ensure_wms_aux_data(conn):
+    """Stage/áreas especiais — pesado; só uma vez, fora do path crítico das abas."""
+    global _WMS_AUX_DATA_READY
+    if _WMS_AUX_DATA_READY:
+        return
+    for fn, label in (
+        (_ensure_stage_localizacoes, 'stage'),
+        (_ensure_areas_especiais_localizacoes, 'areas_especiais'),
+    ):
+        try:
+            fn(conn)
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            try:
+                print('[wms] aux %s falhou:' % label, e, flush=True)
+            except Exception:
+                pass
+    _WMS_AUX_DATA_READY = True
+
+
 def ensure_wms_schema(conn):
-    """Cria tabelas WMS (Postgres ou SQLite). Executa no máximo uma vez por processo."""
+    """DDL leve das tabelas WMS. Sem UPDATE em massa nem inserts de stage/áreas."""
     global _WMS_SCHEMA_READY
     if _WMS_SCHEMA_READY:
         return
     if _wms_tabelas_existem(conn):
+        # Só ALTER COLUMN leve — NÃO regenera layout nem faz UPDATE full-table.
         for fn, label in (
-            (_ensure_zona_armazenagem_column, 'zona_armazenagem'),
+            (lambda c: _ensure_zona_armazenagem_column(c, backfill=False), 'zona_armazenagem'),
             (_ensure_produto_planejamento_columns, 'produto_planejamento'),
             (_ensure_wms_recebimento_terceiros_columns, 'recebimento_terceiros'),
             (_ensure_wms_palete_item_nf_columns, 'palete_item_nf'),
             (_ensure_wms_palete_item_disposicao, 'palete_item_disposicao'),
             (_ensure_wms_palete_controle_table, 'palete_controle'),
             (_ensure_movimentacao_expedicao_columns, 'movimentacao_expedicao'),
-            (_ensure_stage_localizacoes, 'stage'),
-            (_ensure_areas_especiais_localizacoes, 'areas_especiais'),
         ):
             try:
                 fn(conn)
@@ -6174,8 +6214,14 @@ def api_wms_painel():
         return jsonify(cached)
 
     conn = _db()
-    ensure_wms_schema(conn)
-    _seed_wms_defaults(conn)
+    try:
+        if not _WMS_SCHEMA_READY:
+            ensure_wms_schema(conn)
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
 
     def _safe(label, fn, default):
         try:
@@ -6670,31 +6716,44 @@ def api_wms_camara_itens(codigo):
 
 @bp.route('/produtos', methods=['GET'])
 def api_wms_produtos():
-    conn = _db()
-    ensure_wms_schema(conn)
     cat = (request.args.get('categoria') or '').strip().upper()
     q = (request.args.get('q') or '').strip()
     sync = (request.args.get('sync') or '').strip().lower() in ('1', 'sim', 'true', 'yes')
+    conn = None
     try:
-        if sync:
-            _sync_all_produtos_estoque_cache(conn)
+        conn = _db()
+        if not _WMS_SCHEMA_READY:
             try:
+                ensure_wms_schema(conn)
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        if sync:
+            try:
+                _sync_all_produtos_estoque_cache(conn)
                 conn.commit()
             except Exception:
-                conn.rollback()
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
         estoque = _listar_estoque_armazenado_wms(conn, categoria=cat or None, q=q or None)
-        conn.close()
         return jsonify({
+            'ok': True,
             'estoque': estoque,
             'total_linhas': len(estoque),
             'fonte_estoque': 'wms',
         })
     except Exception as e:
-        try:
-            conn.close()
-        except Exception:
-            pass
-        return jsonify({'erro': str(e)}), 500
+        return jsonify({'ok': True, 'estoque': [], 'total_linhas': 0, 'fonte_estoque': 'wms', 'aviso': str(e)})
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @bp.route('/analise/ocupacao', methods=['GET'])
@@ -8372,30 +8431,30 @@ def _opcoes_impressao_longarina(conn):
     """Câmaras, ruas e colunas do layout para filtros de impressão de etiquetas."""
     # Opções vêm do layout JSON — não regenera banco aqui (evita 502).
     nomes = {}
-    try:
-        nomes = _map_nomes_camaras(conn)
-    except Exception:
-        nomes = {}
-
-    t_loc = _tbl(conn, 'wms_localizacao')
     db_cols = {}
-    try:
-        rows_db = conn.execute(
-            f'''SELECT camara, UPPER(TRIM(rua)) AS rua, posicao, COUNT(DISTINCT nivel) AS niveis
-                FROM {t_loc}
-                WHERE camara IN (11, 12, 13, 21)
-                GROUP BY camara, UPPER(TRIM(rua)), posicao''',
-        ).fetchall()
-        for r in rows_db or []:
-            rd = _row_dict(r) or {}
-            key = (int(rd.get('camara') or 0), str(rd.get('rua') or '').upper(), int(rd.get('posicao') or 0))
-            db_cols[key] = int(rd.get('niveis') or 0)
-    except Exception:
+    if conn is not None:
         try:
-            conn.rollback()
+            nomes = _map_nomes_camaras(conn)
         except Exception:
-            pass
-        db_cols = {}
+            nomes = {}
+        try:
+            t_loc = _tbl(conn, 'wms_localizacao')
+            rows_db = conn.execute(
+                f'''SELECT camara, UPPER(TRIM(rua)) AS rua, posicao, COUNT(DISTINCT nivel) AS niveis
+                    FROM {t_loc}
+                    WHERE camara IN (11, 12, 13, 21)
+                    GROUP BY camara, UPPER(TRIM(rua)), posicao''',
+            ).fetchall()
+            for r in rows_db or []:
+                rd = _row_dict(r) or {}
+                key = (int(rd.get('camara') or 0), str(rd.get('rua') or '').upper(), int(rd.get('posicao') or 0))
+                db_cols[key] = int(rd.get('niveis') or 0)
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            db_cols = {}
 
     camaras_out = []
     for bloco in (_layout_camaras_config().get('camaras') or []):
@@ -8453,6 +8512,8 @@ def _opcoes_impressao_longarina(conn):
 
 def _resumo_etiquetas_longarina(conn, sincronizar=False):
     """Contagem de endereços/longarinas para impressão em lote."""
+    niveis_cfg = _layout_niveis_esperados()
+    n_esp = max(niveis_cfg.values()) if niveis_cfg else 5
     # Só regenera com sync=1 explícito (Atualizar resumo). GET normal não pode derrubar o Render.
     if sincronizar:
         try:
@@ -8467,28 +8528,41 @@ def _resumo_etiquetas_longarina(conn, sincronizar=False):
             except Exception:
                 pass
     t_loc = _tbl(conn, 'wms_localizacao')
-    niveis_cfg = _layout_niveis_esperados()
-    n_esp = max(niveis_cfg.values()) if niveis_cfg else 5
-    total = _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
-    mx = _int_col(conn.execute(f'SELECT MAX(nivel) AS mx FROM {t_loc}').fetchone(), 'mx')
-    incompletas = _int_col(conn.execute(
-        f'''SELECT COUNT(*) AS c FROM (
-                SELECT camara, posicao, rua FROM {t_loc}
-                GROUP BY camara, posicao, rua
-                HAVING COUNT(DISTINCT nivel) < ?
-            ) t''',
-        (n_esp,),
-    ).fetchone(), 'c')
-    rows_cam = conn.execute(
-        f'''SELECT camara, COUNT(*) AS etiquetas
-            FROM {t_loc} GROUP BY camara ORDER BY camara''',
-    ).fetchall()
-    colunas = conn.execute(
-        f'''SELECT camara, rua, posicao, COUNT(*) AS niveis
-            FROM {t_loc}
-            GROUP BY camara, rua, posicao
-            ORDER BY camara, rua, posicao''',
-    ).fetchall()
+    try:
+        total = _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t_loc}').fetchone(), 'c')
+        mx = _int_col(conn.execute(f'SELECT MAX(nivel) AS mx FROM {t_loc}').fetchone(), 'mx')
+        incompletas = _int_col(conn.execute(
+            f'''SELECT COUNT(*) AS c FROM (
+                    SELECT camara, posicao, rua FROM {t_loc}
+                    GROUP BY camara, posicao, rua
+                    HAVING COUNT(DISTINCT nivel) < ?
+                ) t''',
+            (n_esp,),
+        ).fetchone(), 'c')
+        rows_cam = conn.execute(
+            f'''SELECT camara, COUNT(*) AS etiquetas
+                FROM {t_loc} GROUP BY camara ORDER BY camara''',
+        ).fetchall()
+        colunas = conn.execute(
+            f'''SELECT camara, rua, posicao, COUNT(*) AS niveis
+                FROM {t_loc}
+                GROUP BY camara, rua, posicao
+                ORDER BY camara, rua, posicao''',
+        ).fetchall()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {
+            'ok': True,
+            'total_etiquetas': 0,
+            'total_colunas': 0,
+            'max_nivel_banco': 0,
+            'niveis_config': n_esp,
+            'colunas_incompletas': 0,
+            'por_camara': [],
+        }
     por_camara = []
     cols_por_cam = {}
     for c in colunas or []:
@@ -9522,36 +9596,55 @@ def api_wms_etiqueta_endereco():
 @bp.route('/etiqueta/enderecos/opcoes', methods=['GET'])
 def api_wms_etiqueta_enderecos_opcoes():
     """Câmaras, ruas e colunas disponíveis para impressão de etiquetas longarina."""
-    conn = _db()
-    ensure_wms_schema(conn)
+    conn = None
     try:
+        conn = _db()
         data = _opcoes_impressao_longarina(conn)
-        conn.close()
         return jsonify(data)
     except Exception as e:
+        # Layout JSON puro — não depende de schema/banco.
         try:
-            conn.close()
+            data = _opcoes_impressao_longarina(None)
+            data['aviso'] = str(e)
+            return jsonify(data)
         except Exception:
-            pass
-        return jsonify({'erro': str(e)}), 500
+            return jsonify({'erro': str(e)}), 500
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @bp.route('/etiqueta/enderecos/resumo', methods=['GET'])
 def api_wms_etiqueta_enderecos_resumo():
     """Resumo para instalação: quantas longarinas imprimir por câmara."""
     sincronizar = (request.args.get('sync') or '').strip().lower() in ('1', 'true', 'sim')
-    conn = _db()
-    ensure_wms_schema(conn)
+    conn = None
     try:
+        conn = _db()
+        if sincronizar and not _WMS_SCHEMA_READY:
+            ensure_wms_schema(conn)
         data = _resumo_etiquetas_longarina(conn, sincronizar=sincronizar)
-        conn.close()
         return jsonify(data)
     except Exception as e:
-        try:
-            conn.close()
-        except Exception:
-            pass
-        return jsonify({'erro': str(e)}), 500
+        return jsonify({
+            'ok': True,
+            'total_etiquetas': 0,
+            'total_colunas': 0,
+            'max_nivel_banco': 0,
+            'niveis_config': 5,
+            'colunas_incompletas': 0,
+            'por_camara': [],
+            'aviso': str(e),
+        })
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @bp.route('/etiqueta/enderecos', methods=['GET'])
