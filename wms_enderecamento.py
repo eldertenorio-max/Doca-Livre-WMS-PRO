@@ -6236,7 +6236,11 @@ def api_wms_painel():
             None,
         )
         kpi = _row_dict(kpi_row) or {}
-        paletes_fora = _safe('paletes_fora', lambda: _contar_paletes_fora(conn), 0)
+        # Contagem de paletes fora é a query mais lenta — só no modo completo.
+        completo = str(request.args.get('completo') or '').strip().lower() in ('1', 'true', 'sim')
+        paletes_fora = (
+            _safe('paletes_fora', lambda: _contar_paletes_fora(conn), 0) if completo else 0
+        )
         resumo_status = _safe('resumo_status', lambda: _resumo_status_planejamento(conn), {})
 
         conn.close()

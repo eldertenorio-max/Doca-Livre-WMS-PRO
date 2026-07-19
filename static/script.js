@@ -6914,9 +6914,12 @@ async function wmsRedistribuirLayout() {
     }
 }
 
+var _wmsPainelLoadGen = 0;
+
 async function loadWmsPainel(opts) {
     var force = !!(opts && opts.force);
     var now = Date.now();
+    var gen = ++_wmsPainelLoadGen;
     if (
         !force
         && _wmsPainelClientCache.data
@@ -6929,9 +6932,15 @@ async function loadWmsPainel(opts) {
     _wmsSetTbody('wms-tbody-zoneamento', 3, '<span class="loading">Carregando...</span>');
     try {
         var path = '/wms/painel' + (force ? '?force=1' : '');
-        var data = await _wmsFetchGet(path, 45000);
+        // Timeout maior + retry interno do fetchAPIComTimeout (Render frio / query pesada).
+        var data = await _wmsFetchGet(path, 90000);
+        if (gen !== _wmsPainelLoadGen) return;
         if (!data || data.erro) {
             var err = _wmsErroMsg(data, 'Erro ao carregar painel WMS.');
+            // Não assusta com "cancelada" quando na verdade esgotou o tempo.
+            if (data && data._timeout) {
+                err = 'Servidor demorou para responder o painel. Tente novamente.';
+            }
             showMessage(err, 'error');
             _wmsSetTbody('wms-tbody-dist-categoria', 5, escHtml(err));
             _wmsSetTbody('wms-tbody-zoneamento', 3, escHtml(err));
@@ -6940,6 +6949,7 @@ async function loadWmsPainel(opts) {
         _wmsPainelClientCache = { ts: Date.now(), data: data };
         _wmsRenderPainel(data);
     } catch (e) {
+        if (gen !== _wmsPainelLoadGen) return;
         var msg = (e && e.message) || 'Erro ao carregar painel WMS.';
         _wmsSetTbody('wms-tbody-dist-categoria', 5, escHtml(msg));
         _wmsSetTbody('wms-tbody-zoneamento', 3, escHtml(msg));
@@ -18579,7 +18589,9 @@ async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
     var ultimo = null;
     for (var t = 0; t < maxTent; t++) {
         ultimo = await _fetchAPIComTimeoutUma(endpoint, options, timeoutMs);
-        if (!ultimo || !ultimo._falhaGateway || t >= maxTent - 1) return ultimo;
+        // Retry em gateway (Render acordando) e em timeout de rede.
+        var retryavel = !!(ultimo && (ultimo._falhaGateway || ultimo._timeout));
+        if (!retryavel || t >= maxTent - 1) return ultimo;
         await new Promise(function(resolve) { setTimeout(resolve, 1800 * (t + 1)); });
     }
     return ultimo;
@@ -18588,6 +18600,8 @@ async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
 async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
     timeoutMs = timeoutMs == null || timeoutMs < 5000 ? 35000 : timeoutMs;
     var ac = new AbortController();
+    var timedOut = false;
+    var externallyAborted = !!(options && options.signal && options.signal.aborted);
     var externalSignal = options && options.signal;
     if (externalSignal) {
         if (externalSignal.aborted) {
@@ -18596,6 +18610,7 @@ async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
             } catch (e) {}
         } else if (typeof externalSignal.addEventListener === 'function') {
             externalSignal.addEventListener('abort', function() {
+                externallyAborted = true;
                 try {
                     ac.abort();
                 } catch (e) {}
@@ -18603,16 +18618,32 @@ async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
         }
     }
     var tid = window.setTimeout(function() {
+        timedOut = true;
         try {
             ac.abort();
         } catch (e) {}
     }, timeoutMs);
     try {
-        var merged = Object.assign({}, options || {}, { signal: ac.signal });
+        var merged = Object.assign({}, options || {}, {
+            signal: ac.signal,
+            _abortMeta: { timedOut: false, cancelled: false }
+        });
+        // Referência mutável lida no catch do fetchAPI.
+        merged._abortMeta = {
+            get timedOut() { return timedOut; },
+            get cancelled() { return externallyAborted && !timedOut; }
+        };
         if (merged.method && String(merged.method).toUpperCase() !== 'GET' && String(merged.method).toUpperCase() !== 'HEAD') {
             merged.keepalive = false;
         }
-        return await fetchAPI(endpoint, merged);
+        var result = await fetchAPI(endpoint, merged);
+        // Corrige classificação: abort do timer NÃO é "Operação cancelada".
+        if (result && result._cancelado && timedOut && !externallyAborted) {
+            result.erro = 'Tempo esgotado ao contactar o servidor.';
+            result._cancelado = false;
+            result._timeout = true;
+        }
+        return result;
     } finally {
         window.clearTimeout(tid);
     }
@@ -18654,12 +18685,22 @@ async function fetchAPI(endpoint, options = {}) {
         };
     } catch (error) {
         if (error && error.name === 'AbortError') {
-            var cancelado = !!(options && options.signal && options.signal.aborted);
+            var meta = options && options._abortMeta;
+            var cancelado = false;
+            var timeoutAbort = false;
+            if (meta) {
+                // Preferir meta do wrapper (distingue timer vs cancelamento real).
+                cancelado = !!meta.cancelled;
+                timeoutAbort = !!meta.timedOut && !cancelado;
+            } else {
+                // Sem meta: abort do signal costuma ser timeout do wrapper.
+                timeoutAbort = !!(options && options.signal && options.signal.aborted);
+            }
             return {
                 ok: false,
                 erro: cancelado ? 'Operação cancelada.' : 'Tempo esgotado ao contactar o servidor.',
                 _cancelado: cancelado,
-                _timeout: !cancelado
+                _timeout: timeoutAbort || !cancelado
             };
         }
         console.error('Erro na API:', error);
