@@ -4031,9 +4031,51 @@ function _wmsDefer(fn) {
 
 var _wmsLoadDepth = 0;
 var _wmsLoadHideTimer = null;
+var _wmsLoadProgressTimer = null;
+var _wmsLoadProgressVal = 0;
 
 function _wmsTabLoadingLabel(_tab) {
     return 'Carregando';
+}
+
+function _wmsEnsureLoadingOnBody() {
+    var el = document.getElementById('wms-global-loading');
+    if (!el) return null;
+    // Fora de .container/.modulo — fixed fica no meio real da tela.
+    if (el.parentNode !== document.body) {
+        document.body.appendChild(el);
+    }
+    return el;
+}
+
+function _wmsStartLoadingProgress() {
+    var bar = document.getElementById('wms-global-loading-bar');
+    if (_wmsLoadProgressTimer) {
+        clearInterval(_wmsLoadProgressTimer);
+        _wmsLoadProgressTimer = null;
+    }
+    _wmsLoadProgressVal = 8;
+    if (bar) bar.style.width = _wmsLoadProgressVal + '%';
+    _wmsLoadProgressTimer = setInterval(function() {
+        // Cresce como o splash do portal, sem travar em 100% até o fim real.
+        if (_wmsLoadProgressVal < 88) {
+            _wmsLoadProgressVal = Math.min(88, _wmsLoadProgressVal + 1.4 + Math.random() * 2.2);
+        } else {
+            _wmsLoadProgressVal = Math.min(96, _wmsLoadProgressVal + 0.25);
+        }
+        if (bar) bar.style.width = _wmsLoadProgressVal + '%';
+    }, 70);
+}
+
+function _wmsStopLoadingProgress(done) {
+    var bar = document.getElementById('wms-global-loading-bar');
+    if (_wmsLoadProgressTimer) {
+        clearInterval(_wmsLoadProgressTimer);
+        _wmsLoadProgressTimer = null;
+    }
+    if (done && bar) {
+        bar.style.width = '100%';
+    }
 }
 
 function _wmsBeginLoading(msg) {
@@ -4042,7 +4084,7 @@ function _wmsBeginLoading(msg) {
         clearTimeout(_wmsLoadHideTimer);
         _wmsLoadHideTimer = null;
     }
-    var el = document.getElementById('wms-global-loading');
+    var el = _wmsEnsureLoadingOnBody();
     var m = document.getElementById('wms-global-loading-msg');
     if (m) m.textContent = msg || 'Carregando';
     if (el) {
@@ -4050,12 +4092,14 @@ function _wmsBeginLoading(msg) {
         el.setAttribute('aria-busy', 'true');
         el.classList.add('is-active');
         try { document.body.classList.add('wms-tab-loading'); } catch (e) {}
+        if (_wmsLoadDepth === 1) _wmsStartLoadingProgress();
     }
 }
 
 function _wmsEndLoading() {
     _wmsLoadDepth = Math.max(0, (_wmsLoadDepth || 1) - 1);
     if (_wmsLoadDepth > 0) return;
+    _wmsStopLoadingProgress(true);
     _wmsLoadHideTimer = setTimeout(function() {
         if (_wmsLoadDepth > 0) return;
         var el = document.getElementById('wms-global-loading');
@@ -4064,8 +4108,10 @@ function _wmsEndLoading() {
             el.setAttribute('aria-busy', 'false');
             el.classList.remove('is-active');
         }
+        var bar = document.getElementById('wms-global-loading-bar');
+        if (bar) bar.style.width = '0%';
         try { document.body.classList.remove('wms-tab-loading'); } catch (e) {}
-    }, 150);
+    }, 180);
 }
 
 async function _wmsAwaitMaybe(p) {
