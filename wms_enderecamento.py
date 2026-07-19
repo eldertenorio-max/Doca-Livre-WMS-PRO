@@ -8403,19 +8403,46 @@ def _resumo_etiquetas_longarina(conn, sincronizar=False):
 
 
 def _buscar_rows_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, todas=False):
-    """Linhas de wms_localizacao para impressão de longarina."""
-    _ensure_zona_armazenagem_column(conn)
-    _ensure_layout_enderecos_atualizado(conn)
+    """Linhas de wms_localizacao para impressão de longarina.
+
+    Não regenera layout aqui — force/sync de níveis estoura timeout (502) no Render.
+    Layout incompleto: Painel «Recalcular distribuição» ou Etiquetas «Atualizar resumo».
+    """
+    try:
+        _ensure_zona_armazenagem_column(conn)
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
     t_loc = _tbl(conn, 'wms_localizacao')
 
     def _buscar():
         if codigo:
             cod_busca = _resolver_codigo_endereco_bip(codigo, conn=conn) or codigo
+            cod_u = str(cod_busca).strip().upper()
+            # Aceita código WMS (11-A-01-1) e bip longarina (11.1.1).
             row = conn.execute(
-                f'SELECT * FROM {t_loc} WHERE codigo_endereco = ? OR codigo_endereco = ?',
-                (cod_busca, cod_busca.upper()),
+                f'''SELECT * FROM {t_loc}
+                    WHERE UPPER(TRIM(codigo_endereco)) = ?
+                       OR UPPER(TRIM(codigo_endereco)) = ?''',
+                (cod_u, str(codigo).strip().upper()),
             ).fetchone()
-            return [row] if row else []
+            if row:
+                return [row]
+            # Fallback por partes do endereço WMS.
+            m = re.match(r'^(\d{1,2})-([A-Z]{1,3})-(\d{1,2})-(\d{1,2})$', cod_u)
+            if m:
+                cam, rua_l, pos, niv = m.groups()
+                row = conn.execute(
+                    f'''SELECT * FROM {t_loc}
+                        WHERE camara = ? AND UPPER(TRIM(rua)) = ?
+                          AND posicao = ? AND nivel = ?''',
+                    (int(cam), rua_l, int(pos), int(niv)),
+                ).fetchone()
+                return [row] if row else []
+            return []
         sql = f'SELECT * FROM {t_loc} WHERE 1=1'
         params = []
         if not todas:
@@ -8431,16 +8458,7 @@ def _buscar_rows_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, c
         sql += ' ORDER BY camara, rua, posicao, nivel'
         return conn.execute(sql, tuple(params)).fetchall()
 
-    rows = _buscar()
-    if not rows and not codigo:
-        gerar_layout_enderecos(conn, force=True)
-        try:
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        rows = _buscar()
-    return rows
+    return _buscar()
 
 
 def _zpl_escape(texto):
@@ -9232,28 +9250,39 @@ def api_wms_etiqueta_endereco():
     codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip()
     if not codigo:
         return jsonify({'erro': 'Informe codigo/endereco (ex.: 12.14.1 ou 12-C-14-1).'}), 400
-    conn = _db()
-    ensure_wms_schema(conn)
+    conn = None
     try:
+        conn = _db()
+        try:
+            ensure_wms_schema(conn)
+        except Exception as schema_err:
+            try:
+                print('[wms/etiqueta/endereco] schema:', schema_err, flush=True)
+            except Exception:
+                pass
         fmt = _formato_longarina_request()
         if fmt == 'xlsx':
             xlsx_bytes, err = _render_etiquetas_endereco_xlsx(conn, codigo=codigo)
-            conn.close()
             if err:
                 return jsonify({'erro': err}), 404
             return _resposta_xlsx_longarina(xlsx_bytes, _nome_arquivo_xlsx_longarina(codigo=codigo))
         auto_print = request.args.get('auto_print', '0') == '1'
         html, err = _render_etiquetas_endereco(conn, codigo=codigo, auto_print=auto_print)
-        conn.close()
         if err:
             return jsonify({'erro': err}), 404
         return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
     except Exception as e:
         try:
-            conn.close()
+            print('[wms/etiqueta/endereco] erro:', e, flush=True)
         except Exception:
             pass
-        return jsonify({'erro': str(e)}), 500
+        return jsonify({'erro': 'Falha ao gerar etiqueta: %s' % e}), 500
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @bp.route('/etiqueta/enderecos/opcoes', methods=['GET'])
