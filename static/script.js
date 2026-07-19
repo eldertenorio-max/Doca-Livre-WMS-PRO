@@ -4034,7 +4034,8 @@ var _wmsLoadHideTimer = null;
 var _wmsLoadProgressTimer = null;
 var _wmsLoadProgressVal = 0;
 var _wmsLoadMaxTimer = null;
-var _WMS_LOAD_MAX_MS = 1400;
+/** Só segurança: some se a API travar de vez (não corta carga normal). */
+var _WMS_LOAD_MAX_MS = 20000;
 
 function _wmsTabLoadingLabel(_tab) {
     return 'Carregando';
@@ -4056,16 +4057,16 @@ function _wmsStartLoadingProgress() {
         clearInterval(_wmsLoadProgressTimer);
         _wmsLoadProgressTimer = null;
     }
-    _wmsLoadProgressVal = 12;
+    _wmsLoadProgressVal = 10;
     if (bar) bar.style.width = _wmsLoadProgressVal + '%';
     _wmsLoadProgressTimer = setInterval(function() {
-        if (_wmsLoadProgressVal < 90) {
-            _wmsLoadProgressVal = Math.min(90, _wmsLoadProgressVal + 4 + Math.random() * 6);
+        if (_wmsLoadProgressVal < 88) {
+            _wmsLoadProgressVal = Math.min(88, _wmsLoadProgressVal + 2 + Math.random() * 3);
         } else {
-            _wmsLoadProgressVal = Math.min(97, _wmsLoadProgressVal + 0.4);
+            _wmsLoadProgressVal = Math.min(96, _wmsLoadProgressVal + 0.3);
         }
         if (bar) bar.style.width = _wmsLoadProgressVal + '%';
-    }, 50);
+    }, 80);
 }
 
 function _wmsStopLoadingProgress(done) {
@@ -4107,7 +4108,7 @@ function _wmsBeginLoading(msg) {
         try { document.body.classList.add('wms-tab-loading'); } catch (e) {}
         if (_wmsLoadDepth === 1) _wmsStartLoadingProgress();
     }
-    // Nunca deixa o overlay travado em cima de conteúdo já pintado.
+    // Segurança: só some se a API travar por completo.
     if (_wmsLoadMaxTimer) clearTimeout(_wmsLoadMaxTimer);
     _wmsLoadMaxTimer = setTimeout(function() {
         _wmsLoadDepth = 0;
@@ -4127,24 +4128,16 @@ function _wmsEndLoading() {
     _wmsLoadHideTimer = setTimeout(function() {
         if (_wmsLoadDepth > 0) return;
         _wmsHideLoadingUi();
-    }, 80);
+    }, 120);
 }
 
-function _wmsTabTemCacheRapido(tab) {
-    if (tab === 'painel') {
-        return !!(
-            (_wmsPainelClientCache && _wmsPainelClientCache.data)
-            || _wmsSessionCacheGet('painel')
-        );
-    }
-    if (tab === 'localizacoes') return !!(_wmsSessionCacheGet('localizacoes'));
-    if (tab === 'produtos') return !!(_wmsSessionCacheGet('produtos'));
-    if (tab === 'etiquetas-longarina') {
-        return _wmsEtqOpcoesTemRuas(window._wmsEtqOpcoes)
-            || _wmsEtqOpcoesTemRuas((_wmsSessionCacheGet('etq_opcoes') || {}).data);
-    }
-    if (tab === 'historico-nf' || tab === 'relatorios' || tab === 'pesquisa') return true;
-    return false;
+function _wmsPainelDataUtil(data) {
+    if (!data || data.erro) return false;
+    return !!(
+        ((data.camaras || []).length)
+        || ((data.distribuicao_categoria || []).length)
+        || ((data.zoneamento || []).length)
+    );
 }
 
 async function _wmsAwaitMaybe(p) {
@@ -4762,10 +4755,8 @@ function _wmsMostrarSubtab(tab) {
         p.hidden = !show;
         p.classList.toggle('wms-inner-panel-active', show);
     });
-    // Overlay só se não houver conteúdo pronto (cache).
-    var jaTemConteudo = _wmsTabTemCacheRapido(tab);
-    if (!jaTemConteudo) _wmsBeginLoading(_wmsTabLoadingLabel(tab));
-    // 2) Dados no próximo tick; barra some quando a carga rápida terminar.
+    // Overlay até a aba pintar conteúdo útil (some no finally do loader).
+    _wmsBeginLoading(_wmsTabLoadingLabel(tab));
     _wmsDefer(async function() {
         try {
             if (tab === 'painel') await _wmsAwaitMaybe(loadWmsPainel());
@@ -4797,7 +4788,7 @@ function _wmsMostrarSubtab(tab) {
         } catch (e) {
             try { console.error('[wms] falha ao abrir aba', tab, e); } catch (e2) {}
         } finally {
-            if (!jaTemConteudo) _wmsEndLoading();
+            _wmsEndLoading();
         }
     });
 }
@@ -7113,18 +7104,18 @@ async function loadWmsPainel(opts) {
     var gen = ++_wmsPainelLoadGen;
     var sess = _wmsSessionCacheGet('painel');
     var cached = _wmsPainelClientCache.data || (sess && sess.data) || null;
+    var cacheUtil = _wmsPainelDataUtil(cached);
 
-    // Pintura imediata (cache) — libera a UI na hora.
-    if (cached) {
+    // Cache útil: mostra já e atualiza em background (overlay pode sumir).
+    if (cacheUtil) {
         _wmsRenderPainel(cached);
         if (
             !force
             && _wmsPainelClientCache.data
             && (now - (_wmsPainelClientCache.ts || 0)) < _WMS_PAINEL_CLIENT_TTL_MS
         ) {
-            // Atualiza completo em background sem bloquear a aba.
             _wmsFetchGetOnce('/wms/painel', 15000).then(function(data) {
-                if (gen !== _wmsPainelLoadGen || !data || data.erro) return;
+                if (gen !== _wmsPainelLoadGen || !_wmsPainelDataUtil(data)) return;
                 _wmsPainelClientCache = { ts: Date.now(), data: data };
                 _wmsSessionCacheSet('painel', data);
                 _wmsRenderPainel(data);
@@ -7137,37 +7128,37 @@ async function loadWmsPainel(opts) {
     }
 
     try {
-        // leve=1: instantâneo (cache servidor, sem DB). Completo só em background.
-        var leve = await _wmsFetchGetOnce('/wms/painel?leve=1', 4000);
+        var leve = await _wmsFetchGetOnce('/wms/painel?leve=1', 5000);
         if (gen !== _wmsPainelLoadGen) return;
-        if (leve && !leve.erro) {
+        if (_wmsPainelDataUtil(leve)) {
             _wmsRenderPainel(leve);
             _wmsPainelClientCache = { ts: Date.now(), data: leve };
             _wmsSessionCacheSet('painel', leve);
-        }
-        var path = '/wms/painel' + (force ? '?force=1' : '');
-        _wmsFetchGetOnce(path, 15000).then(function(data) {
-            if (gen !== _wmsPainelLoadGen) return;
-            if (data && !data.erro) {
+            // Tem conteúdo útil: completa em background.
+            _wmsFetchGetOnce('/wms/painel' + (force ? '?force=1' : ''), 15000).then(function(data) {
+                if (gen !== _wmsPainelLoadGen || !_wmsPainelDataUtil(data)) return;
                 _wmsPainelClientCache = { ts: Date.now(), data: data };
                 _wmsSessionCacheSet('painel', data);
                 _wmsRenderPainel(data);
-                return;
-            }
-            if (!cached && (!leve || leve.erro)) {
-                _wmsSetTbody('wms-tbody-dist-categoria', 5, 'Sem dados no momento — clique em Atualizar.');
-                _wmsSetTbody('wms-tbody-zoneamento', 3, 'Sem dados no momento.');
-            }
-        }).catch(function() {
-            if (gen !== _wmsPainelLoadGen) return;
-            if (!cached && (!leve || leve.erro)) {
-                _wmsSetTbody('wms-tbody-dist-categoria', 5, 'Sem dados no momento — clique em Atualizar.');
-                _wmsSetTbody('wms-tbody-zoneamento', 3, 'Sem dados no momento.');
-            }
-        });
+            }).catch(function() {});
+            return;
+        }
+
+        // Sem cache útil: espera o painel completo antes de tirar o Carregando.
+        var path = '/wms/painel' + (force ? '?force=1' : '');
+        var data = await _wmsFetchGetOnce(path, 15000);
+        if (gen !== _wmsPainelLoadGen) return;
+        if (_wmsPainelDataUtil(data)) {
+            _wmsPainelClientCache = { ts: Date.now(), data: data };
+            _wmsSessionCacheSet('painel', data);
+            _wmsRenderPainel(data);
+            return;
+        }
+        _wmsSetTbody('wms-tbody-dist-categoria', 5, 'Sem dados no momento — clique em Atualizar.');
+        _wmsSetTbody('wms-tbody-zoneamento', 3, 'Sem dados no momento.');
     } catch (e) {
         if (gen !== _wmsPainelLoadGen) return;
-        if (!cached) {
+        if (!cacheUtil) {
             _wmsSetTbody('wms-tbody-dist-categoria', 5, 'Sem dados no momento — clique em Atualizar.');
             _wmsSetTbody('wms-tbody-zoneamento', 3, 'Sem dados no momento.');
         }
@@ -7198,7 +7189,7 @@ async function loadWmsLocalizacoes() {
     var gen = ++_wmsLocLoadGen;
     var tb = document.getElementById('wms-tbody-localizacoes');
     var sess = _wmsSessionCacheGet('localizacoes');
-    var temCache = !!(sess && sess.data && sess.data.localizacoes);
+    var temCache = !!(sess && sess.data && (sess.data.localizacoes || []).length);
     if (temCache) {
         _wmsRenderLocalizacoesRows(sess.data.localizacoes);
     } else {
@@ -7224,7 +7215,7 @@ async function loadWmsLocalizacoes() {
         _wmsSessionCacheSet('localizacoes', data);
         _wmsRenderLocalizacoesRows(data.localizacoes || []);
     }
-    // Com cache: libera a aba e atualiza em background.
+    // Com lista já na tela: atualiza em background. Sem lista: espera a API.
     if (temCache) {
         _wmsFetchGetOnce(path, 12000).then(aplicar).catch(function() {});
         return;
@@ -7600,7 +7591,7 @@ async function loadWmsEtqLongarinaOpcoes() {
     var selRua = document.getElementById('wms-etq-rua');
     var selPos = document.getElementById('wms-etq-pos');
     var sess = _wmsSessionCacheGet('etq_opcoes');
-    // Cache/fallback imediato — selects usáveis na hora.
+    // Cache/fallback imediato — selects usáveis enquanto a API responde.
     if (_wmsEtqOpcoesTemRuas(sess && sess.data)) {
         _wmsEtqApplyOpcoes(sess.data);
     } else {
@@ -7610,10 +7601,14 @@ async function loadWmsEtqLongarinaOpcoes() {
     if (selCam) selCam.disabled = false;
     if (selRua) selRua.disabled = false;
     if (selPos) selPos.disabled = false;
-    // API só em background (não bloqueia a aba).
-    _wmsFetchGetOnce('/wms/etiqueta/enderecos/opcoes', 12000).then(function(data) {
+    try {
+        var data = await _wmsFetchGetOnce('/wms/etiqueta/enderecos/opcoes', 12000);
         if (_wmsEtqOpcoesTemRuas(data)) _wmsEtqApplyOpcoes(data);
-    }).catch(function() {});
+    } catch (e) {
+        if (!_wmsEtqOpcoesTemRuas(window._wmsEtqOpcoes)) {
+            _wmsEtqApplyOpcoes(_wmsEtqOpcoesFallback());
+        }
+    }
 }
 
 function wmsImprimirEtqCamara() {
@@ -7690,9 +7685,11 @@ async function loadWmsEtqLongarinaResumo(opcoes) {
 }
 
 async function loadWmsEtiquetasLongarinaAba() {
-    // Selects primeiro (fallback local = imediato). Resumo atualiza em background.
-    await loadWmsEtqLongarinaOpcoes();
-    loadWmsEtqLongarinaResumo({ recarregarOpcoes: false });
+    // Espera selects + resumo antes de tirar o Carregando.
+    await Promise.all([
+        loadWmsEtqLongarinaOpcoes(),
+        loadWmsEtqLongarinaResumo({ recarregarOpcoes: false })
+    ]);
 }
 
 function wmsImprimirEtqTodasLongarinas() {
