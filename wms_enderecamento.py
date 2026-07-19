@@ -6290,52 +6290,77 @@ def api_wms_layout_gerar():
         return jsonify({'erro': str(e)}), 500
 
 
+def _format_locacao_leve(loc):
+    """Formatação rápida para lista (sem ler layout JSON por linha)."""
+    d = _row_dict(loc) or {}
+    cam = int(d.get('camara') or 0)
+    pos = int(d.get('posicao') or 0)
+    niv = int(d.get('nivel') or 1)
+    rua = str(d.get('rua') or '').strip().upper()
+    zona = (d.get('zona_armazenagem') or ('picking' if niv == 1 else 'pulmao')).strip().lower()
+    cod = (d.get('codigo_endereco') or _codigo_endereco(cam, rua or 'A', pos or 1, niv)).upper()
+    return {
+        'camara': cam,
+        'rua': rua,
+        'posicao': pos,
+        'nivel': niv,
+        'codigo_endereco': cod,
+        'codigo_wms': cod,
+        'barcode_longarina': _barcode_longarina(cam, pos, niv),
+        'status': (d.get('status') or 'vazia'),
+        'area': d.get('area') or '',
+        'categoria_zona': (d.get('categoria_zona') or '').strip().upper(),
+        'zona_armazenagem': zona,
+        'tipo': (d.get('tipo') or 'porta_palete'),
+    }
+
+
+def _localizacoes_fallback_layout(camara=None, limite=200):
+    """Lista a partir do layout JSON quando o banco falha ou está vazio."""
+    out = []
+    for bloco in (_layout_camaras_config().get('camaras') or []):
+        cod = int(bloco.get('codigo') or 0)
+        if cod not in (11, 12, 13, 21):
+            continue
+        if camara and cod != int(camara):
+            continue
+        try:
+            coords = _coords_from_bloco_layout(bloco)
+        except Exception:
+            coords = []
+        for _c, rua, pos, niv, dest_acao, _lbl, _ar in coords:
+            if dest_acao:
+                continue
+            out.append(_format_locacao_leve({
+                'camara': cod,
+                'rua': rua,
+                'posicao': pos,
+                'nivel': niv,
+                'codigo_endereco': _codigo_endereco(cod, rua, pos, niv),
+                'status': 'vazia',
+                'zona_armazenagem': 'picking' if int(niv) == 1 else 'pulmao',
+                'tipo': 'porta_palete',
+            }))
+            if len(out) >= limite:
+                return out
+    return out
+
+
 @bp.route('/localizacoes', methods=['GET'])
 def api_wms_localizacoes():
-    """Lista endereços. Nunca regenera layout no GET (isso causa 502/timeout no Render)."""
+    """Lista endereços — path leve (sem schema/seed/regeneração de layout)."""
     camara = request.args.get('camara', type=int)
     status = (request.args.get('status') or '').strip()
     categoria = (request.args.get('categoria') or '').strip().upper()
     q = (request.args.get('q') or '').strip()
-    limite = request.args.get('limite', type=int) or 300
-    limite = max(1, min(int(limite), 500))
+    limite = request.args.get('limite', type=int) or 200
+    limite = max(1, min(int(limite), 400))
     conn = None
     try:
         conn = _db()
-        try:
-            ensure_wms_schema(conn)
-        except Exception as schema_err:
-            try:
-                print('[wms/localizacoes] schema:', schema_err, flush=True)
-            except Exception:
-                pass
-        try:
-            _seed_wms_defaults(conn)
-        except Exception:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-
         t = _tbl(conn, 'wms_localizacao')
-        # auto_layout=1 só sob demanda explícita — padrão OFF para não derrubar o worker.
-        if request.args.get('auto_layout', '0').strip().lower() in ('1', 'true', 'sim'):
-            try:
-                total_loc = _int_col(conn.execute(f'SELECT COUNT(*) AS c FROM {t}').fetchone(), 'c')
-                if total_loc == 0:
-                    _ensure_layout_enderecos(conn)
-            except Exception as lay_err:
-                try:
-                    print('[wms/localizacoes] auto_layout:', lay_err, flush=True)
-                except Exception:
-                    pass
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-
         sql = (
-            f'SELECT id, camara, rua, posicao, nivel, codigo_endereco, status, area, '
+            f'SELECT camara, rua, posicao, nivel, codigo_endereco, status, area, '
             f'categoria_zona, zona_armazenagem, tipo FROM {t} WHERE 1=1'
         )
         params = []
@@ -6349,33 +6374,69 @@ def api_wms_localizacoes():
             sql += ' AND status = ?'
             params.append(status)
         if q:
-            sql += (
-                ' AND (codigo_endereco ILIKE ? OR rua ILIKE ?)'
-                if _is_pg(conn)
-                else ' AND (codigo_endereco LIKE ? OR rua LIKE ?)'
-            )
-            params.extend([f'%{q}%', f'%{q}%'])
-        sql += ' ORDER BY camara, rua, posicao, nivel LIMIT ?'
-        params.append(limite)
-        rows = conn.execute(sql, tuple(params)).fetchall()
-        locs = [_format_locacao(r) for r in rows]
+            like = f'%{q}%'
+            if _is_pg(conn):
+                sql += ' AND (codigo_endereco ILIKE ? OR rua ILIKE ?)'
+            else:
+                sql += ' AND (codigo_endereco LIKE ? OR rua LIKE ?)'
+            params.extend([like, like])
+        # LIMIT literal — evita problemas de bind em alguns adapters.
+        sql += ' ORDER BY camara, rua, posicao, nivel LIMIT %d' % limite
+        try:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        except Exception as qerr:
+            try:
+                print('[wms/localizacoes] query:', qerr, flush=True)
+            except Exception:
+                pass
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            rows = []
+
+        locs = [_format_locacao_leve(r) for r in (rows or [])]
+        fonte = 'banco'
+        if not locs:
+            locs = _localizacoes_fallback_layout(camara=camara, limite=limite)
+            fonte = 'layout'
+            if status:
+                locs = [x for x in locs if (x.get('status') or '') == status]
+            if categoria:
+                locs = [x for x in locs if (x.get('categoria_zona') or '') == categoria]
+            if q:
+                qq = q.upper()
+                locs = [
+                    x for x in locs
+                    if qq in (x.get('codigo_endereco') or '') or qq in (x.get('rua') or '')
+                ]
+            locs = locs[:limite]
+
         return jsonify({
             'ok': True,
             'localizacoes': locs,
             'total': len(locs),
             'limite': limite,
+            'fonte': fonte,
         })
     except Exception as e:
         try:
             print('[wms/localizacoes] erro:', e, flush=True)
         except Exception:
             pass
+        # Último recurso: layout puro, sem banco.
         try:
-            if conn is not None:
-                conn.rollback()
+            locs = _localizacoes_fallback_layout(camara=camara, limite=limite)
+            return jsonify({
+                'ok': True,
+                'localizacoes': locs,
+                'total': len(locs),
+                'limite': limite,
+                'fonte': 'layout',
+                'aviso': str(e),
+            })
         except Exception:
-            pass
-        return jsonify({'erro': str(e)}), 500
+            return jsonify({'erro': str(e)}), 500
     finally:
         if conn is not None:
             try:

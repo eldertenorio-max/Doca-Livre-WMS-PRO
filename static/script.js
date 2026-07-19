@@ -3988,6 +3988,16 @@ async function _wmsFetchGet(path, timeoutMs) {
     return { erro: 'Cliente WMS ainda não inicializado.' };
 }
 
+/** GET sem retry triplo — listas devem falhar rápido e atualizar a UI. */
+async function _wmsFetchGetOnce(path, timeoutMs) {
+    var sep = path.indexOf('?') >= 0 ? '&' : '?';
+    var full = path + sep + '_=' + Date.now();
+    if (typeof _fetchAPIComTimeoutUma === 'function') {
+        return _fetchAPIComTimeoutUma(full, {}, timeoutMs || 20000);
+    }
+    return _wmsFetchGet(path, timeoutMs || 20000);
+}
+
 function _wmsSetTbody(id, cols, html) {
     var tb = document.getElementById(id);
     if (tb) tb.innerHTML = '<tr><td colspan="' + cols + '">' + html + '</td></tr>';
@@ -6957,44 +6967,58 @@ async function loadWmsPainel(opts) {
     }
 }
 
+var _wmsLocLoadGen = 0;
+
+function _wmsRenderLocalizacoesRows(rows) {
+    var tb = document.getElementById('wms-tbody-localizacoes');
+    if (!tb) return;
+    tb.innerHTML = rows.length ? rows.map(function(r) {
+        var niv = parseInt(r.nivel, 10);
+        var zona = r.zona_armazenagem || (niv === 1 ? 'picking' : 'pulmao');
+        var zl = zona === 'picking' ? 'PICKING' : (zona === 'pulmao' ? 'PULMÃO' : String(zona).replace(/_/g, ' ').toUpperCase());
+        var catCol = r.destino_label || r.categoria_zona || r.area || '—';
+        if (r.tipo === 'destino_fixo' && r.area) {
+            catCol = r.destino_label || String(r.area).replace(/_/g, ' ').toUpperCase();
+        }
+        var cod = escHtml(r.codigo_endereco || '');
+        var bcLong = escHtml(r.barcode_longarina || '');
+        var codJs = String(r.codigo_endereco || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return '<tr><td>' + cod + '</td><td><strong>' + bcLong + '</strong></td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(catCol) + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Longarina</button></td></tr>';
+    }).join('') : '<tr><td colspan="10">Nenhuma localização. No Painel WMS use «Recalcular distribuição» e depois Atualizar aqui.</td></tr>';
+}
+
 async function loadWmsLocalizacoes() {
+    var gen = ++_wmsLocLoadGen;
     _wmsSetTbody('wms-tbody-localizacoes', 10, '<span class="loading">Carregando endereços...</span>');
     var tb = document.getElementById('wms-tbody-localizacoes');
     var cam = document.getElementById('wms-filtro-camara');
     var cat = document.getElementById('wms-filtro-cat-zona');
     var st = document.getElementById('wms-filtro-status');
-    var q = ['auto_layout=0', 'limite=300'];
+    var q = ['limite=200'];
     if (cam && cam.value) q.push('camara=' + encodeURIComponent(cam.value));
     if (cat && cat.value) q.push('categoria=' + encodeURIComponent(cat.value));
     if (st && st.value) q.push('status=' + encodeURIComponent(st.value));
     var path = '/wms/localizacoes?' + q.join('&');
     try {
-        var data = await _wmsFetchGet(path, 45000);
+        // Uma tentativa só — evita ficar minutos em "Carregando..." com 3 retries.
+        var data = await _wmsFetchGetOnce(path, 25000);
+        if (gen !== _wmsLocLoadGen) return;
         if (!tb) return;
         if (!data || data.erro) {
             var err = _wmsErroMsg(data, 'Erro ao carregar localizações.');
-            if (data && (data._falhaGateway || data._timeout)) {
-                err = 'Servidor ocupado ao listar endereços. Aguarde alguns segundos e clique em Atualizar.';
+            if (data && (data._falhaGateway || data._timeout || data._cancelado)) {
+                err = 'Servidor demorou para listar endereços. Clique em Atualizar de novo.';
             }
             tb.innerHTML = '<tr><td colspan="10">' + escHtml(err) + '</td></tr>';
-            showMessage(err, 'error');
+            showMessage(err, 'warning');
             return;
         }
-        var rows = data.localizacoes || [];
-        tb.innerHTML = rows.length ? rows.map(function(r) {
-            var niv = parseInt(r.nivel, 10);
-            var zona = r.zona_armazenagem || (niv === 1 ? 'picking' : 'pulmao');
-            var zl = zona === 'picking' ? 'PICKING' : (zona === 'pulmao' ? 'PULMÃO' : String(zona).replace(/_/g, ' ').toUpperCase());
-            var catCol = r.destino_label || r.categoria_zona || r.area || '—';
-            if (r.tipo === 'destino_fixo' && r.area) {
-                catCol = r.destino_label || String(r.area).replace(/_/g, ' ').toUpperCase();
-            }
-            var cod = escHtml(r.codigo_endereco || '');
-            var bcLong = escHtml(r.barcode_longarina || '');
-            var codJs = String(r.codigo_endereco || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            return '<tr><td>' + cod + '</td><td><strong>' + bcLong + '</strong></td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(catCol) + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Longarina</button></td></tr>';
-        }).join('') : '<tr><td colspan="10">Nenhuma localização. No Painel WMS use «Recalcular distribuição» e depois Atualizar aqui.</td></tr>';
+        _wmsRenderLocalizacoesRows(data.localizacoes || []);
+        if (data.fonte === 'layout' && typeof showMessage === 'function') {
+            showMessage('Exibindo layout de referência (banco vazio ou indisponível). Use Recalcular no Painel para gravar endereços.', 'info');
+        }
     } catch (e) {
+        if (gen !== _wmsLocLoadGen) return;
         if (tb) {
             tb.innerHTML = '<tr><td colspan="10">' + escHtml((e && e.message) || 'Erro ao carregar localizações.') + '</td></tr>';
         }
