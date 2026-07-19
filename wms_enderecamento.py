@@ -9062,13 +9062,79 @@ def _resposta_xlsx_longarina(xlsx_bytes, nome_arquivo='longarinas'):
     })
 
 
-def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo=None, auto_print=False, todas=False):
-    rows = _buscar_rows_etiquetas_endereco(
-        conn, camara=camara, rua=rua, posicao=posicao, codigo=codigo, todas=todas,
-    )
+def _rows_etiqueta_layout(codigo=None, camara=None, rua=None, posicao=None, todas=False):
+    """Gera linhas de etiqueta só pelo layout/código — sem abrir banco (evita 502)."""
+    if codigo:
+        row = _sintetizar_loc_row_codigo(codigo)
+        return [row] if row else []
+    if camara and rua and posicao:
+        return _sintetizar_loc_rows_coluna(camara, rua, posicao)
+    if camara and not todas:
+        out = []
+        for bloco in (_layout_camaras_config().get('camaras') or []):
+            if int(bloco.get('codigo') or 0) != int(camara):
+                continue
+            niveis = max(1, int(bloco.get('niveis') or 5))
+            try:
+                coords = _coords_from_bloco_layout(bloco)
+            except Exception:
+                coords = []
+            seen = set()
+            for _cam, rua_c, pos_c, _niv, dest_acao, _dest_lbl, _apenas in coords:
+                if dest_acao:
+                    continue
+                rua_u = str(rua_c or '').strip().upper()
+                pos_i = int(pos_c or 0)
+                key = (rua_u, pos_i)
+                if not rua_u or pos_i <= 0 or key in seen:
+                    continue
+                seen.add(key)
+                out.extend(_sintetizar_loc_rows_coluna(camara, rua_u, pos_i, niveis=niveis))
+            break
+        return out
+    if todas:
+        out = []
+        for bloco in (_layout_camaras_config().get('camaras') or []):
+            cod = int(bloco.get('codigo') or 0)
+            if cod not in (11, 12, 13, 21):
+                continue
+            out.extend(_rows_etiqueta_layout(camara=cod))
+            # Limite de segurança para não estourar memória no Render.
+            if len(out) >= 2500:
+                break
+        return out
+    return []
+
+
+def _render_etiquetas_endereco(
+    conn=None, camara=None, rua=None, posicao=None, codigo=None,
+    auto_print=False, todas=False, rows=None, so_layout=False,
+):
+    """Render HTML das etiquetas. Preferir so_layout=True (sem banco)."""
+    if rows is None:
+        if so_layout or conn is None:
+            rows = _rows_etiqueta_layout(
+                codigo=codigo, camara=camara, rua=rua, posicao=posicao, todas=todas,
+            )
+        else:
+            try:
+                rows = _buscar_rows_etiquetas_endereco(
+                    conn, camara=camara, rua=rua, posicao=posicao, codigo=codigo, todas=todas,
+                )
+            except Exception:
+                rows = []
+            if not rows:
+                rows = _rows_etiqueta_layout(
+                    codigo=codigo, camara=camara, rua=rua, posicao=posicao, todas=todas,
+                )
     if not rows:
-        return None, 'Nenhum endereço encontrado. Use o painel WMS → «Recalcular distribuição» ou clique em Atualizar resumo na aba Etiquetas.'
-    nomes_camara = _map_nomes_camaras(conn)
+        return None, 'Nenhum endereço para imprimir. Verifique câmara/rua/coluna ou o código informado.'
+    nomes_camara = {}
+    if conn is not None and not so_layout:
+        try:
+            nomes_camara = _map_nomes_camaras(conn)
+        except Exception:
+            nomes_camara = {}
     faixas, total = _agrupar_etiquetas_faixas(rows, nomes_camara=nomes_camara)
     if codigo:
         titulo = codigo
@@ -9077,7 +9143,7 @@ def _render_etiquetas_endereco(conn, camara=None, rua=None, posicao=None, codigo
     elif camara and rua and posicao:
         titulo = f'Coluna câm {camara} · rua {rua} · pos {posicao}'
     elif camara:
-        titulo = _nome_camara_label(conn, camara, nomes_camara)
+        titulo = _nome_camara_label(None, camara, nomes_camara)
     else:
         titulo = 'Lote'
     agrupado = _agrupar_faixas_por_camara(faixas, nomes_camara=nomes_camara) if (todas or (camara and not rua and not posicao)) else None
@@ -9555,36 +9621,45 @@ def api_wms_etiqueta_enderecos_csv():
 
 @bp.route('/etiqueta/endereco', methods=['GET'])
 def api_wms_etiqueta_endereco():
+    """Uma etiqueta — path rápido sem banco (layout/código). Evita 502 no Render."""
     codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip()
     if not codigo:
         return jsonify({'erro': 'Informe codigo/endereco (ex.: 12.14.1 ou 12-C-14-1).'}), 400
+    auto_print = request.args.get('auto_print', '0') == '1'
+    fmt = _formato_longarina_request()
+    # HTML padrão: só layout — não abre conexão com o banco.
+    if fmt != 'xlsx':
+        try:
+            html, err = _render_etiquetas_endereco(
+                None, codigo=codigo, auto_print=auto_print, so_layout=True,
+            )
+            if err:
+                return jsonify({'erro': err}), 404
+            return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+        except Exception as e:
+            try:
+                print('[wms/etiqueta/endereco] layout:', e, flush=True)
+            except Exception:
+                pass
+            return jsonify({'erro': 'Falha ao gerar etiqueta: %s' % e}), 500
+
     conn = None
     try:
         conn = _db()
-        try:
-            ensure_wms_schema(conn)
-        except Exception as schema_err:
-            try:
-                print('[wms/etiqueta/endereco] schema:', schema_err, flush=True)
-            except Exception:
-                pass
-        fmt = _formato_longarina_request()
-        if fmt == 'xlsx':
-            xlsx_bytes, err = _render_etiquetas_endereco_xlsx(conn, codigo=codigo)
-            if err:
-                return jsonify({'erro': err}), 404
-            return _resposta_xlsx_longarina(xlsx_bytes, _nome_arquivo_xlsx_longarina(codigo=codigo))
-        auto_print = request.args.get('auto_print', '0') == '1'
-        html, err = _render_etiquetas_endereco(conn, codigo=codigo, auto_print=auto_print)
+        xlsx_bytes, err = _render_etiquetas_endereco_xlsx(conn, codigo=codigo)
         if err:
-            return jsonify({'erro': err}), 404
-        return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+            # Fallback: gera a partir do layout e tenta Excel de novo.
+            rows = _rows_etiqueta_layout(codigo=codigo)
+            if not rows:
+                return jsonify({'erro': err}), 404
+            etiquetas = [_loc_etiqueta_data(r) for r in rows]
+            try:
+                xlsx_bytes = gerar_workbook_longarina(etiquetas)
+            except Exception as ex:
+                return jsonify({'erro': str(ex)}), 500
+        return _resposta_xlsx_longarina(xlsx_bytes, _nome_arquivo_xlsx_longarina(codigo=codigo))
     except Exception as e:
-        try:
-            print('[wms/etiqueta/endereco] erro:', e, flush=True)
-        except Exception:
-            pass
-        return jsonify({'erro': 'Falha ao gerar etiqueta: %s' % e}), 500
+        return jsonify({'erro': 'Falha ao gerar Excel: %s' % e}), 500
     finally:
         if conn is not None:
             try:
@@ -9649,24 +9724,41 @@ def api_wms_etiqueta_enderecos_resumo():
 
 @bp.route('/etiqueta/enderecos', methods=['GET'])
 def api_wms_etiqueta_enderecos():
-    """Impressão em lote: armazém inteiro, câmara, ou coluna (câmara+rua+posição)."""
+    """Impressão em lote — HTML via layout (sem banco) para coluna/câmara (evita 502)."""
     todas = (request.args.get('todas') or '').strip().lower() in ('1', 'true', 'sim', 'all')
     camara = request.args.get('camara', type=int)
     rua = (request.args.get('rua') or '').strip() or None
     posicao = request.args.get('posicao', type=int)
     if not todas and not camara and not rua and not posicao:
         return jsonify({'erro': 'Informe todas=1, camara, ou coluna (camara+rua+posicao).'}), 400
+    auto_print = request.args.get('auto_print', '0') == '1'
+    fmt = _formato_longarina_request()
+
+    # HTML: gera só com layout — zero dependência de DB (evita 502).
+    if fmt != 'xlsx':
+        try:
+            html, err = _render_etiquetas_endereco(
+                None,
+                camara=camara,
+                rua=rua,
+                posicao=posicao,
+                auto_print=auto_print,
+                todas=todas,
+                so_layout=True,
+            )
+            if err:
+                return jsonify({'erro': err}), 404
+            return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+        except Exception as e:
+            try:
+                print('[wms/etiqueta/enderecos] layout:', e, flush=True)
+            except Exception:
+                pass
+            return jsonify({'erro': 'Falha ao gerar etiquetas: %s' % e}), 500
+
     conn = None
     try:
         conn = _db()
-        try:
-            ensure_wms_schema(conn)
-        except Exception as schema_err:
-            try:
-                print('[wms/etiqueta/enderecos] schema:', schema_err, flush=True)
-            except Exception:
-                pass
-        fmt = _formato_longarina_request()
         if fmt == 'xlsx':
             xlsx_bytes, err = _render_etiquetas_endereco_xlsx(
                 conn, camara=camara, rua=rua, posicao=posicao, todas=todas,
@@ -9677,7 +9769,6 @@ def api_wms_etiqueta_enderecos():
                 todas=todas, camara=camara, rua=rua, posicao=posicao,
             )
             return _resposta_xlsx_longarina(xlsx_bytes, nome)
-        auto_print = request.args.get('auto_print', '0') == '1'
         html, err = _render_etiquetas_endereco(
             conn,
             camara=camara,
@@ -9685,6 +9776,7 @@ def api_wms_etiqueta_enderecos():
             posicao=posicao,
             auto_print=auto_print,
             todas=todas,
+            so_layout=True,
         )
         if err:
             return jsonify({'erro': err}), 404

@@ -7037,34 +7037,46 @@ async function loadWmsLocalizacoes() {
 
 async function _wmsAbrirEtiquetaUrl(url) {
     // Busca com sessão e só abre HTML — evita aba com JSON/502 sem mensagem útil.
-    try {
-        if (typeof showMessage === 'function') showMessage('Gerando etiqueta…', 'info');
-        var resp = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+    function withSintetico(u) {
+        if (!u || u.indexOf('sintetico=') >= 0) return u;
+        return u + (u.indexOf('?') >= 0 ? '&' : '?') + 'sintetico=1';
+    }
+    async function tentar(u) {
+        var resp = await fetch(u, { credentials: 'same-origin', cache: 'no-store' });
         var ct = (resp.headers.get('content-type') || '').toLowerCase();
         if (resp.status === 401 || resp.status === 403) {
-            showMessage('Sessão expirada. Faça login novamente e tente imprimir.', 'error');
-            return;
+            return { err: 'Sessão expirada. Faça login novamente e tente imprimir.' };
         }
         if (ct.indexOf('application/json') >= 0) {
             var data = null;
             try { data = await resp.json(); } catch (e1) { data = null; }
-            showMessage((data && data.erro) || ('Erro ao gerar etiqueta (HTTP ' + resp.status + ').'), 'error');
-            return;
+            return { err: (data && data.erro) || ('Erro ao gerar etiqueta (HTTP ' + resp.status + ').'), status: resp.status };
         }
         if (!resp.ok) {
-            showMessage('Falha ao gerar etiqueta (HTTP ' + resp.status + '). Tente de novo em alguns segundos.', 'error');
-            return;
+            return { err: 'Falha ao gerar etiqueta (HTTP ' + resp.status + ').', status: resp.status, retry: resp.status === 502 || resp.status === 503 || resp.status === 504 };
         }
         var html = await resp.text();
         if (!html || html.length < 40) {
-            showMessage('Resposta vazia ao gerar etiqueta.', 'error');
+            return { err: 'Resposta vazia ao gerar etiqueta.' };
+        }
+        return { html: html };
+    }
+    try {
+        if (typeof showMessage === 'function') showMessage('Gerando etiqueta…', 'info');
+        var u1 = withSintetico(url);
+        var r = await tentar(u1);
+        if (r.retry) {
+            await new Promise(function(res) { setTimeout(res, 1500); });
+            r = await tentar(u1 + '&_r=1');
+        }
+        if (r.err) {
+            showMessage(r.err + (r.retry || r.status === 502 ? ' Tente de novo em alguns segundos.' : ''), 'error');
             return;
         }
-        var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        var blob = new Blob([r.html], { type: 'text/html;charset=utf-8' });
         var blobUrl = URL.createObjectURL(blob);
         var w = window.open(blobUrl, '_blank');
         if (!w) {
-            // Pop-up bloqueado: baixa/abre na mesma aba.
             var a = document.createElement('a');
             a.href = blobUrl;
             a.target = '_blank';
@@ -7073,6 +7085,8 @@ async function _wmsAbrirEtiquetaUrl(url) {
             a.click();
             a.remove();
             showMessage('Pop-up bloqueado — se a etiqueta não abriu, libere pop-ups para este site.', 'warning');
+        } else if (typeof showMessage === 'function') {
+            showMessage('Etiqueta pronta para imprimir.', 'success');
         }
         window.setTimeout(function() {
             try { URL.revokeObjectURL(blobUrl); } catch (e2) {}
@@ -7084,7 +7098,7 @@ async function _wmsAbrirEtiquetaUrl(url) {
 
 window.wmsImprimirEtqEndereco = function(codigo) {
     if (!codigo) return;
-    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/endereco?codigo=' + encodeURIComponent(codigo));
+    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/endereco?codigo=' + encodeURIComponent(codigo) + '&sintetico=1');
 };
 
 function wmsImprimirEtqColuna() {
@@ -7094,7 +7108,7 @@ function wmsImprimirEtqColuna() {
     if (!cam) { showMessage('Selecione a câmara (Rua).', 'error'); return; }
     if (!rua || !pos) { showMessage('Selecione a rua interna e o prédio (coluna).', 'error'); return; }
     var url = '/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam) +
-        '&rua=' + encodeURIComponent(rua) + '&posicao=' + encodeURIComponent(pos);
+        '&rua=' + encodeURIComponent(rua) + '&posicao=' + encodeURIComponent(pos) + '&sintetico=1';
     _wmsAbrirEtiquetaUrl(url);
 }
 
@@ -7345,7 +7359,7 @@ function wmsImprimirEtqCamara() {
     var cam = (document.getElementById('wms-etq-camara') || {}).value || '';
     if (!cam) { showMessage('Selecione a câmara.', 'error'); return; }
     if (!confirm('Imprimir todas as longarinas da câmara ' + cam + '?')) return;
-    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam));
+    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?camara=' + encodeURIComponent(cam) + '&sintetico=1');
 }
 
 async function loadWmsEtqLongarinaResumo(opcoes) {
@@ -7423,7 +7437,7 @@ function wmsImprimirEtqTodasLongarinas() {
         msg += '? O arquivo pode ser grande.';
     }
     if (!confirm(msg)) return;
-    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?todas=1');
+    _wmsAbrirEtiquetaUrl('/api/wms/etiqueta/enderecos?todas=1&sintetico=1');
 }
 
 function wmsImprimirEtqUnico() {
