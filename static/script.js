@@ -6963,17 +6963,21 @@ async function loadWmsLocalizacoes() {
     var cam = document.getElementById('wms-filtro-camara');
     var cat = document.getElementById('wms-filtro-cat-zona');
     var st = document.getElementById('wms-filtro-status');
-    var q = [];
+    var q = ['auto_layout=0', 'limite=300'];
     if (cam && cam.value) q.push('camara=' + encodeURIComponent(cam.value));
     if (cat && cat.value) q.push('categoria=' + encodeURIComponent(cat.value));
     if (st && st.value) q.push('status=' + encodeURIComponent(st.value));
-    var path = '/wms/localizacoes' + (q.length ? '?' + q.join('&') : '');
+    var path = '/wms/localizacoes?' + q.join('&');
     try {
-        var data = await _wmsFetchGet(path, 60000);
+        var data = await _wmsFetchGet(path, 45000);
         if (!tb) return;
         if (!data || data.erro) {
-            tb.innerHTML = '<tr><td colspan="10">' + escHtml(_wmsErroMsg(data, 'Erro ao carregar localizações.')) + '</td></tr>';
-            if (data && data.erro) showMessage(data.erro, 'error');
+            var err = _wmsErroMsg(data, 'Erro ao carregar localizações.');
+            if (data && (data._falhaGateway || data._timeout)) {
+                err = 'Servidor ocupado ao listar endereços. Aguarde alguns segundos e clique em Atualizar.';
+            }
+            tb.innerHTML = '<tr><td colspan="10">' + escHtml(err) + '</td></tr>';
+            showMessage(err, 'error');
             return;
         }
         var rows = data.localizacoes || [];
@@ -6989,7 +6993,7 @@ async function loadWmsLocalizacoes() {
             var bcLong = escHtml(r.barcode_longarina || '');
             var codJs = String(r.codigo_endereco || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
             return '<tr><td>' + cod + '</td><td><strong>' + bcLong + '</strong></td><td>' + escHtml(r.camara) + '</td><td>' + escHtml(r.rua) + '</td><td>' + escHtml(r.posicao) + '</td><td>' + escHtml(r.nivel) + '</td><td><strong>' + escHtml(zl) + '</strong></td><td><strong>' + escHtml(catCol) + '</strong></td><td>' + escHtml(r.status) + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="wmsImprimirEtqEndereco(\'' + codJs + '\')">Longarina</button></td></tr>';
-        }).join('') : '<tr><td colspan="10">Nenhuma localização. Clique em Atualizar ou use o painel para recalcular o layout.</td></tr>';
+        }).join('') : '<tr><td colspan="10">Nenhuma localização. No Painel WMS use «Recalcular distribuição» e depois Atualizar aqui.</td></tr>';
     } catch (e) {
         if (tb) {
             tb.innerHTML = '<tr><td colspan="10">' + escHtml((e && e.message) || 'Erro ao carregar localizações.') + '</td></tr>';
