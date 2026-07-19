@@ -4032,29 +4032,8 @@ function _wmsDefer(fn) {
 var _wmsLoadDepth = 0;
 var _wmsLoadHideTimer = null;
 
-function _wmsTabLoadingLabel(tab) {
-    var map = {
-        painel: 'Carregando painel…',
-        'etiquetas-longarina': 'Carregando opções de etiquetas…',
-        localizacoes: 'Carregando localizações…',
-        'mapa-3d': 'Carregando mapa 3D…',
-        produtos: 'Carregando produtos…',
-        movimentacoes: 'Carregando movimentações…',
-        recebimento: 'Carregando recebimentos…',
-        'controle-paletes': 'Carregando controle de paletes…',
-        'historico-nf': 'Preparando histórico…',
-        relatorios: 'Preparando relatórios…',
-        separacao: 'Carregando separação…',
-        enderecamento: 'Carregando endereçamento…',
-        'areas-especiais': 'Carregando áreas especiais…',
-        ocupacao: 'Carregando ocupação…',
-        'estoque-seguranca': 'Carregando estoque de segurança…',
-        'shelf-life': 'Carregando shelf life…',
-        'visao-cruzada': 'Carregando visão cruzada…',
-        inventario: 'Carregando inventário…',
-        pesquisa: 'Carregando pesquisa…'
-    };
-    return map[tab] || 'Carregando…';
+function _wmsTabLoadingLabel(_tab) {
+    return 'Carregando';
 }
 
 function _wmsBeginLoading(msg) {
@@ -4065,11 +4044,12 @@ function _wmsBeginLoading(msg) {
     }
     var el = document.getElementById('wms-global-loading');
     var m = document.getElementById('wms-global-loading-msg');
-    if (m) m.textContent = msg || 'Carregando…';
+    if (m) m.textContent = msg || 'Carregando';
     if (el) {
         el.hidden = false;
         el.setAttribute('aria-busy', 'true');
         el.classList.add('is-active');
+        try { document.body.classList.add('wms-tab-loading'); } catch (e) {}
     }
 }
 
@@ -4084,6 +4064,7 @@ function _wmsEndLoading() {
             el.setAttribute('aria-busy', 'false');
             el.classList.remove('is-active');
         }
+        try { document.body.classList.remove('wms-tab-loading'); } catch (e) {}
     }, 150);
 }
 
