@@ -8449,6 +8449,33 @@ async function _wmsPostIniciarBipagem(body, timeoutMs) {
     return fetchAPIComTimeout(path, opts, ms);
 }
 
+async function _wmsAcordarServidor() {
+    try {
+        if (typeof fetchAPI === 'function') {
+            await Promise.race([
+                fetchAPI('/health'),
+                new Promise(function(r) { setTimeout(r, 4000); })
+            ]);
+        }
+    } catch (e) {}
+}
+
+function _wmsAplicarRecebimentoAberto(rid, data) {
+    data = data || {};
+    if (window._wmsNfDoc) {
+        window._wmsNfDoc.recebimento_wms_id = rid;
+        window._wmsNfDoc.recebimento_wms_id_ultimo = rid;
+        window._wmsNfDoc.recebimento_wms_status = data.status || 'aguardando';
+        window._wmsNfDoc.wms_bloqueado = false;
+    }
+    wmsAtualizarBotoesRecebimentoNf();
+    try { void loadWmsRecebimentos(); } catch (eL) {}
+    wmsSincronizarRecebimentoAberto(rid, { resetarPalete: true });
+    _wmsRevelarPassoAPassoBipagem(true);
+    var skuEl = document.getElementById('wms-pal-sku');
+    if (skuEl) setTimeout(function() { skuEl.focus(); }, 250);
+}
+
 async function wmsIniciarBipagemNf() {
     if (window._wmsIniciarBipagemBusy) return;
     window._wmsIniciarBipagemBusy = true;
@@ -8475,13 +8502,16 @@ async function wmsIniciarBipagemNf() {
             || null;
         var stExist = String(window._wmsNfDoc.recebimento_wms_status || '').toLowerCase();
         if (ridExistente && stExist !== 'finalizado' && !window._wmsNfDoc.wms_bloqueado) {
-            wmsSincronizarRecebimentoAberto(ridExistente, { resetarPalete: true });
-            _wmsRevelarPassoAPassoBipagem(true);
+            _wmsAplicarRecebimentoAberto(ridExistente, { status: stExist || 'aguardando' });
             showMessage('Passo a passo aberto — bipe o EAN/SKU do produto e confirme lote e datas.', 'success');
-            var skuFast = document.getElementById('wms-pal-sku');
-            if (skuFast) setTimeout(function() { skuFast.focus(); }, 250);
             return;
         }
+
+        // Acorda o app (Render free) antes do POST.
+        if (btn) btn.textContent = 'Acordando servidor…';
+        await _wmsAcordarServidor();
+        // Mostra o painel já — usuário vê que algo aconteceu.
+        _wmsRevelarPassoAPassoBipagem(true);
 
         var terDoc = (document.getElementById('wms-rec-terceiros-doc-id') || {}).value
             || window._wmsNfDoc.documento_id || '';
@@ -8491,55 +8521,37 @@ async function wmsIniciarBipagemNf() {
             placa: (document.getElementById('wms-rec-placa') || {}).value || '',
             terceiros_documento_id: terDoc ? parseInt(terDoc, 10) : null,
             terceiros_area: (document.getElementById('wms-rec-terceiros-area') || {}).value
-                || window._wmsNfDoc.area || '',
-            recebimento_concluido: !!window._wmsNfDoc.recebimento_concluido
+                || window._wmsNfDoc.area || ''
+            // não manda recebimento_concluido — evita write lento de reabrir descarga
         };
 
-        var data = await _wmsPostIniciarBipagem(body, 20000);
-        // Retry único em 502/timeout (Render acordando / deploy).
-        if (data && (data._falhaGateway || data._timeout)) {
-            await new Promise(function(r) { setTimeout(r, 1800); });
-            data = await _wmsPostIniciarBipagem(body, 25000);
-        }
-        if (!data || data._timeout || data._falhaGateway) {
-            showMessage(
-                'Servidor ocupado ao abrir o passo a passo. Aguarde 5 segundos e clique de novo.',
-                'error'
-            );
-            return;
-        }
-        if (!data.ok) {
-            showMessage((data && data.erro) || 'Erro ao abrir bipagem — tente de novo em alguns segundos.', 'error');
-            return;
-        }
-        var rid = data.id;
-        if (!rid) {
-            showMessage('Não foi possível abrir o recebimento WMS.', 'error');
-            return;
-        }
-        // Não substitui o painel inteiro (evita apagar itens da NF já carregados).
-        if (window._wmsNfDoc) {
-            window._wmsNfDoc.recebimento_wms_id = rid;
-            window._wmsNfDoc.recebimento_wms_id_ultimo = rid;
-            window._wmsNfDoc.recebimento_wms_status = data.status || 'aguardando';
-            window._wmsNfDoc.wms_bloqueado = false;
-            if (data.reabriu_descarga) {
-                window._wmsNfDoc.recebimento_concluido = false;
-                window._wmsNfDoc.descarga_reabrivel = false;
+        var data = null;
+        var tentativas = 4;
+        for (var i = 0; i < tentativas; i++) {
+            if (btn) btn.textContent = i === 0 ? 'Abrindo passo a passo…' : ('Tentativa ' + (i + 1) + '/' + tentativas + '…');
+            data = await _wmsPostIniciarBipagem(body, 18000 + (i * 4000));
+            if (data && data.ok && data.id) break;
+            if (data && data.erro && !data._falhaGateway && !data._timeout) break; // erro de negócio
+            if (i < tentativas - 1) {
+                await new Promise(function(r) { setTimeout(r, 2000 * (i + 1)); });
             }
         }
-        wmsAtualizarBotoesRecebimentoNf();
-        if (data.reutilizado) {
-            showMessage(data.mensagem || ('Recebimento #' + rid + ' em andamento reutilizado.'), 'info');
-        } else if (data.reabriu_descarga) {
-            showMessage('Descarga reaberta — pode continuar a bipagem no WMS.', 'info');
+        if (!data || !data.ok || !data.id) {
+            if (data && data.erro && !data._falhaGateway && !data._timeout) {
+                showMessage(data.erro, 'error');
+            } else {
+                showMessage(
+                    'Servidor ainda acordando. Espere 20 segundos e clique de novo em Montar paletes.',
+                    'warning'
+                );
+            }
+            return;
         }
-        try { void loadWmsRecebimentos(); } catch (eL) {}
-        wmsSincronizarRecebimentoAberto(rid, { resetarPalete: true });
-        _wmsRevelarPassoAPassoBipagem(true);
+        _wmsAplicarRecebimentoAberto(data.id, data);
+        if (data.reutilizado) {
+            showMessage(data.mensagem || ('Recebimento #' + data.id + ' em andamento reutilizado.'), 'info');
+        }
         showMessage('Passo a passo aberto — bipe o EAN/SKU do produto e confirme lote e datas.', 'success');
-        var skuEl = document.getElementById('wms-pal-sku');
-        if (skuEl) setTimeout(function() { skuEl.focus(); }, 250);
     } catch (e) {
         console.error('wmsIniciarBipagemNf', e);
         showMessage('Erro ao abrir passo a passo: ' + ((e && e.message) || 'falha inesperada'), 'error');

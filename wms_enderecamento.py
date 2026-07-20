@@ -1342,14 +1342,13 @@ def _doc_descarga_reabrivel_wms(doc):
 
 def _iniciar_bipagem_wms_leve(conn, data):
     """
-    Abre/reutiliza recebimento WMS sem enrich pesado.
-    Usa dados já carregados no cliente (documento_id/NF) para evitar timeout/502.
+    Abre/reutiliza recebimento WMS no caminho mais curto possível.
+    - Usa documento_id/NF do cliente (sem varrer descarga).
+    - NÃO reabre descarga aqui (write lento/lock → 502).
     """
     numero_nf = (data.get('numero_nf') or '').strip()
     if not numero_nf:
         return None, ('Informe numero_nf.', 400)
-    if not _wms_tabelas_existem(conn):
-        return None, ('Schema WMS ainda não está pronto. Abra a aba Painel uma vez e tente de novo.', 503)
 
     ter_doc_id = data.get('terceiros_documento_id')
     try:
@@ -1359,41 +1358,57 @@ def _iniciar_bipagem_wms_leve(conn, data):
     ter_area = (data.get('terceiros_area') or '').strip().lower()
     fornecedor = (data.get('fornecedor') or '').strip()
     placa = (data.get('placa') or '').strip().upper()
-    doc = None
+    t_rec = _tbl(conn, 'wms_recebimento')
 
-    if not ter_doc_id:
-        doc, err = _buscar_documento_terceiros_por_nf(conn, numero_nf)
-        if err:
-            return None, (err, 404)
-        ter_doc_id = doc.get('documento_id')
-        ter_area = ter_area or (doc.get('area') or '').strip().lower()
-        fornecedor = fornecedor or (doc.get('fornecedor') or '').strip()
-        placa = placa or (doc.get('placa') or '').strip().upper()
-
-    rec_ultimo = None
+    # 1) Reutiliza recebimento ativo da NF (query mínima).
     try:
-        rec_ultimo = _buscar_recebimento_wms_por_nf(
-            conn, documento_id=ter_doc_id, numero_nf=numero_nf, somente_ativo=False,
+        row = conn.execute(
+            f'''SELECT id, status FROM {t_rec}
+                WHERE numero_nf = ? AND {_sql_recebimento_wms_ativo()}
+                ORDER BY id DESC LIMIT 1''',
+            (numero_nf,),
+        ).fetchone()
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None, (
+            'Schema WMS ainda não está pronto. Abra a aba Painel uma vez e tente de novo. (%s)' % exc,
+            503,
         )
+    if row:
+        rd = _row_dict(row) or {}
+        rid = int(rd.get('id') or 0)
+        st = rd.get('status') or 'aguardando'
+        return {
+            'ok': True,
+            'id': rid,
+            'reutilizado': True,
+            'status': st,
+            'reabriu_descarga': False,
+            'mensagem': 'Recebimento em andamento reutilizado.',
+            'terceiros_documento_id': ter_doc_id,
+            'terceiros_area': ter_area,
+        }, None
+
+    # 2) Bloqueia só se o último da NF já foi finalizado.
+    try:
+        fin = conn.execute(
+            f'''SELECT id, status FROM {t_rec}
+                WHERE numero_nf = ?
+                ORDER BY id DESC LIMIT 1''',
+            (numero_nf,),
+        ).fetchone()
+        if fin:
+            fd = _row_dict(fin) or {}
+            if (fd.get('status') or '').lower() == 'finalizado':
+                return None, ('NF já finalizada no WMS — consulte o Histórico NF.', 400)
     except Exception:
         try:
             conn.rollback()
         except Exception:
             pass
-    if rec_ultimo and (rec_ultimo.get('status') or '').lower() == 'finalizado':
-        return None, ('NF já finalizada no WMS — consulte o Histórico NF.', 400)
-
-    reabriu = False
-    concl = data.get('recebimento_concluido')
-    if concl is None and doc is not None:
-        concl = doc.get('recebimento_concluido')
-    if _terceiros_bool_sim_local(concl) and ter_doc_id:
-        ok_ter, err_ter = _reabrir_terceiros_recebimento_wms(
-            conn, int(ter_doc_id), motivo='iniciar_bipagem_wms',
-        )
-        if not ok_ter:
-            return None, (err_ter or 'Não foi possível reabrir a descarga.', 400)
-        reabriu = True
 
     origem = 'carreta' if ter_area == 'carreta' else ('terceiros' if ter_doc_id else 'manual')
     now = _now_iso()
@@ -1421,7 +1436,7 @@ def _iniciar_bipagem_wms_leve(conn, data):
         'id': new_id,
         'reutilizado': reutilizado,
         'status': st_rec,
-        'reabriu_descarga': reabriu,
+        'reabriu_descarga': False,
         'mensagem': 'Recebimento em andamento reutilizado.' if reutilizado else None,
         'terceiros_documento_id': ter_doc_id,
         'terceiros_area': ter_area,
@@ -7483,7 +7498,17 @@ def api_wms_recebimentos_iniciar_bipagem():
     data = request.get_json(silent=True) or {}
     conn = None
     try:
-        conn = _db()
+        # Timeout curto de conexão — falha rápido em vez de segurar o worker.
+        try:
+            conn = _get_db(connect_timeout=5) if _get_db else _db()
+        except TypeError:
+            conn = _db()
+        except Exception as e:
+            return jsonify({
+                'erro': 'Banco acordando. Aguarde alguns segundos e tente de novo.',
+                '_falhaGateway': True,
+            }), 503
+        # ALTER só na 1ª vez (flag em memória); não bloquear o caminho feliz.
         try:
             _ensure_wms_recebimento_terceiros_columns(conn)
         except Exception:
