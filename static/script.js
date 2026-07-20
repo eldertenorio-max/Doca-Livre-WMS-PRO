@@ -8435,6 +8435,16 @@ async function wmsAtualizarBotaoFinalizarNf() {
     }
 }
 
+async function _wmsPostIniciarBipagem(body, timeoutMs) {
+    var path = '/wms/recebimentos/iniciar-bipagem';
+    var opts = { method: 'POST', body: JSON.stringify(body) };
+    var ms = timeoutMs || 20000;
+    if (typeof _fetchAPIComTimeoutUma === 'function') {
+        return _fetchAPIComTimeoutUma(path, opts, ms);
+    }
+    return fetchAPIComTimeout(path, opts, ms);
+}
+
 async function wmsIniciarBipagemNf() {
     if (window._wmsIniciarBipagemBusy) return;
     window._wmsIniciarBipagemBusy = true;
@@ -8471,44 +8481,50 @@ async function wmsIniciarBipagemNf() {
 
         var terDoc = (document.getElementById('wms-rec-terceiros-doc-id') || {}).value
             || window._wmsNfDoc.documento_id || '';
-        // Uma tentativa com timeout curto (sem retry triplo de 90s que deixava o botão preso).
-        var data = typeof _fetchAPIComTimeoutUma === 'function'
-            ? await _fetchAPIComTimeoutUma('/wms/recebimentos', {
-                method: 'POST',
-                body: JSON.stringify({
-                    acao: 'iniciar_bipagem',
-                    numero_nf: nf.trim(),
-                    fornecedor: (document.getElementById('wms-rec-fornecedor') || {}).value || '',
-                    placa: (document.getElementById('wms-rec-placa') || {}).value || '',
-                    terceiros_documento_id: terDoc ? parseInt(terDoc, 10) : null,
-                    terceiros_area: (document.getElementById('wms-rec-terceiros-area') || {}).value || ''
-                })
-            }, 25000)
-            : await fetchAPIComTimeout('/wms/recebimentos', {
-                method: 'POST',
-                body: JSON.stringify({
-                    acao: 'iniciar_bipagem',
-                    numero_nf: nf.trim(),
-                    fornecedor: (document.getElementById('wms-rec-fornecedor') || {}).value || '',
-                    placa: (document.getElementById('wms-rec-placa') || {}).value || '',
-                    terceiros_documento_id: terDoc ? parseInt(terDoc, 10) : null,
-                    terceiros_area: (document.getElementById('wms-rec-terceiros-area') || {}).value || ''
-                })
-            }, 25000);
+        var body = {
+            numero_nf: nf.trim(),
+            fornecedor: (document.getElementById('wms-rec-fornecedor') || {}).value || '',
+            placa: (document.getElementById('wms-rec-placa') || {}).value || '',
+            terceiros_documento_id: terDoc ? parseInt(terDoc, 10) : null,
+            terceiros_area: (document.getElementById('wms-rec-terceiros-area') || {}).value
+                || window._wmsNfDoc.area || '',
+            recebimento_concluido: !!window._wmsNfDoc.recebimento_concluido
+        };
+
+        var data = await _wmsPostIniciarBipagem(body, 20000);
+        // Retry único em 502/timeout (Render acordando / deploy).
+        if (data && (data._falhaGateway || data._timeout)) {
+            await new Promise(function(r) { setTimeout(r, 1800); });
+            data = await _wmsPostIniciarBipagem(body, 25000);
+        }
         if (!data || data._timeout || data._falhaGateway) {
-            showMessage((data && data.erro) || 'Tempo esgotado ao abrir bipagem. Tente de novo.', 'error');
+            showMessage(
+                'Servidor ocupado ao abrir o passo a passo. Aguarde 5 segundos e clique de novo.',
+                'error'
+            );
             return;
         }
-        if (!data || !data.ok) {
+        if (!data.ok) {
             showMessage((data && data.erro) || 'Erro ao abrir bipagem — tente de novo em alguns segundos.', 'error');
             return;
         }
-        if (data.documento) wmsPreencherPainelNfDescarga(data.documento);
         var rid = data.id;
         if (!rid) {
             showMessage('Não foi possível abrir o recebimento WMS.', 'error');
             return;
         }
+        // Não substitui o painel inteiro (evita apagar itens da NF já carregados).
+        if (window._wmsNfDoc) {
+            window._wmsNfDoc.recebimento_wms_id = rid;
+            window._wmsNfDoc.recebimento_wms_id_ultimo = rid;
+            window._wmsNfDoc.recebimento_wms_status = data.status || 'aguardando';
+            window._wmsNfDoc.wms_bloqueado = false;
+            if (data.reabriu_descarga) {
+                window._wmsNfDoc.recebimento_concluido = false;
+                window._wmsNfDoc.descarga_reabrivel = false;
+            }
+        }
+        wmsAtualizarBotoesRecebimentoNf();
         if (data.reutilizado) {
             showMessage(data.mensagem || ('Recebimento #' + rid + ' em andamento reutilizado.'), 'info');
         } else if (data.reabriu_descarga) {

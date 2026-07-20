@@ -31,6 +31,7 @@ _get_db = None
 _WMS_SCHEMA_READY = False
 _WMS_AUX_DATA_READY = False
 _WMS_DEFAULTS_SEEDED = False
+_WMS_REC_TERCEIROS_COLS_READY = False
 _WMS_PAINEL_CACHE = {'ts': 0.0, 'payload': None}
 _WMS_PAINEL_TTL_SEC = 90
 
@@ -935,6 +936,10 @@ def _ensure_wms_palete_item_nf_columns(conn):
 
 
 def _ensure_wms_recebimento_terceiros_columns(conn):
+    """Garante colunas de vínculo com descarga — só ALTER na 1ª vez (evita lock/502)."""
+    global _WMS_REC_TERCEIROS_COLS_READY
+    if _WMS_REC_TERCEIROS_COLS_READY:
+        return
     cols = [
         ('terceiros_documento_id', 'BIGINT' if _is_pg(conn) else 'INTEGER'),
         ('terceiros_area', 'TEXT'),
@@ -963,6 +968,7 @@ def _ensure_wms_recebimento_terceiros_columns(conn):
             conn.commit()
         except Exception:
             pass
+    _WMS_REC_TERCEIROS_COLS_READY = True
 
 
 def _normalizar_nf_wms(numero_nf):
@@ -1332,6 +1338,94 @@ def _doc_descarga_reabrivel_wms(doc):
     if doc.get('descarga_reabrivel') is not None:
         return bool(doc.get('descarga_reabrivel'))
     return not doc.get('recebimento_wms_id')
+
+
+def _iniciar_bipagem_wms_leve(conn, data):
+    """
+    Abre/reutiliza recebimento WMS sem enrich pesado.
+    Usa dados já carregados no cliente (documento_id/NF) para evitar timeout/502.
+    """
+    numero_nf = (data.get('numero_nf') or '').strip()
+    if not numero_nf:
+        return None, ('Informe numero_nf.', 400)
+    if not _wms_tabelas_existem(conn):
+        return None, ('Schema WMS ainda não está pronto. Abra a aba Painel uma vez e tente de novo.', 503)
+
+    ter_doc_id = data.get('terceiros_documento_id')
+    try:
+        ter_doc_id = int(ter_doc_id) if ter_doc_id not in (None, '', 0, '0') else None
+    except (TypeError, ValueError):
+        ter_doc_id = None
+    ter_area = (data.get('terceiros_area') or '').strip().lower()
+    fornecedor = (data.get('fornecedor') or '').strip()
+    placa = (data.get('placa') or '').strip().upper()
+    doc = None
+
+    if not ter_doc_id:
+        doc, err = _buscar_documento_terceiros_por_nf(conn, numero_nf)
+        if err:
+            return None, (err, 404)
+        ter_doc_id = doc.get('documento_id')
+        ter_area = ter_area or (doc.get('area') or '').strip().lower()
+        fornecedor = fornecedor or (doc.get('fornecedor') or '').strip()
+        placa = placa or (doc.get('placa') or '').strip().upper()
+
+    rec_ultimo = None
+    try:
+        rec_ultimo = _buscar_recebimento_wms_por_nf(
+            conn, documento_id=ter_doc_id, numero_nf=numero_nf, somente_ativo=False,
+        )
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    if rec_ultimo and (rec_ultimo.get('status') or '').lower() == 'finalizado':
+        return None, ('NF já finalizada no WMS — consulte o Histórico NF.', 400)
+
+    reabriu = False
+    concl = data.get('recebimento_concluido')
+    if concl is None and doc is not None:
+        concl = doc.get('recebimento_concluido')
+    if _terceiros_bool_sim_local(concl) and ter_doc_id:
+        ok_ter, err_ter = _reabrir_terceiros_recebimento_wms(
+            conn, int(ter_doc_id), motivo='iniciar_bipagem_wms',
+        )
+        if not ok_ter:
+            return None, (err_ter or 'Não foi possível reabrir a descarga.', 400)
+        reabriu = True
+
+    origem = 'carreta' if ter_area == 'carreta' else ('terceiros' if ter_doc_id else 'manual')
+    now = _now_iso()
+    try:
+        new_id, reutilizado, st_rec = _obter_ou_criar_recebimento_wms(
+            conn,
+            numero_nf=numero_nf,
+            fornecedor=fornecedor or None,
+            placa=placa or None,
+            origem=origem,
+            ter_doc_id=ter_doc_id,
+            ter_area=ter_area or None,
+            now=now,
+        )
+        conn.commit()
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None, ('Falha ao criar recebimento WMS: %s' % exc, 500)
+
+    return {
+        'ok': True,
+        'id': new_id,
+        'reutilizado': reutilizado,
+        'status': st_rec,
+        'reabriu_descarga': reabriu,
+        'mensagem': 'Recebimento em andamento reutilizado.' if reutilizado else None,
+        'terceiros_documento_id': ter_doc_id,
+        'terceiros_area': ter_area,
+    }, None
 
 
 def _quantidades_wms_recebimento(conn, recebimento_id):
@@ -7324,6 +7418,38 @@ def api_wms_recebimentos_buscar_nf():
         return jsonify({'erro': str(e)}), 500
 
 
+@bp.route('/recebimentos/iniciar-bipagem', methods=['POST'])
+def api_wms_recebimentos_iniciar_bipagem():
+    """Endpoint dedicado e leve para abrir o passo a passo (evita 502 do POST pesado)."""
+    data = request.get_json(silent=True) or {}
+    conn = None
+    try:
+        conn = _db()
+        try:
+            _ensure_wms_recebimento_terceiros_columns(conn)
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        payload, err_pair = _iniciar_bipagem_wms_leve(conn, data)
+        try:
+            conn.close()
+        except Exception:
+            pass
+        if err_pair:
+            msg, code = err_pair
+            return jsonify({'erro': msg}), code
+        return jsonify(payload)
+    except Exception as e:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': 'Falha ao abrir bipagem: %s' % e}), 500
+
+
 @bp.route('/recebimentos', methods=['GET', 'POST'])
 def api_wms_recebimentos():
     conn = _db()
@@ -7764,81 +7890,12 @@ def api_wms_recebimentos():
             return jsonify({'ok': True, 'palete_id': pid, 'etiqueta': etiqueta, 'bloqueios': bloqueios})
 
         if acao == 'iniciar_bipagem':
-            numero_nf = (data.get('numero_nf') or '').strip()
-            if not numero_nf:
-                conn.close()
-                return jsonify({'erro': 'Informe numero_nf.'}), 400
-            doc, err = _buscar_documento_terceiros_por_nf(conn, numero_nf)
-            if err:
-                conn.close()
-                return jsonify({'erro': err}), 404
-            try:
-                doc = _enriquecer_documento_nf_wms(conn, doc)
-            except Exception as exc:
-                try:
-                    print('[wms/iniciar_bipagem] enriquecer: %s' % exc, flush=True)
-                except Exception:
-                    pass
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-                doc = dict(doc or {})
-            st_wms = (doc.get('recebimento_wms_status') or '').lower()
-            if st_wms == 'finalizado' or doc.get('wms_bloqueado'):
-                conn.close()
-                return jsonify({'erro': 'NF já finalizada no WMS — consulte o Histórico NF.'}), 400
-            reabriu = False
-            if doc.get('recebimento_concluido'):
-                if not _doc_descarga_reabrivel_wms(doc):
-                    conn.close()
-                    return jsonify({
-                        'erro': 'Recebimento concluído na descarga e não pode ser reaberto pelo WMS.',
-                    }), 400
-                ter_doc = doc.get('documento_id') or data.get('terceiros_documento_id')
-                if not ter_doc:
-                    conn.close()
-                    return jsonify({'erro': 'Documento da NF não encontrado para reabrir descarga.'}), 400
-                ok_ter, err_ter = _reabrir_terceiros_recebimento_wms(
-                    conn, int(ter_doc), motivo='iniciar_bipagem_wms',
-                )
-                if not ok_ter:
-                    conn.close()
-                    return jsonify({'erro': err_ter or 'Não foi possível reabrir a descarga.'}), 400
-                reabriu = True
-                doc['recebimento_concluido'] = False
-                doc['descarga_reabrivel'] = False
-            ter_doc_id = data.get('terceiros_documento_id') or doc.get('documento_id')
-            ter_area = (data.get('terceiros_area') or doc.get('area') or '').strip().lower()
-            fornecedor = data.get('fornecedor') or doc.get('fornecedor')
-            placa = data.get('placa') or doc.get('placa')
-            origem = 'carreta' if ter_area == 'carreta' else ('terceiros' if ter_doc_id else 'manual')
-            new_id, reutilizado, st_rec = _obter_ou_criar_recebimento_wms(
-                conn,
-                numero_nf=numero_nf,
-                fornecedor=fornecedor,
-                placa=placa,
-                origem=origem,
-                ter_doc_id=ter_doc_id,
-                ter_area=ter_area or None,
-                now=now,
-            )
-            doc['recebimento_wms_id'] = new_id
-            doc['recebimento_wms_status'] = st_rec
-            doc['recebimento_wms_id_ultimo'] = new_id
-            if doc.pop('_wms_descarga_reaberta', None):
-                reabriu = True
-            conn.commit()
+            payload, err_pair = _iniciar_bipagem_wms_leve(conn, data)
             conn.close()
-            return jsonify({
-                'ok': True,
-                'id': new_id,
-                'reutilizado': reutilizado,
-                'status': st_rec,
-                'documento': doc,
-                'reabriu_descarga': reabriu,
-                'mensagem': 'Recebimento em andamento reutilizado.' if reutilizado else None,
-            })
+            if err_pair:
+                msg, code = err_pair
+                return jsonify({'erro': msg}), code
+            return jsonify(payload)
 
         if acao == 'reabrir_descarga':
             doc_ter = data.get('terceiros_documento_id') or data.get('documento_id')
