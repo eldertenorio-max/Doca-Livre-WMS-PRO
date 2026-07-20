@@ -32,8 +32,20 @@ _WMS_SCHEMA_READY = False
 _WMS_AUX_DATA_READY = False
 _WMS_DEFAULTS_SEEDED = False
 _WMS_REC_TERCEIROS_COLS_READY = False
+_WMS_ZONA_COLS_READY = False
+_WMS_PROD_PLAN_COLS_READY = False
 _WMS_PAINEL_CACHE = {'ts': 0.0, 'payload': None}
 _WMS_PAINEL_TTL_SEC = 90
+# Ações do passo a passo — sem ensure_wms_schema/seed (evita "Conferindo…" eterno).
+_WMS_ACOES_BIP_LEVES = frozenset({
+    'iniciar_bipagem',
+    'reabrir_descarga',
+    'bip_palete',
+    'bip_produto',
+    'sugerir_destino',
+    'confirmar_armazenagem',
+    'bip_etiqueta_palete',
+})
 
 
 def _invalidate_wms_painel_cache():
@@ -470,6 +482,9 @@ def _ensure_categoria_zona_column(conn):
 
 def _ensure_zona_armazenagem_column(conn, backfill=False):
     """Garante coluna zona_armazenagem. Backfill em massa só sob demanda (nunca no boot de API)."""
+    global _WMS_ZONA_COLS_READY
+    if _WMS_ZONA_COLS_READY and not backfill:
+        return
     _ensure_categoria_zona_column(conn)
     if _is_pg(conn):
         try:
@@ -491,6 +506,8 @@ def _ensure_zona_armazenagem_column(conn, backfill=False):
                 conn.commit()
         except Exception:
             pass
+    if not _WMS_ZONA_COLS_READY:
+        _WMS_ZONA_COLS_READY = True
     if not backfill:
         return
     t_loc = _tbl(conn, 'wms_localizacao')
@@ -572,6 +589,9 @@ def _filtro_zona_sql(zona, alias=''):
 
 
 def _ensure_produto_planejamento_columns(conn):
+    global _WMS_PROD_PLAN_COLS_READY
+    if _WMS_PROD_PLAN_COLS_READY:
+        return
     cols_pg = [
         ('pedido_med_abril', 'INTEGER'),
         ('pedido_max_abril', 'INTEGER'),
@@ -612,6 +632,7 @@ def _ensure_produto_planejamento_columns(conn):
             conn.commit()
         except Exception:
             pass
+    _WMS_PROD_PLAN_COLS_READY = True
 
 
 def _ensure_pg_rls_basico(conn, nome_tabela):
@@ -1276,7 +1297,7 @@ def _quantidades_por_linha_nf(conn, recebimento_id, doc_itens):
     return out
 
 
-def _documento_nf_do_recebimento(conn, recebimento_id):
+def _documento_nf_do_recebimento(conn, recebimento_id, completo=False):
     if not recebimento_id:
         return None
     t_rec = _tbl(conn, 'wms_recebimento')
@@ -1292,7 +1313,9 @@ def _documento_nf_do_recebimento(conn, recebimento_id):
     doc, _err = _buscar_documento_terceiros_por_nf(conn, numero_nf)
     if not doc:
         return None
-    return _enriquecer_documento_nf_wms(conn, doc)
+    if completo:
+        return _enriquecer_documento_nf_wms(conn, doc, reabrir_descarga=False)
+    return _enriquecer_documento_nf_wms_leve(conn, doc)
 
 
 def _item_nf_coincide_sku(item, sku):
@@ -7642,8 +7665,8 @@ def api_wms_recebimentos():
 
     data = request.get_json() or {}
     acao = (data.get('acao') or 'criar').strip()
-    # abrir passo a passo / reabrir descarga: sem seed pesado (evita travar o botão).
-    if acao in ('iniciar_bipagem', 'reabrir_descarga'):
+    # Passo a passo (bipagem): sem seed/schema pesado — senão o botão fica em "Conferindo…".
+    if acao in _WMS_ACOES_BIP_LEVES:
         if not _wms_tabelas_existem(conn):
             ensure_wms_schema(conn)
             _seed_wms_defaults(conn)
@@ -7761,27 +7784,37 @@ def api_wms_recebimentos():
                 return jsonify({'erro': 'Informe a quantidade de caixas (mínimo 1).'}), 400
             pal_rec = conn.execute(f'SELECT recebimento_id FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
             rid_bip = (_row_dict(pal_rec) or {}).get('recebimento_id')
-            if rid_bip:
-                doc_nf = _documento_nf_do_recebimento(conn, rid_bip)
-                linha_nf = _resolver_linha_nf_bipagem(doc_nf, sku, n_item_nf)
-                if not linha_nf:
-                    conn.close()
-                    return jsonify({
-                        'erro': 'Nenhuma linha pendente de bipagem para este produto nesta NF.',
-                    }), 400
-                n_item_nf = str(linha_nf.get('n_item')) if linha_nf.get('n_item') is not None else n_item_nf
-                pendente = float(linha_nf.get('pendente_wms') or 0)
-                if qtd_cx > pendente:
-                    conn.close()
-                    max_i = int(pendente) if pendente == int(pendente) else pendente
-                    return jsonify({
-                        'erro': f'Quantidade acima do pendente do item {n_item_nf} (máx. {max_i} cx).',
-                    }), 400
-                if not item.get('descricao') and linha_nf.get('descricao'):
-                    item = dict(item)
-                    item['descricao'] = linha_nf.get('descricao')
-            _ensure_wms_palete_item_nf_columns(conn)
-            _ensure_wms_palete_item_disposicao(conn)
+            # Se o cliente já mandou n_item_nf (validado na UI), não refaz enrich pesado da NF.
+            if rid_bip and not n_item_nf:
+                try:
+                    doc_nf = _documento_nf_do_recebimento(conn, rid_bip, completo=False)
+                    linha_nf = _resolver_linha_nf_bipagem(doc_nf, sku, n_item_nf)
+                    if not linha_nf:
+                        conn.close()
+                        return jsonify({
+                            'erro': 'Nenhuma linha pendente de bipagem para este produto nesta NF.',
+                        }), 400
+                    n_item_nf = str(linha_nf.get('n_item')) if linha_nf.get('n_item') is not None else n_item_nf
+                    if not item.get('descricao') and linha_nf.get('descricao'):
+                        item = dict(item)
+                        item['descricao'] = linha_nf.get('descricao')
+                except Exception as exc:
+                    try:
+                        print('[wms/bip_produto] validacao NF leve falhou: %s' % exc, flush=True)
+                    except Exception:
+                        pass
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+            try:
+                _ensure_wms_palete_item_nf_columns(conn)
+                _ensure_wms_palete_item_disposicao(conn)
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             existentes = conn.execute(
                 f'SELECT id, n_item_nf, sku FROM {t_item} WHERE palete_id = ?', (pid,)
             ).fetchall()
@@ -7805,23 +7838,35 @@ def api_wms_recebimentos():
                     rg_up, n_item_nf, disposicao, now,
                 ),
             )
-            bloqueios = _aplicar_bloqueios_palete(conn, pid, estado, dv, item.get('temperatura'))
+            try:
+                bloqueios = _aplicar_bloqueios_palete(conn, pid, estado, dv, item.get('temperatura'))
+            except Exception:
+                bloqueios = []
             t_rp = _tbl(conn, 'wms_recebimento_palete')
             conn.execute(
                 f'UPDATE {t_rp} SET estado_palete = ? WHERE palete_id = ?',
                 (estado if disposicao else 'bom', pid),
             )
-            if disposicao:
-                sug = _sugerir_destino_area_especial(conn, disposicao, dp)
-            else:
-                sug = _sugerir_putaway(conn, sku, lote, dp, 'pulmao')
-                if not sug.get('codigo_endereco'):
-                    sug_pick = _sugerir_putaway(conn, sku, lote, dp, 'picking')
-                    if sug_pick.get('codigo_endereco'):
-                        sug = sug_pick
+            sug = {}
+            try:
+                if disposicao:
+                    sug = _sugerir_destino_area_especial(conn, disposicao, dp) or {}
+                else:
+                    sug = _sugerir_putaway(conn, sku, lote, dp, 'pulmao') or {}
+                    if not sug.get('codigo_endereco'):
+                        sug = _sugerir_putaway(conn, sku, lote, dp, 'picking') or sug
+            except Exception as exc:
+                try:
+                    print('[wms/bip_produto] sugestao destino falhou: %s' % exc, flush=True)
+                except Exception:
+                    pass
+                sug = {}
             pal = conn.execute(f'SELECT etiqueta FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
             etiqueta = (pal['etiqueta'] if isinstance(pal, dict) else pal[0]) if pal else None
-            mov_id = _criar_mov_pendente_putaway(conn, pid, sug, 'Aguardando bip da longarina')
+            try:
+                mov_id = _criar_mov_pendente_putaway(conn, pid, sug, 'Aguardando bip da longarina')
+            except Exception:
+                mov_id = None
             pal_rec = conn.execute(f'SELECT recebimento_id FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
             rid = (_row_dict(pal_rec) or {}).get('recebimento_id')
             if rid:

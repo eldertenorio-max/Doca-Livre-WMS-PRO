@@ -8331,16 +8331,20 @@ async function wmsGarantirRecebimentoAberto() {
         wmsSincronizarRecebimentoAberto(window._wmsNfDoc.recebimento_wms_id, { resetarPalete: false });
         return parseInt(window._wmsNfDoc.recebimento_wms_id, 10);
     }
-    var terDoc = (document.getElementById('wms-rec-terceiros-doc-id') || {}).value || '';
+    var terDoc = (document.getElementById('wms-rec-terceiros-doc-id') || {}).value
+        || (window._wmsNfDoc && window._wmsNfDoc.documento_id) || '';
     var body = {
         numero_nf: nf.trim(),
         fornecedor: (document.getElementById('wms-rec-fornecedor') || {}).value || '',
         placa: (document.getElementById('wms-rec-placa') || {}).value || '',
         terceiros_documento_id: terDoc ? parseInt(terDoc, 10) : null,
-        terceiros_area: (document.getElementById('wms-rec-terceiros-area') || {}).value || ''
+        terceiros_area: (document.getElementById('wms-rec-terceiros-area') || {}).value
+            || (window._wmsNfDoc && window._wmsNfDoc.area) || ''
     };
-    var data = await fetchAPIComTimeout('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) }, 60000);
-    if (!data || !data.ok) {
+    var data = typeof _wmsPostIniciarBipagem === 'function'
+        ? await _wmsPostIniciarBipagem(body, 20000)
+        : await fetchAPIComTimeout('/wms/recebimentos/iniciar-bipagem', { method: 'POST', body: JSON.stringify(body) }, 20000);
+    if (!data || !data.ok || !data.id) {
         wmsMostrarErroBipProduto((data && data.erro) || 'Erro ao abrir recebimento WMS.');
         return null;
     }
@@ -8350,7 +8354,7 @@ async function wmsGarantirRecebimentoAberto() {
     if (data.reutilizado) {
         showMessage(data.mensagem || ('Recebimento #' + data.id + ' em andamento reutilizado.'), 'info');
     }
-    loadWmsRecebimentos();
+    try { void loadWmsRecebimentos(); } catch (eL) {}
     return parseInt(data.id, 10);
 }
 
@@ -9100,10 +9104,15 @@ async function wmsBipEnsurePalete(silent) {
         var hid = document.getElementById('wms-bip-etiqueta');
         return { ok: true, palete_id: parseInt(pid, 10), etiqueta: (hid && hid.value) || '' };
     }
-    var data = await fetchAPIComTimeout('/wms/recebimentos', {
-        method: 'POST',
-        body: JSON.stringify({ acao: 'bip_palete', recebimento_id: parseInt(rid, 10), etiqueta: '' })
-    }, 60000);
+    var data = typeof _fetchAPIComTimeoutUma === 'function'
+        ? await _fetchAPIComTimeoutUma('/wms/recebimentos', {
+            method: 'POST',
+            body: JSON.stringify({ acao: 'bip_palete', recebimento_id: parseInt(rid, 10), etiqueta: '' })
+        }, 20000)
+        : await fetchAPIComTimeout('/wms/recebimentos', {
+            method: 'POST',
+            body: JSON.stringify({ acao: 'bip_palete', recebimento_id: parseInt(rid, 10), etiqueta: '' })
+        }, 20000);
     if (data && data.ok) {
         var pidEl = document.getElementById('wms-rec-palete-id');
         if (pidEl) pidEl.value = String(data.palete_id);
@@ -9440,6 +9449,7 @@ async function wmsBipPalete() {
 
 async function wmsBipProduto() {
     var btn = document.getElementById('btn-wms-bip-produto');
+    if (btn && btn.disabled && btn.textContent === 'Conferindo…') return;
     wmsMostrarErroBipProduto('');
     var rid = await wmsGarantirRecebimentoAberto();
     if (!rid) return;
@@ -9496,8 +9506,21 @@ async function wmsBipProduto() {
     if (btn) { btn.disabled = true; btn.textContent = 'Conferindo…'; }
     var msg = document.getElementById('wms-palete-gerado');
     try {
-        var data = await fetchAPIComTimeout('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) }, 90000);
+        // Uma tentativa curta — sem retry triplo de 90s que deixava o botão preso.
+        var data = typeof _fetchAPIComTimeoutUma === 'function'
+            ? await _fetchAPIComTimeoutUma('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) }, 25000)
+            : await fetchAPIComTimeout('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) }, 25000);
+        if (data && (data._timeout || data._falhaGateway)) {
+            wmsMostrarErroBipProduto('Servidor lento ao confirmar. Espere 10 segundos e clique de novo em Confirmar produto.');
+            return;
+        }
         if (data && data.ok) {
+            // Atualiza pendente local imediatamente (não espera API de refresh).
+            try {
+                skuResolved.quantidade_wms = (parseFloat(skuResolved.quantidade_wms) || 0) + qtd;
+                skuResolved.pendente_wms = Math.max((parseFloat(skuResolved.quantidade_xml) || 0) - skuResolved.quantidade_wms, 0);
+                if (skuResolved.pendente_wms <= 0) skuResolved.status_wms = 'bipado';
+            } catch (eLoc) {}
             var skuTxt = body.item.sku || '';
             var loteTxt = body.item.lote ? ' · lote ' + body.item.lote : '';
             var upTxt = body.item.up ? ' · UP ' + body.item.up : '';
@@ -9510,16 +9533,21 @@ async function wmsBipProduto() {
             }
             if (data.bloqueios && data.bloqueios.length) txt += ' — Bloqueios: ' + data.bloqueios.join(', ');
             if (msg) msg.textContent = txt;
-            _wmsMostrarSugestao(data.sugestao);
+            if (data.sugestao && data.sugestao.codigo_endereco) {
+                _wmsMostrarSugestao(data.sugestao);
+            }
             if (data.movimentacao_id) {
                 window._wmsMovArmazenagem = { id: data.movimentacao_id, status: data.movimentacao_status || 'pendente' };
             }
             wmsBipMostrarPosProduto(true);
-            await wmsGarantirSugestaoDestino(true);
             wmsBipAtualizarResumos();
             var itemLbl = skuResolved.n_item != null ? ('Item ' + skuResolved.n_item + ' · ') : '';
             showMessage(data.mensagem || ('Produto OK (' + itemLbl + 'clique em Imprimir etiqueta, cole no palete e depois em «Etiqueta colada — ir guardar»).'), 'success');
-            wmsAtualizarPainelNfDescarga();
+            // Refresh pesado em background — não bloqueia o passo a passo.
+            if (!data.sugestao || !data.sugestao.codigo_endereco) {
+                try { void wmsGarantirSugestaoDestino(true); } catch (eS) {}
+            }
+            try { void wmsAtualizarPainelNfDescarga(); } catch (eP) {}
         } else {
             wmsMostrarErroBipProduto((data && data.erro) || 'Erro ao confirmar produto.');
         }
