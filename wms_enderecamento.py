@@ -1546,7 +1546,62 @@ def _montar_situacao_recebimento_nf(conn, doc, rec_ativo, rec_ultimo):
     }
 
 
-def _enriquecer_documento_nf_wms(conn, doc):
+def _enriquecer_documento_nf_wms_leve(conn, doc):
+    """Anexa status WMS básico sem quantidades/reabrir (rápido — evita 502 na busca da NF)."""
+    if not doc:
+        return doc
+    doc = dict(doc)
+    doc_id = doc.get('documento_id')
+    numero_nf = doc.get('numero_nf')
+    rec_ativo = None
+    rec_ultimo = None
+    try:
+        rec_ativo = _buscar_recebimento_wms_por_nf(conn, doc_id, numero_nf, somente_ativo=True)
+        rec_ultimo = _buscar_recebimento_wms_por_nf(conn, doc_id, numero_nf, somente_ativo=False)
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    if rec_ativo and rec_ultimo and int(rec_ativo.get('id') or 0) == int(rec_ultimo.get('id') or 0):
+        rec_ultimo = rec_ativo
+    doc['recebimento_wms_id'] = rec_ativo.get('id') if rec_ativo else None
+    doc['recebimento_wms_id_ultimo'] = (rec_ultimo or {}).get('id')
+    doc['recebimento_wms_status'] = (rec_ativo or rec_ultimo or {}).get('status')
+    st_wms = (doc.get('recebimento_wms_status') or '').lower()
+    doc['wms_bloqueado'] = st_wms == 'finalizado'
+    doc['descarga_reabrivel'] = bool(doc.get('recebimento_concluido') and not doc['wms_bloqueado'])
+    try:
+        doc['situacao_recebimento'] = _montar_situacao_recebimento_nf(conn, doc, rec_ativo, rec_ultimo)
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        doc['situacao_recebimento'] = {
+            'situacao': 'pendente' if not st_wms else st_wms,
+            'rotulo': 'NF na descarga',
+            'detalhe': 'Clique em Montar paletes para iniciar a bipagem',
+            'cor': '#1565c0',
+        }
+    itens = []
+    for it in doc.get('itens') or []:
+        rd = dict(it)
+        q_xml = float(rd.get('quantidade_xml') or 0)
+        rd.setdefault('quantidade_wms', 0)
+        rd.setdefault('quantidade_armazenada', 0)
+        rd.setdefault('pendente_wms', q_xml)
+        rd.setdefault('status_wms', 'pendente')
+        rd.setdefault('destinos_wms', [])
+        rd.setdefault('resumo_andamento', ('%s cx pendente bipagem' % (
+            int(q_xml) if q_xml == int(q_xml) else q_xml
+        )) if q_xml else '—')
+        itens.append(rd)
+    doc['itens'] = itens
+    return doc
+
+
+def _enriquecer_documento_nf_wms(conn, doc, reabrir_descarga=False):
     if not doc:
         return doc
     doc_id = doc.get('documento_id')
@@ -1563,8 +1618,13 @@ def _enriquecer_documento_nf_wms(conn, doc):
     doc['wms_bloqueado'] = st_wms == 'finalizado'
     doc['descarga_reabrivel'] = bool(doc.get('recebimento_concluido') and not doc['wms_bloqueado'])
     doc['situacao_recebimento'] = _montar_situacao_recebimento_nf(conn, doc, rec_ativo, rec_ultimo)
-    # Descarga concluída com WMS ainda não finalizado — reabre pendência (ex.: após excluir WMS).
-    if doc.get('recebimento_concluido') and not doc['wms_bloqueado'] and doc.get('documento_id'):
+    # Reabrir só quando pedido explicitamente (nunca em GET de busca — causa lock/502).
+    if (
+        reabrir_descarga
+        and doc.get('recebimento_concluido')
+        and not doc['wms_bloqueado']
+        and doc.get('documento_id')
+    ):
         ok_ter, _err_ter = _reabrir_terceiros_recebimento_wms(
             conn, int(doc['documento_id']), motivo='busca_nf_sem_wms',
         )
@@ -7367,6 +7427,7 @@ def api_wms_pesquisa_sku():
 def api_wms_recebimentos_buscar_nf():
     """Busca NF no módulo descarga/recebimento (carreta) para preencher recebimento WMS."""
     numero_nf = (request.args.get('numero_nf') or request.args.get('nf') or '').strip()
+    completo = str(request.args.get('completo') or '').strip().lower() in ('1', 'true', 'sim')
     conn = _db()
     try:
         try:
@@ -7385,7 +7446,11 @@ def api_wms_recebimentos_buscar_nf():
                 'numero_nf': numero_nf,
             }), 404
         try:
-            doc = _enriquecer_documento_nf_wms(conn, doc)
+            # Padrão: enrich leve (sem write/reabrir). Completo só com ?completo=1.
+            if completo:
+                doc = _enriquecer_documento_nf_wms(conn, doc, reabrir_descarga=False)
+            else:
+                doc = _enriquecer_documento_nf_wms_leve(conn, doc)
         except Exception as exc:
             try:
                 print('[wms/buscar-nf] enriquecer falhou: %s' % exc, flush=True)
@@ -7395,7 +7460,6 @@ def api_wms_recebimentos_buscar_nf():
                 conn.rollback()
             except Exception:
                 pass
-            # Devolve documento básico da descarga mesmo se o WMS estiver lento/indisponível.
             doc = dict(doc or {})
             doc.setdefault('situacao_recebimento', {
                 'situacao': 'pendente',
@@ -7403,13 +7467,8 @@ def api_wms_recebimentos_buscar_nf():
                 'detalhe': 'Dados da descarga carregados. Situação WMS indisponível no momento.',
                 'cor': '#1565c0',
             })
-        if doc.pop('_wms_descarga_reaberta', None):
-            try:
-                conn.commit()
-            except Exception:
-                pass
         conn.close()
-        return jsonify({'ok': True, 'documento': doc})
+        return jsonify({'ok': True, 'documento': doc, 'leve': not completo})
     except Exception as e:
         try:
             conn.close()

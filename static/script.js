@@ -19073,7 +19073,7 @@ function _falhaGatewayHttpStatus(status) {
 function mensagemErroRespostaNaoJson(status, corpoTexto) {
     var s = Number(status) || 0;
     if (s === 502 || s === 503 || s === 504 || s === 524) {
-        return 'Servidor temporariamente indisponível (erro ' + s + '). Na hospedagem, confira se o app está rodando, variáveis (ex.: banco) e os logs; em seguida tente de novo.';
+        return 'Servidor ocupado ou acordando (erro ' + s + '). Aguarde 20–30 segundos e tente de novo.';
     }
     var t = (corpoTexto || '').trim();
     if (/^\s*<!DOCTYPE/i.test(t) || /^\s*<html/i.test(t)) {
@@ -19152,63 +19152,85 @@ async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
 }
 
 async function fetchAPI(endpoint, options = {}) {
-    try {
-        const method = ((options && options.method) ? options.method : 'GET').toString().toUpperCase();
-        const isWrite = method !== 'GET' && method !== 'HEAD';
-        const hasBody = options.body !== undefined && options.body !== null && options.body !== '';
-        const headers = { ...(options.headers || {}) };
-        if (hasBody && !headers['Content-Type'] && !headers['content-type']) {
-            headers['Content-Type'] = 'application/json';
-        }
-        const response = await fetch(`${API_BASE}${endpoint}`, {
-            credentials: 'same-origin',
-            cache: 'no-store',
-            headers: headers,
-            ...(isWrite && typeof options.keepalive === 'undefined' ? { keepalive: true } : {}),
-            ...(method === 'POST' && typeof options.priority === 'undefined' ? { priority: 'high' } : {}),
-            ...options,
-            headers: headers
-        });
-        const ct = (response.headers.get('content-type') || '').toLowerCase();
-        if (ct.includes('application/json')) {
-            const data = await response.json();
-            if (!response.ok && data && typeof data === 'object' && !data.erro) {
-                data.erro = data.erro || ('HTTP ' + response.status);
+    var attempt = 0;
+    var method0 = ((options && options.method) ? options.method : 'GET').toString().toUpperCase();
+    var canRetry = method0 === 'GET' || method0 === 'HEAD';
+    var maxAttempts = canRetry ? 2 : 1; // retry só em leitura (evita duplicar POST)
+    while (attempt < maxAttempts) {
+        attempt++;
+        try {
+            const method = ((options && options.method) ? options.method : 'GET').toString().toUpperCase();
+            const isWrite = method !== 'GET' && method !== 'HEAD';
+            const hasBody = options.body !== undefined && options.body !== null && options.body !== '';
+            const headers = { ...(options.headers || {}) };
+            if (hasBody && !headers['Content-Type'] && !headers['content-type']) {
+                headers['Content-Type'] = 'application/json';
             }
-            if (!response.ok && data && typeof data === 'object' && _falhaGatewayHttpStatus(response.status)) {
-                data._falhaGateway = true;
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: headers,
+                ...(isWrite && typeof options.keepalive === 'undefined' ? { keepalive: true } : {}),
+                ...(method === 'POST' && typeof options.priority === 'undefined' ? { priority: 'high' } : {}),
+                ...options,
+                headers: headers
+            });
+            const ct = (response.headers.get('content-type') || '').toLowerCase();
+            if (ct.includes('application/json')) {
+                const data = await response.json();
+                if (!response.ok && data && typeof data === 'object' && !data.erro) {
+                    data.erro = data.erro || ('HTTP ' + response.status);
+                }
+                if (!response.ok && data && typeof data === 'object' && _falhaGatewayHttpStatus(response.status)) {
+                    data._falhaGateway = true;
+                    if (attempt < maxAttempts) {
+                        await new Promise(function(r) { setTimeout(r, 1500 * attempt); });
+                        continue;
+                    }
+                }
+                return data;
             }
-            return data;
-        }
-        const text = await response.text();
-        return {
-            erro: mensagemErroRespostaNaoJson(response.status, text),
-            _falhaGateway: _falhaGatewayHttpStatus(response.status)
-        };
-    } catch (error) {
-        if (error && error.name === 'AbortError') {
-            var meta = options && options._abortMeta;
-            var cancelado = false;
-            var timeoutAbort = false;
-            if (meta) {
-                // Preferir meta do wrapper (distingue timer vs cancelamento real).
-                cancelado = !!meta.cancelled;
-                timeoutAbort = !!meta.timedOut && !cancelado;
-            } else {
-                // Sem meta: abort do signal costuma ser timeout do wrapper.
-                timeoutAbort = !!(options && options.signal && options.signal.aborted);
+            const text = await response.text();
+            var gateway = _falhaGatewayHttpStatus(response.status);
+            if (gateway && attempt < maxAttempts) {
+                await new Promise(function(r) { setTimeout(r, 1500 * attempt); });
+                continue;
             }
             return {
-                ok: false,
-                erro: cancelado ? 'Operação cancelada.' : 'Tempo esgotado ao contactar o servidor.',
-                _cancelado: cancelado,
-                _timeout: timeoutAbort || !cancelado
+                erro: mensagemErroRespostaNaoJson(response.status, text),
+                _falhaGateway: gateway
             };
+        } catch (error) {
+            if (error && error.name === 'AbortError') {
+                var meta = options && options._abortMeta;
+                var cancelado = false;
+                var timeoutAbort = false;
+                if (meta) {
+                    cancelado = !!meta.cancelled;
+                    timeoutAbort = !!meta.timedOut && !cancelado;
+                } else {
+                    timeoutAbort = !!(options && options.signal && options.signal.aborted);
+                }
+                return {
+                    ok: false,
+                    erro: cancelado ? 'Operação cancelada.' : 'Tempo esgotado ao contactar o servidor.',
+                    _cancelado: cancelado,
+                    _timeout: timeoutAbort || !cancelado
+                };
+            }
+            if (attempt < maxAttempts) {
+                await new Promise(function(r) { setTimeout(r, 1500 * attempt); });
+                continue;
+            }
+            console.error('Erro na API:', error);
+            showMessage('Erro ao conectar com o servidor', 'error');
+            return null;
         }
-        console.error('Erro na API:', error);
-        showMessage('Erro ao conectar com o servidor', 'error');
-        return null;
     }
+    return {
+        erro: 'Servidor ocupado ou acordando (erro 502). Aguarde 20–30 segundos e tente de novo.',
+        _falhaGateway: true
+    };
 }
 
 function _ravexLoadingSetCancelVisible(visivel, onCancel) {

@@ -1010,7 +1010,7 @@ def get_db(connect_timeout=None):
                 sslmode=os.environ.get('PGSSLMODE', 'require'),
                 connect_timeout=max(3, ct),
                 row_factory=dict_row,
-                options='-c statement_timeout=60000 -c lock_timeout=15000',
+                options='-c statement_timeout=30000 -c lock_timeout=8000',
             ),
             kind='pg',
         )
@@ -2237,7 +2237,7 @@ def _requer_login():
     return 'usuario' not in session
 
 
-_USUARIO_SESSAO_OK_TTL = 120  # segundos — evita ida ao banco a cada clique/navegação
+_USUARIO_SESSAO_OK_TTL = 600  # segundos — evita ida ao banco a cada clique (e 502 em cascata)
 
 
 def _usuario_ainda_existe(usuario):
@@ -2252,12 +2252,25 @@ def _usuario_ainda_existe(usuario):
                 return True
         except (TypeError, ValueError):
             pass
-    conn = get_db()
+    try:
+        conn = get_db(connect_timeout=3)
+    except Exception:
+        # Banco acordando/indisponível: não derruba sessão (evita 502 em cascata).
+        return True
     try:
         row = conn.execute('SELECT 1 FROM usuarios WHERE usuario = ?', (usuario,)).fetchone()
         existe = row is not None
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return True
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
     if existe:
         session['_auth_ok_user'] = usuario
         session['_auth_ok_ts'] = time.time()
