@@ -7568,16 +7568,46 @@ def api_wms_recebimentos():
                     'finalizacao': finalizacao,
                 })
             somente_andamento = request.args.get('andamento', '1').strip().lower() not in ('0', 'false', 'nao', 'não', 'all', 'todos')
-            if somente_andamento:
-                rows = conn.execute(
-                    f'''SELECT * FROM {t_rec}
-                        WHERE {_sql_recebimento_wms_ativo()}
-                        ORDER BY id DESC LIMIT 100''',
-                ).fetchall()
-            else:
-                rows = conn.execute(f'SELECT * FROM {t_rec} ORDER BY id DESC LIMIT 100').fetchall()
+            # Colunas mínimas da lista (evita SELECT * lento / payload grande).
+            cols_lista = (
+                'id, numero_nf, fornecedor, placa, status, origem, terceiros_documento_id'
+            )
+            try:
+                if somente_andamento:
+                    rows = conn.execute(
+                        f'''SELECT {cols_lista} FROM {t_rec}
+                            WHERE {_sql_recebimento_wms_ativo()}
+                            ORDER BY id DESC LIMIT 50''',
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        f'''SELECT {cols_lista} FROM {t_rec}
+                            ORDER BY id DESC LIMIT 50''',
+                    ).fetchall()
+            except Exception:
+                # Fallback se alguma coluna de vínculo ainda não existir.
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                if somente_andamento:
+                    rows = conn.execute(
+                        f'''SELECT id, numero_nf, fornecedor, placa, status, origem
+                            FROM {t_rec}
+                            WHERE {_sql_recebimento_wms_ativo()}
+                            ORDER BY id DESC LIMIT 50''',
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        f'''SELECT id, numero_nf, fornecedor, placa, status, origem
+                            FROM {t_rec} ORDER BY id DESC LIMIT 50''',
+                    ).fetchall()
             conn.close()
-            return jsonify({'recebimentos': [dict(r) for r in rows], 'somente_andamento': somente_andamento})
+            return jsonify({
+                'recebimentos': [dict(r) for r in rows],
+                'somente_andamento': somente_andamento,
+                'leve': True,
+            })
         except Exception as e:
             try:
                 conn.close()

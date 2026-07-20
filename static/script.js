@@ -4807,8 +4807,8 @@ function _wmsMostrarSubtab(tab) {
             else if (tab === 'produtos') await _wmsAwaitMaybe(loadWmsProdutos());
             else if (tab === 'movimentacoes') await _wmsAwaitMaybe(loadWmsMovimentacoes());
             else if (tab === 'recebimento') {
-                await _wmsAwaitMaybe(loadWmsRecebimentos());
-                // Se já há NF digitada, busca automaticamente (fornecedor/placa).
+                // Lista em background — não trava a aba se o Render estiver acordando.
+                void loadWmsRecebimentos();
                 var nfElRec = document.getElementById('wms-rec-nf');
                 var nfVal = nfElRec && String(nfElRec.value || '').trim();
                 if (nfVal && typeof wmsBuscarNfDescarga === 'function') {
@@ -7966,14 +7966,19 @@ async function loadWmsRecebimentos() {
     var det = document.getElementById('wms-rec-lista-details');
     if (det) det.open = true;
     try {
-        var data = await _wmsFetchGetOnce('/wms/recebimentos', 12000);
+        // Render free pode demorar ao acordar — 1 retry silencioso.
+        var data = await _wmsFetchGetOnce('/wms/recebimentos?leve=1', 20000);
+        if (data && (data._timeout || data._falhaGateway)) {
+            await new Promise(function(r) { setTimeout(r, 1500); });
+            data = await _wmsFetchGetOnce('/wms/recebimentos?leve=1', 25000);
+        }
         if (!tb) return;
         if (!data) {
-            tb.innerHTML = '<tr><td colspan="6">Falha ao contactar o servidor. Clique em Atualizar lista.</td></tr>';
+            tb.innerHTML = '<tr><td colspan="6">Servidor acordando. Digite a NF acima normalmente e clique em <strong>Atualizar lista</strong>.</td></tr>';
             return;
         }
         if (data._timeout || data._falhaGateway) {
-            tb.innerHTML = '<tr><td colspan="6">' + escHtml(data.erro || 'Tempo esgotado ao carregar recebimentos. Clique em Atualizar lista.') + '</td></tr>';
+            tb.innerHTML = '<tr><td colspan="6">Servidor lento no momento. Você já pode buscar a NF acima — depois clique em <strong>Atualizar lista</strong>.</td></tr>';
             return;
         }
         if (data.erro && !(data.recebimentos || []).length) {
@@ -7991,8 +7996,7 @@ async function loadWmsRecebimentos() {
             return '<tr style="cursor:pointer;" onclick="wmsAbrirRecebimento(' + r.id + ')"><td>' + escHtml(r.id) + '</td><td>' + escHtml(r.numero_nf || '') + escHtml(vinc) + '</td><td>' + escHtml(r.fornecedor || '') + '</td><td>' + escHtml(r.placa || '') + '</td><td>' + escHtml(r.status) + (orig === 'carreta' ? ' · carreta' : '') + '</td><td>' + btnExcluir + '</td></tr>';
         }).join('') : '<tr><td colspan="6">Nenhum recebimento em andamento. Digite a NF acima e clique na lupa (ou Enter). Finalizados ficam no Histórico NF.</td></tr>';
     } catch (e) {
-        if (tb) tb.innerHTML = '<tr><td colspan="6">' + escHtml((e && e.message) || 'Erro ao carregar recebimentos.') + '</td></tr>';
-        showMessage('Erro ao carregar recebimentos WMS.', 'error');
+        if (tb) tb.innerHTML = '<tr><td colspan="6">Não foi possível carregar a lista. Digite a NF acima e use a lupa — ou clique em Atualizar lista.</td></tr>';
     }
 }
 
