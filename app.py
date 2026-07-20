@@ -996,24 +996,26 @@ def adicionar_usuario_ao_config(usuario, senha):
         pass
 
 
-def get_db():
+def get_db(connect_timeout=None):
     """Retorna conexão com o banco de dados. Timeout para suportar 4 docas bipando ao mesmo tempo."""
     db_url = (os.environ.get('DATABASE_URL') or '').strip()
     if db_url:
         if psycopg is None:
             raise RuntimeError('psycopg não instalado. Instale as dependências do requirements.txt.')
         # Supabase Postgres normalmente exige SSL
+        ct = int(connect_timeout) if connect_timeout is not None else 15
         return CompatConn(
             psycopg.connect(
                 db_url,
                 sslmode=os.environ.get('PGSSLMODE', 'require'),
-                connect_timeout=15,
+                connect_timeout=max(3, ct),
                 row_factory=dict_row,
                 options='-c statement_timeout=60000 -c lock_timeout=15000',
             ),
             kind='pg',
         )
-    conn = sqlite3.connect(DB_NAME, timeout=15.0)
+    timeout_sqlite = float(connect_timeout) if connect_timeout is not None else 15.0
+    conn = sqlite3.connect(DB_NAME, timeout=max(3.0, timeout_sqlite))
     conn.row_factory = sqlite3.Row
     return CompatConn(conn, kind='sqlite')
 
@@ -2382,6 +2384,42 @@ def raiz():
     return resp
 
 
+def _buscar_usuario_login(conn, usuario_in):
+    """Uma consulta (ou no máx. 2) — evita 3 round-trips no login do portal."""
+    usuario_in = (usuario_in or '').strip()
+    if not usuario_in:
+        return None
+    row = conn.execute(
+        'SELECT id, usuario, senha_hash FROM usuarios WHERE usuario = ?',
+        (usuario_in,),
+    ).fetchone()
+    if row:
+        return row
+    row = conn.execute(
+        'SELECT id, usuario, senha_hash FROM usuarios WHERE lower(usuario) = lower(?)',
+        (usuario_in,),
+    ).fetchone()
+    if row:
+        return row
+    if '@' in usuario_in:
+        email_n = (
+            portal_normalize_email(usuario_in)
+            if callable(portal_normalize_email)
+            else usuario_in.strip().lower()
+        )
+        try:
+            return conn.execute(
+                "SELECT id, usuario, senha_hash FROM usuarios WHERE lower(COALESCE(email, '')) = ?",
+                (email_n,),
+            ).fetchone()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    return None
+
+
 @app.route('/api/login', methods=['POST'])
 def api_login():
     """Autentica usuário e inicia sessão — depois o portal mostra o hub de sistemas."""
@@ -2390,11 +2428,19 @@ def api_login():
     senha = data.get('senha') or ''
     if not usuario or not senha:
         return jsonify({'ok': False, 'erro': 'Informe usuário e senha.'})
-    conn = get_db()
-    row = conn.execute('SELECT id, senha_hash FROM usuarios WHERE usuario = ?', (usuario,)).fetchone()
-    conn.close()
+    conn = None
+    try:
+        conn = get_db(connect_timeout=8)
+        row = _buscar_usuario_login(conn, usuario)
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
     if not row or not check_password_hash(row['senha_hash'], senha):
         return jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})
+    usuario = str(row['usuario'] if hasattr(row, 'keys') else row[1])
     session['usuario'] = usuario
     session['usuario_id'] = row['id']
     session['_auth_ok_user'] = usuario
@@ -2416,7 +2462,7 @@ def api_login():
 
 @app.route('/api/portal/login', methods=['POST', 'OPTIONS'])
 def api_portal_login():
-    """Login do portal único (Plus) — valida no Pro e devolve hub_token (CORS)."""
+    """Login do portal único (Plus) — path leve: auth + token (sem DDL de schema)."""
     if request.method == 'OPTIONS':
         return _sso_cors(make_response(('', 204)))
     if not callable(sso_issue_hub_token):
@@ -2426,55 +2472,47 @@ def api_portal_login():
     senha = data.get('senha') or ''
     if not usuario_in or not senha:
         return _sso_cors(jsonify({'ok': False, 'erro': 'Informe usuário e senha.'})), 400
-    conn = get_db()
-    # Aceita usuário exato, case-insensitive ou e-mail cadastrado.
-    row = conn.execute(
-        'SELECT id, usuario, senha_hash FROM usuarios WHERE usuario = ?',
-        (usuario_in,),
-    ).fetchone()
-    if not row:
-        row = conn.execute(
-            'SELECT id, usuario, senha_hash FROM usuarios WHERE lower(usuario) = lower(?)',
-            (usuario_in,),
-        ).fetchone()
-    if not row and '@' in usuario_in:
-        email_n = (
-            portal_normalize_email(usuario_in)
-            if callable(portal_normalize_email)
-            else usuario_in.strip().lower()
-        )
-        row = conn.execute(
-            "SELECT id, usuario, senha_hash FROM usuarios WHERE lower(COALESCE(email, '')) = ?",
-            (email_n,),
-        ).fetchone()
-    conn.close()
-    if not row or not check_password_hash(row['senha_hash'], senha):
-        return _sso_cors(jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})), 401
-    usuario = str(row['usuario'] if hasattr(row, 'keys') else row[1])
+
+    conn = None
+    row = None
     try:
-        hub_token = sso_issue_hub_token(usuario)
-    except ValueError as exc:
-        return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
-    superuser = bool(callable(is_portal_superuser) and is_portal_superuser(usuario))
-    permissoes = None
-    if callable(portal_carregar_permissoes):
+        conn = get_db(connect_timeout=8)
+        row = _buscar_usuario_login(conn, usuario_in)
+        if not row or not check_password_hash(row['senha_hash'], senha):
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})), 401
+        usuario = str(row['usuario'] if hasattr(row, 'keys') else row[1])
         try:
-            conn2 = get_db()
+            hub_token = sso_issue_hub_token(usuario)
+        except ValueError as exc:
+            return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
+        superuser = bool(callable(is_portal_superuser) and is_portal_superuser(usuario))
+        # Superuser: matriz completa sem query. Demais: SELECT simples (sem ensure_schema).
+        if superuser:
+            permissoes = {
+                'light': {'pode_acessar': True, 'modulos': None},
+                'plus': {'pode_acessar': True, 'modulos': None},
+                'pro': {'pode_acessar': True, 'modulos': None},
+            }
+        elif callable(portal_carregar_permissoes):
             try:
-                if callable(ensure_portal_permissoes_schema):
-                    ensure_portal_permissoes_schema(conn2)
-                permissoes = portal_carregar_permissoes(conn2, usuario)
-            finally:
-                conn2.close()
-        except Exception:
+                permissoes = portal_carregar_permissoes(conn, usuario)
+            except Exception:
+                permissoes = None
+        else:
             permissoes = None
-    return _sso_cors(jsonify({
-        'ok': True,
-        'usuario': usuario,
-        'hub_token': hub_token,
-        'is_superuser': superuser,
-        'permissoes': permissoes,
-    }))
+        return _sso_cors(jsonify({
+            'ok': True,
+            'usuario': usuario,
+            'hub_token': hub_token,
+            'is_superuser': superuser,
+            'permissoes': permissoes,
+        }))
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def _portal_auth_indisponivel():

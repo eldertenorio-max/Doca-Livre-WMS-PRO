@@ -78,7 +78,11 @@
         e.preventDefault();
         mostrarErro(msgErroLogin);
         btnEntrar.disabled = true;
+        var labelAntes = btnEntrar.textContent;
+        btnEntrar.textContent = 'Entrando…';
         var usuarioVal = document.getElementById('usuario').value.trim();
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 12000);
         fetch((window.API_BASE || '/api') + '/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -86,7 +90,8 @@
             body: JSON.stringify({
                 usuario: usuarioVal,
                 senha: document.getElementById('senha').value
-            })
+            }),
+            signal: ctrl ? ctrl.signal : undefined
         }).then(function (r) { return r.json(); }).then(function (data) {
             if (data.ok) {
                 if (data.access_token) {
@@ -101,10 +106,15 @@
                 return;
             }
             mostrarErro(msgErroLogin, data.erro || 'Erro ao entrar.');
-        }).catch(function () {
-            mostrarErro(msgErroLogin, 'Falha de conexão. Tente novamente.');
+        }).catch(function (err) {
+            var abortado = err && (err.name === 'AbortError');
+            mostrarErro(msgErroLogin, abortado
+                ? 'O servidor demorou para responder. Tente novamente.'
+                : 'Falha de conexão. Tente novamente.');
         }).finally(function () {
+            clearTimeout(timer);
             btnEntrar.disabled = false;
+            btnEntrar.textContent = labelAntes || 'Entrar';
         });
     });
 
