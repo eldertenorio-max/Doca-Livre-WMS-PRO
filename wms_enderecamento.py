@@ -6199,6 +6199,73 @@ def _relatorio_wms(conn, tipo, data_inicio=None, data_fim=None, extra=None):
     return None
 
 
+def _painel_shell_layout():
+    """Estrutura imediata (câmaras + zoneamento) a partir do layout JSON — sem DB."""
+    refs = _map_totais_ref_camaras()
+    camaras = []
+    for bloco in (_layout_camaras_config().get('camaras') or []):
+        cod = int(bloco.get('codigo') or 0)
+        if cod not in (11, 12, 13, 21):
+            continue
+        tot = int(refs.get(cod) or bloco.get('total_posicoes') or 0)
+        camaras.append({
+            'camara': cod,
+            'descricao': bloco.get('descricao') or ('Câmara %s' % cod),
+            'total_posicoes': tot,
+            'cadastradas': 0,
+            'ocupadas': 0,
+            'vazias': tot,
+            'ocupacao_pct': 0.0,
+        })
+    for cod, desc, tot in ((98, 'Quarentena', 0), (99, 'Stage', 0)):
+        camaras.append({
+            'camara': cod,
+            'descricao': desc,
+            'total_posicoes': tot,
+            'cadastradas': 0,
+            'ocupadas': 0,
+            'vazias': 0,
+            'ocupacao_pct': 0.0,
+        })
+    nomes = {c['camara']: c['descricao'] for c in camaras}
+    zone = []
+    for cat, cam, pri in (
+        ('A', 11, 1), ('A', 12, 2),
+        ('B', 11, 1), ('B', 12, 2),
+        ('C', 12, 1), ('C', 13, 2),
+        ('D', 13, 1), ('D', 21, 2),
+    ):
+        zone.append({
+            'categoria': cat,
+            'camara': cam,
+            'prioridade': pri,
+            'camara_descricao': nomes.get(cam) or ('Câmara %s' % cam),
+        })
+    return camaras, zone
+
+
+def _painel_payload_shell(**extra):
+    cams, zone = _painel_shell_layout()
+    base = {
+        'ok': True,
+        'camaras': cams,
+        'distribuicao_categoria': [],
+        'zoneamento': zone,
+        'pesos_categoria': {'A': 1, 'B': 1, 'C': 1, 'D': 1},
+        'pesos_posicoes_categoria': {'A': 1, 'B': 1, 'C': 1, 'D': 1},
+        'resumo_status_planejamento': {},
+        'fonte_estoque': 'wms',
+        'movimentacoes_pendentes': 0,
+        'recebimentos_abertos': 0,
+        'inventarios_ativos': 0,
+        'paletes_fora_armazem': 0,
+        'cache_ttl_sec': _WMS_PAINEL_TTL_SEC,
+        'shell': True,
+    }
+    base.update(extra or {})
+    return base
+
+
 @bp.route('/painel', methods=['GET'])
 def api_wms_painel():
     import time as _time
@@ -6211,34 +6278,33 @@ def api_wms_painel():
         not force
         and not leve
         and cached
+        and (cached.get('camaras') or cached.get('zoneamento'))
         and (now - float(_WMS_PAINEL_CACHE.get('ts') or 0)) < _WMS_PAINEL_TTL_SEC
     ):
         return jsonify(cached)
 
-    # leve=1: resposta instantânea do cache em memória (zero DB / schema).
+    # leve=1: cache útil ou shell de layout (nunca resposta vazia).
     if leve:
-        base = cached or {}
-        return jsonify({
-            'ok': True,
-            'leve': True,
-            'camaras': base.get('camaras') or [],
-            'distribuicao_categoria': base.get('distribuicao_categoria') or [],
-            'zoneamento': base.get('zoneamento') or [],
-            'pesos_categoria': base.get('pesos_categoria') or {'A': 1, 'B': 1, 'C': 1, 'D': 1},
-            'pesos_posicoes_categoria': base.get('pesos_posicoes_categoria') or {'A': 1, 'B': 1, 'C': 1, 'D': 1},
-            'resumo_status_planejamento': base.get('resumo_status_planejamento') or {},
-            'fonte_estoque': 'wms',
-            'movimentacoes_pendentes': int(base.get('movimentacoes_pendentes') or 0),
-            'recebimentos_abertos': int(base.get('recebimentos_abertos') or 0),
-            'inventarios_ativos': int(base.get('inventarios_ativos') or 0),
-            'paletes_fora_armazem': int(base.get('paletes_fora_armazem') or 0),
-            'cache_ttl_sec': _WMS_PAINEL_TTL_SEC,
-        })
+        if cached and (cached.get('camaras') or cached.get('zoneamento')):
+            out = dict(cached)
+            out['ok'] = True
+            out['leve'] = True
+            return jsonify(out)
+        shell = _painel_payload_shell(leve=True)
+        return jsonify(shell)
 
-    conn = _db()
+    conn = None
     try:
-        if not _WMS_SCHEMA_READY:
-            ensure_wms_schema(conn)
+        conn = _db()
+    except Exception as e:
+        shell = _painel_payload_shell(aviso='db_indisponivel: %s' % e)
+        return jsonify(shell)
+
+    # NÃO roda ensure_wms_schema pesado aqui — só marca ready se tabelas já existem.
+    global _WMS_SCHEMA_READY
+    try:
+        if not _WMS_SCHEMA_READY and _wms_tabelas_existem(conn):
+            _WMS_SCHEMA_READY = True
     except Exception:
         try:
             conn.rollback()
@@ -6260,17 +6326,28 @@ def api_wms_painel():
             return default
 
     try:
+        if not _wms_tabelas_existem(conn):
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return jsonify(_painel_payload_shell(aviso='schema_pendente'))
+
         pair = _safe('ocup_dist', lambda: _painel_ocupacao_e_dist(conn), ([], []))
         camaras = pair[0] if isinstance(pair, (list, tuple)) and len(pair) == 2 else []
         dist_cat = pair[1] if isinstance(pair, (list, tuple)) and len(pair) == 2 else []
         zoneamento = _safe('zoneamento', lambda: _listar_zoneamento(conn), [])
+        shell_cams, shell_zone = _painel_shell_layout()
+        if not camaras:
+            camaras = shell_cams
+        if not zoneamento:
+            zoneamento = shell_zone
 
         t_mov = _tbl(conn, 'wms_movimentacao')
         t_rec = _tbl(conn, 'wms_recebimento')
         t_inv = _tbl(conn, 'wms_inventario')
         t_prod = _tbl(conn, 'wms_produto_enderecamento')
 
-        # Uma única agregação de metas por categoria (evita query duplicada de pesos).
         pesos_pos_rows = _safe(
             'pesos_pos',
             lambda: conn.execute(
@@ -6290,7 +6367,6 @@ def api_wms_painel():
         if not pesos_pos:
             pesos_pos = {'A': 1, 'B': 1, 'C': 1, 'D': 1}
 
-        # KPIs em uma ida ao banco.
         kpi_row = _safe(
             'kpis',
             lambda: conn.execute(
@@ -6304,14 +6380,16 @@ def api_wms_painel():
             None,
         )
         kpi = _row_dict(kpi_row) or {}
-        # Contagem de paletes fora é a query mais lenta — só no modo completo.
         completo = str(request.args.get('completo') or '').strip().lower() in ('1', 'true', 'sim')
         paletes_fora = (
             _safe('paletes_fora', lambda: _contar_paletes_fora(conn), 0) if completo else 0
         )
         resumo_status = _safe('resumo_status', lambda: _resumo_status_planejamento(conn), {})
 
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
         payload = {
             'ok': True,
             'camaras': camaras,
@@ -6326,16 +6404,19 @@ def api_wms_painel():
             'inventarios_ativos': int(kpi.get('inv_ativos') or 0),
             'paletes_fora_armazem': paletes_fora,
             'cache_ttl_sec': _WMS_PAINEL_TTL_SEC,
+            'shell': False,
         }
         _WMS_PAINEL_CACHE['ts'] = now
         _WMS_PAINEL_CACHE['payload'] = payload
         return jsonify(payload)
     except Exception as e:
         try:
-            conn.close()
+            if conn is not None:
+                conn.close()
         except Exception:
             pass
-        return jsonify({'ok': False, 'erro': str(e)}), 500
+        shell = _painel_payload_shell(aviso=str(e))
+        return jsonify(shell)
 
 
 @bp.route('/layout/gerar', methods=['POST'])

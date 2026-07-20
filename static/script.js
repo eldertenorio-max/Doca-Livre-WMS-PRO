@@ -4140,6 +4140,47 @@ function _wmsPainelDataUtil(data) {
     );
 }
 
+/** Shell local — pinta o painel na hora mesmo sem API. */
+function _wmsPainelShellLocal() {
+    function cam(cod, tot, desc) {
+        return {
+            camara: cod,
+            descricao: desc || ('Câmara ' + cod),
+            total_posicoes: tot,
+            cadastradas: 0,
+            ocupadas: 0,
+            vazias: tot,
+            ocupacao_pct: 0
+        };
+    }
+    return {
+        ok: true,
+        shell: true,
+        camaras: [
+            cam(11, 142), cam(12, 133), cam(13, 142), cam(21, 28),
+            cam(98, 0, 'Quarentena'), cam(99, 0, 'Stage')
+        ],
+        distribuicao_categoria: [],
+        zoneamento: [
+            { categoria: 'A', camara: 11, prioridade: 1, camara_descricao: 'Câmara 11' },
+            { categoria: 'A', camara: 12, prioridade: 2, camara_descricao: 'Câmara 12' },
+            { categoria: 'B', camara: 11, prioridade: 1, camara_descricao: 'Câmara 11' },
+            { categoria: 'B', camara: 12, prioridade: 2, camara_descricao: 'Câmara 12' },
+            { categoria: 'C', camara: 12, prioridade: 1, camara_descricao: 'Câmara 12' },
+            { categoria: 'C', camara: 13, prioridade: 2, camara_descricao: 'Câmara 13' },
+            { categoria: 'D', camara: 13, prioridade: 1, camara_descricao: 'Câmara 13' },
+            { categoria: 'D', camara: 21, prioridade: 2, camara_descricao: 'Câmara 21' }
+        ],
+        pesos_categoria: { A: 1, B: 1, C: 1, D: 1 },
+        pesos_posicoes_categoria: { A: 1, B: 1, C: 1, D: 1 },
+        resumo_status_planejamento: {},
+        movimentacoes_pendentes: 0,
+        recebimentos_abertos: 0,
+        inventarios_ativos: 0,
+        paletes_fora_armazem: 0
+    };
+}
+
 async function _wmsAwaitMaybe(p) {
     if (p && typeof p.then === 'function') {
         try { await p; } catch (e) {
@@ -7072,7 +7113,7 @@ function _wmsRenderPainel(data) {
         var dist = data.distribuicao_categoria || [];
         dtb.innerHTML = dist.length ? dist.map(function(d) {
             return '<tr><td><strong>' + escHtml(d.categoria) + '</strong></td><td>' + escHtml(d.camara) + '</td><td>' + escHtml(d.total) + '</td><td>' + escHtml(d.vazias) + '</td><td>' + escHtml(d.ocupadas) + '</td></tr>';
-        }).join('') : '<tr><td colspan="5">Sem distribuição — clique em Recalcular distribuição.</td></tr>';
+        }).join('') : '<tr><td colspan="5">Ainda sem ocupação por categoria — use «Recalcular distribuição» se o layout estiver vazio no banco.</td></tr>';
     }
     var ztb = document.getElementById('wms-tbody-zoneamento');
     if (ztb) {
@@ -7104,63 +7145,59 @@ async function loadWmsPainel(opts) {
     var gen = ++_wmsPainelLoadGen;
     var sess = _wmsSessionCacheGet('painel');
     var cached = _wmsPainelClientCache.data || (sess && sess.data) || null;
+    // Descarta cache vazio/quebrado (era a causa do painel em branco).
+    if (cached && !_wmsPainelDataUtil(cached)) {
+        cached = null;
+        try { sessionStorage.removeItem('wms_ui_painel'); } catch (e0) {}
+        _wmsPainelClientCache = { ts: 0, data: null };
+    }
     var cacheUtil = _wmsPainelDataUtil(cached);
+    var shell = _wmsPainelShellLocal();
 
-    // Cache útil: mostra já e atualiza em background (overlay pode sumir).
-    if (cacheUtil) {
-        _wmsRenderPainel(cached);
-        if (
-            !force
-            && _wmsPainelClientCache.data
-            && (now - (_wmsPainelClientCache.ts || 0)) < _WMS_PAINEL_CLIENT_TTL_MS
-        ) {
-            _wmsFetchGetOnce('/wms/painel', 15000).then(function(data) {
-                if (gen !== _wmsPainelLoadGen || !_wmsPainelDataUtil(data)) return;
-                _wmsPainelClientCache = { ts: Date.now(), data: data };
-                _wmsSessionCacheSet('painel', data);
-                _wmsRenderPainel(data);
-            }).catch(function() {});
-            return;
-        }
-    } else {
-        _wmsSetTbody('wms-tbody-dist-categoria', 5, '<span class="loading">Atualizando…</span>');
-        _wmsSetTbody('wms-tbody-zoneamento', 3, '<span class="loading">Atualizando…</span>');
+    // 1) Pinta algo útil na hora (cache ou shell) — nunca tela vazia.
+    _wmsRenderPainel(cacheUtil ? cached : shell);
+
+    if (
+        cacheUtil
+        && !force
+        && _wmsPainelClientCache.data
+        && !_wmsPainelClientCache.data.shell
+        && (now - (_wmsPainelClientCache.ts || 0)) < _WMS_PAINEL_CLIENT_TTL_MS
+    ) {
+        _wmsFetchGetOnce('/wms/painel', 20000).then(function(data) {
+            if (gen !== _wmsPainelLoadGen || !_wmsPainelDataUtil(data)) return;
+            _wmsPainelClientCache = { ts: Date.now(), data: data };
+            _wmsSessionCacheSet('painel', data);
+            _wmsRenderPainel(data);
+        }).catch(function() {});
+        return;
     }
 
     try {
-        var leve = await _wmsFetchGetOnce('/wms/painel?leve=1', 5000);
+        // 2) leve (cache servidor / shell) — libera a aba com conteúdo.
+        var leve = await _wmsFetchGetOnce('/wms/painel?leve=1', 6000);
         if (gen !== _wmsPainelLoadGen) return;
         if (_wmsPainelDataUtil(leve)) {
             _wmsRenderPainel(leve);
             _wmsPainelClientCache = { ts: Date.now(), data: leve };
             _wmsSessionCacheSet('painel', leve);
-            // Tem conteúdo útil: completa em background.
-            _wmsFetchGetOnce('/wms/painel' + (force ? '?force=1' : ''), 15000).then(function(data) {
-                if (gen !== _wmsPainelLoadGen || !_wmsPainelDataUtil(data)) return;
-                _wmsPainelClientCache = { ts: Date.now(), data: data };
-                _wmsSessionCacheSet('painel', data);
-                _wmsRenderPainel(data);
-            }).catch(function() {});
-            return;
+        } else if (!_wmsPainelDataUtil(_wmsPainelClientCache.data)) {
+            _wmsRenderPainel(shell);
+            _wmsPainelClientCache = { ts: Date.now(), data: shell };
         }
-
-        // Sem cache útil: espera o painel completo antes de tirar o Carregando.
+        // 3) Completo em background (ocupação real) — não segura o Carregando.
         var path = '/wms/painel' + (force ? '?force=1' : '');
-        var data = await _wmsFetchGetOnce(path, 15000);
-        if (gen !== _wmsPainelLoadGen) return;
-        if (_wmsPainelDataUtil(data)) {
+        _wmsFetchGetOnce(path, 20000).then(function(data) {
+            if (gen !== _wmsPainelLoadGen || !_wmsPainelDataUtil(data)) return;
             _wmsPainelClientCache = { ts: Date.now(), data: data };
             _wmsSessionCacheSet('painel', data);
             _wmsRenderPainel(data);
-            return;
-        }
-        _wmsSetTbody('wms-tbody-dist-categoria', 5, 'Sem dados no momento — clique em Atualizar.');
-        _wmsSetTbody('wms-tbody-zoneamento', 3, 'Sem dados no momento.');
+        }).catch(function() {});
     } catch (e) {
         if (gen !== _wmsPainelLoadGen) return;
-        if (!cacheUtil) {
-            _wmsSetTbody('wms-tbody-dist-categoria', 5, 'Sem dados no momento — clique em Atualizar.');
-            _wmsSetTbody('wms-tbody-zoneamento', 3, 'Sem dados no momento.');
+        if (!_wmsPainelDataUtil(_wmsPainelClientCache.data)) {
+            _wmsRenderPainel(shell);
+            _wmsPainelClientCache = { ts: Date.now(), data: shell };
         }
     }
 }
