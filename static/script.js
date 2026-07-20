@@ -4806,7 +4806,15 @@ function _wmsMostrarSubtab(tab) {
             else if (tab === 'etiquetas-longarina') await _wmsAwaitMaybe(loadWmsEtiquetasLongarinaAba());
             else if (tab === 'produtos') await _wmsAwaitMaybe(loadWmsProdutos());
             else if (tab === 'movimentacoes') await _wmsAwaitMaybe(loadWmsMovimentacoes());
-            else if (tab === 'recebimento') await _wmsAwaitMaybe(loadWmsRecebimentos());
+            else if (tab === 'recebimento') {
+                await _wmsAwaitMaybe(loadWmsRecebimentos());
+                // Se já há NF digitada, busca automaticamente (fornecedor/placa).
+                var nfElRec = document.getElementById('wms-rec-nf');
+                var nfVal = nfElRec && String(nfElRec.value || '').trim();
+                if (nfVal && typeof wmsBuscarNfDescarga === 'function') {
+                    await _wmsAwaitMaybe(wmsBuscarNfDescarga());
+                }
+            }
             else if (tab === 'controle-paletes') await _wmsAwaitMaybe(loadWmsControlePaletesAba());
             else if (tab === 'historico-nf') { wmsInitHistoricoNfAba(); }
             else if (tab === 'relatorios') { wmsInitRelatoriosAba(); }
@@ -7955,11 +7963,21 @@ window.wmsConcluirMovimentacao = async function(id) {
 async function loadWmsRecebimentos() {
     _wmsSetTbody('wms-tbody-recebimentos', 6, '<span class="loading">Carregando...</span>');
     var tb = document.getElementById('wms-tbody-recebimentos');
+    var det = document.getElementById('wms-rec-lista-details');
+    if (det) det.open = true;
     try {
-        var data = await _wmsFetchGetOnce('/wms/recebimentos', 10000);
+        var data = await _wmsFetchGetOnce('/wms/recebimentos', 12000);
         if (!tb) return;
-        if (!data || data.erro) {
-            tb.innerHTML = '<tr><td colspan="6">Nenhum recebimento em andamento. Clique em Atualizar se necessário.</td></tr>';
+        if (!data) {
+            tb.innerHTML = '<tr><td colspan="6">Falha ao contactar o servidor. Clique em Atualizar lista.</td></tr>';
+            return;
+        }
+        if (data._timeout || data._falhaGateway) {
+            tb.innerHTML = '<tr><td colspan="6">' + escHtml(data.erro || 'Tempo esgotado ao carregar recebimentos. Clique em Atualizar lista.') + '</td></tr>';
+            return;
+        }
+        if (data.erro && !(data.recebimentos || []).length) {
+            tb.innerHTML = '<tr><td colspan="6">' + escHtml(data.erro) + '</td></tr>';
             return;
         }
         var rows = data.recebimentos || [];
@@ -7971,7 +7989,7 @@ async function loadWmsRecebimentos() {
                 + 'data-wms-rec-id="' + escHtml(String(r.id)) + '" data-wms-rec-nf="' + escHtml(String(nf)) + '" '
                 + 'onclick="event.stopPropagation(); wmsExcluirRecebimento(this)" title="Excluir recebimento">Excluir</button>';
             return '<tr style="cursor:pointer;" onclick="wmsAbrirRecebimento(' + r.id + ')"><td>' + escHtml(r.id) + '</td><td>' + escHtml(r.numero_nf || '') + escHtml(vinc) + '</td><td>' + escHtml(r.fornecedor || '') + '</td><td>' + escHtml(r.placa || '') + '</td><td>' + escHtml(r.status) + (orig === 'carreta' ? ' · carreta' : '') + '</td><td>' + btnExcluir + '</td></tr>';
-        }).join('') : '<tr><td colspan="6">Nenhum recebimento em andamento. Finalizados ficam no Histórico NF.</td></tr>';
+        }).join('') : '<tr><td colspan="6">Nenhum recebimento em andamento. Digite a NF acima e clique na lupa (ou Enter). Finalizados ficam no Histórico NF.</td></tr>';
     } catch (e) {
         if (tb) tb.innerHTML = '<tr><td colspan="6">' + escHtml((e && e.message) || 'Erro ao carregar recebimentos.') + '</td></tr>';
         showMessage('Erro ao carregar recebimentos WMS.', 'error');
@@ -8602,10 +8620,30 @@ window.wmsBuscarNfDescarga = async function() {
     }
     var lupa = document.getElementById('btn-wms-rec-nf-buscar');
     if (lupa) lupa.disabled = true;
+    var forEl = document.getElementById('wms-rec-fornecedor');
+    var placaEl = document.getElementById('wms-rec-placa');
+    if (forEl) forEl.placeholder = 'Buscando NF…';
+    if (placaEl) placaEl.placeholder = 'Buscando NF…';
+    _wmsBeginLoading('Buscando NF na descarga…');
     try {
-        var data = await fetchAPI('/wms/recebimentos/buscar-nf?numero_nf=' + encodeURIComponent(nf.trim()));
+        var data = typeof _fetchAPIComTimeoutUma === 'function'
+            ? await _fetchAPIComTimeoutUma(
+                '/wms/recebimentos/buscar-nf?numero_nf=' + encodeURIComponent(nf.trim()),
+                {},
+                20000
+            )
+            : await fetchAPI('/wms/recebimentos/buscar-nf?numero_nf=' + encodeURIComponent(nf.trim()));
+        if (!data || data._timeout || data._falhaGateway) {
+            wmsLimparPainelNfDescarga();
+            if (forEl) forEl.placeholder = 'Preenchido pela NF';
+            if (placaEl) placaEl.placeholder = 'Preenchido pela NF';
+            showMessage((data && data.erro) || 'Tempo esgotado ao buscar a NF. Tente de novo.', 'error');
+            return;
+        }
         if (!data || data.erro || !data.documento) {
             wmsLimparPainelNfDescarga();
+            if (forEl) forEl.placeholder = 'Preenchido pela NF';
+            if (placaEl) placaEl.placeholder = 'Preenchido pela NF';
             var semNf = data && (data.nf_nao_encontrada || data.erro);
             if (semNf && !data._falhaGateway && !data._timeout) {
                 wmsMostrarModalNfSemXml(nf.trim(), data.erro);
@@ -8628,11 +8666,16 @@ window.wmsBuscarNfDescarga = async function() {
         } else {
             showMessage('NF carregada — clique em Montar paletes para iniciar.', 'success');
         }
+        // Atualiza lista em segundo plano (não bloqueia a UI).
+        try { void loadWmsRecebimentos(); } catch (eL) {}
     } catch (e) {
         console.error('wmsBuscarNfDescarga', e);
+        if (forEl) forEl.placeholder = 'Preenchido pela NF';
+        if (placaEl) placaEl.placeholder = 'Preenchido pela NF';
         showMessage('Erro ao buscar NF: ' + ((e && e.message) || 'falha inesperada'), 'error');
     } finally {
         if (lupa) lupa.disabled = false;
+        _wmsEndLoading();
     }
 };
 

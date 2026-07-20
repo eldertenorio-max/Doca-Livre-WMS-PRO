@@ -1013,14 +1013,28 @@ def _buscar_documento_terceiros_por_nf(conn, numero_nf):
     if not _terceiros_tabelas_existem(conn):
         return None, 'Módulo de descarga/recebimento não disponível neste banco.'
     t_doc = _tbl_terceiros_doc(conn)
+    raw = str(numero_nf or '').strip()
+    variants = []
+    for v in (raw, nf_norm, nf_norm.zfill(6), nf_norm.zfill(7), nf_norm.zfill(8), nf_norm.zfill(9)):
+        s = str(v or '').strip()
+        if s and s not in variants:
+            variants.append(s)
+    placeholders = ','.join('?' * len(variants))
+    like_nf = f'%{nf_norm}%'
+    # Filtro SQL primeiro (evita varrer 1200 docs em Python — causava timeout na aba).
     rows = conn.execute(
         f'''SELECT id, area, numero_nf, serie_nf, remetente_nome, remetente_cnpj,
                    placa_carreta, motorista_carreta, recebimento_concluido, previsao_chegada,
                    chave_nfe, destinatario_nome, criado_em
             FROM {t_doc}
             WHERE area IN ('carreta', 'recebimento', 'expedicao')
+              AND (
+                numero_nf IN ({placeholders})
+                OR REPLACE(REPLACE(REPLACE(COALESCE(numero_nf, ''), ' ', ''), '.', ''), '-', '') LIKE ?
+              )
             ORDER BY criado_em DESC, id DESC
-            LIMIT 1200'''
+            LIMIT 80''',
+        tuple(variants) + (like_nf,),
     ).fetchall()
     matches = []
     for r in rows or []:
@@ -7261,7 +7275,13 @@ def api_wms_recebimentos_buscar_nf():
     numero_nf = (request.args.get('numero_nf') or request.args.get('nf') or '').strip()
     conn = _db()
     try:
-        _ensure_wms_recebimento_terceiros_columns(conn)
+        try:
+            _ensure_wms_recebimento_terceiros_columns(conn)
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         doc, err = _buscar_documento_terceiros_por_nf(conn, numero_nf)
         if err:
             conn.close()
@@ -7270,9 +7290,30 @@ def api_wms_recebimentos_buscar_nf():
                 'nf_nao_encontrada': True,
                 'numero_nf': numero_nf,
             }), 404
-        doc = _enriquecer_documento_nf_wms(conn, doc)
+        try:
+            doc = _enriquecer_documento_nf_wms(conn, doc)
+        except Exception as exc:
+            try:
+                print('[wms/buscar-nf] enriquecer falhou: %s' % exc, flush=True)
+            except Exception:
+                pass
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            # Devolve documento básico da descarga mesmo se o WMS estiver lento/indisponível.
+            doc = dict(doc or {})
+            doc.setdefault('situacao_recebimento', {
+                'situacao': 'pendente',
+                'rotulo': 'NF na descarga',
+                'detalhe': 'Dados da descarga carregados. Situação WMS indisponível no momento.',
+                'cor': '#1565c0',
+            })
         if doc.pop('_wms_descarga_reaberta', None):
-            conn.commit()
+            try:
+                conn.commit()
+            except Exception:
+                pass
         conn.close()
         return jsonify({'ok': True, 'documento': doc})
     except Exception as e:
@@ -7286,20 +7327,39 @@ def api_wms_recebimentos_buscar_nf():
 @bp.route('/recebimentos', methods=['GET', 'POST'])
 def api_wms_recebimentos():
     conn = _db()
-    ensure_wms_schema(conn)
-    _seed_wms_defaults(conn)
-    _ensure_wms_recebimento_terceiros_columns(conn)
-    t_rec = _tbl(conn, 'wms_recebimento')
-    t_rp = _tbl(conn, 'wms_recebimento_palete')
-    t_pal = _tbl(conn, 'wms_palete')
-    t_item = _tbl(conn, 'wms_palete_item')
-    t_mov = _tbl(conn, 'wms_movimentacao')
-    t_cq = _tbl(conn, 'wms_check_qualidade')
-    t_cqr = _tbl(conn, 'wms_check_qualidade_resposta')
 
     if request.method == 'GET':
+        # GET leve: sem ensure_wms_schema / seed (mesmo padrão do painel — evita timeout na aba).
         rid = request.args.get('id', type=int)
         try:
+            if not _wms_tabelas_existem(conn):
+                conn.close()
+                if rid:
+                    return jsonify({
+                        'recebimento': None,
+                        'paletes': [],
+                        'perguntas': [],
+                        'respostas': [],
+                        'finalizacao': None,
+                        'aviso': 'schema_pendente',
+                    })
+                return jsonify({
+                    'recebimentos': [],
+                    'somente_andamento': True,
+                    'aviso': 'schema_pendente',
+                })
+            try:
+                _ensure_wms_recebimento_terceiros_columns(conn)
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            t_rec = _tbl(conn, 'wms_recebimento')
+            t_rp = _tbl(conn, 'wms_recebimento_palete')
+            t_pal = _tbl(conn, 'wms_palete')
+            t_cq = _tbl(conn, 'wms_check_qualidade')
+            t_cqr = _tbl(conn, 'wms_check_qualidade_resposta')
             if rid:
                 rec = conn.execute(f'SELECT * FROM {t_rec} WHERE id = ?', (rid,)).fetchone()
                 pals = conn.execute(
@@ -7338,7 +7398,18 @@ def api_wms_recebimentos():
                 conn.close()
             except Exception:
                 pass
-            return jsonify({'erro': str(e)}), 500
+            return jsonify({'recebimentos': [], 'erro': str(e), 'aviso': 'falha_lista'}), 200
+
+    ensure_wms_schema(conn)
+    _seed_wms_defaults(conn)
+    _ensure_wms_recebimento_terceiros_columns(conn)
+    t_rec = _tbl(conn, 'wms_recebimento')
+    t_rp = _tbl(conn, 'wms_recebimento_palete')
+    t_pal = _tbl(conn, 'wms_palete')
+    t_item = _tbl(conn, 'wms_palete_item')
+    t_mov = _tbl(conn, 'wms_movimentacao')
+    t_cq = _tbl(conn, 'wms_check_qualidade')
+    t_cqr = _tbl(conn, 'wms_check_qualidade_resposta')
 
     data = request.get_json() or {}
     acao = (data.get('acao') or 'criar').strip()
