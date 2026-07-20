@@ -8436,8 +8436,10 @@ async function wmsAtualizarBotaoFinalizarNf() {
 }
 
 async function wmsIniciarBipagemNf() {
+    if (window._wmsIniciarBipagemBusy) return;
+    window._wmsIniciarBipagemBusy = true;
     var btn = document.getElementById('btn-wms-iniciar-bipagem');
-    var btnLabel = btn ? btn.textContent : '';
+    var btnLabelPadrao = 'Montar paletes — abrir passo a passo';
     if (btn) {
         btn.disabled = true;
         btn.textContent = 'Abrindo passo a passo…';
@@ -8452,19 +8454,51 @@ async function wmsIniciarBipagemNf() {
             await wmsBuscarNfDescarga();
         }
         if (!window._wmsNfDoc) return;
+
+        // Atalho: recebimento WMS já existe — abre o passo a passo na hora.
+        var ridExistente = window._wmsNfDoc.recebimento_wms_id
+            || (document.getElementById('wms-rec-detalhe-id') || {}).value
+            || null;
+        var stExist = String(window._wmsNfDoc.recebimento_wms_status || '').toLowerCase();
+        if (ridExistente && stExist !== 'finalizado' && !window._wmsNfDoc.wms_bloqueado) {
+            wmsSincronizarRecebimentoAberto(ridExistente, { resetarPalete: true });
+            _wmsRevelarPassoAPassoBipagem(true);
+            showMessage('Passo a passo aberto — bipe o EAN/SKU do produto e confirme lote e datas.', 'success');
+            var skuFast = document.getElementById('wms-pal-sku');
+            if (skuFast) setTimeout(function() { skuFast.focus(); }, 250);
+            return;
+        }
+
         var terDoc = (document.getElementById('wms-rec-terceiros-doc-id') || {}).value
             || window._wmsNfDoc.documento_id || '';
-        var data = await fetchAPIComTimeout('/wms/recebimentos', {
-            method: 'POST',
-            body: JSON.stringify({
-                acao: 'iniciar_bipagem',
-                numero_nf: nf.trim(),
-                fornecedor: (document.getElementById('wms-rec-fornecedor') || {}).value || '',
-                placa: (document.getElementById('wms-rec-placa') || {}).value || '',
-                terceiros_documento_id: terDoc ? parseInt(terDoc, 10) : null,
-                terceiros_area: (document.getElementById('wms-rec-terceiros-area') || {}).value || ''
-            })
-        }, 90000);
+        // Uma tentativa com timeout curto (sem retry triplo de 90s que deixava o botão preso).
+        var data = typeof _fetchAPIComTimeoutUma === 'function'
+            ? await _fetchAPIComTimeoutUma('/wms/recebimentos', {
+                method: 'POST',
+                body: JSON.stringify({
+                    acao: 'iniciar_bipagem',
+                    numero_nf: nf.trim(),
+                    fornecedor: (document.getElementById('wms-rec-fornecedor') || {}).value || '',
+                    placa: (document.getElementById('wms-rec-placa') || {}).value || '',
+                    terceiros_documento_id: terDoc ? parseInt(terDoc, 10) : null,
+                    terceiros_area: (document.getElementById('wms-rec-terceiros-area') || {}).value || ''
+                })
+            }, 25000)
+            : await fetchAPIComTimeout('/wms/recebimentos', {
+                method: 'POST',
+                body: JSON.stringify({
+                    acao: 'iniciar_bipagem',
+                    numero_nf: nf.trim(),
+                    fornecedor: (document.getElementById('wms-rec-fornecedor') || {}).value || '',
+                    placa: (document.getElementById('wms-rec-placa') || {}).value || '',
+                    terceiros_documento_id: terDoc ? parseInt(terDoc, 10) : null,
+                    terceiros_area: (document.getElementById('wms-rec-terceiros-area') || {}).value || ''
+                })
+            }, 25000);
+        if (!data || data._timeout || data._falhaGateway) {
+            showMessage((data && data.erro) || 'Tempo esgotado ao abrir bipagem. Tente de novo.', 'error');
+            return;
+        }
         if (!data || !data.ok) {
             showMessage((data && data.erro) || 'Erro ao abrir bipagem — tente de novo em alguns segundos.', 'error');
             return;
@@ -8480,7 +8514,7 @@ async function wmsIniciarBipagemNf() {
         } else if (data.reabriu_descarga) {
             showMessage('Descarga reaberta — pode continuar a bipagem no WMS.', 'info');
         }
-        loadWmsRecebimentos();
+        try { void loadWmsRecebimentos(); } catch (eL) {}
         wmsSincronizarRecebimentoAberto(rid, { resetarPalete: true });
         _wmsRevelarPassoAPassoBipagem(true);
         showMessage('Passo a passo aberto — bipe o EAN/SKU do produto e confirme lote e datas.', 'success');
@@ -8490,9 +8524,10 @@ async function wmsIniciarBipagemNf() {
         console.error('wmsIniciarBipagemNf', e);
         showMessage('Erro ao abrir passo a passo: ' + ((e && e.message) || 'falha inesperada'), 'error');
     } finally {
+        window._wmsIniciarBipagemBusy = false;
         if (btn) {
             btn.disabled = false;
-            btn.textContent = btnLabel || 'Montar paletes — abrir passo a passo';
+            btn.textContent = btnLabelPadrao;
         }
     }
 }

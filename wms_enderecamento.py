@@ -7400,9 +7400,24 @@ def api_wms_recebimentos():
                 pass
             return jsonify({'recebimentos': [], 'erro': str(e), 'aviso': 'falha_lista'}), 200
 
-    ensure_wms_schema(conn)
-    _seed_wms_defaults(conn)
-    _ensure_wms_recebimento_terceiros_columns(conn)
+    data = request.get_json() or {}
+    acao = (data.get('acao') or 'criar').strip()
+    # abrir passo a passo / reabrir descarga: sem seed pesado (evita travar o botão).
+    if acao in ('iniciar_bipagem', 'reabrir_descarga'):
+        if not _wms_tabelas_existem(conn):
+            ensure_wms_schema(conn)
+            _seed_wms_defaults(conn)
+        try:
+            _ensure_wms_recebimento_terceiros_columns(conn)
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    else:
+        ensure_wms_schema(conn)
+        _seed_wms_defaults(conn)
+        _ensure_wms_recebimento_terceiros_columns(conn)
     t_rec = _tbl(conn, 'wms_recebimento')
     t_rp = _tbl(conn, 'wms_recebimento_palete')
     t_pal = _tbl(conn, 'wms_palete')
@@ -7411,8 +7426,6 @@ def api_wms_recebimentos():
     t_cq = _tbl(conn, 'wms_check_qualidade')
     t_cqr = _tbl(conn, 'wms_check_qualidade_resposta')
 
-    data = request.get_json() or {}
-    acao = (data.get('acao') or 'criar').strip()
     now = _now_iso()
 
     try:
@@ -7759,7 +7772,18 @@ def api_wms_recebimentos():
             if err:
                 conn.close()
                 return jsonify({'erro': err}), 404
-            doc = _enriquecer_documento_nf_wms(conn, doc)
+            try:
+                doc = _enriquecer_documento_nf_wms(conn, doc)
+            except Exception as exc:
+                try:
+                    print('[wms/iniciar_bipagem] enriquecer: %s' % exc, flush=True)
+                except Exception:
+                    pass
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                doc = dict(doc or {})
             st_wms = (doc.get('recebimento_wms_status') or '').lower()
             if st_wms == 'finalizado' or doc.get('wms_bloqueado'):
                 conn.close()
@@ -7801,7 +7825,7 @@ def api_wms_recebimentos():
             )
             doc['recebimento_wms_id'] = new_id
             doc['recebimento_wms_status'] = st_rec
-            doc = _enriquecer_documento_nf_wms(conn, doc)
+            doc['recebimento_wms_id_ultimo'] = new_id
             if doc.pop('_wms_descarga_reaberta', None):
                 reabriu = True
             conn.commit()
