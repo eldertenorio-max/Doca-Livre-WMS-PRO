@@ -1092,6 +1092,13 @@ try:
 except Exception as _wms_import_err:
     print('Aviso: módulo WMS endereçamento não carregado:', _wms_import_err)
 
+try:
+    from rfq_platform import bp as rfq_platform_bp, register_rfq_db
+    register_rfq_db(get_db)
+    app.register_blueprint(rfq_platform_bp, url_prefix='/api/rfq')
+except Exception as _rfq_import_err:
+    print('Aviso: módulo RFQ platform não carregado:', _rfq_import_err)
+
 
 def _ensure_pg_tabela_geral_dados(conn):
     """
