@@ -20,6 +20,24 @@ Visão de **produto de mercado** para cobrir a planilha RFQ (`docs/RFQ_respostas
 - `wip` — em desenvolvimento
 - `done` — critério de aceite atendido (vira `Sim` na RFQ)
 
+## Onde fica na tela
+
+Dentro do módulo **Endereçamento WMS** (`?modulo=enderecamento-wms`), novas sub-abas:
+
+| Sub-aba | Conteúdo |
+|---------|----------|
+| ASN | Import / lista de pré-aviso |
+| CONFIG RFQ | Conferência cega, FIFO/FEFO/LIFO, inventário cego, cobertura |
+| QA LOTE | Quarentena / aprovado / reprovado |
+| PICKING+ | Ondas + ordenação de rota |
+| YMS | Agendamento, check-in, vagas de pátio |
+| 3PL | Depositante, tarifa, fatura, portal |
+| VERTICAIS | Cross-dock, bobinas, WCS + aviso portuário fora do núcleo |
+
+A aba **Recebimento** mostra banner do modo de conferência (cego/total).
+
+UI: `static/wms-rfq.js` · APIs: `/api/rfq/*`.
+
 ## API de cobertura
 
 Prefixo: `/api/rfq` (módulo `rfq_platform.py`).

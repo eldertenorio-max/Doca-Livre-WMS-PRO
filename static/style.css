@@ -464,6 +464,71 @@ body.hub-modulos-aberto .container {
     border-bottom-color: #0ea5e9;
 }
 
+.wms-rfq-banner {
+    margin: 0 0 14px 0;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid #90caf9;
+    background: #e3f2fd;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #1565c0;
+}
+
+.wms-rfq-banner--warn {
+    border-color: #ffb74d;
+    background: #fff8e1;
+    color: #e65100;
+}
+
+.wms-rfq-coverage {
+    margin-top: 8px;
+    padding: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fafafa;
+}
+
+.wms-rfq-pre {
+    margin: 0;
+    padding: 12px;
+    background: #263238;
+    color: #eceff1;
+    border-radius: 8px;
+    font-size: 12px;
+    overflow: auto;
+    max-height: 280px;
+}
+
+.wms-yms-patio-mapa {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 40px;
+}
+
+.wms-yms-vaga {
+    display: inline-block;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid #bdbdbd;
+    background: #f5f5f5;
+}
+
+.wms-yms-vaga--livre {
+    border-color: #81c784;
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.wms-yms-vaga--ocupada {
+    border-color: #e57373;
+    background: #ffebee;
+    color: #c62828;
+}
+
 .wms-end-btn-atualizar {
     display: block;
     width: 100%;

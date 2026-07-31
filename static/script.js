@@ -2987,7 +2987,9 @@ var _SIDEBAR_ICONES = {
         painel: '📊', 'etiquetas-longarina': '🏷️', localizacoes: '📍', 'mapa-3d': '🧊', produtos: '📦', movimentacoes: '↔️',
         recebimento: '📥', 'controle-paletes': '🧱', 'historico-nf': '🕐', relatorios: '📈', separacao: '✂️',
         'enderecamento': '📍', ocupacao: '📈', 'estoque-seguranca': '🛡️', 'shelf-life': '⏱️', 'visao-cruzada': '🔀',
-        inventario: '🔢', pesquisa: '🔍'
+        inventario: '🔢', pesquisa: '🔍',
+        asn: '📨', 'config-rfq': '⚙️', 'qa-lote': '🧪', 'picking-avancado': '🛤️',
+        yms: '🚛', '3pl': '🏢', verticais: '🏭'
     }
 };
 
@@ -4814,6 +4816,9 @@ function _wmsMostrarSubtab(tab) {
                 if (nfVal && typeof wmsBuscarNfDescarga === 'function') {
                     await _wmsAwaitMaybe(wmsBuscarNfDescarga());
                 }
+                if (typeof window.atualizarBannerRecebimentoCego === 'function') {
+                    void window.atualizarBannerRecebimentoCego();
+                }
             }
             else if (tab === 'controle-paletes') await _wmsAwaitMaybe(loadWmsControlePaletesAba());
             else if (tab === 'historico-nf') { wmsInitHistoricoNfAba(); }
@@ -4834,6 +4839,11 @@ function _wmsMostrarSubtab(tab) {
                 if (typeof loadWmsVisaoCruzada === 'function') await _wmsAwaitMaybe(loadWmsVisaoCruzada());
             } else if (tab === 'inventario') await _wmsAwaitMaybe(loadWmsInventarios());
             else if (tab === 'pesquisa') await _wmsAwaitMaybe(typeof loadWmsPesquisaSku === 'function' ? loadWmsPesquisaSku() : null);
+            else if (tab === 'asn' || tab === 'config-rfq' || tab === 'qa-lote' || tab === 'picking-avancado' ||
+                     tab === 'yms' || tab === '3pl' || tab === 'verticais') {
+                if (typeof window.initWmsRfqUi === 'function') window.initWmsRfqUi();
+                if (typeof window.loadWmsRfqTab === 'function') await _wmsAwaitMaybe(window.loadWmsRfqTab(tab));
+            }
         } catch (e) {
             try { console.error('[wms] falha ao abrir aba', tab, e); } catch (e2) {}
         } finally {
@@ -6866,7 +6876,7 @@ function initWmsEnderecamento() {
     if (!document.getElementById('modulo-enderecamento-wms')) return;
     // Expõe o boot do módulo o quanto antes (antes de binds que possam falhar).
     window._wmsIniciarModulo = function(tab) {
-        var abasWms = ['painel', 'localizacoes', 'etiquetas-longarina', 'produtos', 'movimentacoes', 'recebimento', 'controle-paletes', 'historico-nf', 'relatorios', 'separacao', 'enderecamento', 'ocupacao', 'estoque-seguranca', 'shelf-life', 'visao-cruzada', 'inventario', 'pesquisa'];
+        var abasWms = ['painel', 'localizacoes', 'etiquetas-longarina', 'produtos', 'movimentacoes', 'recebimento', 'controle-paletes', 'historico-nf', 'relatorios', 'separacao', 'enderecamento', 'ocupacao', 'estoque-seguranca', 'shelf-life', 'visao-cruzada', 'inventario', 'pesquisa', 'asn', 'config-rfq', 'qa-lote', 'picking-avancado', 'yms', '3pl', 'verticais'];
         var t = (tab || 'painel').trim();
         if (t === 'areas-especiais') t = 'enderecamento';
         if (abasWms.indexOf(t) === -1) t = 'painel';

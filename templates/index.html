@@ -6,7 +6,7 @@
     <title>WMS DOCA LIVRE PRO</title>
     {% from '_app_head_icons.html' import app_head_icons %}
     {{ app_head_icons() }}
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=20260626s">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=20260730a">
     <link rel="stylesheet" href="{{ url_for('static', filename='wms-analise.css') }}?v=20260604">
     <link rel="stylesheet" href="{{ url_for('static', filename='stock-system.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='entrada-modulos.css') }}">
@@ -2870,6 +2870,13 @@
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="visao-cruzada">VISÃO CRUZADA</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="inventario">INVENTÁRIO</button>
                     <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="pesquisa">PESQUISA SKU</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="asn">ASN</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="config-rfq">CONFIG RFQ</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="qa-lote">QA LOTE</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="picking-avancado">PICKING+</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="yms">YMS</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="3pl">3PL</button>
+                    <button type="button" class="tab-button devolucoes-subtab wms-subtab" data-wms-tab="verticais">VERTICAIS</button>
                 </nav>
                 <div id="wms-panel-painel" class="wms-inner-panel wms-inner-panel-active">
                         <div class="stats-grid" style="margin-bottom: 16px;">
@@ -3016,6 +3023,7 @@
                     </div>
                     <div id="wms-panel-recebimento" class="wms-inner-panel" hidden>
                         <p class="info-text" style="margin: 0 0 14px 0; font-size: 13px;">Cada fase usa um <strong>tipo de código diferente</strong>. Siga a ordem: NF → etiquetas de produto → bipagem (palete → produto → palete → endereço).</p>
+                        <div id="wms-rec-modo-banner" class="wms-rfq-banner" hidden role="status"></div>
 
                         <section class="wms-rec-fase wms-rec-fase--nf">
                             <h3 class="wms-rec-fase-titulo"><span class="wms-rec-fase-num">0</span><span>Código da NF — identificar a nota fiscal</span></h3>
@@ -3488,6 +3496,185 @@
                             <button type="button" class="btn btn-primary" id="btn-wms-pesquisa">Pesquisar</button>
                         </div>
                         <div class="table-container"><table class="data-table"><thead><tr><th>SKU</th><th>Lote</th><th>Validade</th><th>Palete</th><th>Endereço</th><th>Bloqueio</th><th>Qtd</th></tr></thead><tbody id="wms-tbody-pesquisa"><tr><td colspan="7" class="loading">Informe um termo e clique em Pesquisar.</td></tr></tbody></table></div>
+                    </div>
+
+                    <!-- RFQ / mercado — sub-abas dentro do Endereçamento WMS -->
+                    <div id="wms-panel-asn" class="wms-inner-panel" hidden>
+                        <div class="painel-titulo" style="margin-bottom: 12px;">
+                            <h3 class="painel-titulo-texto" style="margin:0;">ASN / Pré-aviso</h3>
+                            <p class="painel-titulo-sub">Importe pré-aviso (ASN) e acompanhe o vínculo com recebimento.</p>
+                        </div>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 14px;">
+                            <div class="form-group"><label>Nº ASN</label><input type="text" id="wms-asn-numero" placeholder="ASN-001"></div>
+                            <div class="form-group"><label>Fornecedor</label><input type="text" id="wms-asn-fornecedor" placeholder="Fornecedor"></div>
+                            <div class="form-group"><label>Depósito ID</label><input type="number" id="wms-asn-deposito" placeholder="1" min="1"></div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-asn-salvar">Importar ASN</button>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-asn-atualizar">Atualizar lista</button>
+                        </div>
+                        <p id="wms-asn-msg" class="info-text" style="margin: 0 0 10px 0;"></p>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Número</th><th>Fornecedor</th><th>Depósito</th><th>Status</th><th>Criado</th></tr></thead><tbody id="wms-tbody-asn"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody></table></div>
+                    </div>
+
+                    <div id="wms-panel-config-rfq" class="wms-inner-panel" hidden>
+                        <div class="painel-titulo" style="margin-bottom: 12px;">
+                            <h3 class="painel-titulo-texto" style="margin:0;">Configuração RFQ</h3>
+                            <p class="painel-titulo-sub">Parâmetros por depósito: conferência cega, política de lote, inventário cego e cobertura do roadmap.</p>
+                        </div>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 14px;">
+                            <div class="form-group"><label>Depósito</label><select id="wms-rfq-deposito"><option value="">Carregando...</option></select></div>
+                            <div class="form-group"><label>Conferência</label>
+                                <select id="wms-rfq-conf-modo">
+                                    <option value="total">Total (mostra qtd esperada)</option>
+                                    <option value="parcial">Parcial</option>
+                                    <option value="cego">Cego (oculta qtd esperada)</option>
+                                </select>
+                            </div>
+                            <div class="form-group"><label>Política lote</label>
+                                <select id="wms-rfq-politica-lote">
+                                    <option value="FIFO">FIFO</option>
+                                    <option value="FEFO">FEFO</option>
+                                    <option value="LIFO">LIFO</option>
+                                </select>
+                            </div>
+                            <div class="form-group"><label>Inventário cego</label>
+                                <select id="wms-rfq-inv-cego"><option value="false">Não</option><option value="true">Sim</option></select>
+                            </div>
+                            <div class="form-group"><label>Recontagem auto</label>
+                                <select id="wms-rfq-recontagem"><option value="true">Sim</option><option value="false">Não</option></select>
+                            </div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-rfq-salvar-params">Salvar parâmetros</button>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-rfq-coverage">Ver cobertura RFQ</button>
+                        </div>
+                        <p id="wms-rfq-config-msg" class="info-text" style="margin: 0 0 10px 0;"></p>
+                        <div id="wms-rfq-coverage-box" class="wms-rfq-coverage" hidden></div>
+                    </div>
+
+                    <div id="wms-panel-qa-lote" class="wms-inner-panel" hidden>
+                        <div class="painel-titulo" style="margin-bottom: 12px;">
+                            <h3 class="painel-titulo-texto" style="margin:0;">QA de lote</h3>
+                            <p class="painel-titulo-sub">Quarentena / aprovado / reprovado — putaway bloqueado se não aprovado.</p>
+                        </div>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 14px;">
+                            <div class="form-group"><label>SKU</label><input type="text" id="wms-qa-sku" placeholder="SKU"></div>
+                            <div class="form-group"><label>Lote</label><input type="text" id="wms-qa-lote" placeholder="Lote"></div>
+                            <div class="form-group"><label>Status</label>
+                                <select id="wms-qa-status">
+                                    <option value="quarentena">Quarentena</option>
+                                    <option value="aprovado">Aprovado</option>
+                                    <option value="reprovado">Reprovado</option>
+                                </select>
+                            </div>
+                            <div class="form-group"><label>Motivo</label><input type="text" id="wms-qa-motivo" placeholder="Opcional"></div>
+                            <div class="form-group"><label>Depósito ID</label><input type="number" id="wms-qa-deposito" min="1"></div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-qa-salvar">Registrar QA</button>
+                        </div>
+                        <p id="wms-qa-msg" class="info-text" style="margin: 0 0 10px 0;"></p>
+                    </div>
+
+                    <div id="wms-panel-picking-avancado" class="wms-inner-panel" hidden>
+                        <div class="painel-titulo" style="margin-bottom: 12px;">
+                            <h3 class="painel-titulo-texto" style="margin:0;">Picking avançado</h3>
+                            <p class="painel-titulo-sub">Motor de ondas por zona e ordenação de rota (corredor/endereço).</p>
+                        </div>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 14px;">
+                            <div class="form-group"><label>Código onda</label><input type="text" id="wms-onda-codigo" placeholder="ONDA-01"></div>
+                            <div class="form-group"><label>Zona</label><input type="text" id="wms-onda-zona" placeholder="A / B / C"></div>
+                            <div class="form-group"><label>Depósito ID</label><input type="number" id="wms-onda-deposito" min="1"></div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-onda-criar">Criar onda</button>
+                        </div>
+                        <p id="wms-onda-msg" class="info-text" style="margin: 0 0 14px 0;"></p>
+                        <h4 style="margin: 0 0 8px 0;">Ordenar rota de picks</h4>
+                        <p class="info-text" style="margin: 0 0 8px 0; font-size: 12px;">Cole endereços (um por linha). O sistema ordena por corredor/endereço.</p>
+                        <textarea id="wms-rota-picks" rows="5" style="width:100%; max-width:520px; font-family: monospace;" placeholder="12-A-01-1&#10;12-A-02-1&#10;11-B-03-2"></textarea>
+                        <div style="margin: 8px 0 12px 0;"><button type="button" class="btn btn-secondary" id="btn-wms-rota-ordenar">Ordenar rota</button></div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>Seq</th><th>Endereço</th></tr></thead><tbody id="wms-tbody-rota"><tr><td colspan="2" class="loading">Aguardando ordenação...</td></tr></tbody></table></div>
+                    </div>
+
+                    <div id="wms-panel-yms" class="wms-inner-panel" hidden>
+                        <div class="painel-titulo" style="margin-bottom: 12px;">
+                            <h3 class="painel-titulo-texto" style="margin:0;">YMS — Pátio e docas</h3>
+                            <p class="painel-titulo-sub">Agendamento, portaria (check-in) e mapa de vagas do pátio.</p>
+                        </div>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 12px;">
+                            <div class="form-group"><label>Doca</label><input type="text" id="wms-yms-doca" placeholder="D1"></div>
+                            <div class="form-group"><label>Transportadora</label><input type="text" id="wms-yms-transp" placeholder="Transportadora"></div>
+                            <div class="form-group"><label>Placa</label><input type="text" id="wms-yms-placa" placeholder="ABC1D23"></div>
+                            <div class="form-group"><label>Início slot</label><input type="datetime-local" id="wms-yms-inicio"></div>
+                            <div class="form-group"><label>Fim slot</label><input type="datetime-local" id="wms-yms-fim"></div>
+                            <div class="form-group"><label>Prioridade</label>
+                                <select id="wms-yms-prio"><option value="normal">Normal</option><option value="vip">VIP</option></select>
+                            </div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-yms-agendar">Agendar</button>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-yms-atualizar">Atualizar</button>
+                        </div>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 12px;">
+                            <div class="form-group"><label>Agendamento ID</label><input type="number" id="wms-yms-check-ag" min="1"></div>
+                            <div class="form-group"><label>Motorista</label><input type="text" id="wms-yms-motorista"></div>
+                            <div class="form-group"><label>Peso entrada</label><input type="number" id="wms-yms-peso" step="0.01"></div>
+                            <label class="wms-mapa3d-check" style="margin-bottom: 4px;"><input type="checkbox" id="wms-yms-docs-ok"> Docs OK</label>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-yms-checkin">Check-in portaria</button>
+                            <div class="form-group"><label>Vaga pátio</label><input type="text" id="wms-yms-vaga" placeholder="P-01"></div>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-yms-vaga">Criar vaga</button>
+                        </div>
+                        <p id="wms-yms-msg" class="info-text" style="margin: 0 0 10px 0;"></p>
+                        <div class="table-container" style="margin-bottom: 14px;"><table class="data-table"><thead><tr><th>ID</th><th>Doca</th><th>Placa</th><th>Transportadora</th><th>Prioridade</th><th>Status</th><th>Slot</th></tr></thead><tbody id="wms-tbody-yms"><tr><td colspan="7" class="loading">Carregando...</td></tr></tbody></table></div>
+                        <h4 style="margin: 0 0 8px 0;">Mapa do pátio</h4>
+                        <div id="wms-yms-patio-mapa" class="wms-yms-patio-mapa info-text">Carregando vagas...</div>
+                    </div>
+
+                    <div id="wms-panel-3pl" class="wms-inner-panel" hidden>
+                        <div class="painel-titulo" style="margin-bottom: 12px;">
+                            <h3 class="painel-titulo-texto" style="margin:0;">3PL — Depositantes</h3>
+                            <p class="painel-titulo-sub">Multi-cliente, tarifas, fatura e portal read-only do depositante.</p>
+                        </div>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 12px;">
+                            <div class="form-group"><label>Código depositante</label><input type="text" id="wms-tpl-codigo" placeholder="CLI-01"></div>
+                            <div class="form-group"><label>Nome</label><input type="text" id="wms-tpl-nome" placeholder="Cliente"></div>
+                            <div class="form-group"><label>Depósito ID</label><input type="number" id="wms-tpl-deposito" min="1"></div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-tpl-criar">Criar depositante</button>
+                        </div>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 12px;">
+                            <div class="form-group"><label>Depositante ID</label><input type="number" id="wms-tpl-dep-id" min="1"></div>
+                            <div class="form-group"><label>Tarifa tipo</label>
+                                <select id="wms-tpl-tarifa-tipo"><option value="posicao">Posição</option><option value="palete">Palete</option><option value="m3">m³</option></select>
+                            </div>
+                            <div class="form-group"><label>Valor</label><input type="number" id="wms-tpl-tarifa-valor" step="0.01" min="0"></div>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-tpl-tarifa">Salvar tarifa</button>
+                            <div class="form-group"><label>Período fatura</label><input type="text" id="wms-tpl-periodo" placeholder="2026-07"></div>
+                            <div class="form-group"><label>Total</label><input type="number" id="wms-tpl-total" step="0.01" min="0"></div>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-tpl-fatura">Gerar fatura</button>
+                            <div class="form-group"><label>Código portal</label><input type="text" id="wms-tpl-portal-cod" placeholder="CLI-01"></div>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-tpl-portal">Abrir portal</button>
+                        </div>
+                        <p id="wms-tpl-msg" class="info-text" style="margin: 0 0 10px 0;"></p>
+                        <pre id="wms-tpl-portal-out" class="wms-rfq-pre" hidden></pre>
+                    </div>
+
+                    <div id="wms-panel-verticais" class="wms-inner-panel" hidden>
+                        <div class="painel-titulo" style="margin-bottom: 12px;">
+                            <h3 class="painel-titulo-texto" style="margin:0;">Verticais e automação</h3>
+                            <p class="painel-titulo-sub">Cross-dock, bobinas, WCS. Portuário/Siscomex permanece fora do núcleo.</p>
+                        </div>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 12px;">
+                            <div class="form-group"><label>Recebimento ID (cross-dock)</label><input type="number" id="wms-xd-rec" min="1"></div>
+                            <button type="button" class="btn btn-primary" id="btn-wms-xd-liberar">Liberar cross-dock</button>
+                        </div>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 12px;">
+                            <div class="form-group"><label>Código bobina</label><input type="text" id="wms-bob-codigo"></div>
+                            <div class="form-group"><label>Peso kg</label><input type="number" id="wms-bob-peso" step="0.01"></div>
+                            <div class="form-group"><label>Ø mm</label><input type="number" id="wms-bob-diam" step="0.1"></div>
+                            <div class="form-group"><label>Empilhamento máx</label><input type="number" id="wms-bob-emp" min="1"></div>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-bob-salvar">Cadastrar bobina</button>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-bob-listar">Listar bobinas</button>
+                        </div>
+                        <div class="form-row" style="flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 12px;">
+                            <div class="form-group"><label>Evento WCS</label><input type="text" id="wms-wcs-tipo" placeholder="sorter.divert"></div>
+                            <div class="form-group"><label>Fabricante</label><input type="text" id="wms-wcs-fab" placeholder="generico"></div>
+                            <button type="button" class="btn btn-secondary" id="btn-wms-wcs-evento">Registrar evento WCS</button>
+                        </div>
+                        <p id="wms-vert-msg" class="info-text" style="margin: 0 0 10px 0;"></p>
+                        <div id="wms-portuario-box" class="wms-rfq-banner wms-rfq-banner--warn" style="margin-bottom: 12px;"></div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Código</th><th>Peso</th><th>Ø</th><th>Status</th></tr></thead><tbody id="wms-tbody-bobinas"><tr><td colspan="5" class="loading">Clique em Listar bobinas.</td></tr></tbody></table></div>
                     </div>
             </div>
         </div>
@@ -4006,7 +4193,8 @@
     </style>
 
     <script src="{{ url_for('static', filename='doca-livre-sidebar.js') }}?v=20260705"></script>
-    <script src="{{ url_for('static', filename='script.js') }}?v=20260720g"></script>
+    <script src="{{ url_for('static', filename='script.js') }}?v=20260730a"></script>
+    <script src="{{ url_for('static', filename='wms-rfq.js') }}?v=20260730a"></script>
     <script src="{{ url_for('static', filename='wms-analise.js') }}?v=20260604"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" crossorigin="anonymous"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
