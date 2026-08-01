@@ -74,47 +74,71 @@
     var toggleCadConfirmar = document.getElementById('toggle-cad-confirmar');
     if (toggleCadConfirmar) toggleCadConfirmar.addEventListener('click', function () { toggleSenha('cad-confirmar', 'toggle-cad-confirmar'); });
 
+    // Acorda o worker (Render free) enquanto a tela de login está aberta.
+    try {
+        fetch((window.API_BASE || '/api') + '/health', { credentials: 'same-origin', cache: 'no-store' }).catch(function () {});
+    } catch (e) {}
+
     formLogin.addEventListener('submit', function (e) {
         e.preventDefault();
         mostrarErro(msgErroLogin);
         btnEntrar.disabled = true;
         var labelAntes = btnEntrar.textContent;
-        btnEntrar.textContent = 'Entrando…';
+        btnEntrar.textContent = 'Acordando servidor…';
         var usuarioVal = document.getElementById('usuario').value.trim();
-        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 12000);
-        fetch((window.API_BASE || '/api') + '/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-                usuario: usuarioVal,
-                senha: document.getElementById('senha').value
-            }),
-            signal: ctrl ? ctrl.signal : undefined
-        }).then(function (r) { return r.json(); }).then(function (data) {
-            if (data.ok) {
-                if (data.access_token) {
-                    try { localStorage.setItem('access_token', data.access_token); } catch (err) {}
-                    try { localStorage.setItem('usuario', data.usuario || usuarioVal); } catch (err) {}
-                }
-                if (data.hub && typeof window.portalShowHub === 'function') {
-                    window.portalShowHub(data.usuario || usuarioVal);
+        var senhaVal = document.getElementById('senha').value;
+        var apiBase = (window.API_BASE || '/api');
+
+        function doLogin() {
+            btnEntrar.textContent = 'Entrando…';
+            var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 20000);
+            return fetch(apiBase + '/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    usuario: usuarioVal,
+                    senha: senhaVal
+                }),
+                signal: ctrl ? ctrl.signal : undefined
+            }).then(function (r) { return r.json().then(function (data) { return { r: r, data: data }; }); }).then(function (pack) {
+                var data = pack.data || {};
+                if (data.ok) {
+                    if (data.access_token) {
+                        try { localStorage.setItem('access_token', data.access_token); } catch (err) {}
+                        try { localStorage.setItem('usuario', data.usuario || usuarioVal); } catch (err) {}
+                    }
+                    if (data.hub && typeof window.portalShowHub === 'function') {
+                        window.portalShowHub(data.usuario || usuarioVal);
+                        return;
+                    }
+                    window.location.href = (data.redirect || '/');
                     return;
                 }
-                window.location.href = (data.redirect || '/');
-                return;
-            }
-            mostrarErro(msgErroLogin, data.erro || 'Erro ao entrar.');
-        }).catch(function (err) {
-            var abortado = err && (err.name === 'AbortError');
-            mostrarErro(msgErroLogin, abortado
-                ? 'O servidor demorou para responder. Tente novamente.'
-                : 'Falha de conexão. Tente novamente.');
-        }).finally(function () {
-            clearTimeout(timer);
-            btnEntrar.disabled = false;
-            btnEntrar.textContent = labelAntes || 'Entrar';
+                mostrarErro(msgErroLogin, data.erro || 'Erro ao entrar.');
+            }).catch(function (err) {
+                var abortado = err && (err.name === 'AbortError');
+                mostrarErro(msgErroLogin, abortado
+                    ? 'O servidor demorou para responder. Aguarde ~30s e tente de novo.'
+                    : 'Falha de conexão. Tente novamente.');
+            }).finally(function () {
+                clearTimeout(timer);
+                btnEntrar.disabled = false;
+                btnEntrar.textContent = labelAntes || 'Entrar';
+            });
+        }
+
+        // Wake rápido (máx 8s) + login — se health já estiver quente, login segue na hora.
+        var wakeCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var wakeTimer = setTimeout(function () { if (wakeCtrl) wakeCtrl.abort(); }, 8000);
+        fetch(apiBase + '/health', {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            signal: wakeCtrl ? wakeCtrl.signal : undefined
+        }).catch(function () {}).finally(function () {
+            clearTimeout(wakeTimer);
+            doLogin();
         });
     });
 

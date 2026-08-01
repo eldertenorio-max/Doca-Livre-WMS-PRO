@@ -921,6 +921,7 @@ USUARIOS = [
                 except Exception:
                     pass
         usuarios_do_arquivo = set()
+        is_pg = getattr(conn, 'kind', None) == 'pg'
         for item in lista:
             if not isinstance(item, dict):
                 continue
@@ -929,18 +930,41 @@ USUARIOS = [
             if not usuario:
                 continue
             usuarios_do_arquivo.add(usuario)
-            senha_hash = generate_password_hash(senha, method='pbkdf2:sha256')
-            conn.execute(
-                '''INSERT INTO usuarios (usuario, senha_hash, criado_em) VALUES (?, ?, ?)
-                   ON CONFLICT(usuario) DO UPDATE SET senha_hash = excluded.senha_hash''',
-                (usuario, senha_hash, datetime.now().isoformat())
-            )
+            # Postgres (Render): NÃO rehash/atualiza senha a cada boot — pbkdf2 trava o
+            # worker free e deixa o login lento (compete com /api/portal/login).
+            if is_pg:
+                try:
+                    existe = conn.execute(
+                        'SELECT 1 FROM usuarios WHERE usuario = ? LIMIT 1',
+                        (usuario,),
+                    ).fetchone()
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    existe = None
+                if existe:
+                    continue
+                senha_hash = generate_password_hash(senha, method='pbkdf2:sha256')
+                conn.execute(
+                    '''INSERT INTO usuarios (usuario, senha_hash, criado_em) VALUES (?, ?, ?)
+                       ON CONFLICT(usuario) DO NOTHING''',
+                    (usuario, senha_hash, datetime.now().isoformat()),
+                )
+            else:
+                senha_hash = generate_password_hash(senha, method='pbkdf2:sha256')
+                conn.execute(
+                    '''INSERT INTO usuarios (usuario, senha_hash, criado_em) VALUES (?, ?, ?)
+                       ON CONFLICT(usuario) DO UPDATE SET senha_hash = excluded.senha_hash''',
+                    (usuario, senha_hash, datetime.now().isoformat()),
+                )
         conn.commit()
         # No Postgres (Render/portal): NÃO apagar usuários fora do arquivo.
         # Contas criadas por Cadastro (com e-mail) vivem só no banco; se apagarmos,
         # o e-mail de cadastro ainda funciona, mas Trocar senha/login somem.
         # No SQLite local: mantém sync antigo (config = fonte da verdade).
-        if getattr(conn, 'kind', None) != 'pg':
+        if not is_pg:
             remover = [
                 row['usuario']
                 for row in conn.execute('SELECT usuario FROM usuarios')
@@ -2440,6 +2464,11 @@ def _buscar_usuario_login(conn, usuario_in):
     return None
 
 
+def _get_db_login():
+    """Conexão curta para login — não compete com DDL longo do init_db."""
+    return get_db(connect_timeout=5)
+
+
 @app.route('/api/login', methods=['POST'])
 def api_login():
     """Autentica usuário e inicia sessão — depois o portal mostra o hub de sistemas."""
@@ -2449,9 +2478,17 @@ def api_login():
     if not usuario or not senha:
         return jsonify({'ok': False, 'erro': 'Informe usuário e senha.'})
     conn = None
+    row = None
     try:
-        conn = get_db(connect_timeout=8)
-        row = _buscar_usuario_login(conn, usuario)
+        try:
+            conn = _get_db_login()
+            row = _buscar_usuario_login(conn, usuario)
+        except Exception as e:
+            return jsonify({
+                'ok': False,
+                'erro': 'Servidor acordando ou banco ocupado. Tente novamente em alguns segundos.',
+                'detalhe': str(e)[:120],
+            }), 503
     finally:
         if conn is not None:
             try:
@@ -2496,8 +2533,15 @@ def api_portal_login():
     conn = None
     row = None
     try:
-        conn = get_db(connect_timeout=8)
-        row = _buscar_usuario_login(conn, usuario_in)
+        try:
+            conn = _get_db_login()
+            row = _buscar_usuario_login(conn, usuario_in)
+        except Exception as e:
+            return _sso_cors(jsonify({
+                'ok': False,
+                'erro': 'Servidor acordando ou banco ocupado. Tente novamente em alguns segundos.',
+                'detalhe': str(e)[:120],
+            })), 503
         if not row or not check_password_hash(row['senha_hash'], senha):
             return _sso_cors(jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})), 401
         usuario = str(row['usuario'] if hasattr(row, 'keys') else row[1])
@@ -17261,12 +17305,24 @@ def get_estatisticas():
 def _init_db_em_background():
     """Não bloqueia o boot do Gunicorn (evita 502 no health check do Render)."""
     try:
+        # Pequena pausa: deixa /api/health e login ganharem a 1ª conexão no cold start.
+        time.sleep(1.5)
         init_db()
+    except Exception as e:
+        import traceback
+        try:
+            print("[controle-carregamento] init_db falhou:", e, flush=True)
+            traceback.print_exc()
+        except Exception:
+            pass
+    try:
+        # Sync depois do schema — e (no PG) sem rehash de senhas.
+        time.sleep(1.0)
         sync_usuarios_from_config()
     except Exception as e:
         import traceback
         try:
-            print("[controle-carregamento] init_db/sync_usuarios falhou:", e, flush=True)
+            print("[controle-carregamento] sync_usuarios falhou:", e, flush=True)
             traceback.print_exc()
         except Exception:
             pass
