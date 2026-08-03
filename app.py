@@ -2429,32 +2429,49 @@ def raiz():
 
 
 def _buscar_usuario_login(conn, usuario_in):
-    """Uma consulta (ou no máx. 2) — evita 3 round-trips no login do portal."""
+    """Uma consulta preferencial — login por usuário ou e-mail sem 3 round-trips."""
     usuario_in = (usuario_in or '').strip()
     if not usuario_in:
         return None
-    row = conn.execute(
-        'SELECT id, usuario, senha_hash FROM usuarios WHERE usuario = ?',
-        (usuario_in,),
-    ).fetchone()
-    if row:
-        return row
-    row = conn.execute(
-        'SELECT id, usuario, senha_hash FROM usuarios WHERE lower(usuario) = lower(?)',
-        (usuario_in,),
-    ).fetchone()
-    if row:
-        return row
+    email_n = None
     if '@' in usuario_in:
         email_n = (
             portal_normalize_email(usuario_in)
             if callable(portal_normalize_email)
             else usuario_in.strip().lower()
         )
+    # 1 query: match exato de usuario OU lower(usuario) OU e-mail (se coluna existir).
+    try:
+        if email_n:
+            row = conn.execute(
+                '''SELECT id, usuario, senha_hash FROM usuarios
+                   WHERE usuario = ?
+                      OR lower(usuario) = lower(?)
+                      OR lower(COALESCE(email, '')) = ?
+                   LIMIT 1''',
+                (usuario_in, usuario_in, email_n),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                '''SELECT id, usuario, senha_hash FROM usuarios
+                   WHERE usuario = ? OR lower(usuario) = lower(?)
+                   LIMIT 1''',
+                (usuario_in, usuario_in),
+            ).fetchone()
+        if row:
+            return row
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        # Fallback se coluna email ainda não existir na tabela.
         try:
             return conn.execute(
-                "SELECT id, usuario, senha_hash FROM usuarios WHERE lower(COALESCE(email, '')) = ?",
-                (email_n,),
+                '''SELECT id, usuario, senha_hash FROM usuarios
+                   WHERE usuario = ? OR lower(usuario) = lower(?)
+                   LIMIT 1''',
+                (usuario_in, usuario_in),
             ).fetchone()
         except Exception:
             try:
@@ -2465,7 +2482,20 @@ def _buscar_usuario_login(conn, usuario_in):
 
 
 def _get_db_login():
-    """Conexão curta para login — não compete com DDL longo do init_db."""
+    """Conexão curta para login — SSL + timeout curto; sem statement longo no idle."""
+    db_url = (os.environ.get('DATABASE_URL') or '').strip()
+    if db_url and psycopg is not None:
+        return CompatConn(
+            psycopg.connect(
+                db_url,
+                sslmode=os.environ.get('PGSSLMODE', 'require'),
+                connect_timeout=8,
+                row_factory=dict_row,
+                # Login: timeouts agressivos para não prender "Entrando…" se o banco travar.
+                options='-c statement_timeout=8000 -c lock_timeout=3000',
+            ),
+            kind='pg',
+        )
     return get_db(connect_timeout=5)
 
 
@@ -2542,7 +2572,12 @@ def api_portal_login():
                 'erro': 'Servidor acordando ou banco ocupado. Tente novamente em alguns segundos.',
                 'detalhe': str(e)[:120],
             })), 503
-        if not row or not check_password_hash(row['senha_hash'], senha):
+        hash_val = row['senha_hash'] if hasattr(row, 'keys') else row[2]
+        try:
+            senha_ok = check_password_hash(hash_val, senha)
+        except Exception:
+            senha_ok = False
+        if not row or not senha_ok:
             return _sso_cors(jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})), 401
         usuario = str(row['usuario'] if hasattr(row, 'keys') else row[1])
         try:
@@ -2550,20 +2585,19 @@ def api_portal_login():
         except ValueError as exc:
             return _sso_cors(jsonify({'ok': False, 'erro': str(exc)})), 400
         superuser = bool(callable(is_portal_superuser) and is_portal_superuser(usuario))
-        # Superuser: matriz completa sem query. Demais: SELECT simples (sem ensure_schema).
-        if superuser:
-            permissoes = {
-                'light': {'pode_acessar': True, 'modulos': None},
-                'plus': {'pode_acessar': True, 'modulos': None},
-                'pro': {'pode_acessar': True, 'modulos': None},
-            }
-        elif callable(portal_carregar_permissoes):
+        # Matriz default imediata — não bloqueia login se portal_permissoes estiver lenta/ausente.
+        permissoes = {
+            'light': {'pode_acessar': True, 'modulos': None},
+            'plus': {'pode_acessar': True, 'modulos': None},
+            'pro': {'pode_acessar': True, 'modulos': None},
+        }
+        if not superuser and callable(portal_carregar_permissoes):
             try:
-                permissoes = portal_carregar_permissoes(conn, usuario)
+                loaded = portal_carregar_permissoes(conn, usuario)
+                if isinstance(loaded, dict) and loaded:
+                    permissoes = loaded
             except Exception:
-                permissoes = None
-        else:
-            permissoes = None
+                pass
         return _sso_cors(jsonify({
             'ok': True,
             'usuario': usuario,

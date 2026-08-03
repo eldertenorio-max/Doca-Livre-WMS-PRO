@@ -79,6 +79,31 @@
         fetch((window.API_BASE || '/api') + '/health', { credentials: 'same-origin', cache: 'no-store' }).catch(function () {});
     } catch (e) {}
 
+    function wakeHealth(apiBase, maxMs, onTick) {
+        var started = Date.now();
+        var attempt = 0;
+        function once() {
+            attempt += 1;
+            if (onTick) onTick(attempt, Date.now() - started);
+            if (Date.now() - started > maxMs) return Promise.resolve(false);
+            var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            var t = setTimeout(function () { if (ctrl) ctrl.abort(); }, 20000);
+            return fetch(apiBase + '/health', {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                signal: ctrl ? ctrl.signal : undefined
+            }).then(function (r) {
+                clearTimeout(t);
+                if (r.ok) return true;
+                return new Promise(function (res) { setTimeout(function () { res(once()); }, 800); });
+            }).catch(function () {
+                clearTimeout(t);
+                return new Promise(function (res) { setTimeout(function () { res(once()); }, 800); });
+            });
+        }
+        return once();
+    }
+
     formLogin.addEventListener('submit', function (e) {
         e.preventDefault();
         mostrarErro(msgErroLogin);
@@ -90,9 +115,9 @@
         var apiBase = (window.API_BASE || '/api');
 
         function doLogin() {
-            btnEntrar.textContent = 'Entrando…';
+            btnEntrar.textContent = 'Validando usuário…';
             var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-            var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 20000);
+            var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 25000);
             return fetch(apiBase + '/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -129,16 +154,20 @@
             });
         }
 
-        // Wake rápido (máx 8s) + login — se health já estiver quente, login segue na hora.
-        var wakeCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        var wakeTimer = setTimeout(function () { if (wakeCtrl) wakeCtrl.abort(); }, 8000);
-        fetch(apiBase + '/health', {
-            credentials: 'same-origin',
-            cache: 'no-store',
-            signal: wakeCtrl ? wakeCtrl.signal : undefined
-        }).catch(function () {}).finally(function () {
-            clearTimeout(wakeTimer);
-            doLogin();
+        // Cold start do free costuma demorar ~30s; não desiste no 1º socket fechado.
+        wakeHealth(apiBase, 90000, function (attempt, elapsed) {
+            var sec = Math.max(1, Math.round(elapsed / 1000));
+            btnEntrar.textContent = sec <= 2
+                ? 'Acordando servidor (plano free)…'
+                : ('Acordando servidor… ' + sec + 's');
+        }).then(function (ok) {
+            if (!ok) {
+                mostrarErro(msgErroLogin, 'Servidor ainda acordando. Aguarde ~1 min e tente de novo.');
+                btnEntrar.disabled = false;
+                btnEntrar.textContent = labelAntes || 'Entrar';
+                return;
+            }
+            return doLogin();
         });
     });
 
