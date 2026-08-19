@@ -3748,6 +3748,7 @@ def painel():
         'index.html',
         usuario=session.get('usuario', ''),
         portal_public_url=(portal_url or 'https://wms.docalivre.com.br/').rstrip('/') + '/?hub=1',
+        hub_api_url=(os.environ.get('HUB_API_URL') or 'https://dockhub-api.onrender.com').strip(),
     )
 
 

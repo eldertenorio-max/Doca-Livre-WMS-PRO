@@ -2989,7 +2989,7 @@ var _SIDEBAR_ICONES = {
         'enderecamento': '📍', ocupacao: '📈', 'estoque-seguranca': '🛡️', 'shelf-life': '⏱️', 'visao-cruzada': '🔀',
         inventario: '🔢', pesquisa: '🔍',
         asn: '📨', 'config-rfq': '⚙️', 'qa-lote': '🧪', 'picking-avancado': '🛤️',
-        yms: '🚛', '3pl': '🏢', verticais: '🏭'
+        yms: '🚛', hub: '📅', '3pl': '🏢', verticais: '🏭'
     }
 };
 
@@ -4839,7 +4839,9 @@ function _wmsMostrarSubtab(tab) {
                 if (typeof loadWmsVisaoCruzada === 'function') await _wmsAwaitMaybe(loadWmsVisaoCruzada());
             } else if (tab === 'inventario') await _wmsAwaitMaybe(loadWmsInventarios());
             else if (tab === 'pesquisa') await _wmsAwaitMaybe(typeof loadWmsPesquisaSku === 'function' ? loadWmsPesquisaSku() : null);
-            else if (tab === 'asn' || tab === 'config-rfq' || tab === 'qa-lote' || tab === 'picking-avancado' ||
+            else if (tab === 'hub') {
+                if (typeof window.loadWmsHubTab === 'function') await _wmsAwaitMaybe(window.loadWmsHubTab());
+            } else if (tab === 'asn' || tab === 'config-rfq' || tab === 'qa-lote' || tab === 'picking-avancado' ||
                      tab === 'yms' || tab === '3pl' || tab === 'verticais') {
                 if (typeof window.initWmsRfqUi === 'function') window.initWmsRfqUi();
                 if (typeof window.loadWmsRfqTab === 'function') await _wmsAwaitMaybe(window.loadWmsRfqTab(tab));

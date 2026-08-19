@@ -33,10 +33,12 @@ PORTAL_MODULOS_CATALOGO: dict[str, list[dict[str, str]]] = {
         {'id': 'inventarios', 'label': 'Inventários'},
         {'id': 'contagem', 'label': 'Contagem diária'},
         {'id': 'estoque', 'label': 'Estoque'},
+        {'id': 'agendamentos', 'label': 'Agendamentos'},
     ],
     'plus': [
         {'id': 'consulta', 'label': 'Consulta'},
         {'id': 'entrada', 'label': 'Entrada'},
+        {'id': 'agendamentosHub', 'label': 'Agendamentos'},
         {'id': 'saida', 'label': 'Saída'},
         {'id': 'editar', 'label': 'Editar posição'},
         {'id': 'canceladas', 'label': 'Canceladas'},

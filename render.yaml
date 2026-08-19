@@ -44,6 +44,8 @@ services:
         value: require
       - key: DATABASE_URL
         sync: false
+      - key: HUB_API_URL
+        sync: false
       - key: RAVEX_USER
         sync: false
       - key: RAVEX_PASSWORD
@@ -78,6 +80,8 @@ services:
       - key: PGSSLMODE
         value: require
       - key: DATABASE_URL
+        sync: false
+      - key: HUB_API_URL
         sync: false
       - key: RAVEX_USER
         sync: false
