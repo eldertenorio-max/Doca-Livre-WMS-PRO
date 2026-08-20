@@ -2338,7 +2338,7 @@ def _sso_cors(resp):
     else:
         resp.headers['Access-Control-Allow-Origin'] = '*'
     resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-    resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+    resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
     return resp
 
 
@@ -3669,10 +3669,12 @@ def api_listar_usuarios():
     return jsonify([{'usuario': row['usuario'], 'criado_em': row['criado_em'] or ''} for row in rows])
 
 
-@app.route('/api/health')
+@app.route('/api/health', methods=['GET', 'OPTIONS'])
 def api_health():
-    """Health check leve para proxy/hospedagem (Render)."""
-    return jsonify({'ok': True, 'env': _app_env()}), 200
+    """Health check leve para proxy/hospedagem (Render) e wake do portal Plus (CORS)."""
+    if request.method == 'OPTIONS':
+        return _sso_cors(make_response(('', 204)))
+    return _sso_cors(jsonify({'ok': True, 'env': _app_env()})), 200
 
 
 @app.route('/sw.js')
