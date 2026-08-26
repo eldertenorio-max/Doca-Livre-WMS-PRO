@@ -739,21 +739,45 @@ def api_picking_onda():
 
 @bp.post('/picking/rota')
 def api_picking_rota():
-    """Ordena picks por corredor/endereço (grafo simplificado)."""
+    """Ordena picks pela sequência de rota (serpentina / sentido do corredor)."""
     if not flag_enabled('picking_rota'):
         return jsonify({'ok': False, 'erro': 'flag picking_rota desligada'}), 403
     data = request.get_json(silent=True) or {}
     picks = list(data.get('picks') or [])
+    try:
+        from wms_endereco import parse_codigo_wms
+        from wms_enderecamento import _chave_travel_item
+        travel = True
+    except Exception:
+        parse_codigo_wms = None
+        _chave_travel_item = None
+        travel = False
 
     def sort_key(p):
-        end = str(p.get('endereco') or p.get('localizacao') or '')
+        end = str(p.get('endereco') or p.get('localizacao') or p.get('codigo_endereco') or '')
+        if travel:
+            item = {
+                'camara': p.get('camara'),
+                'rua': p.get('rua'),
+                'posicao': p.get('posicao'),
+                'nivel': p.get('nivel'),
+                'endereco': end,
+            }
+            parsed = parse_codigo_wms(end) if parse_codigo_wms else None
+            if parsed:
+                item.update(parsed)
+            return _chave_travel_item(item)
         parts = end.replace('-', '/').split('/')
         return tuple(parts)
 
     ordenados = sorted(picks, key=sort_key)
     for i, p in enumerate(ordenados, 1):
         p['seq_rota'] = i
-    return jsonify({'ok': True, 'picks': ordenados, 'algoritmo': 'corredor_endereco'})
+    return jsonify({
+        'ok': True,
+        'picks': ordenados,
+        'algoritmo': 'travel_sequence' if travel else 'corredor_endereco',
+    })
 
 
 @bp.post('/rfid/read')

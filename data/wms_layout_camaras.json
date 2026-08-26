@@ -44,6 +44,16 @@
       ]
     }
   ],
+  "sequencia_rota": {
+    "padrao": "serpentina",
+    "sentido_nivel": "asc",
+    "camaras": {
+      "11": { "sentido_posicao": { "A": "asc", "B": "desc" } },
+      "12": { "sentido_posicao": { "C": "asc", "D": "desc" } },
+      "13": { "sentido_posicao": { "E": "asc", "F": "desc" } },
+      "21": { "sentido_posicao": { "G": "asc", "H": "desc" } }
+    }
+  },
   "camaras": [
     {
       "codigo": 11,

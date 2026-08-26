@@ -24,6 +24,14 @@ from wms_etiqueta_zebra import (
     zpl_longarina_grid_dots,
 )
 from wms_etiqueta_excel import gerar_workbook_longarina
+from wms_endereco import (
+    barcode_longarina as _barcode_longarina_mod,
+    barcode_longarina_base as _barcode_longarina_base_mod,
+    codigo_endereco as _codigo_endereco_mod,
+    digito_verificador as _digito_verificador_mod,
+    parse_bip as _parse_bip_mod,
+    parse_codigo_wms as _parse_codigo_wms_mod,
+)
 
 bp = Blueprint('wms_enderecamento', __name__)
 
@@ -217,7 +225,7 @@ def _formatar_data_etiqueta(val):
 
 
 def _codigo_endereco(camara, rua, posicao, nivel):
-    return f'{int(camara):02d}-{str(rua).strip().upper()}-{int(posicao):02d}-{int(nivel)}'
+    return _codigo_endereco_mod(camara, rua, posicao, nivel)
 
 
 def _ruas_camara(camara):
@@ -245,16 +253,14 @@ def _apto_para_rua(camara, apto):
 
 
 def _barcode_longarina(camara, posicao, nivel, apto=None, rua=None):
-    """Código de bipagem da longarina: Câmara · Coluna · Nível (ex.: 12.14.1)."""
-    return f'{int(camara)}.{int(posicao)}.{int(nivel)}'
+    """Bipagem da longarina com dígito verificador (ex.: 12.14.1*47)."""
+    if not rua and apto is not None:
+        rua = _apto_para_rua(camara, apto)
+    return _barcode_longarina_mod(camara, posicao, nivel, rua=rua)
 
 
 def _barcode_longarina_base(bc):
-    """Normaliza para os 3 primeiros segmentos (compatível com etiquetas antigas 4 partes)."""
-    parts = (bc or '').strip().replace(' ', '').split('.')
-    if len(parts) >= 3 and all(p.isdigit() for p in parts[:3]):
-        return f'{int(parts[0])}.{int(parts[1])}.{int(parts[2])}'
-    return (bc or '').strip()
+    return _barcode_longarina_base_mod(bc)
 
 
 def _codigo_endereco_por_cam_col_niv(conn, camara, posicao, nivel):
@@ -272,27 +278,65 @@ def _codigo_endereco_por_cam_col_niv(conn, camara, posicao, nivel):
 
 
 def _resolver_codigo_endereco_bip(codigo, conn=None):
-    """Aceita bip da longarina (12.14.1 ou legado 12.14.1.1) ou código interno (12-C-14-1)."""
-    raw = (codigo or '').strip()
-    if not raw:
+    """Aceita bip da longarina (12.14.1*DV, 12.14.1 ou legado 12.14.1.1) ou código WMS (12-C-14-1)."""
+    parsed = _parse_bip_mod(codigo)
+    if parsed.get('erro') and not parsed.get('ok'):
         return None
-    up = raw.upper().replace(' ', '')
-    m_int = re.match(r'^(\d{1,2})-([A-Z]{1,3})-(\d{1,2})-(\d{1,2})$', up)
-    if m_int:
-        cam, rua, pos, niv = m_int.groups()
-        return _codigo_endereco(int(cam), rua, int(pos), int(niv))
-    m4 = re.match(r'^(\d+)\.(\d+)\.(\d+)\.(\d+)$', raw.replace(' ', ''))
-    if m4:
-        cam, pos, niv, apto = (int(x) for x in m4.groups())
-        rua = _apto_para_rua(cam, apto)
+    if parsed.get('codigo_wms'):
+        rua = parsed.get('rua')
+        dv = parsed.get('dv')
+        if dv and rua:
+            if dv != _digito_verificador_mod(
+                parsed['camara'], rua, parsed['posicao'], parsed['nivel']
+            ):
+                return None
+        return parsed['codigo_wms']
+    cam = parsed.get('camara')
+    pos = parsed.get('posicao')
+    niv = parsed.get('nivel')
+    if cam is None or pos is None or niv is None:
+        return None
+    if parsed.get('apto') is not None:
+        rua = _apto_para_rua(cam, parsed['apto'])
         return _codigo_endereco(cam, rua, pos, niv)
-    m3 = re.match(r'^(\d+)\.(\d+)\.(\d+)$', raw.replace(' ', ''))
-    if m3:
-        cam, pos, niv = (int(x) for x in m3.groups())
-        if conn:
-            cod = _codigo_endereco_por_cam_col_niv(conn, cam, pos, niv)
-            if cod:
-                return cod
+    dv = parsed.get('dv')
+    ruas = _ruas_camara(cam)
+    if dv and ruas:
+        matches = [
+            r for r in ruas
+            if _digito_verificador_mod(cam, r, pos, niv) == dv
+        ]
+        if len(matches) == 1:
+            return _codigo_endereco(cam, matches[0], pos, niv)
+        if not matches:
+            return None
+    if conn:
+        cod = _codigo_endereco_por_cam_col_niv(conn, cam, pos, niv)
+        if cod:
+            return cod
+    return None
+
+
+def _erro_bip_endereco(codigo):
+    parsed = _parse_bip_mod(codigo)
+    if parsed.get('erro'):
+        return parsed['erro']
+    dv = parsed.get('dv')
+    cam = parsed.get('camara')
+    pos = parsed.get('posicao')
+    niv = parsed.get('nivel')
+    if dv and cam is not None and pos is not None and niv is not None:
+        rua = parsed.get('rua')
+        if rua:
+            if dv != _digito_verificador_mod(cam, rua, pos, niv):
+                return 'Dígito verificador inválido. Bipe a etiqueta da posição, não digite de memória.'
+        else:
+            matches = [
+                r for r in _ruas_camara(cam)
+                if _digito_verificador_mod(cam, r, pos, niv) == dv
+            ]
+            if not matches:
+                return 'Dígito verificador inválido. Bipe a etiqueta da posição, não digite de memória.'
     return None
 
 
@@ -377,6 +421,181 @@ def _layout_camaras_config():
 
 def _layout_bloqueios_fisicos():
     return (_layout_camaras_config().get('bloqueios_fisicos') or [])
+
+
+def _sequencia_rota_layout():
+    """Sentido de corredor (serpentina) por câmara/rua — JSON de layout."""
+    cfg = _layout_camaras_config().get('sequencia_rota') or {}
+    camaras_cfg = cfg.get('camaras') or {}
+    padrao_nivel = (cfg.get('sentido_nivel') or 'asc').lower()
+    out = {}
+    for bloco in (_layout_camaras_config().get('camaras') or []):
+        cam = str(int(bloco.get('codigo') or 0))
+        ruas = [str(r).strip().upper() for r in (bloco.get('ruas') or [])]
+        spec = camaras_cfg.get(cam) or camaras_cfg.get(int(cam) if cam.isdigit() else cam) or {}
+        sentido = spec.get('sentido_posicao') or {}
+        nivel = (spec.get('sentido_nivel') or padrao_nivel).lower()
+        pos_map = {}
+        for i, rua in enumerate(ruas):
+            raw = str(sentido.get(rua) or sentido.get(rua.lower()) or '').lower()
+            if raw in ('asc', 'desc', 'crescente', 'decrescente'):
+                pos_map[rua] = 'desc' if raw in ('desc', 'decrescente') else 'asc'
+            else:
+                pos_map[rua] = 'desc' if i % 2 else 'asc'
+        out[int(cam)] = {'ruas': ruas, 'sentido_posicao': pos_map, 'sentido_nivel': nivel}
+    return out
+
+
+def _sql_ident_rua(rua):
+    return re.sub(r'[^A-Z0-9]', '', str(rua or '').upper())[:3]
+
+
+def _sql_ordem_rota(camara, conn=None):
+    """ORDER BY rua na ordem da planta, posição no sentido do corredor, nível."""
+    spec = _rota_camara(camara, conn)
+    ruas = spec.get('ruas') or []
+    sentido = spec.get('sentido_posicao') or {}
+    nivel_dir = spec.get('sentido_nivel') or 'asc'
+    if not ruas:
+        niv = 'l.nivel DESC' if nivel_dir == 'desc' else 'l.nivel'
+        return f'l.rua, l.posicao, {niv}'
+    rua_whens = []
+    pos_whens = []
+    for i, rua in enumerate(ruas):
+        ident = _sql_ident_rua(rua)
+        if not ident:
+            continue
+        rua_whens.append(f"WHEN UPPER(TRIM(l.rua)) = '{ident}' THEN {i}")
+        if sentido.get(rua) == 'desc':
+            pos_whens.append(f"WHEN UPPER(TRIM(l.rua)) = '{ident}' THEN -l.posicao")
+        else:
+            pos_whens.append(f"WHEN UPPER(TRIM(l.rua)) = '{ident}' THEN l.posicao")
+    rua_sql = f"CASE {' '.join(rua_whens)} ELSE 99 END" if rua_whens else 'l.rua'
+    pos_sql = f"CASE {' '.join(pos_whens)} ELSE l.posicao END" if pos_whens else 'l.posicao'
+    niv_sql = 'l.nivel DESC' if nivel_dir == 'desc' else 'l.nivel'
+    return f'{rua_sql}, {pos_sql}, {niv_sql}'
+
+
+def _rota_camara(camara, conn=None):
+    spec = dict(_sequencia_rota_layout().get(int(camara)) or {})
+    spec['sentido_posicao'] = dict(spec.get('sentido_posicao') or {})
+    if conn is None:
+        return spec
+    try:
+        t = _tbl(conn, 'wms_sequencia_rota')
+        rows = conn.execute(
+            f'SELECT rua, sentido_posicao, sentido_nivel FROM {t} WHERE camara = ?',
+            (int(camara),),
+        ).fetchall()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return spec
+    for r in rows or []:
+        rd = _row_dict(r) or {}
+        rua = str(rd.get('rua') or '').strip().upper()
+        if not rua:
+            continue
+        sp = str(rd.get('sentido_posicao') or '').lower()
+        spec['sentido_posicao'][rua] = 'desc' if sp in ('desc', 'decrescente') else 'asc'
+        sn = str(rd.get('sentido_nivel') or '').lower()
+        if sn in ('asc', 'desc'):
+            spec['sentido_nivel'] = sn
+    return spec
+
+
+def _chave_travel_item(item, conn=None):
+    cam = item.get('camara')
+    rua = str(item.get('rua') or '').upper()
+    pos = item.get('posicao')
+    niv = item.get('nivel')
+    if cam is None or not rua:
+        parsed = _parse_codigo_wms_mod(item.get('endereco') or item.get('codigo_endereco') or '')
+        if parsed:
+            cam = parsed.get('camara') if cam is None else cam
+            rua = rua or str(parsed.get('rua') or '').upper()
+            pos = pos if pos is not None else parsed.get('posicao')
+            niv = niv if niv is not None else parsed.get('nivel')
+    if cam is None:
+        return (99, 99, 0, 0)
+    spec = _rota_camara(int(cam), conn)
+    ruas = spec.get('ruas') or []
+    idx = ruas.index(rua) if rua in ruas else 99
+    desc = (spec.get('sentido_posicao') or {}).get(rua) == 'desc'
+    pos_ord = -(int(pos or 0)) if desc else int(pos or 0)
+    niv_ord = int(niv or 0)
+    if (spec.get('sentido_nivel') or 'asc') == 'desc':
+        niv_ord = -niv_ord
+    return (int(cam), idx, pos_ord, niv_ord)
+
+
+def _listar_sequencia_rota(conn=None):
+    """Sentido de cada corredor: JSON de planta + overrides do banco."""
+    layout = _sequencia_rota_layout()
+    db_map = {}
+    if conn is not None:
+        try:
+            t = _tbl(conn, 'wms_sequencia_rota')
+            rows = conn.execute(
+                f'SELECT camara, rua, sentido_posicao, sentido_nivel FROM {t}'
+            ).fetchall()
+            for r in rows or []:
+                rd = _row_dict(r) or {}
+                cam = int(rd.get('camara') or 0)
+                rua = str(rd.get('rua') or '').strip().upper()
+                if not cam or not rua:
+                    continue
+                db_map[(cam, rua)] = rd
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    out = []
+    for cam, spec in sorted(layout.items()):
+        nivel_padrao = spec.get('sentido_nivel') or 'asc'
+        for rua in spec.get('ruas') or []:
+            db = db_map.get((int(cam), rua)) or {}
+            sp = str(db.get('sentido_posicao') or (spec.get('sentido_posicao') or {}).get(rua) or 'asc').lower()
+            sn = str(db.get('sentido_nivel') or nivel_padrao).lower()
+            out.append({
+                'camara': int(cam),
+                'rua': rua,
+                'sentido_posicao': 'desc' if sp in ('desc', 'decrescente') else 'asc',
+                'sentido_nivel': 'desc' if sn == 'desc' else 'asc',
+            })
+    return out
+
+
+def _salvar_sequencia_rota(conn, linhas):
+    _ensure_sequencia_rota_table(conn)
+    t = _tbl(conn, 'wms_sequencia_rota')
+    n = 0
+    for raw in linhas or []:
+        try:
+            cam = int(raw.get('camara') or 0)
+        except (TypeError, ValueError):
+            continue
+        rua = str(raw.get('rua') or '').strip().upper()
+        if not cam or not rua:
+            continue
+        sp = str(raw.get('sentido_posicao') or 'asc').lower()
+        sn = str(raw.get('sentido_nivel') or 'asc').lower()
+        sp = 'desc' if sp in ('desc', 'decrescente') else 'asc'
+        sn = 'desc' if sn == 'desc' else 'asc'
+        conn.execute(
+            f'''INSERT INTO {t} (camara, rua, sentido_posicao, sentido_nivel)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (camara, rua) DO UPDATE SET
+                  sentido_posicao = EXCLUDED.sentido_posicao,
+                  sentido_nivel = EXCLUDED.sentido_nivel''',
+            (cam, rua, sp, sn),
+        )
+        n += 1
+    conn.commit()
+    return n
 
 
 def _celula_bloqueada_fisica(camara, rua, posicao, nivel):
@@ -2327,7 +2546,7 @@ def _buscar_vaga_putaway_fifo(
                   AND {_sql_putaway_tipo_ok('l')}
                   AND {_bloqueio_off_sql(conn, 'l.bloqueio_entrada')}
                   {filtro_cod}
-                ORDER BY {prefix}l.rua, l.posicao, l.nivel''',
+                ORDER BY {prefix}{_sql_ordem_rota(cam, conn)}''',
             tuple(params),
         ).fetchall()
         rows.extend(chunk or [])
@@ -2892,6 +3111,39 @@ def _ensure_wms_aux_data(conn):
     _WMS_AUX_DATA_READY = True
 
 
+def _ensure_sequencia_rota_table(conn):
+    t = _tbl(conn, 'wms_sequencia_rota')
+    try:
+        if _is_pg(conn):
+            conn.execute(
+                f'''CREATE TABLE IF NOT EXISTS {t} (
+                    camara INTEGER NOT NULL,
+                    rua TEXT NOT NULL,
+                    sentido_posicao TEXT NOT NULL DEFAULT 'asc',
+                    sentido_nivel TEXT NOT NULL DEFAULT 'asc',
+                    PRIMARY KEY (camara, rua)
+                )'''
+            )
+            conn.commit()
+            _ensure_pg_rls_basico(conn, 'wms_sequencia_rota')
+        else:
+            conn.execute(
+                '''CREATE TABLE IF NOT EXISTS wms_sequencia_rota (
+                    camara INTEGER NOT NULL,
+                    rua TEXT NOT NULL,
+                    sentido_posicao TEXT NOT NULL DEFAULT 'asc',
+                    sentido_nivel TEXT NOT NULL DEFAULT 'asc',
+                    PRIMARY KEY (camara, rua)
+                )'''
+            )
+            conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
 def ensure_wms_schema(conn):
     """DDL leve das tabelas WMS. Sem UPDATE em massa nem inserts de stage/áreas."""
     global _WMS_SCHEMA_READY
@@ -2907,6 +3159,7 @@ def ensure_wms_schema(conn):
             (_ensure_wms_palete_item_disposicao, 'palete_item_disposicao'),
             (_ensure_wms_palete_controle_table, 'palete_controle'),
             (_ensure_movimentacao_expedicao_columns, 'movimentacao_expedicao'),
+            (_ensure_sequencia_rota_table, 'sequencia_rota'),
         ):
             try:
                 fn(conn)
@@ -3153,6 +3406,7 @@ def ensure_wms_schema(conn):
     _ensure_produto_planejamento_columns(conn)
     _ensure_wms_palete_controle_table(conn)
     _ensure_wms_inventario_linha_produto_columns(conn)
+    _ensure_sequencia_rota_table(conn)
     _WMS_SCHEMA_READY = True
 
 
@@ -3866,6 +4120,12 @@ def _lista_picking_roteiro(conn, id_roteiro, id_viagem):
                 'zona_label': '—',
                 'alerta': 'quantidade_insuficiente',
             })
+    com_end = [x for x in lista if x.get('endereco')]
+    sem_end = [x for x in lista if not x.get('endereco')]
+    com_end.sort(key=lambda x: _chave_travel_item(x, conn))
+    lista = com_end + sem_end
+    for i, item in enumerate(lista, 1):
+        item['sequencia'] = i
     return lista, None
 
 
@@ -5331,7 +5591,7 @@ def _transferir_palete_armazem(conn, codigo_palete, codigo_destino, observacao=N
 
     cod_resolvido = _resolver_codigo_endereco_bip(codigo_destino, conn=conn) or (codigo_destino or '').strip().upper()
     if not cod_resolvido:
-        return None, 'Endereço de destino inválido. Bipe a etiqueta da longarina (ex.: 12.14.1).'
+        return None, 'Endereço de destino inválido. Bipe a etiqueta da longarina (ex.: 12.14.1*47).'
     loc = conn.execute(
         f'''SELECT * FROM {t_loc}
             WHERE codigo_endereco = ? OR UPPER(codigo_endereco) = ?''',
@@ -6457,6 +6717,7 @@ def _painel_payload_shell(**extra):
         'camaras': cams,
         'distribuicao_categoria': [],
         'zoneamento': zone,
+        'sequencia_rota': _listar_sequencia_rota(None),
         'pesos_categoria': {'A': 1, 'B': 1, 'C': 1, 'D': 1},
         'pesos_posicoes_categoria': {'A': 1, 'B': 1, 'C': 1, 'D': 1},
         'resumo_status_planejamento': {},
@@ -6591,6 +6852,7 @@ def api_wms_painel():
             _safe('paletes_fora', lambda: _contar_paletes_fora(conn), 0) if completo else 0
         )
         resumo_status = _safe('resumo_status', lambda: _resumo_status_planejamento(conn), {})
+        sequencia_rota = _safe('sequencia_rota', lambda: _listar_sequencia_rota(conn), [])
 
         try:
             conn.close()
@@ -6601,6 +6863,7 @@ def api_wms_painel():
             'camaras': camaras,
             'distribuicao_categoria': dist_cat,
             'zoneamento': zoneamento,
+            'sequencia_rota': sequencia_rota,
             'pesos_categoria': dict(pesos_pos),
             'pesos_posicoes_categoria': pesos_pos,
             'resumo_status_planejamento': resumo_status,
@@ -6661,7 +6924,7 @@ def _format_locacao_leve(loc):
         'nivel': niv,
         'codigo_endereco': cod,
         'codigo_wms': cod,
-        'barcode_longarina': _barcode_longarina(cam, pos, niv),
+        'barcode_longarina': _barcode_longarina(cam, pos, niv, rua=rua),
         'status': (d.get('status') or 'vazia'),
         'area': d.get('area') or '',
         'categoria_zona': (d.get('categoria_zona') or '').strip().upper(),
@@ -6829,7 +7092,7 @@ def _build_mapa_layout_payload(por_codigo=None, camara_filtro=None):
                 'posicao': pos,
                 'nivel': niv,
                 'codigo_endereco': cod_end,
-                'barcode_longarina': _barcode_longarina(cod_cam, pos, niv),
+                'barcode_longarina': _barcode_longarina(cod_cam, pos, niv, rua=rua),
                 'status': (loc.get('status') or 'vazia').strip().lower(),
                 'categoria_zona': (loc.get('categoria_zona') or '').strip().upper() or None,
                 'zona_armazenagem': (loc.get('zona_armazenagem') or _zona_por_nivel(niv)).lower(),
@@ -7935,7 +8198,14 @@ def api_wms_recebimentos():
                     'erro': 'Bipe a etiqueta da longarina ou coluna para validar a entrada.',
                     'sugestao': sug_aplicada,
                 }), 400
-            cod_resolvido = _resolver_codigo_endereco_bip(cod_bip, conn=conn) or cod_bip.upper()
+            cod_resolvido = _resolver_codigo_endereco_bip(cod_bip, conn=conn) or None
+            if not cod_resolvido:
+                err_bip = _erro_bip_endereco(cod_bip) or (
+                    'Bipe a etiqueta da longarina (com dígito verificador) ou o código WMS.'
+                )
+                conn.close()
+                return jsonify({'erro': err_bip, 'sugestao': sug_aplicada}), 400
+            cod_resolvido = str(cod_resolvido).upper()
             if usar_sugestao and pid:
                 it_sug = conn.execute(
                     f'SELECT sku, lote, data_producao FROM {t_item} WHERE palete_id = ? ORDER BY id DESC LIMIT 1',
@@ -8761,8 +9031,47 @@ def api_wms_zoneamento():
         return jsonify({'erro': str(e)}), 500
 
 
+@bp.route('/sequencia-rota', methods=['GET'])
+def api_wms_sequencia_rota_get():
+    conn = None
+    try:
+        conn = _db()
+        ensure_wms_schema(conn)
+        linhas = _listar_sequencia_rota(conn)
+        conn.close()
+        return jsonify({'ok': True, 'sequencia_rota': linhas})
+    except Exception as e:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+        return jsonify({'ok': True, 'sequencia_rota': _listar_sequencia_rota(None), 'aviso': str(e)})
+
+
+@bp.route('/sequencia-rota', methods=['POST'])
+def api_wms_sequencia_rota_post():
+    conn = _db()
+    ensure_wms_schema(conn)
+    data = request.get_json() or {}
+    linhas = data.get('linhas') or data.get('sequencia_rota') or []
+    try:
+        n = _salvar_sequencia_rota(conn, linhas)
+        _invalidate_wms_painel_cache()
+        out = _listar_sequencia_rota(conn)
+        conn.close()
+        return jsonify({'ok': True, 'salvas': n, 'sequencia_rota': out})
+    except Exception as e:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'erro': str(e)}), 500
+
+
 def _loc_etiqueta_data(loc, nomes_camara=None):
-    """Dados para etiqueta de longarina (Câmara · Coluna · Nível + barcode 12.14.1)."""
+    """Dados para etiqueta de longarina (Câmara · Coluna · Nível + barcode 12.14.1*DV)."""
     d = _row_dict(loc) or {}
     cam = int(d.get('camara') or 0)
     rua = str(d.get('rua') or '').strip().upper()
@@ -9771,8 +10080,8 @@ def api_wms_etiqueta_modelo():
             descricao='Pão de forma integral 500g',
             data_producao='01/06/2025',
             data_validade='01/12/2025',
-            destino='12.14.1 — Câmara 12 · Rua C · Col 14 · Nív 1 (PICKING)',
-            endereco_barcode='12.14.1',
+            destino='12.14.1*47 — Câmara 12 · Rua C · Col 14 · Nív 1 (PICKING)',
+            endereco_barcode=_barcode_longarina(12, 14, 1, rua='C'),
             endereco_texto='Câmara 12 · Rua C · Col 14 · Nív 1 (PICKING)',
             codigo_wms='12-C-14-1',
             up='5020',
@@ -9790,7 +10099,8 @@ def api_wms_etiqueta_modelo():
             {'rua_num': '12', 'rua_letra': 'C', 'predio': '14', 'nivel': str(n), 'apto': '1',
              'camara': '12', 'camara_nome': 'Câmara 12',
              'codigo_wms': f'12-C-14-{n}', 'codigo': f'12-C-14-{n}',
-             'barcode': f'12.14.{n}', 'dotted': f'12.14.{n}',
+             'barcode': _barcode_longarina(12, 14, n, rua='C'),
+             'dotted': _barcode_longarina(12, 14, n, rua='C'),
              'picking': n == 1, 'destino_fixo': False, 'destino_label': None,
              'zona': 'PICKING' if n == 1 else 'PULMÃO',
              'texto_humano': f'Câmara 12 · Rua C · Col 14 · Nív {n} ({("PICKING" if n == 1 else "PULMÃO")})'}
@@ -9944,7 +10254,7 @@ def api_wms_etiqueta_endereco_zpl():
     """Download ZPL nativo (Zebra ZD220) — uma etiqueta."""
     codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip()
     if not codigo:
-        return jsonify({'erro': 'Informe codigo/endereco (ex.: 12.14.1 ou 12-C-14-1).'}), 400
+        return jsonify({'erro': 'Informe codigo/endereco (ex.: 12.14.1*47 ou 12-C-14-1).'}), 400
     conn = _db()
     ensure_wms_schema(conn)
     try:
@@ -10058,7 +10368,7 @@ def api_wms_etiqueta_endereco():
     """Uma etiqueta — path rápido sem banco (layout/código). Evita 502 no Render."""
     codigo = (request.args.get('codigo') or request.args.get('endereco') or '').strip()
     if not codigo:
-        return jsonify({'erro': 'Informe codigo/endereco (ex.: 12.14.1 ou 12-C-14-1).'}), 400
+        return jsonify({'erro': 'Informe codigo/endereco (ex.: 12.14.1*47 ou 12-C-14-1).'}), 400
     auto_print = request.args.get('auto_print', '0') == '1'
     fmt = _formato_longarina_request()
     # HTML padrão: só layout — não abre conexão com o banco.

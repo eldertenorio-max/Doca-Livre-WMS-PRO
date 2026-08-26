@@ -4173,6 +4173,16 @@ function _wmsPainelShellLocal() {
             { categoria: 'D', camara: 13, prioridade: 1, camara_descricao: 'Câmara 13' },
             { categoria: 'D', camara: 21, prioridade: 2, camara_descricao: 'Câmara 21' }
         ],
+        sequencia_rota: [
+            { camara: 11, rua: 'A', sentido_posicao: 'asc', sentido_nivel: 'asc' },
+            { camara: 11, rua: 'B', sentido_posicao: 'desc', sentido_nivel: 'asc' },
+            { camara: 12, rua: 'C', sentido_posicao: 'asc', sentido_nivel: 'asc' },
+            { camara: 12, rua: 'D', sentido_posicao: 'desc', sentido_nivel: 'asc' },
+            { camara: 13, rua: 'E', sentido_posicao: 'asc', sentido_nivel: 'asc' },
+            { camara: 13, rua: 'F', sentido_posicao: 'desc', sentido_nivel: 'asc' },
+            { camara: 21, rua: 'G', sentido_posicao: 'asc', sentido_nivel: 'asc' },
+            { camara: 21, rua: 'H', sentido_posicao: 'desc', sentido_nivel: 'asc' }
+        ],
         pesos_categoria: { A: 1, B: 1, C: 1, D: 1 },
         pesos_posicoes_categoria: { A: 1, B: 1, C: 1, D: 1 },
         resumo_status_planejamento: {},
@@ -7047,6 +7057,11 @@ function initWmsEnderecamento() {
     });
     var bRedis = document.getElementById('btn-wms-redistribuir');
     if (bRedis) bRedis.addEventListener('click', wmsRedistribuirLayout);
+    var bRota = document.getElementById('btn-wms-salvar-rota');
+    if (bRota && !bRota.dataset.bound) {
+        bRota.dataset.bound = '1';
+        bRota.addEventListener('click', function() { void wmsSalvarSequenciaRota(); });
+    }
     var bCtrlBusca = document.getElementById('btn-wms-ctrl-buscar');
     if (bCtrlBusca) bCtrlBusca.addEventListener('click', loadWmsControlePaleteConsulta);
     var bCtrlFora = document.getElementById('btn-wms-ctrl-atualizar-fora');
@@ -7141,6 +7156,59 @@ function _wmsRenderPainel(data) {
         ztb.innerHTML = zona.length ? zona.map(function(z) {
             return '<tr><td>' + escHtml(z.categoria) + '</td><td>' + escHtml(z.camara) + ' — ' + escHtml(z.camara_descricao || '') + '</td><td>' + escHtml(z.prioridade) + '</td></tr>';
         }).join('') : '<tr><td colspan="3">Sem zoneamento.</td></tr>';
+    }
+    var rtb = document.getElementById('wms-tbody-sequencia-rota');
+    if (rtb) wmsRenderSequenciaRota(data.sequencia_rota || []);
+}
+
+function wmsRenderSequenciaRota(linhas) {
+    var rtb = document.getElementById('wms-tbody-sequencia-rota');
+    if (!rtb) return;
+    var rows = linhas && linhas.length ? linhas : [];
+    if (!rows.length) {
+        rtb.innerHTML = '<tr><td colspan="3">Sem sequência de rota no layout.</td></tr>';
+        return;
+    }
+    rtb.innerHTML = rows.map(function(r, i) {
+        var sp = String(r.sentido_posicao || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
+        return '<tr data-rota-idx="' + i + '">' +
+            '<td>' + escHtml(r.camara) + '<input type="hidden" class="wms-rota-cam" value="' + escHtml(r.camara) + '"></td>' +
+            '<td><strong>' + escHtml(r.rua) + '</strong><input type="hidden" class="wms-rota-rua" value="' + escHtml(r.rua) + '"></td>' +
+            '<td><select class="wms-rota-sentido">' +
+            '<option value="asc"' + (sp === 'asc' ? ' selected' : '') + '>Crescente (1 → N)</option>' +
+            '<option value="desc"' + (sp === 'desc' ? ' selected' : '') + '>Decrescente (N → 1)</option>' +
+            '</select></td></tr>';
+    }).join('');
+}
+
+async function wmsSalvarSequenciaRota() {
+    var rtb = document.getElementById('wms-tbody-sequencia-rota');
+    if (!rtb) return;
+    var linhas = [];
+    rtb.querySelectorAll('tr[data-rota-idx]').forEach(function(tr) {
+        var cam = tr.querySelector('.wms-rota-cam');
+        var rua = tr.querySelector('.wms-rota-rua');
+        var sel = tr.querySelector('.wms-rota-sentido');
+        if (!cam || !rua || !sel) return;
+        linhas.push({
+            camara: parseInt(cam.value, 10),
+            rua: rua.value,
+            sentido_posicao: sel.value,
+            sentido_nivel: 'asc'
+        });
+    });
+    if (!linhas.length) {
+        showMessage('Nada para salvar.', 'warning');
+        return;
+    }
+    var data = await fetchAPI('/wms/sequencia-rota', { method: 'POST', body: JSON.stringify({ linhas: linhas }) });
+    if (data && data.ok) {
+        showMessage('Sentido dos corredores salvo.', 'success');
+        _wmsPainelClientCache = { ts: 0, data: null };
+        if (data.sequencia_rota) wmsRenderSequenciaRota(data.sequencia_rota);
+        loadWmsPainel({ force: true });
+    } else {
+        showMessage((data && data.erro) || 'Erro ao salvar sequência de rota.', 'error');
     }
 }
 
@@ -7764,7 +7832,7 @@ function wmsImprimirEtqTodasLongarinas() {
 
 function wmsImprimirEtqUnico() {
     var cod = ((document.getElementById('wms-etq-codigo-unico') || {}).value || '').trim();
-    if (!cod) { showMessage('Informe o código longarina (12.14.1) ou WMS (12-C-14-1).', 'warning'); return; }
+    if (!cod) { showMessage('Informe o código longarina (12.14.1*47) ou WMS (12-C-14-1).', 'warning'); return; }
     wmsImprimirEtqEndereco(cod);
 }
 
@@ -8926,11 +8994,13 @@ function wmsEnderecoBipPareceCompleto(codigo) {
     var c = wmsCompactCodigoEnderecoBip(codigo);
     if (!c) return false;
     // Código WMS: 11-A-04-4
-    if (/^\d{1,2}-[A-Z]{1,3}-\d{1,2}-\d{1,2}$/.test(c)) return true;
+    if (/^\d{1,2}-[A-Z0-9]{1,3}-\d{1,2}-\d{1,2}$/.test(c)) return true;
+    // Bip longarina com DV: 12.14.1*47
+    if (/^\d{1,2}\.\d{1,2}\.\d{1,2}\*\d{2}$/.test(c)) return true;
     // Bip longarina: 11.4.4
     if (/^\d{1,2}\.\d{1,2}\.\d{1,2}$/.test(c)) return true;
-    // Exibição com rua: 13.E.14.4
-    if (/^\d{1,2}\.[A-Z]{1,3}\.\d{1,2}\.\d{1,2}$/.test(c)) return true;
+    // Exibição com rua: 13.E.14.4 ou 13.E.14.4*47
+    if (/^\d{1,2}\.[A-Z0-9]{1,3}\.\d{1,2}\.\d{1,2}(?:\*\d{2})?$/.test(c)) return true;
     // Legado 4 partes numéricas: 12.14.1.1
     if (/^\d{1,2}\.\d{1,2}\.\d{1,2}\.\d{1,2}$/.test(c)) return true;
     return false;
@@ -8975,21 +9045,29 @@ function wmsBarcodeLongarinaExibir(sug) {
     var bc = String(sug.barcode_longarina || '').trim();
     var rua = String(sug.rua_letra || sug.rua || '').trim().toUpperCase();
     var codWms = String(sug.codigo_wms || sug.codigo_endereco || '').trim().toUpperCase();
+    var dv = '';
+    var star = bc.indexOf('*');
+    if (star >= 0) {
+        dv = bc.slice(star);
+        bc = bc.slice(0, star);
+    }
     if (!bc && codWms) {
-        var m = codWms.match(/^(\d{1,2})-([A-Z]{1,3})-(\d{1,2})-(\d{1,2})$/);
+        var m = codWms.match(/^(\d{1,2})-([A-Z0-9]{1,3})-(\d{1,2})-(\d{1,2})$/);
         if (m) {
             rua = rua || m[2];
             bc = parseInt(m[1], 10) + '.' + parseInt(m[3], 10) + '.' + parseInt(m[4], 10);
         }
     }
+    var vis = bc;
     if (rua && bc) {
         var parts = bc.replace(/\s/g, '').split('.');
         if (parts.length === 3) {
-            return parts[0] + '.' + rua + '.' + parts[1] + '.' + parts[2];
+            vis = parts[0] + '.' + rua + '.' + parts[1] + '.' + parts[2];
+        } else {
+            vis = 'Rua ' + rua + ' · ' + bc;
         }
-        return 'Rua ' + rua + ' · ' + bc;
     }
-    return bc || codWms || '';
+    return (vis || bc || codWms || '') + dv;
 }
 
 function wmsFormatarDestinoEtiqueta(sug) {
