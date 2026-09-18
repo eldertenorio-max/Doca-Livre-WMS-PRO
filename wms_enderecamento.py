@@ -8115,25 +8115,11 @@ def api_wms_recebimentos():
                 (estado if disposicao else 'bom', pid),
             )
             sug = {}
-            try:
-                if disposicao:
-                    sug = _sugerir_destino_area_especial(conn, disposicao, dp) or {}
-                else:
-                    sug = _sugerir_putaway(conn, sku, lote, dp, 'pulmao') or {}
-                    if not sug.get('codigo_endereco'):
-                        sug = _sugerir_putaway(conn, sku, lote, dp, 'picking') or sug
-            except Exception as exc:
-                try:
-                    print('[wms/bip_produto] sugestao destino falhou: %s' % exc, flush=True)
-                except Exception:
-                    pass
-                sug = {}
+            # Putaway fica no passo «Guardar» (sugerir_destino). Aqui só grava o item — senão o
+            # Confirmar produto estoura timeout/429 no Render enquanto calcula endereço.
             pal = conn.execute(f'SELECT etiqueta FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
             etiqueta = (pal['etiqueta'] if isinstance(pal, dict) else pal[0]) if pal else None
-            try:
-                mov_id = _criar_mov_pendente_putaway(conn, pid, sug, 'Aguardando bip da longarina')
-            except Exception:
-                mov_id = None
+            mov_id = None
             pal_rec = conn.execute(f'SELECT recebimento_id FROM {t_pal} WHERE id = ?', (pid,)).fetchone()
             rid = (_row_dict(pal_rec) or {}).get('recebimento_id')
             if rid:

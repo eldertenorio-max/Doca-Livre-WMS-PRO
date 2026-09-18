@@ -8438,7 +8438,7 @@ async function wmsGarantirRecebimentoAberto() {
         rid = String(window._wmsNfDoc.recebimento_wms_id);
     }
     if (rid) {
-        wmsSincronizarRecebimentoAberto(rid, { resetarPalete: false });
+        if (hid && !String(hid.value || '').trim()) hid.value = rid;
         return parseInt(rid, 10);
     }
     var nf = (document.getElementById('wms-rec-nf') || {}).value || '';
@@ -8446,8 +8446,9 @@ async function wmsGarantirRecebimentoAberto() {
     if (!window._wmsNfDoc) await wmsBuscarNfDescarga();
     if (!window._wmsNfDoc) return null;
     if (window._wmsNfDoc.recebimento_wms_id) {
-        wmsSincronizarRecebimentoAberto(window._wmsNfDoc.recebimento_wms_id, { resetarPalete: false });
-        return parseInt(window._wmsNfDoc.recebimento_wms_id, 10);
+        var ridDoc = String(window._wmsNfDoc.recebimento_wms_id);
+        if (hid) hid.value = ridDoc;
+        return parseInt(ridDoc, 10);
     }
     var terDoc = (document.getElementById('wms-rec-terceiros-doc-id') || {}).value
         || (window._wmsNfDoc && window._wmsNfDoc.documento_id) || '';
@@ -9640,17 +9641,16 @@ async function wmsBipProduto() {
     if (btn) { btn.disabled = true; btn.textContent = 'Conferindo…'; }
     var msg = document.getElementById('wms-palete-gerado');
     try {
-        // Uma tentativa curta — sem retry triplo de 90s que deixava o botão preso.
+        var postOpts = { method: 'POST', body: JSON.stringify(body) };
         var data = typeof _fetchAPIComTimeoutUma === 'function'
-            ? await _fetchAPIComTimeoutUma('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) }, 25000)
-            : await fetchAPIComTimeout('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) }, 25000);
-        if (data && (data._timeout || data._falhaGateway || data._rateLimit)) {
-            if (data._rateLimit && typeof _fetchAPIComTimeoutUma === 'function') {
-                data = await _fetchAPIComTimeoutUma('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) }, 25000);
-            }
+            ? await _fetchAPIComTimeoutUma('/wms/recebimentos', postOpts, 45000)
+            : await fetchAPIComTimeout('/wms/recebimentos', postOpts, 45000);
+        if (data && data._rateLimit && typeof _fetchAPIComTimeoutUma === 'function') {
+            await new Promise(function(r) { setTimeout(r, 2500); });
+            data = await _fetchAPIComTimeoutUma('/wms/recebimentos', postOpts, 45000);
         }
         if (data && (data._timeout || data._falhaGateway || data._rateLimit)) {
-            wmsMostrarErroBipProduto('Servidor ocupado ao confirmar. Espere 10 segundos e clique de novo em Confirmar produto.');
+            wmsMostrarErroBipProduto('Não deu para confirmar agora. Clique de novo em Confirmar produto.');
             return;
         }
         if (data && data.ok) {
@@ -9682,11 +9682,12 @@ async function wmsBipProduto() {
             wmsBipAtualizarResumos();
             var itemLbl = skuResolved.n_item != null ? ('Item ' + skuResolved.n_item + ' · ') : '';
             showMessage(data.mensagem || ('Produto OK (' + itemLbl + 'clique em Imprimir etiqueta, cole no palete e depois em «Etiqueta colada — ir guardar»).'), 'success');
-            // Refresh pesado em background — não bloqueia o passo a passo.
-            if (!data.sugestao || !data.sugestao.codigo_endereco) {
+            setTimeout(function() {
                 try { void wmsGarantirSugestaoDestino(true); } catch (eS) {}
-            }
-            try { void wmsAtualizarPainelNfDescarga(); } catch (eP) {}
+            }, 400);
+            setTimeout(function() {
+                try { void wmsAtualizarPainelNfDescarga(); } catch (eP) {}
+            }, 1800);
         } else {
             wmsMostrarErroBipProduto((data && data.erro) || 'Erro ao confirmar produto.');
         }
@@ -19275,7 +19276,13 @@ function mensagemErroRespostaNaoJson(status, corpoTexto) {
 // API Calls
 var _apiRateLimitUntil = 0;
 var _apiInflight = 0;
+var _apiWriteInflight = 0;
 var _API_MAX_INFLIGHT = 2;
+
+function _apiIsWriteMethod(method) {
+    var m = String(method || 'GET').toUpperCase();
+    return m !== 'GET' && m !== 'HEAD';
+}
 
 function _apiWaitCooldown() {
     var ms = _apiRateLimitUntil - Date.now();
@@ -19283,10 +19290,19 @@ function _apiWaitCooldown() {
     return new Promise(function(resolve) { setTimeout(resolve, Math.min(ms, 15000)); });
 }
 
-function _apiAcquireSlot() {
+function _apiAcquireSlot(isWrite) {
     return new Promise(function(resolve) {
         function tryAcquire() {
-            if (Date.now() < _apiRateLimitUntil || _apiInflight >= _API_MAX_INFLIGHT) {
+            if (isWrite) {
+                if (_apiWriteInflight >= 1) {
+                    setTimeout(tryAcquire, 80);
+                    return;
+                }
+                _apiWriteInflight++;
+                resolve();
+                return;
+            }
+            if (Date.now() < _apiRateLimitUntil || _apiWriteInflight > 0 || _apiInflight >= _API_MAX_INFLIGHT) {
                 setTimeout(tryAcquire, 160);
                 return;
             }
@@ -19297,8 +19313,9 @@ function _apiAcquireSlot() {
     });
 }
 
-function _apiReleaseSlot() {
-    _apiInflight = Math.max(0, _apiInflight - 1);
+function _apiReleaseSlot(isWrite) {
+    if (isWrite) _apiWriteInflight = Math.max(0, _apiWriteInflight - 1);
+    else _apiInflight = Math.max(0, _apiInflight - 1);
 }
 
 function _apiMarkRateLimited() {
@@ -19324,7 +19341,10 @@ async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
 
 async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
     timeoutMs = timeoutMs == null || timeoutMs < 5000 ? 35000 : timeoutMs;
-    await _apiWaitCooldown();
+    var methodPre = ((options && options.method) ? options.method : 'GET').toString().toUpperCase();
+    var isWrite = _apiIsWriteMethod(methodPre);
+    if (!isWrite) await _apiWaitCooldown();
+    await _apiAcquireSlot(isWrite);
     var ac = new AbortController();
     var timedOut = false;
     var externallyAborted = !!(options && options.signal && options.signal.aborted);
@@ -19352,7 +19372,8 @@ async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
     try {
         var merged = Object.assign({}, options || {}, {
             signal: ac.signal,
-            _abortMeta: { timedOut: false, cancelled: false }
+            _abortMeta: { timedOut: false, cancelled: false },
+            _skipThrottle: true
         });
         // Referência mutável lida no catch do fetchAPI.
         merged._abortMeta = {
@@ -19372,6 +19393,7 @@ async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
         return result;
     } finally {
         window.clearTimeout(tid);
+        _apiReleaseSlot(isWrite);
     }
 }
 
@@ -19380,8 +19402,12 @@ async function fetchAPI(endpoint, options = {}) {
     var method0 = ((options && options.method) ? options.method : 'GET').toString().toUpperCase();
     var canRetry = method0 === 'GET' || method0 === 'HEAD';
     var maxAttempts = canRetry ? 2 : 1; // retry só em leitura (evita duplicar POST)
-    await _apiWaitCooldown();
-    await _apiAcquireSlot();
+    var isWrite0 = _apiIsWriteMethod(method0);
+    var skipThrottle = !!(options && options._skipThrottle);
+    if (!skipThrottle) {
+        if (!isWrite0) await _apiWaitCooldown();
+        await _apiAcquireSlot(isWrite0);
+    }
     try {
     while (attempt < maxAttempts) {
         attempt++;
@@ -19468,7 +19494,7 @@ async function fetchAPI(endpoint, options = {}) {
         _falhaGateway: true
     };
     } finally {
-        _apiReleaseSlot();
+        if (!skipThrottle) _apiReleaseSlot(isWrite0);
     }
 }
 
