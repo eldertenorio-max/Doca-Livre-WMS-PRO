@@ -1,12 +1,18 @@
 /* WMS DOCA LIVRE PRO — service worker mínimo (instalação PWA). */
 
-const CACHE = 'dl-wms-shell-v2'
+const CACHE = 'dl-wms-shell-v3'
 const SHELL = [
   '/manifest.webmanifest',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',
   '/static/logo-doca-livre.png',
 ]
+
+function _isShellAsset(pathname) {
+  return SHELL.some(function (p) {
+    return pathname === p
+  })
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -41,18 +47,19 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
+  /* Só ícones/manifest — nunca API, HTML nem JS da aplicação (evita 429 e dados velhos). */
+  if (!_isShellAsset(url.pathname)) return
+
   event.respondWith(
     caches.match(req).then((cached) => {
-      const network = fetch(req)
-        .then((res) => {
-          if (res && res.status === 200) {
-            const copy = res.clone()
-            caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => undefined)
-          }
-          return res
-        })
-        .catch(() => cached)
-      return cached || network
+      if (cached) return cached
+      return fetch(req).then((res) => {
+        if (res && res.status === 200) {
+          const copy = res.clone()
+          caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => undefined)
+        }
+        return res
+      })
     }),
   )
 })

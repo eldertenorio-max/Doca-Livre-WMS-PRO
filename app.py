@@ -3690,7 +3690,9 @@ def api_health():
 @app.route('/sw.js')
 def service_worker():
     """Service worker na raiz — necessário para instalação PWA."""
-    return send_from_directory(app.static_folder, 'sw.js', mimetype='application/javascript')
+    resp = send_from_directory(app.static_folder, 'sw.js', mimetype='application/javascript')
+    resp.headers['Cache-Control'] = 'no-cache, max-age=0'
+    return resp
 
 
 @app.route('/manifest.webmanifest')

@@ -3981,8 +3981,7 @@ function _wmsErroMsg(data, fallback) {
 async function _wmsFetchGet(path, timeoutMs) {
     // Usa fetchAPIComTimeout diretamente (evita depender de _modFetchGet, definido mais abaixo no arquivo).
     if (typeof fetchAPIComTimeout === 'function') {
-        var sep = path.indexOf('?') >= 0 ? '&' : '?';
-        return fetchAPIComTimeout(path + sep + '_=' + Date.now(), {}, timeoutMs || 45000);
+        return fetchAPIComTimeout(path, {}, timeoutMs || 45000);
     }
     if (typeof _modFetchGet === 'function') {
         return _modFetchGet(path, timeoutMs || 45000);
@@ -3992,10 +3991,8 @@ async function _wmsFetchGet(path, timeoutMs) {
 
 /** GET sem retry triplo — listas devem falhar rápido e atualizar a UI. */
 async function _wmsFetchGetOnce(path, timeoutMs) {
-    var sep = path.indexOf('?') >= 0 ? '&' : '?';
-    var full = path + sep + '_=' + Date.now();
     if (typeof _fetchAPIComTimeoutUma === 'function') {
-        return _fetchAPIComTimeoutUma(full, {}, timeoutMs || 12000);
+        return _fetchAPIComTimeoutUma(path, {}, timeoutMs || 12000);
     }
     return _wmsFetchGet(path, timeoutMs || 12000);
 }
@@ -5275,15 +5272,13 @@ function _wmsEndProgressFinish(section, kind, gen, opts) {
 }
 
 function _wmsEndFetchGet(path, timeoutMs, signal) {
-    var sep = path.indexOf('?') >= 0 ? '&' : '?';
     var opts = signal ? { signal: signal } : {};
-    return _fetchAPIComTimeoutUma(path + sep + '_=' + Date.now(), opts, timeoutMs || 30000);
+    return _fetchAPIComTimeoutUma(path, opts, timeoutMs || 30000);
 }
 
 function _wmsEndFetchGetRetry(path, timeoutMs, signal) {
-    var sep = path.indexOf('?') >= 0 ? '&' : '?';
     var opts = signal ? { signal: signal } : {};
-    return fetchAPIComTimeout(path + sep + '_=' + Date.now(), opts, timeoutMs || 30000);
+    return fetchAPIComTimeout(path, opts, timeoutMs || 30000);
 }
 
 var _WMS_END_OCUP_TTL_MS = 45000;
@@ -9246,6 +9241,12 @@ async function wmsBipEnsurePalete(silent) {
             method: 'POST',
             body: JSON.stringify({ acao: 'bip_palete', recebimento_id: parseInt(rid, 10), etiqueta: '' })
         }, 20000);
+    if (data && data._rateLimit && typeof _fetchAPIComTimeoutUma === 'function') {
+        data = await _fetchAPIComTimeoutUma('/wms/recebimentos', {
+            method: 'POST',
+            body: JSON.stringify({ acao: 'bip_palete', recebimento_id: parseInt(rid, 10), etiqueta: '' })
+        }, 20000);
+    }
     if (data && data.ok) {
         var pidEl = document.getElementById('wms-rec-palete-id');
         if (pidEl) pidEl.value = String(data.palete_id);
@@ -9643,8 +9644,13 @@ async function wmsBipProduto() {
         var data = typeof _fetchAPIComTimeoutUma === 'function'
             ? await _fetchAPIComTimeoutUma('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) }, 25000)
             : await fetchAPIComTimeout('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) }, 25000);
-        if (data && (data._timeout || data._falhaGateway)) {
-            wmsMostrarErroBipProduto('Servidor lento ao confirmar. Espere 10 segundos e clique de novo em Confirmar produto.');
+        if (data && (data._timeout || data._falhaGateway || data._rateLimit)) {
+            if (data._rateLimit && typeof _fetchAPIComTimeoutUma === 'function') {
+                data = await _fetchAPIComTimeoutUma('/wms/recebimentos', { method: 'POST', body: JSON.stringify(body) }, 25000);
+            }
+        }
+        if (data && (data._timeout || data._falhaGateway || data._rateLimit)) {
+            wmsMostrarErroBipProduto('Servidor ocupado ao confirmar. Espere 10 segundos e clique de novo em Confirmar produto.');
             return;
         }
         if (data && data.ok) {
@@ -10539,8 +10545,7 @@ function _carregErroMsg(data, fallback) {
 }
 
 async function _carregFetchGet(path, timeoutMs) {
-    var sep = path.indexOf('?') >= 0 ? '&' : '?';
-    return fetchAPIComTimeout(path + sep + '_=' + Date.now(), {}, timeoutMs || 60000);
+    return fetchAPIComTimeout(path, {}, timeoutMs || 60000);
 }
 
 var _modErroMsg = _carregErroMsg;
@@ -19254,7 +19259,7 @@ function _falhaRateLimitHttpStatus(status) {
 function mensagemErroRespostaNaoJson(status, corpoTexto) {
     var s = Number(status) || 0;
     if (s === 429) {
-        return 'Muitas consultas ao mesmo tempo (HTTP 429). Aguarde alguns segundos e clique em Atualizar ocupação.';
+        return 'Muitas consultas ao mesmo tempo (HTTP 429). Aguarde alguns segundos e tente de novo.';
     }
     if (s === 502 || s === 503 || s === 504 || s === 524) {
         return 'Servidor ocupado ou acordando (erro ' + s + '). Aguarde 20–30 segundos e tente de novo.';
@@ -19268,6 +19273,38 @@ function mensagemErroRespostaNaoJson(status, corpoTexto) {
 }
 
 // API Calls
+var _apiRateLimitUntil = 0;
+var _apiInflight = 0;
+var _API_MAX_INFLIGHT = 2;
+
+function _apiWaitCooldown() {
+    var ms = _apiRateLimitUntil - Date.now();
+    if (ms <= 0) return Promise.resolve();
+    return new Promise(function(resolve) { setTimeout(resolve, Math.min(ms, 15000)); });
+}
+
+function _apiAcquireSlot() {
+    return new Promise(function(resolve) {
+        function tryAcquire() {
+            if (Date.now() < _apiRateLimitUntil || _apiInflight >= _API_MAX_INFLIGHT) {
+                setTimeout(tryAcquire, 160);
+                return;
+            }
+            _apiInflight++;
+            resolve();
+        }
+        tryAcquire();
+    });
+}
+
+function _apiReleaseSlot() {
+    _apiInflight = Math.max(0, _apiInflight - 1);
+}
+
+function _apiMarkRateLimited() {
+    _apiRateLimitUntil = Date.now() + 8000;
+}
+
 /** POST/PUT com limite de tempo e retry em 502/503 (Render acordando). */
 async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
     timeoutMs = timeoutMs == null || timeoutMs < 5000 ? 35000 : timeoutMs;
@@ -19287,6 +19324,7 @@ async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
 
 async function _fetchAPIComTimeoutUma(endpoint, options, timeoutMs) {
     timeoutMs = timeoutMs == null || timeoutMs < 5000 ? 35000 : timeoutMs;
+    await _apiWaitCooldown();
     var ac = new AbortController();
     var timedOut = false;
     var externallyAborted = !!(options && options.signal && options.signal.aborted);
@@ -19342,6 +19380,9 @@ async function fetchAPI(endpoint, options = {}) {
     var method0 = ((options && options.method) ? options.method : 'GET').toString().toUpperCase();
     var canRetry = method0 === 'GET' || method0 === 'HEAD';
     var maxAttempts = canRetry ? 2 : 1; // retry só em leitura (evita duplicar POST)
+    await _apiWaitCooldown();
+    await _apiAcquireSlot();
+    try {
     while (attempt < maxAttempts) {
         attempt++;
         try {
@@ -19369,6 +19410,7 @@ async function fetchAPI(endpoint, options = {}) {
                 }
                 if (!response.ok && data && typeof data === 'object' && _falhaRateLimitHttpStatus(response.status)) {
                     data._rateLimit = true;
+                    _apiMarkRateLimited();
                     if (!data.erro) data.erro = mensagemErroRespostaNaoJson(response.status, '');
                     return data;
                 }
@@ -19384,6 +19426,7 @@ async function fetchAPI(endpoint, options = {}) {
             const text = await response.text();
             var gateway = _falhaGatewayHttpStatus(response.status);
             var rateLimit = _falhaRateLimitHttpStatus(response.status);
+            if (rateLimit) _apiMarkRateLimited();
             if (gateway && attempt < maxAttempts) {
                 await new Promise(function(r) { setTimeout(r, 1500 * attempt); });
                 continue;
@@ -19424,6 +19467,9 @@ async function fetchAPI(endpoint, options = {}) {
         erro: 'Servidor ocupado ou acordando (erro 502). Aguarde 20–30 segundos e tente de novo.',
         _falhaGateway: true
     };
+    } finally {
+        _apiReleaseSlot();
+    }
 }
 
 function _ravexLoadingSetCancelVisible(visivel, onCancel) {
