@@ -5286,6 +5286,42 @@ function _wmsEndFetchGetRetry(path, timeoutMs, signal) {
     return fetchAPIComTimeout(path + sep + '_=' + Date.now(), opts, timeoutMs || 30000);
 }
 
+var _WMS_END_OCUP_TTL_MS = 45000;
+var _wmsEndOcupacaoCache = { ts: 0, data: null };
+var _wmsEndOcupacaoInflight = null;
+
+function _wmsEndFetchOcupacaoLeve(opts) {
+    opts = opts || {};
+    var force = !!opts.force;
+    var signal = opts.signal || null;
+    var now = Date.now();
+    if (!force && _wmsEndOcupacaoCache.data && !_wmsEndOcupacaoCache.data.erro
+        && (now - (_wmsEndOcupacaoCache.ts || 0)) < _WMS_END_OCUP_TTL_MS) {
+        return Promise.resolve(_wmsEndOcupacaoCache.data);
+    }
+    var sess = typeof _wmsSessionCacheGet === 'function' ? _wmsSessionCacheGet('end_ocupacao') : null;
+    if (!force && sess && sess.data && !sess.data.erro
+        && (now - (sess.ts || 0)) < _WMS_END_OCUP_TTL_MS) {
+        _wmsEndOcupacaoCache = { ts: sess.ts, data: sess.data };
+        return Promise.resolve(sess.data);
+    }
+    if (_wmsEndOcupacaoInflight) return _wmsEndOcupacaoInflight;
+    var path = '/wms/enderecamento?leve=1' + (force ? '&force=1&_=' + Date.now() : '');
+    var fetchOpts = signal ? { signal: signal } : {};
+    _wmsEndOcupacaoInflight = fetchAPIComTimeout(path, fetchOpts, 90000).then(function(data) {
+        _wmsEndOcupacaoInflight = null;
+        if (data && !data.erro) {
+            _wmsEndOcupacaoCache = { ts: Date.now(), data: data };
+            if (typeof _wmsSessionCacheSet === 'function') _wmsSessionCacheSet('end_ocupacao', data);
+        }
+        return data;
+    }).catch(function(err) {
+        _wmsEndOcupacaoInflight = null;
+        throw err;
+    });
+    return _wmsEndOcupacaoInflight;
+}
+
 function _wmsEndLoadCancelled(kind, gen) {
     return gen !== (_wmsEndLoadCtrl[kind] && _wmsEndLoadCtrl[kind].gen);
 }
@@ -6795,7 +6831,9 @@ function _wmsEndBind2dEvents() {
     }
 }
 
-async function loadWmsEnderecamento() {
+async function loadWmsEnderecamento(opts) {
+    opts = opts || {};
+    var force = !!opts.force;
     _wmsEndLoadCtrl.panel.gen++;
     var gen = _wmsEndLoadCtrl.panel.gen;
     if (_wmsEndLoadCtrl.panel.abort) {
@@ -6811,10 +6849,15 @@ async function loadWmsEnderecamento() {
     _wmsEndSetAccBadge('wms-end-acc-3d', false);
     _wmsEndBindLoadingUi();
     try {
-        _wmsEndProgressBump('panel', 'panel', gen, 12, { sub: 'Carregando layout das câmaras…' });
-        var layout = await _wmsEndFetchGet('/wms/mapa-3d/layout', 25000, signal);
+        var layout = _wmsEndState.mapa3d && (_wmsEndState.mapa3d.camaras || []).length
+            ? _wmsEndState.mapa3d
+            : null;
+        if (!layout) {
+            _wmsEndProgressBump('panel', 'panel', gen, 12, { sub: 'Carregando layout das câmaras…' });
+            layout = await _wmsEndEnsureMapa3dParaPlanta();
+        }
         if (_wmsEndLoadCancelled('panel', gen)) return;
-        if (!layout || layout.erro) {
+        if (!layout || layout.erro || !(layout.camaras || []).length) {
             var errLayout = _wmsErroMsg(layout, 'Erro ao carregar layout das câmaras.');
             _wmsEndShowLoading('panel', { on: true, msg: 'Falha ao carregar', sub: errLayout, pct: 100, done: true });
             showMessage(errLayout, 'error');
@@ -6829,7 +6872,7 @@ async function loadWmsEnderecamento() {
         _wmsEndRender2DPlanta();
 
         _wmsEndProgressBump('panel', 'panel', gen, 62, { sub: 'Baixando ocupação do armazém…' });
-        var data = await _wmsEndFetchGetRetry('/wms/enderecamento?leve=1', 90000, signal);
+        var data = await _wmsEndFetchOcupacaoLeve({ force: force, signal: signal });
         if (_wmsEndLoadCancelled('panel', gen)) return;
         _wmsEndProgressBump('panel', 'panel', gen, 88, { sub: 'Atualizando ocupação nas câmaras…' });
         if (!data || data.erro) {
@@ -7027,7 +7070,7 @@ function initWmsEnderecamento() {
     if (bInv) bInv.addEventListener('click', wmsCriarInventario);
     wmsInitInventarioUi();
     var bEnd = document.getElementById('btn-wms-enderecamento-atualizar');
-    if (bEnd) bEnd.addEventListener('click', loadWmsEnderecamento);
+    if (bEnd) bEnd.addEventListener('click', function() { loadWmsEnderecamento({ force: true }); });
     var bEndVoltar = document.getElementById('btn-wms-end-voltar-2d');
     if (bEndVoltar) bEndVoltar.addEventListener('click', _wmsEndFechar3d);
     var bEnd3dReset = document.getElementById('btn-wms-end-3d-reset');
@@ -19203,9 +19246,16 @@ function _falhaGatewayHttpStatus(status) {
     return s === 502 || s === 503 || s === 504 || s === 524;
 }
 
+function _falhaRateLimitHttpStatus(status) {
+    return (Number(status) || 0) === 429;
+}
+
 /** Mensagem curta quando o proxy devolve HTML (502/503) em vez de JSON do app. */
 function mensagemErroRespostaNaoJson(status, corpoTexto) {
     var s = Number(status) || 0;
+    if (s === 429) {
+        return 'Muitas consultas ao mesmo tempo (HTTP 429). Aguarde alguns segundos e clique em Atualizar ocupação.';
+    }
     if (s === 502 || s === 503 || s === 504 || s === 524) {
         return 'Servidor ocupado ou acordando (erro ' + s + '). Aguarde 20–30 segundos e tente de novo.';
     }
@@ -19225,10 +19275,12 @@ async function fetchAPIComTimeout(endpoint, options, timeoutMs) {
     var ultimo = null;
     for (var t = 0; t < maxTent; t++) {
         ultimo = await _fetchAPIComTimeoutUma(endpoint, options, timeoutMs);
-        // Retry em gateway (Render acordando) e em timeout de rede.
-        var retryavel = !!(ultimo && (ultimo._falhaGateway || ultimo._timeout));
+        var rateLimit = !!(ultimo && ultimo._rateLimit);
+        var retryavel = !!(ultimo && (ultimo._falhaGateway || ultimo._timeout || rateLimit));
         if (!retryavel || t >= maxTent - 1) return ultimo;
-        await new Promise(function(resolve) { setTimeout(resolve, 1800 * (t + 1)); });
+        if (rateLimit && t >= 1) return ultimo;
+        var waitMs = rateLimit ? 10000 : 1800 * (t + 1);
+        await new Promise(function(resolve) { setTimeout(resolve, waitMs); });
     }
     return ultimo;
 }
@@ -19315,6 +19367,11 @@ async function fetchAPI(endpoint, options = {}) {
                 if (!response.ok && data && typeof data === 'object' && !data.erro) {
                     data.erro = data.erro || ('HTTP ' + response.status);
                 }
+                if (!response.ok && data && typeof data === 'object' && _falhaRateLimitHttpStatus(response.status)) {
+                    data._rateLimit = true;
+                    if (!data.erro) data.erro = mensagemErroRespostaNaoJson(response.status, '');
+                    return data;
+                }
                 if (!response.ok && data && typeof data === 'object' && _falhaGatewayHttpStatus(response.status)) {
                     data._falhaGateway = true;
                     if (attempt < maxAttempts) {
@@ -19326,13 +19383,15 @@ async function fetchAPI(endpoint, options = {}) {
             }
             const text = await response.text();
             var gateway = _falhaGatewayHttpStatus(response.status);
+            var rateLimit = _falhaRateLimitHttpStatus(response.status);
             if (gateway && attempt < maxAttempts) {
                 await new Promise(function(r) { setTimeout(r, 1500 * attempt); });
                 continue;
             }
             return {
                 erro: mensagemErroRespostaNaoJson(response.status, text),
-                _falhaGateway: gateway
+                _falhaGateway: gateway,
+                _rateLimit: rateLimit
             };
         } catch (error) {
             if (error && error.name === 'AbortError') {

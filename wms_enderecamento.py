@@ -44,6 +44,8 @@ _WMS_ZONA_COLS_READY = False
 _WMS_PROD_PLAN_COLS_READY = False
 _WMS_PAINEL_CACHE = {'ts': 0.0, 'payload': None}
 _WMS_PAINEL_TTL_SEC = 90
+_WMS_ENDERECA_LEVE_CACHE = {'ts': 0.0, 'payload': None}
+_WMS_ENDERECA_LEVE_TTL_SEC = 30
 # Ações do passo a passo — sem ensure_wms_schema/seed (evita "Conferindo…" eterno).
 _WMS_ACOES_BIP_LEVES = frozenset({
     'iniciar_bipagem',
@@ -59,6 +61,8 @@ _WMS_ACOES_BIP_LEVES = frozenset({
 def _invalidate_wms_painel_cache():
     _WMS_PAINEL_CACHE['ts'] = 0.0
     _WMS_PAINEL_CACHE['payload'] = None
+    _WMS_ENDERECA_LEVE_CACHE['ts'] = 0.0
+    _WMS_ENDERECA_LEVE_CACHE['payload'] = None
 
 
 def register_wms_db(get_db_func):
@@ -10710,7 +10714,18 @@ def api_wms_relatorios():
 @bp.route('/enderecamento', methods=['GET'])
 def api_wms_areas_especiais():
     """Ocupação do endereçamento: estoque normal, destinos fixos e câm. 98."""
+    import time as _time
+
     leve = (request.args.get('leve') or '').strip().lower() in ('1', 'sim', 'true', 'yes')
+    force = (request.args.get('force') or '').strip().lower() in ('1', 'sim', 'true', 'yes')
+    now = _time.time()
+    if leve and not force:
+        cached = _WMS_ENDERECA_LEVE_CACHE.get('payload')
+        if (
+            cached
+            and (now - float(_WMS_ENDERECA_LEVE_CACHE.get('ts') or 0)) < _WMS_ENDERECA_LEVE_TTL_SEC
+        ):
+            return jsonify(cached)
     conn = _db()
     try:
         _ensure_wms_schema_safe(conn)
@@ -10720,7 +10735,11 @@ def api_wms_areas_especiais():
             data['destinos_fixos'] = _coletar_mapa_destinos_fixos(conn)
         data['modo_leve'] = leve
         conn.close()
-        return jsonify(_sanitize_json(data))
+        payload = _sanitize_json(data)
+        if leve:
+            _WMS_ENDERECA_LEVE_CACHE['ts'] = now
+            _WMS_ENDERECA_LEVE_CACHE['payload'] = payload
+        return jsonify(payload)
     except Exception as e:
         try:
             conn.rollback()
