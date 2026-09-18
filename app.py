@@ -2428,9 +2428,13 @@ def raiz():
     return resp
 
 
-def _buscar_usuario_login(conn, usuario_in):
-    """Uma consulta preferencial — login por usuário ou e-mail sem 3 round-trips."""
-    usuario_in = (usuario_in or '').strip()
+def _ident_login_normalizado(usuario_in):
+    return ' '.join((usuario_in or '').split())
+
+
+def _buscar_usuario_login(conn, usuario_in, colunas='id, usuario, senha_hash'):
+    """Login por usuário, e-mail ou nome completo cujo 1º token é único (ex.: Diego Isidoro → Diego)."""
+    usuario_in = _ident_login_normalizado(usuario_in)
     if not usuario_in:
         return None
     email_n = None
@@ -2440,37 +2444,44 @@ def _buscar_usuario_login(conn, usuario_in):
             if callable(portal_normalize_email)
             else usuario_in.strip().lower()
         )
-    # 1 query: match exato de usuario OU lower(usuario) OU e-mail (se coluna existir).
+    cols = colunas
     try:
         if email_n:
             row = conn.execute(
-                '''SELECT id, usuario, senha_hash FROM usuarios
-                   WHERE usuario = ?
-                      OR lower(usuario) = lower(?)
-                      OR lower(COALESCE(email, '')) = ?
-                   LIMIT 1''',
+                f'''SELECT {cols} FROM usuarios
+                    WHERE usuario = ?
+                       OR lower(usuario) = lower(?)
+                       OR lower(COALESCE(email, '')) = ?
+                    LIMIT 1''',
                 (usuario_in, usuario_in, email_n),
             ).fetchone()
         else:
             row = conn.execute(
-                '''SELECT id, usuario, senha_hash FROM usuarios
-                   WHERE usuario = ? OR lower(usuario) = lower(?)
-                   LIMIT 1''',
+                f'''SELECT {cols} FROM usuarios
+                    WHERE usuario = ? OR lower(usuario) = lower(?)
+                    LIMIT 1''',
                 (usuario_in, usuario_in),
             ).fetchone()
         if row:
             return row
+        primeiro = usuario_in.split(' ', 1)[0]
+        if primeiro and primeiro.lower() != usuario_in.lower():
+            rows = conn.execute(
+                f'''SELECT {cols} FROM usuarios WHERE lower(usuario) = lower(?)''',
+                (primeiro,),
+            ).fetchall()
+            if len(rows) == 1:
+                return rows[0]
     except Exception:
         try:
             conn.rollback()
         except Exception:
             pass
-        # Fallback se coluna email ainda não existir na tabela.
         try:
             return conn.execute(
-                '''SELECT id, usuario, senha_hash FROM usuarios
-                   WHERE usuario = ? OR lower(usuario) = lower(?)
-                   LIMIT 1''',
+                f'''SELECT {cols} FROM usuarios
+                    WHERE usuario = ? OR lower(usuario) = lower(?)
+                    LIMIT 1''',
                 (usuario_in, usuario_in),
             ).fetchone()
         except Exception:
@@ -2572,12 +2583,14 @@ def api_portal_login():
                 'erro': 'Servidor acordando ou banco ocupado. Tente novamente em alguns segundos.',
                 'detalhe': str(e)[:120],
             })), 503
+        if not row:
+            return _sso_cors(jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})), 401
         hash_val = row['senha_hash'] if hasattr(row, 'keys') else row[2]
         try:
             senha_ok = check_password_hash(hash_val, senha)
         except Exception:
             senha_ok = False
-        if not row or not senha_ok:
+        if not senha_ok:
             return _sso_cors(jsonify({'ok': False, 'erro': 'Usuário ou senha incorretos.'})), 401
         usuario = str(row['usuario'] if hasattr(row, 'keys') else row[1])
         try:
@@ -3069,7 +3082,7 @@ def api_portal_me():
 
 
 def _portal_resolver_email_usuario(conn, usuario_ou_email):
-    raw = (usuario_ou_email or '').strip()
+    raw = _ident_login_normalizado(usuario_ou_email)
     if not raw:
         return None, None
     email_n = portal_normalize_email(raw) if callable(portal_normalize_email) else raw.lower()
@@ -3081,10 +3094,7 @@ def _portal_resolver_email_usuario(conn, usuario_ou_email):
         if row:
             return row['usuario'], portal_normalize_email(row['email'] or email_n)
         return None, email_n
-    row = conn.execute(
-        'SELECT usuario, email FROM usuarios WHERE usuario = ?',
-        (raw,),
-    ).fetchone()
+    row = _buscar_usuario_login(conn, raw, colunas='usuario, email')
     if not row:
         return None, None
     em = (row['email'] or '').strip()
